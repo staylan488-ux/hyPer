@@ -29,9 +29,9 @@ const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 /** Progress: this week's volume by muscle, training time over eight weeks, and the last week's eating. */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
-  // A read that worked always stores a new list (a failed one leaves it as it
-  // was), and sign-out puts back initialAppData's, so a different list means
-  // this account's week was read, by this screen or any other.
+  // The first read that works always stores a new list (a failed one leaves it
+  // as it was), and sign-out puts back initialAppData's, so a different list
+  // means this account's week was read, by this screen or any other.
   const volumeRead = useAppStore((state) => state.weeklyVolume !== initialAppData.weeklyVolume);
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
   const [open, setOpen] = useState<MuscleGroup | null>(null);

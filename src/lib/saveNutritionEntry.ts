@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { buildLoggedAt } from '@/lib/foodLoggerUtils';
 import { legacyMealTypeForGroup } from '@/lib/nutritionGroups';
+import { getSessionUserId } from '@/lib/sessionUser';
 import { supabase } from '@/lib/supabase';
 import type { Food, NutritionGroup } from '@/types';
 
@@ -14,6 +15,11 @@ export type NutritionEntryPayload = {
   logged_at: string;
 };
 
+async function validatedUserId(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
 /** Save the complete entry, or fail without silently discarding its fields. */
 export async function persistNutritionEntry(
   payload: NutritionEntryPayload,
@@ -21,9 +27,11 @@ export async function persistNutritionEntry(
   retryEntryId?: string,
   expectedUserId?: string,
 ): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('No user found');
-  if (expectedUserId !== undefined && user.id !== expectedUserId) {
+  // A plain save only needs the id, from the stored session (RLS checks the
+  // owner); the meal builder's account-changed check asks Supabase Auth.
+  const userId = expectedUserId === undefined ? await getSessionUserId() : await validatedUserId();
+  if (!userId) throw new Error('No user found');
+  if (expectedUserId !== undefined && userId !== expectedUserId) {
     throw new Error('Your account changed. Reopen this meal before saving.');
   }
 
@@ -31,12 +39,12 @@ export async function persistNutritionEntry(
     ? await supabase.from('nutrition_logs')
       .update(payload)
       .eq('id', entryId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
     : retryEntryId
       ? await supabase.from('nutrition_logs')
-        .upsert({ id: retryEntryId, user_id: user.id, ...payload }, { onConflict: 'id' })
+        .upsert({ id: retryEntryId, user_id: userId, ...payload }, { onConflict: 'id' })
       : await supabase.from('nutrition_logs')
-        .insert({ user_id: user.id, ...payload });
+        .insert({ user_id: userId, ...payload });
 
   if (error) throw error;
 }

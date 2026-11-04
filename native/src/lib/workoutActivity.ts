@@ -2,7 +2,7 @@
 // Train page mirrors it: the movement that's up, the shared detail line and
 // the session clock. The rest timer layers its countdown onto the same card
 // (lib/rest.ts). The card comes down when the workout ends.
-import { useEffect, useRef } from 'react';
+import { useEffect, useEffectEvent, useRef } from 'react';
 
 import { workoutActivityDetailLine, type WorkoutActivityState } from '@/lib/workoutActivitySync';
 import { sessionTonnage } from '@/lib/workoutProgress';
@@ -38,16 +38,16 @@ export function useWorkoutActivity(session: SessionModel | null) {
   const card = session ? workoutCard(session) : null;
   const key = card ? JSON.stringify(card) : null;
 
-  useEffect(() => {
+  const onCardChange = useEffectEvent(() => {
     if (card && userId) {
       shownForUser.current = userId;
       syncWorkoutActivity(card);
     } else if (userId && (loaded || shownForUser.current === userId)) {
       endWorkoutActivity();
     }
-    // The key stands for the card's content.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, userId, loaded]);
+  });
+  // The key stands for the card's content.
+  useEffect(() => onCardChange(), [key, userId, loaded]);
 
   // A rest names the set that's up; if that changes mid-rest, the "Rest over"
   // notification follows.

@@ -49,24 +49,22 @@ export default function ProgramDayScreen() {
       day?.day_name ?? '',
     );
 
-  const options = useMemo(
-    () => ({
-        title: label,
-        unstable_headerRightItems: () => [
-          {
-            type: 'button',
-            label: 'Rename day',
-            icon: { type: 'sfSymbol', name: 'pencil' },
-            onPress: () => {
-              haptics.tap();
-              rename();
-            },
-          },
-        ],
-      }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [label],
-  );
+  // A plain object: the React Compiler keeps it until the day's title or name
+  // changes, so editing exercises doesn't send iOS new header items.
+  const options = {
+    title: label,
+    unstable_headerRightItems: () => [
+      {
+        type: 'button',
+        label: 'Rename day',
+        icon: { type: 'sfSymbol', name: 'pencil' },
+        onPress: () => {
+          haptics.tap();
+          rename();
+        },
+      },
+    ],
+  } satisfies ComponentProps<typeof Stack.Screen>['options'];
 
   if (!day) {
     return (

@@ -90,6 +90,14 @@ export function useRecentLogs(userId: string) {
 
 const hiddenKey = (userId: string) => `hyper-recent-hidden:${userId}`;
 
+function writeHidden(userId: string, hidden: HiddenRecentFoods) {
+  try {
+    globalThis.localStorage?.setItem(hiddenKey(userId), JSON.stringify(hidden));
+  } catch {
+    // kept for this sheet only when the device cannot store it
+  }
+}
+
 function readHidden(userId: string): HiddenRecentFoods {
   try {
     const raw = globalThis.localStorage?.getItem(hiddenKey(userId));
@@ -107,11 +115,7 @@ export function useHiddenRecentFoods(userId: string) {
     (key: string) => {
       setHidden((current) => {
         const next = pruneHiddenRecentFoods({ ...current, [key]: Date.now() });
-        try {
-          globalThis.localStorage?.setItem(hiddenKey(userId), JSON.stringify(next));
-        } catch {
-          // kept for this sheet only when the device cannot store it
-        }
+        writeHidden(userId, next);
         return next;
       });
     },

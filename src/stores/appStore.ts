@@ -83,6 +83,14 @@ function sameMacroTarget(a: MacroTarget | null, b: MacroTarget | null): boolean 
 }
 
 /**
+ * Whether a fresh read holds the same data as the store. A read that changed
+ * nothing keeps the stored reference, so the screens that show it don't redraw.
+ */
+function sameData(stored: unknown, fresh: unknown): boolean {
+  return stored === fresh || JSON.stringify(stored) === JSON.stringify(fresh);
+}
+
+/**
  * One adaptive refresh at a time. An unforced call joins the run in flight; a
  * forced one waits for it and then computes afresh.
  */
@@ -305,6 +313,20 @@ async function insertPlaceholderSets(
 
   const { error } = await supabase.from('sets').insert(rows);
   return { data: [], error };
+}
+
+// Sends a split day's exercise read now, so it can run beside the earlier
+// steps of a start. Awaiting the result still sees its data, error or throw;
+// the handler only keeps a read nobody awaits (a resumed workout, a failed
+// check) from reporting an unhandled rejection.
+function readSplitDayExercises(splitDayId: string) {
+  const read = Promise.resolve().then(() => supabase
+    .from('split_exercises')
+    .select('*, exercise:exercises(*)')
+    .eq('split_day_id', splitDayId)
+    .order('exercise_order'));
+  read.catch(() => {});
+  return read;
 }
 
 // Removes the workout row a failed start just created (its plan cascades).
@@ -881,7 +903,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         items: normalizeFlexiblePlanItems(row.items),
       } as FlexDayTemplate));
 
-      set({ flexTemplates: templates });
+      if (!sameData(get().flexTemplates, templates)) set({ flexTemplates: templates });
     });
   },
 
@@ -1021,6 +1043,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const userId = await getSessionUserId();
     if (!userId || !isCurrentAccount()) throw new Error(START_WORKOUT_ERROR);
 
+    // The day's exercises depend only on the day, so they load while the
+    // resume check runs. A resumed workout ignores them.
+    const splitExercisesRead = readSplitDayExercises(splitDayId);
+
     // Resume the latest in-progress workout even if it started before midnight.
     const { data: existing, error: existingError } = await supabase
       .from('workouts')
@@ -1065,12 +1091,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw new Error(START_WORKOUT_ERROR);
     }
 
-    // Get split day exercises and create placeholder sets
-    const { data: splitExercises, error: splitExercisesError } = await supabase
-      .from('split_exercises')
-      .select('*, exercise:exercises(*)')
-      .eq('split_day_id', splitDayId)
-      .order('exercise_order');
+    // Create placeholder sets for the split day's exercises
+    const { data: splitExercises, error: splitExercisesError } = await splitExercisesRead;
 
     // Never leave a workout that is missing sets: it would resume for a day.
     const { error: setsError } = splitExercisesError
@@ -2278,7 +2300,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const connection = (data as WhoopConnection | null) ?? null;
     if (!isAccountCurrent()) return null;
-    set({ whoopConnection: connection });
+    if (!sameData(get().whoopConnection, connection)) set({ whoopConnection: connection });
     return connection;
   },
 
@@ -3534,7 +3556,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     // account. A failed read keeps what is shown, so a flaky connection never
     // blanks the targets.
     if (!error && isAccountCurrent()) {
-      set({ macroTarget: data ?? null, macroTargetLoadedForUserId: userId });
+      const macroTarget = data ?? null;
+      set(sameData(get().macroTarget, macroTarget)
+        ? { macroTargetLoadedForUserId: userId }
+        : { macroTarget, macroTargetLoadedForUserId: userId });
     }
   },
 
@@ -3766,7 +3791,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
     const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[], volumeLandmarks);
 
-    set({ volumeLandmarks, weeklyVolume });
+    const stored = get();
+    const changed: Partial<Pick<AppState, 'volumeLandmarks' | 'weeklyVolume'>> = {};
+    if (!sameData(stored.volumeLandmarks, volumeLandmarks)) changed.volumeLandmarks = volumeLandmarks;
+    // The first read always lands, even an empty week: Progress tells "not read
+    // yet" from "nothing trained" by the initial list.
+    if (stored.weeklyVolume === initialAppData.weeklyVolume || !sameData(stored.weeklyVolume, weeklyVolume)) {
+      changed.weeklyVolume = weeklyVolume;
+    }
+    if (changed.volumeLandmarks || changed.weeklyVolume) set(changed);
   }),
 }));
 

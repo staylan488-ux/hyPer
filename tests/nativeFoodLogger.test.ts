@@ -224,7 +224,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
     '~/lib/format': { formatWhole: String },
     '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
-    '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useFuelStore },
+    '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
     '~/lib/leaveGuard': { useLeaveGuard: (on: boolean, message: { title: string }, options: { busy?: boolean } = {}) => { captured.guard = { on, message, busy: options.busy }; } },
     '~/lib/you': { loadYouMeals: loadYou, useYouMealsStore },

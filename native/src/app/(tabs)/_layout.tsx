@@ -35,10 +35,13 @@ const WORKOUT_SHEETS = new Set(['movement', 'rest', 'swap', 'session-done']);
 
 export default function TabsLayout() {
   const session = useSessionModel();
+  // The tabs and the workout bar follow only whether a workout is live, so a
+  // logged set doesn't rebuild them.
+  const live = session !== null;
   // As on the web's Train page: a live workout never lets the screen lock mid-set.
   const segments = useSegments() as string[];
   const onTrain = segments[0] === '(tabs)' ? segments[1] === 'train' : WORKOUT_SHEETS.has(segments[0] ?? '');
-  useKeepAwakeWhile(Boolean(session) && onTrain);
+  useKeepAwakeWhile(live && onTrain);
   useRestLifecycle();
   useRestFinish();
   useRestPreferences();
@@ -88,7 +91,7 @@ export default function TabsLayout() {
       minimizeBehavior="onScrollDown"
       // iOS's tab bar has no tap feedback of its own; the web app's tabs did.
       screenListeners={{ tabPress: () => haptics.tap() }}>
-      {session ? (
+      {live ? (
         <NativeTabs.BottomAccessory>
           <WorkoutAccessory />
         </NativeTabs.BottomAccessory>

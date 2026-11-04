@@ -85,6 +85,7 @@ function renderFuel() {
     '~/lib/fuel': {
       dayKey: (date: Date) => dates.format(date, 'yyyy-MM-dd'),
       today: () => today,
+      useTodayKey: () => today,
       todayLogsInMatchingMeal: () => null,
       useFuelDay: () => ({ selected: today, loaded: true, status: 'ready', logs: fuel.logs, groups: [] }),
       useFuelStore: Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel }),

@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
@@ -25,7 +25,61 @@ import { type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
 
-type AddState = 'saving' | 'done' | 'error';
+export type AddState = 'saving' | 'done' | 'error';
+
+/** How many USDA searches and portions this session keeps. */
+const USDA_CACHE_LIMIT = 50;
+/** USDA results by the exact query sent, so typing back to a query needs no new lookup. */
+const usdaResults = new Map<string, Food[]>();
+/** A result with its household portion, by fdc_id, with the result it was read for. */
+const usdaPortions = new Map<string, { food: Food; full: Food }>();
+
+/** Keeps the newest entries; a Map lists keys oldest first. */
+function remember<V>(cache: Map<string, V>, key: string, value: V) {
+  cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > USDA_CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
+}
+
+/** USDA search, from this session's results when the same query found foods before. */
+function searchUsda(query: string): Promise<Food[]> {
+  const kept = usdaResults.get(query);
+  if (kept) return Promise.resolve(kept);
+  return searchUsdaFoodsSecureStrict(query).then((foods) => {
+    // A failed lookup throws; an empty answer may be a failure too, so only found foods are kept.
+    if (foods.length > 0) remember(usdaResults, query, foods);
+    return foods;
+  });
+}
+
+/** A result with its household portion, read once per food this session. */
+async function usdaWithPortion(food: Food): Promise<Food> {
+  const key = food.fdc_id;
+  const kept = key ? usdaPortions.get(key) : undefined;
+  if (kept && JSON.stringify(kept.food) === JSON.stringify(food)) return kept.full;
+  const full = await withUsdaPortion(food);
+  // Only a portion found is kept: a failed or empty detail read is tried again next time.
+  if (key && full !== food) remember(usdaPortions, key, { food, full });
+  return full;
+}
+
+/**
+ * Saves a quick add: the food's row, then the entry. False when either fails.
+ * The try lives out here because the React Compiler can't compile a hook that
+ * throws inside one.
+ */
+async function saveQuickAdd(food: Food, entry: Omit<Parameters<typeof saveFoodEntry>[0], 'foodId'>): Promise<boolean> {
+  try {
+    // Exactly what the row shows (one serving of its basis, or the amount it
+    // names), never a portion it did not show.
+    const foodId = await ensureFoodRow(food);
+    if (!foodId) return false;
+    await saveFoodEntry({ ...entry, foodId });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** A search or filter field in the quiet fill capsule. */
 export function SearchField({ value, onChange, placeholder, onSubmit }: {
@@ -68,9 +122,11 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
 }
 
 /** One food: tap to review it; the round button logs it at once (one serving unless `servings` says). */
-export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, menu, onLongPress, showBasis, detail, servings = 1 }: {
+export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
   food: Food;
   state?: AddState;
+  /** A built meal, when the list has already decoded it. */
+  composed?: boolean;
   /** The quiet line in place of the food's macros. */
   detail?: string;
   /** What + logs, in servings of the food, for the line once it is added. */
@@ -99,7 +155,6 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
     ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
   ];
   const longPress = held ? (hasHoldMenu ? undefined : () => showActionSheet(food.name, menu ?? [])) : editing ? undefined : onLongPress;
-  const composed = Boolean(decodeMealComposition(food.description));
   const line = state === 'error'
     ? 'Not saved. Tap + to try again.'
     : state === 'done'
@@ -108,7 +163,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
         ? detail
         : showBasis
           ? `${Math.round(food.calories)} kcal / ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`
-          : `${composed ? 'Meal · ' : ''}${foodMacroLine(food)}`;
+          : `${(composed ?? Boolean(decodeMealComposition(food.description))) ? 'Meal · ' : ''}${foodMacroLine(food)}`;
   const row = (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14, backgroundColor: c.ground }}>
       <Pressable
@@ -223,41 +278,43 @@ export function useQuickAdd() {
   const logger = useLogger();
   const [added, setAdded] = useState<Record<string, AddState>>({});
   const pendingIds = useRef(new Map<string, PendingEntryId>());
+  // `add` reads the sheet as last drawn from here, so it stays one function
+  // and a list redraws only the row whose state changed.
+  const drawn = useRef({ added, logger });
+  useLayoutEffect(() => {
+    drawn.current = { added, logger };
+  });
 
-  const add = async (key: string, food: Food, options: { servings?: number; source?: string } = {}) => {
-    const current = added[key];
+  const add = useCallback(async (key: string, food: Food, options: { servings?: number; source?: string } = {}) => {
+    const { added: states, logger: sheet } = drawn.current;
+    const current = states[key];
     if (current === 'saving' || current === 'done') return;
     const servings = options.servings ?? 1;
-    if (logger.purpose === 'ingredients') {
-      logger.addIngredients([createMealIngredient(food, servings)]);
+    if (sheet.purpose === 'ingredients') {
+      sheet.addIngredients([createMealIngredient(food, servings)]);
       return;
     }
     const pending = pendingIds.current.get(key) ?? createPendingEntryId();
     pendingIds.current.set(key, pending);
     setAdded((state) => ({ ...state, [key]: 'saving' }));
-    try {
-      // Exactly what the row shows (one serving of its basis, or the amount it
-      // names), never a portion it did not show.
-      const foodId = await ensureFoodRow(food);
-      if (!foodId) throw new Error('not saved');
-      await saveFoodEntry({
-        foodId,
-        servings,
-        source: options.source ?? chosenFoodLogSource(food),
-        when: logger.when,
-        groups: logger.groups,
-        pending,
-      });
-      pendingIds.current.delete(key);
-      haptics.success();
-      setAdded((state) => ({ ...state, [key]: 'done' }));
-      // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
-      void useFuelStore.getState().refresh();
-    } catch {
+    const saved = await saveQuickAdd(food, {
+      servings,
+      source: options.source ?? chosenFoodLogSource(food),
+      when: sheet.when,
+      groups: sheet.groups,
+      pending,
+    });
+    if (!saved) {
       haptics.error();
       setAdded((state) => ({ ...state, [key]: 'error' }));
+      return;
     }
-  };
+    pendingIds.current.delete(key);
+    haptics.success();
+    setAdded((state) => ({ ...state, [key]: 'done' }));
+    // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
+    void useFuelStore.getState().refresh();
+  }, []);
   return { added, add, enabled: !logger.editing };
 }
 
@@ -269,14 +326,14 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   const logger = useLogger();
   const [filter, setFilter] = useState('');
   const [managing, setManaging] = useState(false);
-  const quick = useQuickAdd();
+  const { added, add: quickAdd, enabled } = useQuickAdd();
   const meals = logger.savedMeals;
-  const list = filterSavedMeals(meals ?? [], filter);
 
   const open = (meal: Food) => {
     if (logger.purpose === 'log' && decodeMealComposition(meal.description)) logger.composeMeal(meal);
     else logger.chooseFood(meal);
   };
+  const add = (meal: Food) => void quickAdd(meal.id, meal);
 
   // A deleted meal slides away at once (no question, as a swipe in Mail; past
   // logs keep it) and comes back if retiring it fails.
@@ -300,6 +357,7 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     haptics.success();
     await logger.reloadSavedMeals();
   };
+  const remove = (meal: Food) => void retire(meal);
   // The Edit list's small trash button is one tap with no swipe behind it, so it asks.
   const confirmRetire = (meal: Food) => {
     Alert.alert(`Delete ${meal.name}?`, 'It leaves your saved meals. Past logged entries stay unchanged.', [
@@ -308,21 +366,24 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     ]);
   };
 
-  const canQuickAdd = (meal: Food) => quick.enabled && !decodeMealComposition(meal.description);
-  const menu = (meal: Food): MenuAction[] => [
-    ...(canQuickAdd(meal)
-      ? [{ title: logger.purpose === 'ingredients' ? 'Add as ingredient' : 'Log one serving now', symbol: 'plus.circle', run: () => void quick.add(meal.id, meal) }]
-      : []),
-    { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => open(meal) },
-    ...(logger.purpose === 'log'
-      ? [
-          { title: 'Edit saved meal', symbol: 'pencil', run: () => onEditSavedMeal(meal) },
-          { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, removes: true, run: () => void retire(meal) },
-        ]
-      : []),
-  ];
-  const visible = list.filter((meal) => !hidden.has(meal.id));
+  const visible = filterSavedMeals(meals ?? [], filter).filter((meal) => !hidden.has(meal.id));
   const savedCount = (meals ?? []).filter((meal) => !hidden.has(meal.id)).length;
+  const rows = visible.map((meal, index) => (
+    <SavedRow
+      key={meal.id}
+      meal={meal}
+      divided={index > 0}
+      state={added[meal.id]}
+      purpose={logger.purpose}
+      quickAdd={enabled}
+      managing={managing}
+      onOpen={open}
+      onAdd={add}
+      onEdit={onEditSavedMeal}
+      onRemove={remove}
+      onConfirmRemove={confirmRetire}
+    />
+  ));
 
   // Leaving the tab drops the list at once; only a deleted meal slides away.
   return (
@@ -343,37 +404,7 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
         {/* A new filter swaps the rows without motion; a deleted meal slides away. */}
         <LayoutAnimationConfig key={filter} skipEntering skipExiting>
           <View>
-            {visible.map((meal, index) => {
-              const row = (
-                <FoodRow
-                  food={meal}
-                  state={quick.added[meal.id]}
-                  onOpen={() => open(meal)}
-                  onAdd={canQuickAdd(meal) ? () => void quick.add(meal.id, meal) : undefined}
-                  editing={managing}
-                  onEdit={() => onEditSavedMeal(meal)}
-                  onDelete={() => confirmRetire(meal)}
-                  menu={menu(meal)}
-                />
-              );
-              return (
-                <Animated.View key={meal.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-                  {index > 0 ? <Hairline inset={20} /> : null}
-                  {logger.purpose === 'log' && !managing ? (
-                    <SwipeRow
-                      name={meal.name}
-                      actions={[
-                        { label: 'Edit', onPress: () => onEditSavedMeal(meal) },
-                        { label: 'Delete', destructive: true, onPress: () => void retire(meal) },
-                      ]}>
-                      {row}
-                    </SwipeRow>
-                  ) : (
-                    row
-                  )}
-                </Animated.View>
-              );
-            })}
+            {rows}
             {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
             {meals !== null && visible.length === 0 ? (
               <Animated.View entering={rowEnter} layout={rowLayout}>
@@ -384,6 +415,67 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
         </LayoutAnimationConfig>
       </View>
     </LayoutAnimationConfig>
+  );
+}
+
+/** One saved meal; drawn again only when its own meal, state or the list's mode changes. */
+function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, onAdd, onEdit, onRemove, onConfirmRemove }: {
+  meal: Food;
+  divided: boolean;
+  state?: AddState;
+  purpose: 'log' | 'ingredients';
+  quickAdd: boolean;
+  managing: boolean;
+  onOpen: (meal: Food) => void;
+  onAdd: (meal: Food) => void;
+  onEdit: (meal: Food) => void;
+  onRemove: (meal: Food) => void;
+  onConfirmRemove: (meal: Food) => void;
+}) {
+  // Decoded once for the quick add, the menu and the row's line.
+  const composed = Boolean(decodeMealComposition(meal.description));
+  const canQuickAdd = quickAdd && !composed;
+  const menu: MenuAction[] = [
+    ...(canQuickAdd
+      ? [{ title: purpose === 'ingredients' ? 'Add as ingredient' : 'Log one serving now', symbol: 'plus.circle', run: () => onAdd(meal) }]
+      : []),
+    { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => onOpen(meal) },
+    ...(purpose === 'log'
+      ? [
+          { title: 'Edit saved meal', symbol: 'pencil', run: () => onEdit(meal) },
+          { title: 'Delete', subtitle: 'Past logged entries stay', symbol: 'trash', destructive: true, removes: true, run: () => onRemove(meal) },
+        ]
+      : []),
+  ];
+  const row = (
+    <FoodRow
+      food={meal}
+      composed={composed}
+      state={state}
+      onOpen={() => onOpen(meal)}
+      onAdd={canQuickAdd ? () => onAdd(meal) : undefined}
+      editing={managing}
+      onEdit={() => onEdit(meal)}
+      onDelete={() => onConfirmRemove(meal)}
+      menu={menu}
+    />
+  );
+  return (
+    <Animated.View entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+      {divided ? <Hairline inset={20} /> : null}
+      {purpose === 'log' && !managing ? (
+        <SwipeRow
+          name={meal.name}
+          actions={[
+            { label: 'Edit', onPress: () => onEdit(meal) },
+            { label: 'Delete', destructive: true, onPress: () => onRemove(meal) },
+          ]}>
+          {row}
+        </SwipeRow>
+      ) : (
+        row
+      )}
+    </Animated.View>
   );
 }
 
@@ -412,7 +504,7 @@ export function SearchTab() {
   const [state, setState] = useState<'idle' | 'searching' | 'error'>('idle');
   const [attempt, setAttempt] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
-  const quick = useQuickAdd();
+  const { added, add: quickAdd, enabled } = useQuickAdd();
   const trimmed = query.trim();
 
   useEffect(() => {
@@ -424,7 +516,7 @@ export function SearchTab() {
     setState('searching');
     let current = true;
     const timer = setTimeout(() => {
-      searchUsdaFoodsSecureStrict(trimmed)
+      searchUsda(trimmed)
         .then((foods) => {
           if (!current) return;
           setResults(foods);
@@ -445,14 +537,11 @@ export function SearchTab() {
   const open = async (food: Food) => {
     if (opening) return;
     setOpening(food.fdc_id || food.id);
-    try {
-      logger.chooseFood(await withUsdaPortion(food));
-    } catch {
-      logger.chooseFood(food);
-    } finally {
-      setOpening(null);
-    }
+    // without its portion, the food opens as listed
+    logger.chooseFood(await usdaWithPortion(food).catch(() => food));
+    setOpening(null);
   };
+  const add = (key: string, food: Food) => void quickAdd(key, food);
 
   return (
     <View>
@@ -461,17 +550,18 @@ export function SearchTab() {
       {(results ?? []).map((food, index) => {
         const key = food.fdc_id || food.id;
         return (
-          <View key={key} style={{ opacity: opening && opening !== key ? 0.5 : 1 }}>
-            {index > 0 ? <Hairline inset={20} /> : null}
-            <FoodRow
-              food={food}
-              state={quick.added[key]}
-              opening={opening === key}
-              showBasis
-              onOpen={() => void open(food)}
-              onAdd={quick.enabled ? () => void quick.add(key, food) : undefined}
-            />
-          </View>
+          <SearchRow
+            key={key}
+            food={food}
+            rowKey={key}
+            divided={index > 0}
+            state={added[key]}
+            opening={opening === key}
+            dimmed={Boolean(opening) && opening !== key}
+            quickAdd={enabled}
+            onOpen={open}
+            onAdd={add}
+          />
         );
       })}
       {state === 'searching' ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
@@ -485,6 +575,34 @@ export function SearchTab() {
           <Capsule title="Retry" variant="quiet" onPress={() => setAttempt((value) => value + 1)} />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/** One USDA result; drawn again only when its own state changes or another opens. */
+function SearchRow({ food, rowKey, divided, state, opening, dimmed, quickAdd, onOpen, onAdd }: {
+  food: Food;
+  rowKey: string;
+  divided: boolean;
+  state?: AddState;
+  opening: boolean;
+  /** Another result is opening. */
+  dimmed: boolean;
+  quickAdd: boolean;
+  onOpen: (food: Food) => Promise<void>;
+  onAdd: (key: string, food: Food) => void;
+}) {
+  return (
+    <View style={{ opacity: dimmed ? 0.5 : 1 }}>
+      {divided ? <Hairline inset={20} /> : null}
+      <FoodRow
+        food={food}
+        state={state}
+        opening={opening}
+        showBasis
+        onOpen={() => void onOpen(food)}
+        onAdd={quickAdd ? () => onAdd(rowKey, food) : undefined}
+      />
     </View>
   );
 }

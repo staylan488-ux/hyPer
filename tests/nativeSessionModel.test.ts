@@ -4,7 +4,7 @@ import { planExerciseSubstitution } from '@/lib/exerciseSubstitution';
 import type { Exercise, FlexiblePlanItem, Split, SplitExercise, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
 import { mealForTime } from '../native/src/lib/meals';
-import { afterLoggedSet, buildSessionModel, skippedLine } from '../native/src/lib/sessionModel';
+import { afterLoggedSet, buildSessionModel, isLiveWorkout, sessionModelCache, skippedLine } from '../native/src/lib/sessionModel';
 
 // The native app's live-workout model decides which set "Log set" saves to.
 
@@ -143,6 +143,48 @@ describe('buildSessionModel', () => {
   it('names an unplanned session "Workout"', () => {
     const model = buildSessionModel(workout([set(row, 1, false)], { split_day_id: null }), { split }, null);
     expect(model?.dayName).toBe('Workout');
+  });
+});
+
+describe('sessionModelCache', () => {
+  // Every screen showing the live workout reads the same store values, so
+  // they share one build per change instead of each building its own.
+  it('builds once for the same inputs and gives each screen the same model', () => {
+    const shared = sessionModelCache();
+    const live = midSession();
+    const skips = {};
+    const first = shared(live, { split, plan: null, skips }, null);
+    expect(first).toEqual(buildSessionModel(live, { split, plan: null, skips }, null));
+    expect(shared(live, { split, plan: null, skips }, null)).toBe(first);
+  });
+
+  it('builds again when the workout, the program, the plan, a skip or the chosen movement changes', () => {
+    const shared = sessionModelCache();
+    const live = midSession();
+    const skips = {};
+    const first = shared(live, { split, plan: null, skips }, null);
+
+    const logged = { ...live, sets: live.sets.map((entry) => (entry.id === 'row-1' ? { ...entry, completed: true } : entry)) };
+    const afterLog = shared(logged, { split, plan: null, skips }, null);
+    expect(afterLog).not.toBe(first);
+    expect(afterLog?.current?.set.id).toBe('row-2');
+
+    const chosen = shared(logged, { split, plan: null, skips }, 'incline');
+    expect(chosen?.current?.set.id).toBe('incline-1');
+
+    const skipping = { row: true };
+    expect(shared(logged, { split, plan: null, skips: skipping }, 'incline')?.movements.find((entry) => entry.exerciseId === 'row')?.skipped).toBe(true);
+    expect(shared(logged, { split: { ...split }, plan: null, skips: skipping }, 'incline')).not.toBe(chosen);
+  });
+
+  it('has no model while no workout is live', () => {
+    const shared = sessionModelCache();
+    const finished = { ...midSession(), completed: true };
+    expect(shared(null, { split }, null)).toBeNull();
+    expect(shared(finished, { split }, null)).toBeNull();
+    expect(isLiveWorkout(null)).toBe(false);
+    expect(isLiveWorkout(finished)).toBe(false);
+    expect(isLiveWorkout(midSession())).toBe(true);
   });
 });
 

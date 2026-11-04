@@ -44,7 +44,7 @@ export function Capsule({
   const primary = variant === 'primary';
   const inactive = disabled || busy;
 
-  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
   return (
     <AnimatedPressable
@@ -53,10 +53,10 @@ export function Capsule({
       accessibilityState={{ disabled: !!inactive, busy: !!busy }}
       disabled={inactive}
       onPressIn={() => {
-        scale.value = withSpring(0.96, pressSpring);
+        scale.set(withSpring(0.96, pressSpring));
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, pressSpring);
+        scale.set(withSpring(1, pressSpring));
       }}
       onPress={() => {
         haptics.tap();

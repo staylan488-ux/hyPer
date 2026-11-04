@@ -42,6 +42,19 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   `liftShadow` returned `undefined` at rest and Reanimated sends nothing for
   that. It now writes an empty shadow; 0 of 20 drops kept one in the
   simulator. Not seen on a phone.
+- 2026-11-04: a speed pass (branch `claude/project-thread-et0ddr`) with no
+  change in looks or behaviour. Most of it lets the React Compiler optimize
+  screens it was skipping (48 skipped functions on main, 29 after; the rest are
+  rarely used sheets), so a logged set, a keystroke or a swipe redraws only
+  what it touches: Train's live workout, swipe rows, drag-to-reorder, the Log
+  food sheet, Fuel, History's calendar, the exercise picker, You and Program.
+  Fewer round trips: food saves read the user id from the stored session,
+  Fuel's reload and starting a program day read in parallel, History names
+  program days from the loaded programs, and the store skips writes of
+  unchanged data. Checked with the web suite, lint, build, native `tsc`, an
+  iOS bundle export and eight review agents; not run in a simulator or on a
+  phone. Worth a hand check: swipe, the press spring, drag-to-reorder and
+  logging food.
 - 2026-11-01: Skip a movement in a live workout (the owner's ask). Run in the
   simulator on 2026-11-04 (sample data, light and dark): Skip on the card, a
   row's swipe and the movement sheet, Undo, bringing it back, the counts,

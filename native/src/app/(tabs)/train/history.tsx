@@ -32,7 +32,7 @@ import {
 } from '~/lib/history';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
-import { useBlanc } from '~/theme/blanc';
+import { useBlanc, type Palette } from '~/theme/blanc';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -170,11 +170,20 @@ export default function HistoryScreen() {
  * swipe wins over iOS's swipe-back the way Apple's own pagers do, and it
  * recentres on this month after every page turn.
  */
+/**
+ * Today's key, read from the clock on every render. A hook by name, so the
+ * React Compiler runs it each time and the bold day follows midnight.
+ */
+function useTodayKey(): string {
+  return format(new Date(), 'yyyy-MM-dd');
+}
+
 function Calendar({ month, day, workouts, activities }: { month: Date; day: string; workouts: HistoryWorkout[]; activities: ActivitySession[] }) {
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   // An arrow ticks as it is pressed, so the page turn it starts stays quiet.
   const arrowTurn = useRef(false);
   const [width, setWidth] = useState(0);
+  const todayKey = useTodayKey();
   const marks = useMemo(() => {
     const lifts = new Set(workouts.map(historyDayKey));
     const other = new Set(activities.map(getActivitySessionDateKey));
@@ -246,7 +255,15 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
         }}>
         {pages.map((page, index) => (
           <View key={index} style={{ width: width || undefined }}>
-            <MonthGrid month={page} day={day} marks={marks} interactive={index === 1} />
+            {/* The chosen day is always in this month, and a cell shows it only in its own
+                month, so the neighbours never draw it and a tap redraws one grid. */}
+            <MonthGrid
+              month={page}
+              day={index === 1 ? day : null}
+              todayKey={todayKey}
+              marks={marks}
+              interactive={index === 1}
+            />
           </View>
         ))}
       </ScrollView>
@@ -254,60 +271,112 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
   );
 }
 
-function MonthGrid({ month, day, marks, interactive }: { month: Date; day: string; marks: { lifts: Set<string>; other: Set<string> }; interactive: boolean }) {
+function MonthGrid({
+  month,
+  day,
+  todayKey,
+  marks,
+  interactive,
+}: {
+  month: Date;
+  day: string | null;
+  todayKey: string;
+  marks: { lifts: Set<string>; other: Set<string> };
+  interactive: boolean;
+}) {
   const c = useBlanc();
-  const days = useMemo(() => buildCalendarDays(month), [month]);
+  // Each cell's date and words, worked out once per month.
+  const cells = useMemo(
+    () =>
+      buildCalendarDays(month).map((date) => ({
+        date,
+        key: format(date, 'yyyy-MM-dd'),
+        label: format(date, 'EEEE, MMMM d'),
+        number: format(date, 'd'),
+        inMonth: isSameMonth(date, month),
+      })),
+    [month],
+  );
   return (
     <View
       style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, marginTop: 2 }}
       importantForAccessibility={interactive ? 'auto' : 'no-hide-descendants'}
       accessibilityElementsHidden={!interactive}>
-      {days.map((date) => {
-        const key = format(date, 'yyyy-MM-dd');
-        const selected = key === day;
-        const inMonth = isSameMonth(date, month);
-        const lift = marks.lifts.has(key);
-        const other = marks.other.has(key);
-        const today = isToday(date);
-        return (
-          <Pressable
-            key={key}
-            accessibilityRole="button"
-            accessibilityState={{ selected }}
-            accessibilityLabel={`${format(date, 'EEEE, MMMM d')}${lift ? ', workout' : ''}${other ? ', activity' : ''}`}
-            onPress={() => {
-              haptics.select();
-              selectHistoryDay(date);
-            }}
-            style={{ width: `${100 / 7}%`, height: 46, alignItems: 'center', justifyContent: 'center' }}>
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: selected && inMonth ? c.ink : 'transparent',
-              }}>
-              <BlancText
-                variant="body"
-                weight={today || (selected && inMonth) ? '600' : undefined}
-                style={{
-                  fontVariant: ['tabular-nums'],
-                  color: selected && inMonth ? c.label : inMonth ? c.ink : c.upcoming,
-                  opacity: inMonth ? 1 : 0.55,
-                }}>
-                {format(date, 'd')}
-              </BlancText>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 1 }}>
-              {lift && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.ink }} /> : null}
-              {other && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, borderWidth: 1, borderColor: c.graphite }} /> : null}
-            </View>
-          </Pressable>
-        );
-      })}
+      {cells.map((cell) => (
+        <DayCell
+          key={cell.key}
+          date={cell.date}
+          label={cell.label}
+          number={cell.number}
+          inMonth={cell.inMonth}
+          selected={cell.key === day}
+          today={cell.key === todayKey}
+          lift={marks.lifts.has(cell.key)}
+          other={marks.other.has(cell.key)}
+          c={c}
+        />
+      ))}
     </View>
+  );
+}
+
+/** One day of the month grid; it redraws only when its own look changes. */
+function DayCell({
+  date,
+  label,
+  number,
+  inMonth,
+  selected,
+  today,
+  lift,
+  other,
+  c,
+}: {
+  date: Date;
+  label: string;
+  number: string;
+  inMonth: boolean;
+  selected: boolean;
+  today: boolean;
+  lift: boolean;
+  other: boolean;
+  c: Palette;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${label}${lift ? ', workout' : ''}${other ? ', activity' : ''}`}
+      onPress={() => {
+        haptics.select();
+        selectHistoryDay(date);
+      }}
+      style={{ width: `${100 / 7}%`, height: 46, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 17,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: selected && inMonth ? c.ink : 'transparent',
+        }}>
+        <BlancText
+          variant="body"
+          weight={today || (selected && inMonth) ? '600' : undefined}
+          style={{
+            fontVariant: ['tabular-nums'],
+            color: selected && inMonth ? c.label : inMonth ? c.ink : c.upcoming,
+            opacity: inMonth ? 1 : 0.55,
+          }}>
+          {number}
+        </BlancText>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 1 }}>
+        {lift && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.ink }} /> : null}
+        {other && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, borderWidth: 1, borderColor: c.graphite }} /> : null}
+      </View>
+    </Pressable>
   );
 }
 

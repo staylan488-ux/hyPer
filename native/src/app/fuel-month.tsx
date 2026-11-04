@@ -15,12 +15,46 @@ import { useBlanc } from '~/theme/blanc';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+/**
+ * The days of `month` with food logged: null when they could not be read,
+ * undefined when signed out. (Kept out of the sheet so the React Compiler,
+ * which skips a component with a try, still compiles it.)
+ */
+async function readLoggedDays(month: Date): Promise<Set<string> | null | undefined> {
+  try {
+    const userId = await getSessionUserId();
+    if (!userId) return undefined;
+    const { data, error } = await supabase
+      .from('nutrition_logs')
+      .select('date')
+      .eq('user_id', userId)
+      .gte('date', dayKey(startOfMonth(month)))
+      .lte('date', dayKey(endOfMonth(month)));
+    if (error || !data) return null;
+    return new Set((data as { date: string }[]).map((row) => row.date));
+  } catch {
+    return null;
+  }
+}
+
+/** The loaded month's days with food, when `month` is the month Fuel has loaded. */
+function loadedMonthDays(month: Date): Set<string> | null {
+  const store = useFuelStore.getState();
+  return store.loadedMonth === format(month, 'yyyy-MM') ? new Set(store.logs.map((log) => log.date)) : null;
+}
+
+/** Keeps the dots already shown when they are the same days, so the sheet doesn't draw again for nothing. */
+const sameDays = (next: Set<string>) => (shown: Set<string>) =>
+  shown.size === next.size && [...next].every((key) => shown.has(key)) ? shown : next;
+
 /** Jump to a day: a Sunday-first month with a dot on days that have food. */
 export default function FuelMonthSheet() {
   const c = useBlanc();
-  const selected = new Date(`${useFuelStore.getState().selected}T12:00:00`);
+  // Read once as the sheet opens: picking a day closes it.
+  const [selected] = useState(() => new Date(`${useFuelStore.getState().selected}T12:00:00`));
   const [month, setMonth] = useState(() => startOfMonth(selected));
-  const [logged, setLogged] = useState<Set<string>>(new Set());
+  // The loaded month's dots are there from the first frame.
+  const [logged, setLogged] = useState<Set<string>>(() => loadedMonthDays(month) ?? new Set());
   // A month whose dates could not be read says so, rather than looking empty.
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -30,31 +64,18 @@ export default function FuelMonthSheet() {
   // The dots: the loaded month's entries when it is this month, else a light read of dates.
   useEffect(() => {
     let current = true;
-    const store = useFuelStore.getState();
-    const key = format(month, 'yyyy-MM');
     setFailed(false);
-    if (store.loadedMonth === key) {
-      setLogged(new Set(store.logs.map((log) => log.date)));
+    const loadedDays = loadedMonthDays(month);
+    if (loadedDays) {
+      setLogged(sameDays(loadedDays));
       return;
     }
-    setLogged(new Set());
-    void (async () => {
-      try {
-        const userId = await getSessionUserId();
-        if (!userId) return;
-        const { data, error } = await supabase
-          .from('nutrition_logs')
-          .select('date')
-          .eq('user_id', userId)
-          .gte('date', dayKey(startOfMonth(month)))
-          .lte('date', dayKey(endOfMonth(month)));
-        if (!current) return;
-        if (error || !data) setFailed(true);
-        else setLogged(new Set((data as { date: string }[]).map((row) => row.date)));
-      } catch {
-        if (current) setFailed(true);
-      }
-    })();
+    setLogged(sameDays(new Set()));
+    void readLoggedDays(month).then((read) => {
+      if (!current || read === undefined) return;
+      if (read) setLogged(read);
+      else setFailed(true);
+    });
     return () => {
       current = false;
     };
