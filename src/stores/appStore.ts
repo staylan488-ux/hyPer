@@ -1719,6 +1719,19 @@ export const useAppStore = create<AppState>((set, get) => ({
           .select('id');
         if (deleteError) throw new Error('Could not remove the workout sets. Try again.');
         else deletedIds = (deletedRows ?? []).map((row) => row.id);
+        // A set not deleted was logged meanwhile, or an earlier attempt whose
+        // answer was lost already deleted it. Only a set that is gone leaves.
+        const missing = removedIds.filter((id) => !deletedIds.includes(id));
+        if (missing.length > 0) {
+          const { data: still, error: readError } = await supabase
+            .from('sets')
+            .select('id, completed')
+            .in('id', missing);
+          if (!readError && still) {
+            const present = new Set(still.map((row) => row.id));
+            deletedIds.push(...missing.filter((id) => !present.has(id)));
+          }
+        }
       }
 
       // Merge instead of refetching so a set logged meanwhile stays logged.

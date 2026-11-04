@@ -2755,6 +2755,7 @@ describe('set-count edits never delete finished sets and superset partners follo
     let deleting = false;
     let deleteFilters: Record<string, unknown> = {};
     let justDeleted: string[] | null = null;
+    let reading = false;
     let filters: Record<string, unknown> = {};
     const remove = (ids: string[]) => {
       justDeleted = [];
@@ -2787,6 +2788,7 @@ describe('set-count edits never delete finished sets and superset partners follo
       const deleted = justDeleted;
       justDeleted = null;
       if (deleted && columns === 'id') return Promise.resolve({ data: deleted.map((id) => ({ id })), error: null });
+      reading = columns === 'id, completed';
       filters = {};
       return chain;
     });
@@ -2798,6 +2800,10 @@ describe('set-count edits never delete finished sets and superset partners follo
     });
     chain.in.mockImplementation((column: string, values: string[]) => {
       if (deleting && column === 'id') remove(values);
+      if (reading && column === 'id') {
+        reading = false;
+        return Promise.resolve({ data: rows.filter((row) => values.includes(row.id)).map(({ id, completed }) => ({ id, completed })), error: null });
+      }
       return chain;
     });
     chain.order.mockImplementation(async () => ({
