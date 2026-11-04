@@ -16,6 +16,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { announce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { useScheduleRevision, useTodayPlan } from '~/lib/today';
@@ -25,6 +26,7 @@ type StartChoice = 'today' | 'tomorrow' | 'pick';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const ymd = (date: Date) => format(date, 'yyyy-MM-dd');
 /** Day 1 for the choice, by the clock as this runs. */
 const startDateFor = (choice: StartChoice, picked: Date) =>
@@ -44,6 +46,7 @@ export default function ScheduleSheet() {
 
 function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSchedule | null; upNext: SplitDay | null | undefined }) {
   const c = useBlanc();
+  const large = useLargeText();
   const userId = useAuthStore((state) => state.user?.id);
   const bump = useScheduleRevision((state) => state.bump);
   const dayCount = split.days.length;
@@ -70,6 +73,8 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
   const startDate = startDateFor(choice, picked);
   const weekdays = buildFixedWeekdays(anchorDay, split.days_per_week);
   const rhythm = weekdays.map((day) => WEEKDAYS[day]).join(' / ');
+  /** "Mon / Wed / Fri" in words, for a first day: "Monday, Wednesday, Friday". */
+  const spokenRhythm = (first: number) => buildFixedWeekdays(first, split.days_per_week).map((day) => WEEKDAY_NAMES[day]).join(', ');
 
   // Closing with changes asks first; Save closes once, after the guard steps aside.
   const [opened] = useState(() => ({ choice, startDate, mode, anchorDay }));
@@ -94,6 +99,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
     savePlanSchedule(userId, buildPlanSchedule(split, { startDate: startDateFor(choice, picked), mode, anchorDay, flexDayIndex }));
     bump();
     haptics.success();
+    announce('Schedule saved');
     setDone(true);
   };
 
@@ -110,7 +116,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
           <BlancText variant="headline" accessibilityRole="header">
             Schedule
           </BlancText>
-          <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+          <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
             {split.name}
           </BlancText>
         </View>
@@ -157,9 +163,13 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
                   <Pressable
                     key={WEEKDAYS[weekday]}
                     accessibilityRole="button"
-                    accessibilityLabel={`First training day ${WEEKDAYS[weekday]}`}
+                    accessibilityLabel={`First training day, ${WEEKDAY_NAMES[weekday]}`}
                     accessibilityState={{ selected }}
-                    onPress={() => select(setAnchorDay)(weekday)}
+                    onPress={() => {
+                      // The week's training days below follow the first; VoiceOver hears them.
+                      if (weekday !== anchorDay) announce(spokenRhythm(weekday));
+                      select(setAnchorDay)(weekday);
+                    }}
                     style={({ pressed }) => ({
                       flex: 1,
                       height: 44,
@@ -168,14 +178,15 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
                       justifyContent: 'center',
                       backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.label,
                     })}>
-                    <BlancText variant="secondary" weight="600" tone={selected ? 'onCapsule' : 'ink'}>
+                    {/* Seven 44-point circles share the width; the letter grows no further than they hold. */}
+                    <BlancText variant="secondary" weight="600" tone={selected ? 'onCapsule' : 'ink'} maxFontSizeMultiplier={2}>
                       {letter}
                     </BlancText>
                   </Pressable>
                 );
               })}
             </View>
-            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 10 }}>
+            <BlancText variant="footnote" tone="graphite" accessibilityLabel={spokenRhythm(anchorDay)} style={{ marginHorizontal: space.gutter, marginTop: 10 }}>
               {rhythm}
             </BlancText>
           </>

@@ -12,6 +12,7 @@ import { BrandMark, EMBLEM_MARK_SIZE } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
+import { useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useIntroRise } from '~/lib/brand';
 import { haptics } from '~/lib/haptics';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
@@ -28,6 +29,7 @@ type Provider = 'apple' | 'google';
 export default function SignIn() {
   const c = useBlanc();
   const insets = useSafeAreaInsets();
+  const large = useLargeText();
   const rise = useIntroRise();
   const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, signInWithApple, loading } = useAuthStore();
 
@@ -49,6 +51,9 @@ export default function SignIn() {
   const trimmedEmail = email.trim();
   const canSubmit = trimmedEmail.length > 0 && password.length >= MIN_PASSWORD_LENGTH;
   const busy = loading || provider !== null;
+  // What a sighted person sees appear under the form, VoiceOver hears.
+  useAnnounce(error);
+  useAnnounce(!isLogin && signupSuccess);
 
   const clearSignupSignals = () => {
     setSignupSuccess(null);
@@ -155,8 +160,9 @@ export default function SignIn() {
       keyboardDismissMode="interactive"
       style={{ flex: 1, backgroundColor: c.ground }}
       contentContainerStyle={{ paddingTop: insets.top + 44, paddingBottom: insets.bottom + 28 }}>
-      {/* The launch intro lands on the mark; the rest rises in under it. */}
-      <View style={{ paddingHorizontal: space.gutter, alignItems: 'flex-start' }}>
+      {/* The launch intro lands on the mark; the rest rises in under it.
+          VoiceOver skips the mark: the title under it says hyPer. */}
+      <View style={{ paddingHorizontal: space.gutter, alignItems: 'flex-start' }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <BrandMark size={EMBLEM_MARK_SIZE} anchor tight />
       </View>
       <Animated.View style={rise}>
@@ -169,7 +175,7 @@ export default function SignIn() {
           </BlancText>
         </View>
 
-        <BlancText variant="section" style={{ marginHorizontal: space.gutter, marginTop: 36, marginBottom: 10 }}>
+        <BlancText variant="section" accessibilityRole="header" style={{ marginHorizontal: space.gutter, marginTop: 36, marginBottom: 10 }}>
           {isLogin ? 'Sign in' : 'Create account'}
         </BlancText>
 
@@ -299,7 +305,7 @@ export default function SignIn() {
           />
         </View>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 26 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 26, ...(large ? { flexWrap: 'wrap' } : null) }}>
           <BlancText variant="secondary" tone="graphite">
             {isLogin ? 'No account?' : 'Have an account?'}
           </BlancText>

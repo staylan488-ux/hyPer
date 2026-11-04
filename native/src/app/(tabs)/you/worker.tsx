@@ -11,6 +11,7 @@ import { FieldRow, FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
+import { useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -23,6 +24,9 @@ export default function WorkerScreen() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
   const dirty = draft.url !== saved.url || draft.provider !== saved.provider;
+  const large = useLargeText();
+  // How the test ended, which can take a while; errors announce themselves (FormNote).
+  useAnnounce(message && !message.alert ? message.text : null);
 
   useLeaveGuard(dirty, undefined, { busy });
 
@@ -74,8 +78,14 @@ export default function WorkerScreen() {
             onChangeText={(url) => setDraft((current) => ({ ...current, url }))}
           />
           <Hairline />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16 }}>
-            <BlancText variant="body" style={{ flex: 1 }}>
+          {/* At the accessibility text sizes the switch sits under its label. */}
+          <View
+            style={
+              large
+                ? { alignItems: 'flex-start', gap: 8, minHeight: 52, paddingVertical: 12, paddingLeft: 18, paddingRight: 16 }
+                : { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16 }
+            }>
+            <BlancText variant="body" style={large ? undefined : { flex: 1 }}>
               Photos
             </BlancText>
             <Host matchContents style={{ width: 170 }}>

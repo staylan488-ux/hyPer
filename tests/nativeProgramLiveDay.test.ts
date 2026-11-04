@@ -11,6 +11,7 @@ import * as splitDraft from '@/lib/splitDraft';
 import type { DraftDay, DraftSplit } from '@/lib/splitDraft';
 import type { Split, Workout } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -108,6 +109,7 @@ function load() {
           createElement('button', { key: action.label, 'data-swipe': `${name}:${action.label}`, onClick: action.onPress }, action.label))),
     },
     '~/components/UndoBar': { UndoBar: Empty },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
     '~/lib/motion': {},
     '~/lib/program': program,

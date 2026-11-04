@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityLabel, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -18,6 +18,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
+import { speak, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { formatWhole } from '~/lib/format';
 import { dayKey } from '~/lib/fuel';
@@ -129,7 +130,8 @@ function Initials({ text }: { text: string }) {
   const c = useBlanc();
   return (
     <View style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill }}>
-      <BlancText variant="secondary" weight="600">
+      {/* The circle doesn't grow, so the initials stop where they still fit. */}
+      <BlancText variant="secondary" weight="600" maxFontSizeMultiplier={1.3}>
         {text}
       </BlancText>
     </View>
@@ -143,6 +145,7 @@ function WeightCard() {
   const loading = useWeightStore((state) => state.loading);
   const failed = useWeightStore((state) => state.failed);
   const unit = useWeightStore((state) => state.unit);
+  const large = useLargeText();
   const { trend, rate } = useMemo(() => bodyWeightTrends(history), [history]);
   const latest = history[0] ?? null;
   const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
@@ -162,7 +165,13 @@ function WeightCard() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            latest ? `Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}${line ? `, ${line}` : ''}` : 'Body weight'
+            latest
+              ? speak(`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}${line ? `, ${line.replace('/wk', ' a week')}` : ''}`)
+              : loading
+                ? 'Body weight'
+                : failed
+                  ? 'Body weight, not loaded. Open to try again.'
+                  : 'Body weight, no weigh-ins yet. Log one to start your trend.'
           }
           onPress={() => {
             haptics.tap();
@@ -171,7 +180,8 @@ function WeightCard() {
           style={({ pressed }) => ({ padding: 18, gap: 4, backgroundColor: pressed ? c.pressed : 'transparent' })}>
           {latest ? (
             <>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+              {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
                 <BlancText variant="figure" size={44}>
                   {formatWeight(Number(latest.kilograms), unit)}
                 </BlancText>
@@ -209,10 +219,18 @@ const APPEARANCE_CHOICES: AppearanceChoice[] = ['system', 'light', 'dark'];
 /** Automatic, Light or Dark, in iOS's own menu. */
 function AppearanceRow() {
   const c = useBlanc();
+  const large = useLargeText();
   const choice = useAppearanceStore((state) => state.choice);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingLeft: 18, paddingRight: 8 }}>
-      <BlancText variant="bodyStrong" style={{ flex: 1 }}>
+    // At the accessibility text sizes the menu sits under its label.
+    <View
+      style={
+        large
+          ? { alignItems: 'flex-start', minHeight: 60, paddingVertical: 10, paddingLeft: 18, paddingRight: 8, gap: 4 }
+          : { flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingLeft: 18, paddingRight: 8 }
+      }>
+      {/* The menu carries the name for VoiceOver: one stop, "Appearance, Automatic". */}
+      <BlancText variant="bodyStrong" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
         Appearance
       </BlancText>
       <Host matchContents>
@@ -223,7 +241,7 @@ function AppearanceRow() {
             haptics.select();
             chooseAppearance(next as AppearanceChoice);
           }}
-          modifiers={[pickerStyle('menu'), tint(c.graphite)]}>
+          modifiers={[pickerStyle('menu'), tint(c.graphite), accessibilityLabel('Appearance')]}>
           {APPEARANCE_CHOICES.map((option) => (
             <SwiftText key={option} modifiers={[tag(option)]}>
               {APPEARANCE_LABELS[option]}

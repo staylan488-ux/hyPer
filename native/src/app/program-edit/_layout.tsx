@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSplitDraftAutosave } from '@/hooks/useSplitDraftAutosave';
 import { discardSplitEdit } from '@/lib/discardSplitEdit';
 import { useSplitEditStore } from '@/stores/splitEditStore';
+import { screenReaderRunning } from '~/lib/accessibility';
 import { confirmAlert } from '~/lib/program';
 import { useBlanc } from '~/theme/blanc';
 
@@ -11,6 +12,8 @@ type LeaveAction = Parameters<NonNullable<Parameters<typeof usePreventRemove>[1]
 
 /** How long the Undo bar stays after a removal, as iOS's own undo toasts do. */
 const UNDO_SECONDS = 5;
+/** With VoiceOver: time to hear the bar's announcement and move to Undo. */
+const UNDO_SECONDS_SPOKEN = 15;
 
 /**
  * The program editor's own stack (the program, then a day), shown as a page
@@ -49,7 +52,8 @@ export default function ProgramEditLayout() {
   // Each removal's Undo stays a few seconds; a newer one starts the time again.
   useEffect(() => {
     if (!undo) return;
-    const timer = setTimeout(() => useSplitEditStore.getState().dismissUndo(), UNDO_SECONDS * 1000);
+    const seconds = screenReaderRunning() ? UNDO_SECONDS_SPOKEN : UNDO_SECONDS;
+    const timer = setTimeout(() => useSplitEditStore.getState().dismissUndo(), seconds * 1000);
     return () => clearTimeout(timer);
   }, [undo]);
 

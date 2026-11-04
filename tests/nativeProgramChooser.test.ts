@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import * as programQuestions from '@/lib/programQuestions';
 import * as programSummary from '@/lib/programSummary';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -59,6 +60,7 @@ async function open() {
     '~/components/Section': { Section: Wrap },
     '~/components/SwipeRow': { SwipeRow: Wrap },
     '~/components/UndoBar': { UndoBar: Empty },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
     '~/lib/motion': {},
     '~/lib/program': { afterProgramSaved: noop, confirmAlert: async () => true },

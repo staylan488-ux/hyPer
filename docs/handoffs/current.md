@@ -134,6 +134,16 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   with last time's set 2; a swap while a set saves can add a set; a pull to
   refresh still running at midnight can set the account's day back to the
   day before until the next refresh.
+- 2026-11-04: accessibility pass on the native app (branch
+  `claude/project-thread-r1h1a2`): VoiceOver labels, roles, states and
+  announcements on every screen, layouts for the accessibility text sizes,
+  44 pt touch targets, Increase Contrast palettes and live Reduce Motion, with
+  nothing changed at the default settings. Checked with the web suite, lint,
+  build, native `tsc` and an iOS bundle export; not run in a simulator, on a
+  phone or with VoiceOver. To check on a device: every screen at AX5 and with
+  VoiceOver, the run screen's live view, SwiftUI pickers' spoken names, and
+  that announcements made as a sheet closes are not cut off. Magic Tap is
+  wired but React Native 0.88 drops it (see the blanc-native skill).
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

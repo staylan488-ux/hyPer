@@ -22,11 +22,13 @@ import { FieldRow, FormNote, ToggleRow, type TextField } from '~/components/Form
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { SAVE_FAILED, saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
+import { spokenMacros } from './FoodLists';
 import { WhenBlock } from './WhenBlock';
 
 export type ManualDraft = {
@@ -88,6 +90,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   onGeminiHandoff?: (description: string) => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   const logger = useLogger();
   const [nameFocused, setNameFocused] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -126,6 +129,14 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   const suggestions = nameFocused ? savedMealSuggestions(savedMeals, draft.fields.name) : [];
   const servings = parseDecimal(draft.servings);
   const servingsValue = Number.isFinite(servings) && servings > 0 ? servings : 1;
+
+  // What lands without a press of its own being spoken: the AI's estimate,
+  // and a saved meal updated (its failures announce themselves as alerts).
+  const estimateWords = estimate
+    ? `${estimate.name}: ${spokenMacros({ calories: estimate.calories, protein: estimate.protein_g, carbs: estimate.carbs_g, fat: estimate.fat_g })}${estimate.notes ? `. ${estimate.notes}` : ''}`
+    : null;
+  useAnnounce(estimateWords ? `Estimate for ${estimateWords}` : null);
+  useAnnounce(mealMessage && !mealMessage.alert ? mealMessage.text : null);
 
   const setField = (field: keyof ManualFoodFields, value: string) => setDraft((current) => ({ ...current, fields: { ...current.fields, [field]: value } }));
 
@@ -316,7 +327,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
                 accessibilityLabel="Describe the food"
                 style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
               />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={large ? { alignItems: 'flex-start', gap: 12 } : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <BlancText variant="footnote" tone="graphite">
                   {description.trim().length < 5 ? 'At least 5 characters' : `${description.length} / ${DESCRIBE_LIMIT}`}
                 </BlancText>
@@ -346,7 +357,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
         </Label>
         {describeError ? <FormNote alert>{describeError}</FormNote> : null}
         {estimate ? (
-          <FormNote>
+          <FormNote accessibilityLabel={estimateWords ?? undefined}>
             {estimate.name}: {Math.round(estimate.calories)} kcal · P {Math.round(estimate.protein_g)} · C {Math.round(estimate.carbs_g)} · F {Math.round(estimate.fat_g)}
             {estimate.notes ? `. ${estimate.notes}` : ''}
           </FormNote>
@@ -378,7 +389,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
               <Hairline />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Use saved meal ${meal.name}`}
+                accessibilityLabel={`Use saved meal ${meal.name}, ${speak(`${Math.round(meal.calories)} kcal · protein ${Math.round(meal.protein)} g`)}`}
                 onPress={() => {
                   haptics.tap();
                   pickSuggestion(meal);
@@ -414,17 +425,30 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
             );
           })}
           <Hairline />
-          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 10, gap: 6 }}>
-            <BlancText variant="body" style={{ flex: 1 }}>
-              Servings
-            </BlancText>
+          {/* At the accessibility sizes the label takes its own line and the stepper sits under it. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 10, gap: 6, ...(large ? { flexWrap: 'wrap', paddingTop: 10 } : null) }}>
+            {/* The stepper for VoiceOver: swipe up or down on Servings; the − and + are hidden behind it. */}
+            <View
+              accessible
+              accessibilityRole="adjustable"
+              accessibilityLabel="Servings"
+              accessibilityValue={{ text: `${servingsValue} serving${servingsValue === 1 ? '' : 's'}` }}
+              accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+              onAccessibilityAction={(event) => {
+                if (event.nativeEvent.actionName === 'increment') stepServings(0.25);
+                else if (servingsValue > 0.25) stepServings(-0.25);
+              }}
+              style={large ? { flexBasis: '100%' } : { flex: 1 }}>
+              <BlancText variant="body">Servings</BlancText>
+            </View>
             <StepButton symbol="minus" label="Fewer servings" disabled={servingsValue <= 0.25} onPress={() => stepServings(-0.25)} />
             <TextInput
               value={draft.servings}
               onChangeText={(text) => setDraft((current) => ({ ...current, servings: text }))}
               keyboardType="decimal-pad"
               returnKeyType="done"
-              accessibilityLabel="Servings"
+              // Typed by hand; the adjustable Servings before it steps by a quarter.
+              accessibilityLabel="Exact servings"
               selectTextOnFocus
               lineBreakModeIOS="tail"
               style={[typeScale.field, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
@@ -474,10 +498,15 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
 
 function StepButton({ symbol, label, onPress, disabled }: { symbol: 'plus' | 'minus'; label: string; onPress: () => void; disabled?: boolean }) {
   const c = useBlanc();
+  const screenReader = useScreenReader();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      // The adjustable Servings label does what these do for VoiceOver, so
+      // they're hidden from it; Voice Control and keyboards keep them.
+      accessibilityElementsHidden={screenReader}
+      importantForAccessibility={screenReader ? 'no-hide-descendants' : 'auto'}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({

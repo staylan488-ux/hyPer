@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as runDisplay from '@/lib/runDisplay';
 import * as runTracker from '@/lib/runTracker';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -79,6 +80,7 @@ async function renderRunScreen() {
     '~/components/Label': { Label: box },
     '~/components/Row': { Hairline: () => null, Row: () => null },
     '~/components/Section': { Section: box },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { error: vi.fn(), select: vi.fn(), success: vi.fn(), tap: vi.fn() } },
     '~/lib/history': { loadHistoryMonth },
     '~/platform/previewFlag': { isPreviewActive: () => false },

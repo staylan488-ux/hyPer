@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
 import { MUSCLE_GROUP_LABELS, type Exercise, type MuscleGroup } from '@/types';
+import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -46,6 +47,7 @@ type PickerProps = {
  */
 export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action }: PickerProps) {
   const c = useBlanc();
+  const large = useLargeText();
   const [library, setLibrary] = useState<Exercise[] | null>(() => peekExerciseLibrary());
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -92,6 +94,19 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   // Everyday gym movements first; bodyweight skills on request, or whenever a search finds them.
   const skillsOpen = showSkills || searching || gym.length === 0;
 
+  // A muscle chosen changes the list below the chips without a word: say
+  // how many it shows. None is the empty line's to say.
+  const shown = gym.length + (skillsOpen ? skills.length : 0);
+  const announcedMuscle = useRef(muscle);
+  const onMuscleChange = useEffectEvent(() => {
+    if (library !== null && shown > 0) announce(`${shown} ${shown === 1 ? 'exercise' : 'exercises'}`);
+  });
+  useEffect(() => {
+    if (announcedMuscle.current === muscle) return;
+    announcedMuscle.current = muscle;
+    onMuscleChange();
+  }, [muscle]);
+
   // "Create …" only when nothing in the library (or this edit) has that name.
   // The names are worked out once per library, not on every keystroke.
   const takenNames = useMemo(
@@ -100,6 +115,11 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   );
   const typed = query.trim().replace(/\s+/g, ' ');
   const canCreate = allowCustom && typed.length > 0 && takenNames !== null && !takenNames.has(normalizeExerciseName(typed));
+  const empty = library !== null && gym.length === 0 && skills.length === 0 && !canCreate;
+  const emptyLine = searching ? 'Nothing matches.' : 'No other exercises for this muscle.';
+  // Silent while a pick saves or the sheet closes: the picked exercise leaves
+  // the list then, which can empty it.
+  useAnnounce(busyId !== null ? null : loadFailed && library === null ? 'Couldn’t load exercises.' : empty ? emptyLine : null);
 
   const create = () => {
     if (!library) return;
@@ -147,7 +167,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
                 {title}
               </BlancText>
               {subtitle ? (
-                <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+                <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1}>
                   {subtitle}
                 </BlancText>
               ) : null}
@@ -163,7 +183,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
                 }}
                 style={({ pressed }) => ({
                   minWidth: 44,
-                  height: 44,
+                  ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
                   paddingHorizontal: 16,
                   borderRadius: 22,
                   alignItems: 'center',
@@ -188,7 +208,8 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
               flexDirection: 'row',
               alignItems: 'center',
               gap: 8,
-              height: 44,
+              // At the accessibility text sizes the field grows with its text.
+              ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
               marginHorizontal: 16,
               marginTop: 14,
               paddingHorizontal: 14,
@@ -249,6 +270,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Create ${typed}`}
+            accessibilityHint="Then choose its main muscle"
             onPress={() => {
               haptics.tap();
               create();
@@ -258,11 +280,12 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
               alignItems: 'center',
               gap: 12,
               minHeight: 56,
+              ...(large ? { paddingVertical: 10 } : null),
               paddingHorizontal: 20,
               backgroundColor: pressed ? c.pressed : 'transparent',
             })}>
             <SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />
-            <BlancText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
+            <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1} style={{ flex: 1 }}>
               Create “{typed}”
             </BlancText>
           </Pressable>
@@ -285,16 +308,16 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
         ) : null}
         {skills.length > 0 && skillsOpen ? (
           <>
-            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 18, marginBottom: 4, marginHorizontal: 20 }}>
+            <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 18, marginBottom: 4, marginHorizontal: 20 }}>
               Bodyweight skills
             </BlancText>
             {rows(skills)}
           </>
         ) : null}
 
-        {library !== null && gym.length === 0 && skills.length === 0 && !canCreate ? (
+        {empty ? (
           <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center', marginTop: 32 }}>
-            {searching ? 'Nothing matches.' : 'No other exercises for this muscle.'}
+            {emptyLine}
           </BlancText>
         ) : null}
       </ScrollView>
@@ -318,13 +341,14 @@ type RowProps = {
 
 const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, ticked, locked, busy, showMuscle, onPick }: RowProps) {
   const c = useBlanc();
+  const large = useLargeText();
   return (
     <View>
       {first ? null : <Hairline inset={20} />}
       <Pressable
         accessibilityRole="button"
-        accessibilityState={selectable ? { selected: ticked } : undefined}
-        accessibilityLabel={exercise.name}
+        accessibilityState={{ ...(selectable ? { selected: ticked } : null), ...(busy ? { busy: true } : null) }}
+        accessibilityLabel={showMuscle ? `${exercise.name}, ${MUSCLE_GROUP_LABELS[exercise.muscle_group]}` : exercise.name}
         disabled={locked}
         onPress={() => {
           if (selectable) haptics.select();
@@ -342,11 +366,11 @@ const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, tic
           opacity: locked && !busy ? 0.4 : 1,
         })}>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="body" numberOfLines={1}>
+          <BlancText variant="body" numberOfLines={large ? undefined : 1}>
             {exercise.name}
           </BlancText>
           {showMuscle ? (
-            <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+            <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1}>
               {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
             </BlancText>
           ) : null}

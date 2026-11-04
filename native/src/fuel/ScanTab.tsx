@@ -16,6 +16,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FieldRow } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { announce, useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { space } from '~/theme/blanc';
 
@@ -72,6 +73,8 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
         }
         setState('idle');
         setMessage(BARCODE_MESSAGES.found);
+        // The review takes this tab's place, so its line is never read.
+        announce(`Found ${result.food.name}`);
         chooseFood(result.food, { source: 'barcode', barcode, provider: result.provider });
       } catch (error) {
         if (!isCurrent()) return;
@@ -137,12 +140,15 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
   const typed = normalizeBarcode(digits);
   const typedValid = Boolean(normalizeFoodBarcode(typed));
   const busy = state === 'starting' || state === 'looking-up';
+  // The status line as it changes: a lookup, a miss, an error, no scanner.
+  // Not the opening prompt, nor "Opening the camera" (the scanner says so itself).
+  useAnnounce(state === 'looking-up' ? 'Looking up the barcode' : state === 'error' || !available ? message : null);
 
   return (
     <View style={{ marginTop: 18 }}>
       <View style={{ paddingHorizontal: space.gutter, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 24 }}>
         {busy ? <ActivityIndicator size="small" /> : null}
-        <BlancText variant="secondary" tone={state === 'error' ? 'live' : 'graphite'} style={{ flex: 1 }} accessibilityLiveRegion="polite">
+        <BlancText variant="secondary" tone={state === 'error' ? 'live' : 'graphite'} style={{ flex: 1 }}>
           {message}
         </BlancText>
       </View>
@@ -196,12 +202,17 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
 
       <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 24 }}>
         Product fallback data from{' '}
-        <BlancText variant="footnote" style={{ textDecorationLine: 'underline' }} onPress={() => void Linking.openURL('https://world.openfoodfacts.org/')}>
+        <BlancText
+          variant="footnote"
+          accessibilityRole="link"
+          style={{ textDecorationLine: 'underline' }}
+          onPress={() => void Linking.openURL('https://world.openfoodfacts.org/')}>
           Open Food Facts
         </BlancText>{' '}
         under the{' '}
         <BlancText
           variant="footnote"
+          accessibilityRole="link"
           style={{ textDecorationLine: 'underline' }}
           onPress={() => void Linking.openURL('https://world.openfoodfacts.org/terms-of-use')}>
           ODbL

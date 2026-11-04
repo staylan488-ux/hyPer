@@ -21,6 +21,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { useAnnounce } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -67,6 +68,8 @@ export default function TargetsEditSheet() {
   const [saved, setSaved] = useState(false);
   const changed = targetsChanged(draft, base) || !target;
   const { kcalFromMacros, driftPct } = targetDrift(draft);
+  // A failed save shows above the button, which stays where it was.
+  useAnnounce(error);
 
   useEffect(() => {
     useTargetsStore.setState({ staged: null });
@@ -157,7 +160,7 @@ export default function TargetsEditSheet() {
         ))}
       </Label>
       {!ready ? null : driftPct > TARGET_DRIFT_WARNING_PCT ? (
-        <FormNote alert>
+        <FormNote alert announcement="These macros don't add up to your calories. Check them before saving.">
           These macros add up to {formatWhole(kcalFromMacros)} kcal, not {formatWhole(draft.calories)}. Check them before saving.
         </FormNote>
       ) : (

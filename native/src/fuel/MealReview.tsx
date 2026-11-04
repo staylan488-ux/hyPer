@@ -18,6 +18,7 @@ import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/compo
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
+import { speak, spokenUnit, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { timeAsDate } from '~/lib/foodLogger';
 import { groupsForDay } from '~/lib/fuel';
@@ -116,7 +117,13 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         </Label>
       </View>
 
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
+      {/* The meal's totals read as one fact. */}
+      <View
+        accessible
+        accessibilityLabel={speak(
+          `${formatWhole(totals.calories)} kcal · protein ${amount(totals.protein)} g · carbs ${amount(totals.carbs)} g · fat ${amount(totals.fat)} g`,
+        )}
+        style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
           <BlancText variant="figure" size={56}>
             {formatWhole(totals.calories)}
@@ -219,10 +226,12 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   onRemove: () => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const field = useRef<TextField>(null);
   const typed = Number(normalizeDecimalText(value));
   const valid = Number.isFinite(typed) && typed > 0;
+  useAnnounce(valid ? null : 'Enter an amount greater than zero.');
   const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: onRemove }];
   // A tap anywhere on the row puts the cursor in its amount; a hold offers Remove.
   const content = (
@@ -243,12 +252,21 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
             }
       }
       style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: c.label }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="bodyStrong" numberOfLines={1}>
+      {/* At the accessibility sizes the name takes its own line and the amount sits under it. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
+        <View
+          accessible
+          accessibilityLabel={`${item.food.name}, ${speak(`${Math.round(item.food.calories * item.servings)} kcal · protein ${amount(item.food.protein * item.servings)} g`)}`}
+          // the row's swipe and hold, as on its amount field
+          accessibilityActions={disabled ? undefined : [{ name: 'remove', label: 'Remove' }]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'remove') onRemove();
+          }}
+          style={large ? { flexBasis: '100%' } : { flex: 1, minWidth: 0 }}>
+          <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
             {item.food.name}
           </BlancText>
-          <BlancText variant="meta" tone="graphite" style={{ marginTop: 2 }} numberOfLines={1}>
+          <BlancText variant="meta" tone="graphite" style={{ marginTop: 2 }} numberOfLines={large ? undefined : 1}>
             {Math.round(item.food.calories * item.servings)} kcal · P {amount(item.food.protein * item.servings)} g
           </BlancText>
         </View>
@@ -259,7 +277,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           keyboardType="decimal-pad"
           returnKeyType="done"
           selectTextOnFocus
-          accessibilityLabel={`Amount of ${item.food.name} in ${item.food.serving_unit}`}
+          accessibilityLabel={`Amount of ${item.food.name}, ${spokenUnit(item.food.serving_unit)}`}
           accessibilityActions={disabled ? undefined : [{ name: 'remove', label: 'Remove' }]}
           onAccessibilityAction={(event) => {
             if (event.nativeEvent.actionName === 'remove') onRemove();
@@ -277,7 +295,14 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           lineBreakModeIOS="tail"
           style={[typeScale.field, { color: valid ? c.ink : c.live, minWidth: 56, minHeight: 44, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
         />
-        <BlancText variant="body" tone="graphite" numberOfLines={1} style={{ maxWidth: 64 }}>
+        {/* The field's name says the unit. */}
+        <BlancText
+          variant="body"
+          tone="graphite"
+          numberOfLines={large ? undefined : 1}
+          style={large ? undefined : { maxWidth: 64 }}
+          accessibilityElementsHidden
+          importantForAccessibility="no">
           {item.food.serving_unit}
         </BlancText>
       </View>

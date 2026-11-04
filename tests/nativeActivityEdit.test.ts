@@ -9,6 +9,7 @@ import * as activitySessions from '@/lib/activitySessions';
 import * as types from '@/types';
 import type { ActivitySession, ActivitySessionInput } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -72,6 +73,7 @@ async function open() {
     '~/components/Label': { Label: Wrap },
     '~/components/Row': { Hairline: Empty, Row: Empty },
     '~/lib/accountData': { useCurrentDayKey: () => dates.format(new Date(), 'yyyy-MM-dd') },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
     '~/lib/history': {
       confirmDeleteActivity: async () => false,

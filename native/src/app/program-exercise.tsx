@@ -11,6 +11,7 @@ import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -25,6 +26,7 @@ const REP_LIMIT = 100;
  */
 export default function ProgramExerciseSheet() {
   const c = useBlanc();
+  const large = useLargeText();
   const params = useLocalSearchParams<{ day: string; exercise: string }>();
   const day = useSplitEditStore((state) => state.draft?.days.find((entry) => entry.id === params.day) ?? null);
   const exercise = day?.exercises.find((entry) => entry.id === params.exercise) ?? null;
@@ -56,15 +58,23 @@ export default function ProgramExerciseSheet() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} scrollEnabled={false}>
+    <ScrollView
+      style={{ backgroundColor: c.ground }}
+      contentContainerStyle={{ paddingBottom: 28 }}
+      // The sheet fits its content; at the accessibility text sizes that can pass the screen's height.
+      scrollEnabled={large}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         {/* Changes apply as they are made: Done only, trailing as in iOS 26 sheets. */}
         <View style={{ width: 44 }} />
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <BlancText variant="headline" numberOfLines={1} accessibilityRole="header">
+        <View
+          style={{ flex: 1, alignItems: 'center' }}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${exercise.exercise.name}, ${partner ? `superset with ${partner.exercise.name}` : 'sets and reps'}`}>
+          <BlancText variant="headline" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
             {exercise.exercise.name}
           </BlancText>
-          <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+          <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
             {partner ? `Superset with ${partner.exercise.name}` : 'Sets and reps'}
           </BlancText>
         </View>
@@ -93,9 +103,23 @@ export default function ProgramExerciseSheet() {
 
       <Section title="Set range" note={ranged ? undefined : 'Off'} style={{ marginTop: 22 }}>
         <Label>
-          <StepperRow label="Fewest" value={exercise.target_sets_min} min={1} max={SET_LIMIT} onChange={(value) => setRange(value, Math.max(value, exercise.target_sets_max))} />
+          <StepperRow
+            label="Fewest"
+            spoken="Fewest sets"
+            value={exercise.target_sets_min}
+            min={1}
+            max={SET_LIMIT}
+            onChange={(value) => setRange(value, Math.max(value, exercise.target_sets_max))}
+          />
           <Hairline />
-          <StepperRow label="Most" value={exercise.target_sets_max} min={1} max={SET_LIMIT} onChange={(value) => setRange(Math.min(value, exercise.target_sets_min), value)} />
+          <StepperRow
+            label="Most"
+            spoken="Most sets"
+            value={exercise.target_sets_max}
+            min={1}
+            max={SET_LIMIT}
+            onChange={(value) => setRange(Math.min(value, exercise.target_sets_min), value)}
+          />
         </Label>
         <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
           Sessions can add or drop sets within this range.
@@ -113,14 +137,21 @@ export default function ProgramExerciseSheet() {
   );
 }
 
-/** A number with − and +; holding a button keeps stepping, like iOS's stepper. */
-function StepperRow({ label, value, min, max, onChange }: {
+/**
+ * A number with − and +; holding a button keeps stepping, like iOS's stepper.
+ * VoiceOver finds one adjustable element (swipe up or down to step) named
+ * `spoken`, or the label; at the accessibility text sizes the label sits
+ * over the number and its buttons.
+ */
+function StepperRow({ label, spoken, value, min, max, onChange }: {
   label: string;
+  spoken?: string;
   value: number;
   min: number;
   max: number;
   onChange: (value: number) => void;
 }) {
+  const large = useLargeText();
   const latest = useRef({ value, onChange });
   latest.current = { value, onChange };
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -141,11 +172,10 @@ function StepperRow({ label, value, min, max, onChange }: {
     timer.current = null;
   };
 
-  const button = (symbol: SFSymbol, delta: number, disabled: boolean, name: string) => (
+  const button = (symbol: SFSymbol, delta: number, disabled: boolean) => (
     <StepButton
       symbol={symbol}
       disabled={disabled}
-      accessibilityLabel={`${name} ${label}`}
       onPress={() => step(delta)}
       onHold={() => {
         stop();
@@ -161,27 +191,29 @@ function StepperRow({ label, value, min, max, onChange }: {
     <View
       accessible
       accessibilityRole="adjustable"
-      accessibilityLabel={label}
+      accessibilityLabel={spoken ?? label}
       accessibilityValue={{ text: String(value) }}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
       onAccessibilityAction={(event) => step(event.nativeEvent.actionName === 'increment' ? 1 : -1)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingLeft: 18, paddingRight: 12 }}>
-      <BlancText variant="body" style={{ flex: 1 }}>
+      style={[
+        { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingLeft: 18, paddingRight: 12 },
+        large ? { flexWrap: 'wrap', rowGap: 6, paddingVertical: 10 } : null,
+      ]}>
+      <BlancText variant="body" style={large ? { width: '100%' } : { flex: 1 }}>
         {label}
       </BlancText>
       <RollingText variant="figure" size={24} style={{ minWidth: 40, textAlign: 'center' }}>
         {String(value)}
       </RollingText>
-      {button('minus', -1, value <= min, 'Fewer')}
-      {button('plus', 1, value >= max, 'More')}
+      {button('minus', -1, value <= min)}
+      {button('plus', 1, value >= max)}
     </View>
   );
 }
 
-function StepButton({ symbol, disabled, accessibilityLabel, onPress, onHold, onRelease }: {
+function StepButton({ symbol, disabled, onPress, onHold, onRelease }: {
   symbol: SFSymbol;
   disabled: boolean;
-  accessibilityLabel: string;
   onPress: () => void;
   onHold: () => void;
   onRelease: () => void;
@@ -189,7 +221,8 @@ function StepButton({ symbol, disabled, accessibilityLabel, onPress, onHold, onR
   const c = useBlanc();
   return (
     <Pressable
-      accessibilityLabel={accessibilityLabel}
+      // For touch only: VoiceOver steps the row it sits in (adjustable).
+      accessible={false}
       disabled={disabled}
       onPress={onPress}
       onLongPress={onHold}

@@ -7,6 +7,7 @@ import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { indexAtX, linearScale, monotonePath, paddedDomain, xAtIndex } from '@/lib/chartGeometry';
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import type { WeightTrendPoint } from '@/lib/weightTrend';
+import { spokenUnit, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
@@ -18,7 +19,8 @@ const PAD_Y = 8;
  * The smoothed body-weight line with the day's weigh-ins as dots (a mis-read
  * hollow). The full chart reads any day: tap it (tap that day again to let
  * go), or hold and slide; VoiceOver swipes up and down through the days. The
- * compact one is a quiet sparkline.
+ * day read is the chart's value, which VoiceOver speaks as it changes, so the
+ * readout line above is hidden from it. The compact one is a quiet sparkline.
  */
 export function WeightChart({
   points,
@@ -37,6 +39,9 @@ export function WeightChart({
   summary?: string;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
+  // Increase Contrast draws the weigh-in dots at full strength.
+  const contrast = useIncreaseContrast();
   const [width, setWidth] = useState(0);
   const [active, setActive] = useState<number | null>(null);
   const series = useMemo(() => points.slice(-days), [points, days]);
@@ -108,6 +113,13 @@ export function WeightChart({
         selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)} · ` : ''
       }trend ${kgToUnit(selected.ewmaKg, unit).toFixed(1)} ${unit}`
     : summary;
+  // The same day in words. With no day chosen there is nothing to read: the
+  // summary tells touch how to start, and the hint tells VoiceOver.
+  const spokenReadout = selected
+    ? `${format(parseISO(selected.date), 'EEEE, MMMM d')}, ${
+        selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)} ${spokenUnit(unit)}, ` : ''
+      }trend ${kgToUnit(selected.ewmaKg, unit).toFixed(1)} ${spokenUnit(unit)}`
+    : '';
   const activePoint = active !== null && geometry ? geometry.line[active] : null;
 
   const chart = (
@@ -120,7 +132,8 @@ export function WeightChart({
         ? {}
         : {
             accessibilityRole: 'adjustable' as const,
-            accessibilityValue: { text: readout ?? '' },
+            accessibilityHint: 'Swipe up or down to read a day.',
+            accessibilityValue: { text: spokenReadout },
             accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
             onAccessibilityAction: (event: AccessibilityActionEvent) => {
               if (event.nativeEvent.actionName === 'increment') step(1);
@@ -139,7 +152,7 @@ export function WeightChart({
               fill={dot.outlier ? 'none' : c.graphite}
               stroke={dot.outlier ? c.graphite : 'none'}
               strokeWidth={1}
-              opacity={compact ? 0.45 : 0.6}
+              opacity={contrast ? 1 : compact ? 0.45 : 0.6}
             />
           ))}
           <Path d={geometry.path} stroke={c.ink} strokeWidth={compact ? 1.5 : 2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -160,8 +173,9 @@ export function WeightChart({
         <BlancText
           variant="footnote"
           tone={selected ? 'ink' : 'graphite'}
-          numberOfLines={1}
-          accessibilityLiveRegion="polite"
+          numberOfLines={large ? undefined : 1}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
           style={{ minHeight: 18, marginBottom: 10, fontVariant: ['tabular-nums'] }}>
           {readout ?? ' '}
         </BlancText>

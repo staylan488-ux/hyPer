@@ -20,6 +20,7 @@ import { FormNote, ToggleRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
+import { useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -54,6 +55,8 @@ export default function TargetsCoachSheet() {
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CoachRecommendation | null>(null);
+  // The coach can take minutes; a failure shows above the button.
+  useAnnounce(error);
 
   // Closing while the coach works would drop its answer; ask first.
   useLeaveGuard(asking, { title: 'Stop waiting for suggestions?', message: 'The goal you wrote is kept.' });

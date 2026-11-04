@@ -9,6 +9,8 @@
 // "over the limit" and the P.
 import { DynamicColorIOS, Platform, useColorScheme, type TextStyle } from 'react-native';
 
+import { useIncreaseContrast } from '~/lib/accessibility';
+
 export const palettes = {
   light: {
     ground: '#F2F1ED',
@@ -42,17 +44,68 @@ export const palettes = {
     live: '#FF5A4C',
     brand: '#E58477',
   },
+  // With Increase Contrast on (Settings, Accessibility, Display & Text Size),
+  // as iOS's own colours do: the same chalk and labels, with darker (in dark,
+  // lighter) secondary text, stronger rules and card edges, and full black
+  // or white ink. Every text tone reads at 4.5:1 or more on every surface
+  // (graphite at about 6:1 and up). The P keeps its colour.
+  lightContrast: {
+    ground: '#F2F1ED',
+    label: '#FFFFFF',
+    labelEdge: 'rgba(0, 0, 0, 0.2)',
+    ink: '#000000',
+    graphite: '#4A4A44',
+    upcoming: '#57574F',
+    hairline: 'rgba(0, 0, 0, 0.22)',
+    track: '#BDBCB6',
+    fill: '#E3E2DC',
+    pressed: '#D8D7D1',
+    capsule: '#000000',
+    onCapsule: '#FFFFFF',
+    live: '#B3281D',
+    brand: '#A8352A',
+  },
+  darkContrast: {
+    ground: '#000000',
+    label: '#1A1A1A',
+    labelEdge: 'rgba(255, 255, 255, 0.24)',
+    ink: '#FFFFFF',
+    graphite: '#C9C9C3',
+    upcoming: '#B2B2AC',
+    hairline: 'rgba(255, 255, 255, 0.28)',
+    track: '#4D4D4A',
+    fill: '#2E2E2C',
+    pressed: '#383836',
+    capsule: '#FFFFFF',
+    onCapsule: '#000000',
+    live: '#FF5A4C',
+    brand: '#E58477',
+  },
 } as const;
 
 export type Palette = { [K in keyof typeof palettes.light]: string };
 
-export function useBlanc(): Palette {
-  return useColorScheme() === 'dark' ? palettes.dark : palettes.light;
+/** The palette for an appearance, with or without Increase Contrast. */
+export function paletteFor(dark: boolean, contrast: boolean): Palette {
+  if (contrast) return dark ? palettes.darkContrast : palettes.lightContrast;
+  return dark ? palettes.dark : palettes.light;
 }
 
-/** Ink that follows the system appearance, for native chrome (tab bar, headers). */
+/** Blanc's colours for the system appearance, following Increase Contrast. */
+export function useBlanc(): Palette {
+  return paletteFor(useColorScheme() === 'dark', useIncreaseContrast());
+}
+
+/** Ink that follows the system appearance and Increase Contrast, for native chrome (tab bar, headers). */
 export const dynamicInk =
-  Platform.OS === 'ios' ? DynamicColorIOS({ light: palettes.light.ink, dark: palettes.dark.ink }) : palettes.light.ink;
+  Platform.OS === 'ios'
+    ? DynamicColorIOS({
+        light: palettes.light.ink,
+        dark: palettes.dark.ink,
+        highContrastLight: palettes.lightContrast.ink,
+        highContrastDark: palettes.darkContrast.ink,
+      })
+    : palettes.light.ink;
 
 /**
  * Every text field names its own letter spacing. React Native reuses a text

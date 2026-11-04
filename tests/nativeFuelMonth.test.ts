@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import * as calendar from '@/lib/nutritionCalendar';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -46,6 +47,7 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
     '~/components/BlancText': { BlancText: ({ children }: { children?: ReactNode }) => createElement('span', null, children) },
     '~/components/GlassButton': { GlassButton: ({ accessibilityLabel, onPress }: { accessibilityLabel: string; onPress: () => void }) => createElement('button', { 'aria-label': accessibilityLabel, onClick: onPress }) },
     '~/lib/fuel': { dayKey: (date: Date) => dates.format(date, 'yyyy-MM-dd'), useFuelStore: { getState: () => fuel } },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
     '~/theme/blanc': { useBlanc: () => ({}) },
   }).default;
@@ -57,7 +59,7 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
     expect(button, label).toBeDefined();
     await act(async () => { button!.click(); });
   };
-  const hasEntries = (day: string) => container.querySelector(`[aria-label="${day}, has entries"]`) !== null;
+  const hasEntries = (day: string) => container.querySelector(`[aria-label="${day}, food logged"]`) !== null;
   return { container, press, hasEntries, read };
 }
 

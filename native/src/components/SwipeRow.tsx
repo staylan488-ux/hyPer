@@ -1,11 +1,12 @@
 import { useFocusEffect } from 'expo-router';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
 
+import { useIncreaseContrast } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { useBlanc } from '~/theme/blanc';
+import { palettes, useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 
@@ -228,6 +229,10 @@ function Actions({ actions, name, translation, fullSwipe, rowWidth, committed, o
   onRun: (action: SwipeAction) => void;
 }) {
   const c = useBlanc();
+  // White on the red needs the deeper red in dark mode with Increase Contrast.
+  const destructiveFill = useIncreaseContrast() ? palettes.lightContrast.live : c.live;
+  // A label grown with the text size shrinks to fit its fixed column.
+  const fits = useWindowDimensions().fontScale > 1;
   const hasDestructive = actions.some((action) => action.destructive);
   useAnimatedReaction(
     () => hasDestructive && translation.get() < -fullSwipe.get(),
@@ -245,7 +250,9 @@ function Actions({ actions, name, translation, fullSwipe, rowWidth, committed, o
   });
 
   return (
-    <View style={{ flexDirection: 'row' }}>
+    // Hidden from VoiceOver: under a closed row it would still find them, and
+    // its double tap would land on the row. The row offers them as actions.
+    <View style={{ flexDirection: 'row' }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {actions.map((action) => {
         const face = (
           <Pressable
@@ -255,8 +262,13 @@ function Actions({ actions, name, translation, fullSwipe, rowWidth, committed, o
               haptics.tap();
               onRun(action);
             }}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: action.destructive ? c.live : c.fill }}>
-            <BlancText variant="footnote" weight="600" style={{ color: action.destructive ? '#FFFFFF' : c.ink }}>
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: action.destructive ? destructiveFill : c.fill }}>
+            <BlancText
+              variant="footnote"
+              weight="600"
+              numberOfLines={fits ? 1 : undefined}
+              adjustsFontSizeToFit={fits}
+              style={{ color: action.destructive ? '#FFFFFF' : c.ink, ...(fits ? { paddingHorizontal: 6 } : null) }}>
               {action.label}
             </BlancText>
           </Pressable>

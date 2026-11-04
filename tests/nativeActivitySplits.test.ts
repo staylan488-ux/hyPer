@@ -9,6 +9,7 @@ import * as runDisplay from '@/lib/runDisplay';
 import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import type { ActivitySegment, ActivitySession } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -98,6 +99,7 @@ async function renderScreen() {
       Section: ({ title, children }: { title: string; children?: ReactNode }) => createElement('section', { 'aria-label': title }, children),
     },
     '~/components/TabScroll': { TabScroll: ({ children }: { children?: ReactNode }) => createElement('div', null, children) },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: vi.fn() } },
     '~/lib/history': { useHistoryStore: (select: (state: { activities: ActivitySession[] }) => unknown) => select({ activities: [activity] }) },
     '~/theme/blanc': { space: { gutter: 16 } },
@@ -128,9 +130,9 @@ describe('a saved run’s splits in History', () => {
     await renderScreen();
 
     expect(splitRows()).toEqual([
-      { text: '1 | 400 m | 1:30  ·  6:02 /mi', label: 'Split 1, 400 m, 1:30, 6:02 /mi' },
-      { text: '· | rest | 1:00', label: 'Rest, 1:00' },
-      { text: '3 | 333 m | 1:30  ·  7:15 /mi', label: 'Split 3, 333 m, 1:30, 7:15 /mi' },
+      { text: '1 | 400 m | 1:30  ·  6:02 /mi', label: 'Split 1, 400 meters, 1 minute 30 seconds, 6 minutes 2 seconds per mile' },
+      { text: '· | rest | 1:00', label: 'Rest, 1 minute' },
+      { text: '3 | 333 m | 1:30  ·  7:15 /mi', label: 'Split 3, 333 meters, 1 minute 30 seconds, 7 minutes 15 seconds per mile' },
     ]);
   });
 
@@ -138,6 +140,6 @@ describe('a saved run’s splits in History', () => {
     segments = savedSegments([{ trigger: 'manual' }, { trigger: 'manual' }, { trigger: 'finish' }]);
     await renderScreen();
 
-    expect(splitRows()[1]).toEqual({ text: '2 | 67 m | 1:00  ·  24:01 /mi', label: 'Split 2, 67 m, 1:00, 24:01 /mi' });
+    expect(splitRows()[1]).toEqual({ text: '2 | 67 m | 1:00  ·  24:01 /mi', label: 'Split 2, 67 meters, 1 minute, 24 minutes 1 second per mile' });
   });
 });

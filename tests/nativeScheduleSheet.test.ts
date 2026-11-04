@@ -12,6 +12,7 @@ import type { PlanSchedule } from '@/lib/planSchedule';
 import type { HeroState } from '@/lib/todayModel';
 import type { Split, SplitDay } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -79,6 +80,7 @@ async function open() {
     '~/components/Label': { Label: Wrap },
     '~/components/Row': { Hairline: Empty },
     '~/components/Section': { Section: Wrap },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { select: noop, success: noop } },
     '~/lib/leaveGuard': { useLeaveGuard: (dirty: boolean) => { leaveGuarded = dirty; } },
     '~/lib/today': { useTodayPlan: () => todayPlan(), useScheduleRevision: revision },

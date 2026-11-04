@@ -6,6 +6,7 @@ import type { HeroState } from '@/lib/todayModel';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useStartSession } from '~/lib/session';
 import { useBlanc } from '~/theme/blanc';
@@ -17,6 +18,8 @@ const PLAN_CARD_HEIGHT = 78;
 
 export function PlanCard({ hero, next, place }: { hero: HeroState; next: string | null; place: 'today' | 'train' }) {
   const c = useBlanc();
+  // At the accessibility text sizes the button moves under the words.
+  const large = useLargeText();
   const { starting, start } = useStartSession();
   const toTrain = () => router.navigate('/train');
   const openSchedule = () => router.push('/schedule');
@@ -75,15 +78,22 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
       break;
   }
 
-  const face = { minHeight: PLAN_CARD_HEIGHT, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12 };
+  const face = {
+    minHeight: PLAN_CARD_HEIGHT,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    flexDirection: large ? ('column' as const) : ('row' as const),
+    alignItems: large ? ('stretch' as const) : ('center' as const),
+    gap: 12,
+  };
   const content = (
     <>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="headline" numberOfLines={1}>
+        <View style={large ? undefined : { flex: 1, minWidth: 0 }}>
+          <BlancText variant="headline" numberOfLines={large ? undefined : 1}>
             {title}
           </BlancText>
           {detail ? (
-            <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 2 }}>
+            <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 2 }}>
               {detail}
             </BlancText>
           ) : null}

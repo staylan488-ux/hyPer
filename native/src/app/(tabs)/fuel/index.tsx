@@ -2,7 +2,7 @@ import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
@@ -31,6 +31,7 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
@@ -41,6 +42,12 @@ import { space, useBlanc } from '~/theme/blanc';
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
 
 const CHECK_CONNECTION = 'Check your connection and try again.';
+
+/**
+ * The week strip's cells are a fixed seven across: their text stops growing
+ * at about iOS's largest standard size, as Calendar's do.
+ */
+const DAY_CELL_TEXT_MAX = 1.3;
 
 /**
  * A Fuel write's result: a success tick, or an error buzz and an alert, so a
@@ -126,6 +133,11 @@ export default function FuelScreen() {
   const summary = fuelDaySummary({ totals, target, live, selectedDate, goal });
   const daysWithLogs = useMemo(() => new Set(monthLogs.map((log) => log.date)), [monthLogs]);
   const lateNight = useLateNight(live, logs);
+  // The capped figure and the words beside it outgrow one line from the larger
+  // standard sizes on; then the words go under the figure.
+  const grown = useWindowDimensions().fontScale > 1;
+  const loadFailed = status === 'error' && !loaded;
+  useAnnounce(loadFailed ? "This day's food could not load. Pull down to try again." : null);
 
   // The day's groups in order, Unassigned first when it has entries. Empty
   // named meals stay out of the way; a meal or snack added by hand stays.
@@ -182,16 +194,21 @@ export default function FuelScreen() {
         {/* The day's figure and the macros open the targets, the numbers they measure against. */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={loaded ? `${formatWhole(totals.calories)} of ${formatWhole(summary.targets.calories)} kcal` : `Target ${formatWhole(summary.targets.calories)} kcal`}
+          // The figure, its target and the line under it, as one fact.
+          accessibilityLabel={speak(
+            loaded
+              ? `${formatWhole(totals.calories)} of ${formatWhole(summary.targets.calories)} kcal${live ? ` · ${summary.logLine}` : ''}`
+              : `Target ${formatWhole(summary.targets.calories)} kcal`,
+          )}
           accessibilityHint="Edits your calorie target"
           onPress={() => editTarget('calories')}
           style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
             {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
             <RollingText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
               {loaded ? formatWhole(totals.calories) : '–'}
             </RollingText>
-            <Animated.View layout={figureLayout}>
+            <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
               <BlancText variant="secondary" tone="graphite">
                 of {formatWhole(summary.targets.calories)} kcal
               </BlancText>
@@ -250,7 +267,7 @@ export default function FuelScreen() {
           </View>
         </LayoutAnimationConfig>
 
-        {status === 'error' && !loaded ? (
+        {loadFailed ? (
           <BlancText variant="secondary" tone="live" style={{ margin: space.gutter }}>
             This day's food could not load. Pull down to try again.
           </BlancText>
@@ -275,9 +292,10 @@ function WeekStrip({ selected, daysWithLogs, todayKey }: { selected: Date; daysW
   const go = (weeks: number) => {
     const target = addWeeks(selected, weeks);
     const next = isAfter(startOfDay(target), now) ? now : target;
-    if (isSameDay(next, selected)) return;
+    if (isSameDay(next, selected)) return null;
     haptics.select();
     useFuelStore.getState().select(dayKey(next));
+    return next;
   };
   const swipe = Gesture.Pan()
     .activeOffsetX([-24, 24])
@@ -287,34 +305,40 @@ function WeekStrip({ selected, daysWithLogs, todayKey }: { selected: Date; daysW
       if (event.translationX < -50) go(1);
       else if (event.translationX > 50) go(-1);
     });
+  // The swipe, for VoiceOver: each day offers the week before and after.
+  const weekActions = [
+    { name: 'previousWeek', label: 'Previous week' },
+    ...(isSameDay(selected, now) ? [] : [{ name: 'nextWeek', label: 'Next week' }]),
+  ];
 
   return (
     <GestureDetector gesture={swipe}>
-      <View
-        accessible
-        accessibilityRole="adjustable"
-        accessibilityLabel={`Week of ${format(days[0], 'MMMM d')}`}
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-        onAccessibilityAction={(event) => go(event.nativeEvent.actionName === 'increment' ? 1 : -1)}
-        style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 16 }}>
-        {days.map((day) => {
+      {/* Each day is its own button, so VoiceOver can pick any of them. */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 16 }}>
+        {/* Keyed by weekday, so a week change updates the same buttons and VoiceOver keeps its place. */}
+        {days.map((day, index) => {
           const key = dayKey(day);
           const isSelected = isSameDay(day, selected);
           const isToday = isSameDay(day, now);
           const future = isAfter(startOfDay(day), now);
           return (
             <Pressable
-              key={key}
+              key={index}
               disabled={future}
               accessibilityRole="button"
-              accessibilityLabel={format(day, 'EEEE, MMMM d')}
+              accessibilityLabel={`${isToday ? 'Today, ' : ''}${format(day, 'EEEE, MMMM d')}${daysWithLogs.has(key) ? ', food logged' : ''}`}
               accessibilityState={{ selected: isSelected, disabled: future }}
+              accessibilityActions={weekActions}
+              onAccessibilityAction={(event) => {
+                const next = go(event.nativeEvent.actionName === 'nextWeek' ? 1 : -1);
+                if (next) announce(`${isSameDay(next, now) ? 'Today, ' : ''}${format(next, 'EEEE, MMMM d')}`);
+              }}
               onPress={() => {
                 haptics.select();
                 useFuelStore.getState().select(key);
               }}
               style={({ pressed }) => ({ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.35 : pressed ? 0.5 : 1 })}>
-              <BlancText variant="footnote" tone="graphite">
+              <BlancText variant="footnote" tone="graphite" maxFontSizeMultiplier={DAY_CELL_TEXT_MAX}>
                 {format(day, 'EEEEE')}
               </BlancText>
               <View
@@ -326,7 +350,12 @@ function WeekStrip({ selected, daysWithLogs, todayKey }: { selected: Date; daysW
                   justifyContent: 'center',
                   backgroundColor: isSelected ? c.capsule : 'transparent',
                 }}>
-                <BlancText variant="body" weight={isToday || isSelected ? '600' : '400'} tone={isSelected ? 'onCapsule' : 'ink'} style={{ fontVariant: ['tabular-nums'] }}>
+                <BlancText
+                  variant="body"
+                  weight={isToday || isSelected ? '600' : '400'}
+                  tone={isSelected ? 'onCapsule' : 'ink'}
+                  maxFontSizeMultiplier={DAY_CELL_TEXT_MAX}
+                  style={{ fontVariant: ['tabular-nums'] }}>
                   {format(day, 'd')}
                 </BlancText>
               </View>
@@ -515,15 +544,17 @@ const MACRO_NAMES: Record<Exclude<FuelMacro, 'calories'>, string> = { protein: '
  */
 function MacroRow({ macro, value, target, goal }: { macro: Exclude<FuelMacro, 'calories'>; value: number; target: number; goal: NutritionGoal | undefined }) {
   const c = useBlanc();
+  const large = useLargeText();
   const name = MACRO_NAMES[macro];
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${name}, ${formatWhole(value)} of ${formatWhole(target)} g`}
+      accessibilityLabel={speak(`${name}, ${formatWhole(value)} of ${formatWhole(target)} g`)}
       accessibilityHint={`Edits your ${name.toLowerCase()} target`}
       onPress={() => editTarget(macro)}
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, gap: 9, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      {/* At the accessibility sizes the numbers go under the name when they don't fit beside it. */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null) }}>
         <BlancText variant="body">{name}</BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
           <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>

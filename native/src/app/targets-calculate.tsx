@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityLabel, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -36,6 +36,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -114,6 +115,9 @@ function Calculator() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const large = useLargeText();
+  // A failed save shows above the button, which stays where it was.
+  useAnnounce(error);
   const update = (patch: Partial<WizardDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const result = useMemo(() => wizardResult(draft, profile), [draft, profile]);
   const split = macroCaloriePercentages(result);
@@ -181,8 +185,8 @@ function Calculator() {
                 setDraft((current) => switchWizardUnits(current, next as WizardDraft['unitSystem']));
               }}
               modifiers={[pickerStyle('segmented')]}>
-              <SwiftText modifiers={[tag('imperial')]}>lb, ft</SwiftText>
-              <SwiftText modifiers={[tag('metric')]}>kg, cm</SwiftText>
+              <SwiftText modifiers={[tag('imperial'), accessibilityLabel('Pounds and feet')]}>lb, ft</SwiftText>
+              <SwiftText modifiers={[tag('metric'), accessibilityLabel('Kilograms and centimeters')]}>kg, cm</SwiftText>
             </Picker>
           </SegmentRow>
           <Hairline />
@@ -199,7 +203,7 @@ function Calculator() {
             </Picker>
           </SegmentRow>
           <Hairline />
-          <FieldRow label="Age" unit="yrs" value={draft.age} keyboardType="number-pad" maxLength={3} selectTextOnFocus onChangeText={(age) => update({ age })} />
+          <FieldRow label="Age" unit="yrs" accessibilityLabel="Age, years" value={draft.age} keyboardType="number-pad" maxLength={3} selectTextOnFocus onChangeText={(age) => update({ age })} />
           <Hairline />
           <FieldRow
             label="Weight"
@@ -214,7 +218,7 @@ function Calculator() {
           {imperial ? (
             <HeightRow feet={draft.heightFeet} inches={draft.heightInches} onFeet={(heightFeet) => update({ heightFeet })} onInches={(heightInches) => update({ heightInches })} />
           ) : (
-            <FieldRow label="Height" unit="cm" value={draft.heightCm} keyboardType="number-pad" maxLength={3} selectTextOnFocus onChangeText={(heightCm) => update({ heightCm })} />
+            <FieldRow label="Height" unit="cm" accessibilityLabel="Height, centimeters" value={draft.heightCm} keyboardType="number-pad" maxLength={3} selectTextOnFocus onChangeText={(heightCm) => update({ heightCm })} />
           )}
           <Hairline />
           <FieldRow label="Body fat" unit="%" value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
@@ -258,18 +262,19 @@ function Calculator() {
                   accessibilityRole="adjustable"
                   accessibilityLabel="Rate"
                   accessibilityValue={{
-                    text: `${rate.value > 0 ? 'Plus' : 'Minus'} ${Math.abs(rate.value).toFixed(2)} percent of bodyweight a week, about ${rate.monthlyChange.toFixed(1)} ${rate.unit} a month`,
+                    text: speak(`${rate.value > 0 ? 'Plus' : 'Minus'} ${Math.abs(rate.value).toFixed(2)} percent of bodyweight a week, about ${rate.monthlyChange.toFixed(1)} ${rate.unit} a month`),
                   }}
                   accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
                   onAccessibilityAction={(event) => {
                     if (event.nativeEvent.actionName === 'increment') stepRate(1);
                     if (event.nativeEvent.actionName === 'decrement') stepRate(-1);
                   }}>
-                  <BlancText variant="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
+                  {/* Lines that wrap at the accessibility text sizes stay centred. */}
+                  <BlancText variant="bodyStrong" style={[{ fontVariant: ['tabular-nums'] }, large ? { textAlign: 'center' } : null]}>
                     {rate.value > 0 ? '+' : ''}
                     {rate.value.toFixed(2)}% a week
                   </BlancText>
-                  <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+                  <BlancText variant="footnote" tone="graphite" style={[{ fontVariant: ['tabular-nums'] }, large ? { textAlign: 'center' } : null]}>
                     About {rate.weeklyChange.toFixed(2)} {rate.unit} a week · {rate.monthlyChange.toFixed(1)} a month
                   </BlancText>
                 </View>
@@ -282,8 +287,12 @@ function Calculator() {
 
       <Section title="Targets">
         <Label style={{ paddingTop: 16 }}>
-          <View style={{ paddingHorizontal: 18 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+          <View
+            accessible
+            accessibilityLabel={ready ? speak(`${formatWhole(result.calories)} kcal a day · ${breakdownLine(wizardBreakdown(result), draft.goal)}`) : 'Calories a day, not calculated yet'}
+            style={{ paddingHorizontal: 18 }}>
+            {/* At the accessibility text sizes the words wrap below the capped figure. */}
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
               <BlancText variant="figure" size={48}>
                 {ready ? formatWhole(result.calories) : '–'}
               </BlancText>
@@ -358,9 +367,16 @@ function sentence(label: string): string {
 }
 
 function SegmentRow({ label, children }: { label: string; children: ReactNode }) {
+  // At the accessibility text sizes the switch sits under its label.
+  const large = useLargeText();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16 }}>
-      <BlancText variant="body" style={{ flex: 1 }}>
+    <View
+      style={
+        large
+          ? { alignItems: 'flex-start', gap: 8, minHeight: 52, paddingVertical: 12, paddingLeft: 18, paddingRight: 16 }
+          : { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16 }
+      }>
+      <BlancText variant="body" style={large ? undefined : { flex: 1 }}>
         {label}
       </BlancText>
       <Host matchContents style={{ width: 168 }}>
@@ -373,17 +389,12 @@ function SegmentRow({ label, children }: { label: string; children: ReactNode })
 /** Feet and inches, as FieldRow: a tap on the row starts with feet, Next goes on to inches. */
 function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: string; onFeet: (value: string) => void; onInches: (value: string) => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   const feetField = useRef<TextField>(null);
   const inchesField = useRef<TextField>(null);
   const input = { color: c.ink, padding: 0, minHeight: 44, minWidth: 44, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] };
-  return (
-    <Pressable
-      accessible={false}
-      onPress={() => feetField.current?.focus()}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, paddingLeft: 18, paddingRight: 16 }}>
-      <BlancText variant="body" style={{ flex: 1 }}>
-        Height
-      </BlancText>
+  const fields = (
+    <>
       <TextInput
         ref={feetField}
         value={feet}
@@ -398,7 +409,7 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
         lineBreakModeIOS="tail"
         style={[typeScale.field, input]}
       />
-      <BlancText variant="body" tone="graphite">
+      <BlancText variant="body" tone="graphite" {...spokenByField}>
         ft
       </BlancText>
       <TextInput
@@ -413,12 +424,31 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
         lineBreakModeIOS="tail"
         style={[typeScale.field, input]}
       />
-      <BlancText variant="body" tone="graphite" style={{ minWidth: 30 }}>
+      <BlancText variant="body" tone="graphite" style={{ minWidth: 30 }} {...spokenByField}>
         in
       </BlancText>
+    </>
+  );
+  return (
+    <Pressable
+      accessible={false}
+      onPress={() => feetField.current?.focus()}
+      // At the accessibility text sizes the label sits over the fields, as FieldRow's does.
+      style={
+        large
+          ? { gap: 4, minHeight: 52, paddingVertical: 12, paddingLeft: 18, paddingRight: 16 }
+          : { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, paddingLeft: 18, paddingRight: 16 }
+      }>
+      <BlancText variant="body" style={large ? undefined : { flex: 1 }} {...spokenByField}>
+        Height
+      </BlancText>
+      {large ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>{fields}</View> : fields}
     </Pressable>
   );
 }
+
+/** Text that VoiceOver skips: the fields beside it are named "Height, feet" and "Height, inches". */
+const spokenByField = { accessibilityElementsHidden: true, importantForAccessibility: 'no' as const };
 
 function CheckRow({ title, detail, checked, onPress }: { title: string; detail: string; checked: boolean; onPress: () => void }) {
   const c = useBlanc();
@@ -426,7 +456,7 @@ function CheckRow({ title, detail, checked, onPress }: { title: string; detail: 
     <Pressable
       accessibilityRole="radio"
       accessibilityState={{ checked }}
-      accessibilityLabel={`${title}, ${detail}`}
+      accessibilityLabel={speak(`${title}, ${detail}`)}
       onPress={() => {
         if (!checked) haptics.select();
         onPress();
@@ -454,11 +484,15 @@ function CheckRow({ title, detail, checked, onPress }: { title: string; detail: 
 
 function StepButton({ symbol, label, disabled, onPress }: { symbol: 'minus' | 'plus'; label: string; disabled: boolean; onPress: () => void }) {
   const c = useBlanc();
+  const screenReader = useScreenReader();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
+      // The rate between the buttons is adjustable: VoiceOver steps it there,
+      // in one stop. Voice Control and keyboards keep the buttons.
+      accessibilityElementsHidden={screenReader}
       disabled={disabled}
       onPress={() => {
         haptics.select();

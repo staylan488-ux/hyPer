@@ -13,6 +13,7 @@ import * as workoutSessions from '@/lib/workoutSessions';
 import * as types from '@/types';
 import type { MuscleVolume } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -80,6 +81,7 @@ async function open() {
     '~/components/TabScroll': { TabScroll: ({ children, refreshControl }: { children: ReactNode; refreshControl: ReactNode }) => createElement(Fragment, null, refreshControl, children) },
     '~/lib/accountData': { useAccountDay: accountDay },
     '~/lib/format': { formatWhole: (value: number) => String(Math.round(value)) },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { select: noop } },
     '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}) },
   });

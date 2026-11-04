@@ -16,6 +16,7 @@ import { clearSavedFoodsCache, readSavedFoodsCache, subscribeSavedFoodsCache, wr
 import * as savedMealFromLog from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 // the real saved-foods cache runs over this account store
 const auth = vi.hoisted(() => ({ state: { user: { id: 'user-a' } } }));
@@ -56,7 +57,7 @@ async function renderFuel({ compile = false } = {}) {
     'date-fns': dates,
     'expo-router': { router: { push: noop }, Stack: { Screen: Empty } },
     'expo-symbols': { SymbolView: Empty },
-    'react-native': { ActionSheetIOS: {}, Alert: {}, Pressable: Wrap, RefreshControl: Empty, View: Wrap },
+    'react-native': { ActionSheetIOS: {}, Alert: {}, Pressable: Wrap, RefreshControl: Empty, useWindowDimensions: () => ({ width: 402, height: 874, fontScale: 1, scale: 3 }), View: Wrap },
     'react-native-gesture-handler': {
       Gesture: { Pan: () => new Proxy({}, { get: (_target, _key, chain) => () => chain }) },
       GestureDetector: Wrap,
@@ -94,6 +95,7 @@ async function renderFuel({ compile = false } = {}) {
       useFuelDay: () => ({ selected: today, loaded: true, status: 'ready', logs: fuel.logs, groups: fuel.groups }),
       useFuelStore: Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel }),
     },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
     '~/lib/motion': {},
     '~/lib/you': { useYouMealsStore },

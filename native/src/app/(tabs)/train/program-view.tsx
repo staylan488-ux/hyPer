@@ -12,9 +12,15 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { deleteProgram, editProgram, setActiveProgram } from '~/lib/program';
 import { space } from '~/theme/blanc';
+
+/** "3×8–12" or "3–4×8–12" as VoiceOver should say it: "3 sets of 8 to 12 reps" (Row speaks the range). */
+function spokenSetReps(label: string): string {
+  return `${label.replace(/^(\S+?)×/, (_match, sets: string) => `${sets} ${sets === '1' ? 'set' : 'sets'} of `)} reps`;
+}
 
 /** One program: its days and what each holds, with Edit, Set active and Delete. */
 export default function ProgramViewScreen() {
@@ -52,7 +58,10 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
     if (activatingNow.current) return;
     activatingNow.current = true;
     setActivating(true);
-    await setActiveProgram(split);
+    const prompted = await setActiveProgram(split);
+    // Make active goes away once it worked, taking VoiceOver's focus with it:
+    // say so, unless the plan-start alert already does.
+    if (!prompted && useAppStore.getState().splits.some((entry) => entry.id === split.id && entry.is_active)) announce(`${split.name} is active`);
     activatingNow.current = false;
     setActivating(false);
   };
@@ -153,7 +162,7 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
                             title={name}
                             detail={partner ? `Superset with ${partner}` : undefined}
                             value={setRepLabel(exercise)}
-                            accessibilityLabel={[name, `${setRepLabel(exercise).replace('×', ' sets of ')} reps`, partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
+                            accessibilityLabel={[name, spokenSetReps(setRepLabel(exercise)), partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
                           />
                         </View>
                       );

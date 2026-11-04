@@ -12,6 +12,7 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { announce } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
@@ -44,6 +45,8 @@ export default function SavedMealsScreen() {
       Alert.alert('Not deleted', 'Check your connection and try again.');
     } else {
       haptics.success();
+      // The row folds away from under VoiceOver's focus.
+      announce(`${meal.name} deleted`);
       // Gone from the list even if the reload after it fails.
       useYouMealsStore.setState((state) => ({ meals: state.meals?.filter((candidate) => candidate.id !== meal.id) ?? null }));
       await loadYouMeals();

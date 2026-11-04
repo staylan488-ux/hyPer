@@ -36,6 +36,7 @@ import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
+import { announce, speak, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
@@ -44,6 +45,7 @@ import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
+import { spokenMacros } from './FoodLists';
 import { WhenBlock } from './WhenBlock';
 
 export type PickedPhoto = { uri: string; width: number; height: number };
@@ -186,6 +188,8 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
         model: result.model,
         summary: `${providerFallbackNote(settings.provider, result.provider, 'analyzed this photo')}${result.summary}`,
       }));
+      // The review replaces the button VoiceOver was on; its title, said.
+      if (items.length > 0) announce(`${items.length} food${items.length === 1 ? '' : 's'} found`);
     } catch (cause) {
       if (!isCurrent()) return;
       haptics.error();
@@ -246,7 +250,10 @@ function PhotoSlot({ title, detail, photo, busy, onPress }: { title: string; det
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={photo ? `${title}, photo added. Change` : `Add ${title.toLowerCase()} photo`}
+      accessibilityLabel={photo ? `${title}, meal photo added` : `Add ${title.toLowerCase()} photo`}
+      // the quiet line under the title
+      accessibilityHint={photo ? 'Retakes or removes it' : detail}
+      accessibilityState={{ disabled: busy, busy: Boolean(photo) && busy }}
       disabled={busy}
       onPress={() => {
         haptics.tap();
@@ -254,7 +261,8 @@ function PhotoSlot({ title, detail, photo, busy, onPress }: { title: string; det
       }}
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, paddingLeft: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       <View style={{ width: 64, height: 64, borderRadius: 8, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
-        {photo ? <Image source={{ uri: photo.uri }} style={{ width: 64, height: 64 }} contentFit="cover" /> : <SymbolView name="camera" size={20} tintColor={c.graphite} />}
+        {/* Named by the button around it. */}
+        {photo ? <Image source={{ uri: photo.uri }} accessible={false} style={{ width: 64, height: 64 }} contentFit="cover" /> : <SymbolView name="camera" size={20} tintColor={c.graphite} />}
         {photo && busy ? (
           <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.25)' }}>
             <ActivityIndicator color="#FFFFFF" />
@@ -274,6 +282,7 @@ function PhotoSlot({ title, detail, photo, busy, onPress }: { title: string; det
 /** Every component with its grams and source, then log the plate. */
 function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   const logger = useLogger();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -385,7 +394,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
             {providerName(draft.provider)}
             {draft.model ? ` · ${draft.model}` : ''}
           </BlancText>
-          <BlancText variant="title" style={{ marginTop: 2 }}>
+          <BlancText variant="title" accessibilityRole="header" style={{ marginTop: 2 }}>
             {items.length} food{items.length === 1 ? '' : 's'} found
           </BlancText>
           {draft.summary ? (
@@ -404,20 +413,22 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
               const totals = photoItemTotals(item);
               const body = (
                 <View style={{ paddingVertical: 12, paddingLeft: 18, paddingRight: 8, backgroundColor: c.label }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {/* At the accessibility sizes the name takes the whole line and the grams sit under it. */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
                     <TextInput
                       value={item.name}
                       onChangeText={(name) => updateItem(item.id, { name, groundedFood: null, persistedFoodId: undefined })}
                       accessibilityLabel="Food"
                       lineBreakModeIOS="tail"
-                      style={[typeScale.field, { flex: 1, color: c.ink, fontWeight: '500', padding: 0, minHeight: 44 }]}
+                      style={[typeScale.field, { color: c.ink, fontWeight: '500', padding: 0, minHeight: 44 }, large ? { flexBasis: '100%' } : { flex: 1 }]}
                     />
                     <GramsInput
                       grams={item.amountGrams}
                       label={`Grams of ${item.name}`}
                       onChange={(amountGrams) => updateItem(item.id, { amountGrams, persistedFoodId: undefined })}
                     />
-                    <BlancText variant="body" tone="graphite">
+                    {/* The grams field's name says the unit. */}
+                    <BlancText variant="body" tone="graphite" accessibilityElementsHidden importantForAccessibility="no">
                       g
                     </BlancText>
                     <Pressable
@@ -430,7 +441,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                       <SymbolView name="xmark" size={13} weight="semibold" tintColor={c.graphite} />
                     </Pressable>
                   </View>
-                  <BlancText variant="meta" style={{ marginTop: 4 }}>
+                  <BlancText variant="meta" style={{ marginTop: 4 }} accessibilityLabel={spokenMacros(totals)}>
                     {Math.round(totals.calories)} kcal · P {Math.round(totals.protein)} · C {Math.round(totals.carbs)} · F {Math.round(totals.fat)}
                   </BlancText>
                   <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2, paddingRight: 10 }}>
@@ -494,21 +505,27 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
 
           <WhenBlock disabled={saving} />
 
-          <View style={{ paddingHorizontal: space.gutter, marginTop: 28, flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+          {/* One fact for VoiceOver; at the accessibility sizes the words go under the figure when they don't fit beside it. */}
+          <View
+            accessible
+            accessibilityLabel={speak(`${formatWhole(total)} kcal · plate total`)}
+            style={{ paddingHorizontal: space.gutter, marginTop: 28, flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap' } : null) }}>
             <BlancText variant="figure" size={44}>
               {formatWhole(total)}
             </BlancText>
-            <BlancText variant="secondary" tone="graphite">
+            <BlancText variant="secondary" tone="graphite" style={large ? { flexShrink: 1 } : undefined}>
               kcal plate total
             </BlancText>
           </View>
 
           {error ? <FormNote alert>{error}</FormNote> : null}
-          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
+          {/* At the accessibility sizes the two capsules stack, full width, instead of squeezing. */}
+          <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
             <Capsule
               title="Retake"
               variant="quiet"
               disabled={saving}
+              style={large ? { alignSelf: 'stretch' } : undefined}
               onPress={() =>
                 Alert.alert('Discard this estimate?', 'The photos and the review are cleared.', [
                   { text: 'Keep', style: 'cancel' },
@@ -527,7 +544,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
               busy={saving}
               disabled={items.length === 0 || keepOne}
               onPress={() => void save()}
-              style={{ flex: 1, alignSelf: 'stretch' }}
+              style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
             />
           </View>
         </Animated.View>

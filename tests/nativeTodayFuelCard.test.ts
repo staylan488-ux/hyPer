@@ -10,6 +10,7 @@ import * as todayModel from '@/lib/todayModel';
 import type { MacroTarget } from '@/types';
 import { todayTotalsShown } from '../native/src/lib/fuel';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 // Fuel's store module is loaded for its real totals rule; nothing reaches the backend.
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
@@ -67,6 +68,7 @@ async function open() {
     '~/lib/brand': { useIntroRise: () => ({}) },
     '~/lib/finishWorkout': { useFinishWorkout: () => ({ finish: noop, closing: false }) },
     '~/lib/format': { formatLoad: String, formatWhole: (value: number) => String(Math.round(value)) },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop } },
     '~/lib/fuel': { today: () => DAY, todayTotalsShown, useFuelStore: fuelStore },
     '~/lib/motion': { figureLayout: undefined },
@@ -123,8 +125,8 @@ describe('Today’s Fuel card', () => {
     appStore.setState({ macroTarget: { calories: 2000, protein: 150, carbs: 200, fat: 60 } as MacroTarget, macroTargetLoadedForUserId: 'user-1' });
     await open();
 
-    const card = host.querySelector('[aria-label*="kcal"]');
-    expect(card?.getAttribute('aria-label')).toBe('2000 kcal left. Eaten 0 of 2000, protein 0 of 150 grams');
+    const card = host.querySelector('[aria-label*="calories left"]');
+    expect(card?.getAttribute('aria-label')).toBe('2000 calories left. Eaten 0 of 2000 calories, protein 0 of 150 grams');
     expect(shown()).toContain('2000kcal left');
     expect(shown()).toContain('Eaten0 / 2000');
   });

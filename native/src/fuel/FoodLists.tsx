@@ -18,6 +18,7 @@ import { HoldMenu, hasHoldMenu, menuAccessibility, showActionSheet, type MenuAct
 import { Hairline } from '~/components/Row';
 import { closeOpenSwipeRow, SwipeRow, useSwipeActions } from '~/components/SwipeRow';
 import { saveFoodEntry } from '~/lib/foodLogger';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useFuelStore } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
@@ -81,6 +82,17 @@ async function saveQuickAdd(food: Food, entry: Omit<Parameters<typeof saveFoodEn
   }
 }
 
+/**
+ * Macros as VoiceOver should say them: "250 calories, protein 20 grams,
+ * carbs 30 grams, fat 8 grams" for the "250 kcal · P 20 · C 30 · F 8" on screen.
+ */
+export function spokenMacros(
+  totals: { calories: number; protein: number; carbs: number; fat: number },
+  round: (value: number) => number | string = Math.round,
+): string {
+  return speak(`${round(totals.calories)} kcal · protein ${round(totals.protein)} g · carbs ${round(totals.carbs)} g · fat ${round(totals.fat)} g`);
+}
+
 /** A search or filter field in the quiet fill capsule. */
 export function SearchField({ value, onChange, placeholder, onSubmit }: {
   value: string;
@@ -89,13 +101,15 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
   onSubmit?: () => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        height: 44,
+        // The field's text grows at the accessibility sizes; the capsule grows with it.
+        ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
         marginHorizontal: 16,
         marginTop: 12,
         paddingHorizontal: 14,
@@ -145,6 +159,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
   onLongPress?: () => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   // VoiceOver offers the hold menu's items (or the long-press action) and
   // the swipe actions the menu does not cover as the row's own.
   const held = menu && menu.length > 0 && !editing ? menuAccessibility(menu) : null;
@@ -164,11 +179,19 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
         : showBasis
           ? `${Math.round(food.calories)} kcal / ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`
           : `${(composed ?? Boolean(decodeMealComposition(food.description))) ? 'Meal · ' : ''}${foodMacroLine(food)}`;
+  // The same line in words: "P 20" as "protein 20 grams", "+" as Add.
+  const spokenLine = state === 'error'
+    ? 'Not saved. Add it again to retry.'
+    : state === 'done' || detail
+      ? speak(line)
+      : showBasis
+        ? speak(`${Math.round(food.calories)} kcal per ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`)
+        : `${line.startsWith('Meal · ') ? 'Meal, ' : ''}${spokenMacros(food)}`;
   const row = (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14, backgroundColor: c.ground }}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${food.name}, ${line}`}
+        accessibilityLabel={`${food.name}, ${spokenLine}`}
         accessibilityActions={actions.length > 0 ? actions : undefined}
         onAccessibilityAction={(event) => {
           const name = event.nativeEvent.actionName;
@@ -200,10 +223,10 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           paddingRight: 12,
           backgroundColor: pressed ? c.pressed : 'transparent',
         })}>
-        <BlancText variant="body" numberOfLines={1}>
+        <BlancText variant="body" numberOfLines={large ? undefined : 1}>
           {food.name}
         </BlancText>
-        <BlancText variant="meta" tone={state === 'error' ? 'live' : 'graphite'} style={{ marginTop: 2 }} numberOfLines={1}>
+        <BlancText variant="meta" tone={state === 'error' ? 'live' : 'graphite'} style={{ marginTop: 2 }} numberOfLines={large ? undefined : 1}>
           {line}
         </BlancText>
       </Pressable>
@@ -245,7 +268,7 @@ function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={busy || done}
-      accessibilityState={{ disabled: Boolean(busy || done) }}
+      accessibilityState={{ disabled: Boolean(busy || done), busy: Boolean(busy) }}
       hitSlop={8}
       onPress={() => {
         haptics.tap();
@@ -291,7 +314,13 @@ export function useQuickAdd() {
     if (current === 'saving' || current === 'done') return;
     const servings = options.servings ?? 1;
     if (sheet.purpose === 'ingredients') {
-      sheet.addIngredients([createMealIngredient(food, servings)]);
+      try {
+        sheet.addIngredients([createMealIngredient(food, servings)]);
+      } catch (cause) {
+        // No FormNote on this path: the sheet's error line is all a sighted person gets.
+        announce(cause instanceof Error ? cause.message : 'Could not add ingredient.');
+        throw cause;
+      }
       return;
     }
     const pending = pendingIds.current.get(key) ?? createPendingEntryId();
@@ -307,11 +336,14 @@ export function useQuickAdd() {
     if (!saved) {
       haptics.error();
       setAdded((state) => ({ ...state, [key]: 'error' }));
+      announce(`${food.name} not saved`);
       return;
     }
     pendingIds.current.delete(key);
     haptics.success();
     setAdded((state) => ({ ...state, [key]: 'done' }));
+    // The row says so too, but VoiceOver stays on the + it pressed.
+    announce(`${food.name} added`);
     // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
     void useFuelStore.getState().refresh();
   }, []);
@@ -324,6 +356,7 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   onEditSavedMeal: (meal: Food) => void;
 }) {
   const logger = useLogger();
+  const large = useLargeText();
   const [filter, setFilter] = useState('');
   const [managing, setManaging] = useState(false);
   const { added, add: quickAdd, enabled } = useQuickAdd();
@@ -390,7 +423,16 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     <LayoutAnimationConfig skipEntering skipExiting>
       <View>
         <SearchField value={filter} onChange={setFilter} placeholder="Filter saved meals" />
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 10, minHeight: 44 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            marginTop: 10,
+            minHeight: 44,
+            ...(large ? { flexWrap: 'wrap', columnGap: 20 } : null),
+          }}>
           <BlancText variant="footnote" tone="graphite">
             {meals === null ? 'Loading' : `${savedCount} saved`}
           </BlancText>
@@ -506,6 +548,16 @@ export function SearchTab() {
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const trimmed = query.trim();
+  // Results land a moment after typing stops: VoiceOver says how many.
+  useAnnounce(
+    state === 'error'
+      ? 'The search failed.'
+      : state === 'idle' && results !== null
+        ? results.length === 0
+          ? 'No USDA matches.'
+          : `${results.length} result${results.length === 1 ? '' : 's'}`
+        : null,
+  );
 
   useEffect(() => {
     if (trimmed.length < 2) {

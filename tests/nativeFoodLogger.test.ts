@@ -159,7 +159,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
       },
       Text: Wrap,
     },
-    '@expo/ui/swift-ui/modifiers': { pickerStyle: noop, tag: noop, disabled: (disabled = true) => ({ disabled }) },
+    '@expo/ui/swift-ui/modifiers': { accessibilityLabel: noop, pickerStyle: noop, tag: noop, disabled: (disabled = true) => ({ disabled }) },
     'expo-router': {
       router: { back, push },
       useLocalSearchParams: () => editing ? { entry: loggedMilk.id } : savedMeal ? { savedMeal: recipe.id } : {},
@@ -223,6 +223,8 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
     '~/lib/format': { formatWhole: String },
+    // VoiceOver and the text size are device services: silent, standard size.
+    '~/lib/accessibility': { announce: noop, useAnnounce: noop, useLargeText: () => false, useScreenReader: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
     '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
     '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
@@ -233,6 +235,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '~/fuel/context': { LoggerContext: ContextProvider },
     './context': { useLogger },
     './WhenBlock': { WhenBlock: Empty },
+    './FoodLists': { spokenMacros: () => '' },
     '~/fuel/FoodLists': { Empty, SearchTab: Empty, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
     '~/fuel/FoodReview': { FoodReview: (props: { food: Food }) => { captured.foodReview = props; return null; } },
     '~/fuel/RecentTab': { RecentTab: Empty },
@@ -522,7 +525,7 @@ describe('native food logger amounts and replacements', () => {
       h.captured.fields.Name.onChangeText('Oats');
       h.captured.fields.Calories.onChangeText('150,5');
       h.captured.fields.Protein.onChangeText('5,5');
-      h.captured.inputs.Servings.onChangeText!('0,5');
+      h.captured.inputs['Exact servings'].onChangeText!('0,5');
     });
     await h.click('Log entry');
     expect(h.resolveFood).toHaveBeenCalledWith(expect.objectContaining({ values: expect.objectContaining({ calories: 150.5, protein: 5.5 }) }));
@@ -532,7 +535,7 @@ describe('native food logger amounts and replacements', () => {
   it('takes a comma decimal as a meal ingredient amount', async () => {
     const h = loggerHarness({ savedMeal: true });
     await h.render();
-    await act(async () => { h.captured.inputs['Amount of Milk in ml'].onChangeText!('150,5'); });
+    await act(async () => { h.captured.inputs['Amount of Milk, ml'].onChangeText!('150,5'); });
     await h.click('Save changes');
     const [draft] = h.saveMeal.mock.lastCall as unknown as [composition.MealDraft];
     expect(draft.ingredients[0].servings).toBeCloseTo(150.5 / 240);

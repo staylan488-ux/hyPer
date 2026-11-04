@@ -1,11 +1,11 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { labelsHidden, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { format } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createSimulatedSource, useRunTracker, type PositionSource } from '@/hooks/useRunTracker';
@@ -33,6 +33,7 @@ import {
   splitFigure,
   splitPaceSecPerMile,
   type AutoLapChoice,
+  type RunStatus,
 } from '@/lib/runDisplay';
 import {
   averagePaceSecPerMile,
@@ -51,6 +52,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { announce, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { loadHistoryMonth } from '~/lib/history';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -65,6 +67,31 @@ import { space, useBlanc } from '~/theme/blanc';
 
 type SourceChoice = 'gps' | (typeof gpsScenarios)[number]['id'];
 const SIMULATOR_TIME_SCALE = 10;
+
+/**
+ * A run reading as VoiceOver should say it: "7:59 /mi" as "7 minutes 59
+ * seconds per mile", "1:05 · 200 m" as "1 minute 5 seconds, 200 meters", a
+ * dash as "none". For the run's own figures only (a time of day is no clock).
+ */
+function spokenRun(text: string): string {
+  if (text === '—') return 'none';
+  return speak(
+    text
+      .replace(/60:00\+/g, 'over 60 minutes')
+      .replace(/\b(?:(\d+):)?(\d+):(\d{2})\b/g, (_match, h: string | undefined, m: string, s: string) =>
+        spokenClock(Number(h ?? 0) * 3600 + Number(m) * 60 + Number(s)),
+      )
+      .replace(/ \/mi\b/g, ' per mile')
+      .replace(/—/g, 'none'),
+  );
+}
+
+const SPOKEN_STATUS: Record<RunStatus, string> = {
+  resting: 'Resting',
+  acquiring: 'Acquiring GPS',
+  weak: 'GPS weak',
+  ok: 'GPS OK',
+};
 
 export default function RunScreen() {
   const tracker = useRunTracker();
@@ -110,7 +137,8 @@ function TopBar({ title, onClose = close }: { title?: string; onClose?: () => vo
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: insets.top + 6, paddingHorizontal: space.inset, paddingBottom: 6 }}>
       <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={onClose} />
-      <BlancText variant="headline" accessibilityRole="header" style={{ flex: 1, textAlign: 'center' }}>
+      {/* Without a title there is no heading for VoiceOver to stop on. */}
+      <BlancText variant="headline" accessible={Boolean(title)} accessibilityRole={title ? 'header' : undefined} style={{ flex: 1, textAlign: 'center' }}>
         {title ?? ''}
       </BlancText>
       <View style={{ width: 44 }} />
@@ -123,6 +151,7 @@ function TopBar({ title, onClose = close }: { title?: string; onClose?: () => vo
 function Setup({ tracker }: { tracker: Tracker }) {
   const c = useBlanc();
   const insets = useSafeAreaInsets();
+  const large = useLargeText();
   const preview = isPreviewActive();
   const [mode, setMode] = useState<RunMode>('free');
   const [autoLap, setAutoLap] = useState<AutoLapChoice>(DEFAULT_AUTO_LAP);
@@ -171,6 +200,9 @@ function Setup({ tracker }: { tracker: Tracker }) {
       { text: 'Discard', style: 'destructive', onPress: () => tracker.discard() },
     ]);
 
+  const locationMessage = `Location is ${locationBlocked === 'approximate' ? 'approximate' : 'off'} for hyPer. Allow it, with Precise Location, to track runs.`;
+  useAnnounce(locationBlocked && locationMessage);
+
   return (
     <>
       <View style={{ flex: 1, backgroundColor: c.ground }}>
@@ -180,12 +212,14 @@ function Setup({ tracker }: { tracker: Tracker }) {
             <Label style={{ marginTop: 12, paddingHorizontal: 18, paddingVertical: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
-                <BlancText variant="headline">Run in progress</BlancText>
+                <BlancText variant="headline" accessibilityRole="header" style={large ? { flexShrink: 1 } : undefined}>
+                  Run in progress
+                </BlancText>
               </View>
               <BlancText variant="secondary" tone="graphite" style={{ marginTop: 4 }}>
                 It was interrupted. Pick it back up, or discard it to start another.
               </BlancText>
-              <Capsule title="Discard" variant="quiet" onPress={discardInterrupted} style={{ marginTop: 14 }} />
+              <Capsule title="Discard" accessibilityLabel="Discard interrupted run" variant="quiet" onPress={discardInterrupted} style={{ marginTop: 14 }} />
             </Label>
           ) : null}
 
@@ -255,7 +289,7 @@ function Setup({ tracker }: { tracker: Tracker }) {
           {locationBlocked ? (
             <View style={{ marginTop: 24, marginHorizontal: space.gutter, gap: 12 }}>
               <BlancText variant="secondary" tone="live" accessibilityRole="alert">
-                Location is {locationBlocked === 'approximate' ? 'approximate' : 'off'} for hyPer. Allow it, with Precise Location, to track runs.
+                {locationMessage}
               </BlancText>
               <Capsule title="Open Settings" variant="quiet" onPress={() => void Linking.openSettings()} />
             </View>
@@ -279,7 +313,11 @@ function Setup({ tracker }: { tracker: Tracker }) {
   );
 }
 
-/** A label and iOS's pull-down menu of choices, like a Settings row. */
+/**
+ * A label and iOS's pull-down menu of choices, like a Settings row. VoiceOver
+ * finds one element, the menu, named with the label; at the accessibility
+ * text sizes the label sits over the menu.
+ */
 function MenuRow({ label, value, options, onChange }: {
   label: string;
   value: string;
@@ -287,20 +325,28 @@ function MenuRow({ label, value, options, onChange }: {
   onChange: (value: string) => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }}>
-      <BlancText variant="body" style={{ flex: 1 }}>
+    <View
+      style={
+        large
+          ? { alignItems: 'flex-start', gap: 4, minHeight: 52, paddingLeft: 18, paddingRight: 8, paddingVertical: 12 }
+          : { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }
+      }>
+      <BlancText variant="body" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
         {label}
       </BlancText>
-      <Host matchContents>
+      <Host matchContents={large ? { vertical: true } : true} style={large ? { alignSelf: 'stretch' } : undefined}>
+        {/* The menu carries the label for VoiceOver (SwiftUI keeps a hidden label for it). */}
         <Picker
+          label={label}
           selection={value}
           onSelectionChange={(next) => {
             if (next === value) return;
             haptics.select();
             onChange(String(next));
           }}
-          modifiers={[pickerStyle('menu'), tint(c.graphite)]}>
+          modifiers={[pickerStyle('menu'), labelsHidden(), tint(c.graphite)]}>
           {options.map((option) => (
             <SwiftText key={option.value} modifiers={[tag(option.value)]}>
               {option.label}
@@ -317,6 +363,7 @@ function MenuRow({ label, value, options, onChange }: {
 function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
   const c = useBlanc();
   const insets = useSafeAreaInsets();
+  const large = useLargeText();
   const now = tracker.nowMs;
   const intervals = state.config.mode === 'intervals';
   const status = runStatus(state, now);
@@ -325,6 +372,7 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
   const restHero = tracker.resting && intervals;
   const pace = formatRunPace(livePaceSecPerMile(state, now)) ?? '—';
   const [figure, unit] = restHero ? [formatRunClock(currentLapSeconds(state, now)), ''] : splitFigure(pace);
+  const caption = restHero ? 'Rest' : tracker.resting ? 'Paused' : intervals ? 'Lap pace' : 'Pace';
   const lastLap = state.laps.length > 0 ? state.laps[state.laps.length - 1] : null;
 
   // Split confirms only a lap the tracker took: a tap inside its debounce
@@ -338,29 +386,64 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
     if (state.lastManualSplitMs !== pending.before) haptics.success();
   });
 
-  return (
+  // VoiceOver hears the GPS line change: on the way in, at the lock (the
+  // clock starts there) and when the signal drops or comes back. A rest is
+  // the runner's own doing, so neither it nor the resume after it speaks.
+  const heardStatus = useRef<RunStatus | null>(null);
+  useEffect(() => {
+    if (status === 'resting' || status === heardStatus.current) return;
+    heardStatus.current = status;
+    announce(SPOKEN_STATUS[status]);
+  }, [status]);
+  useAnnounce(tracker.gpsError);
+
+  // A finished effort shows under Last split, by hand or by distance; VoiceOver
+  // says it too, as a running watch does. Rests, and the laps a resumed run
+  // already had, say nothing.
+  const lapsHeard = useRef(state.laps.length);
+  useEffect(() => {
+    const count = state.laps.length;
+    const lap = count > lapsHeard.current ? state.laps[count - 1] : null;
+    lapsHeard.current = count;
+    if (!lap || lap.kind !== 'work') return;
+    announce(`Split ${lap.index}, ${spokenRun(`${formatRunClock((lap.endedAtMs - lap.startedAtMs) / 1000)} · ${formatRunDistance(lap.distanceM)}`)}`);
+  }, [state.laps]);
+
+  const body = (
     <>
-      <View style={{ flex: 1, backgroundColor: c.ground, paddingTop: insets.top + 10, paddingBottom: insets.bottom + 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, paddingHorizontal: space.gutter }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {!tracker.resting ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: c.live }} /> : null}
-            <BlancText variant="headline">{RUN_MODE_LABELS[state.config.mode]}</BlancText>
-          </View>
-          <BlancText variant="secondary" tone={alert ? 'live' : 'graphite'} accessibilityLiveRegion="polite">
-            {RUN_STATUS_LABELS[status]}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          minHeight: 44,
+          paddingHorizontal: space.gutter,
+          ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null),
+        }}>
+        <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, large ? { flexShrink: 1 } : null]}>
+          {!tracker.resting ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: c.live }} /> : null}
+          <BlancText variant="headline" accessibilityRole="header" style={large ? { flexShrink: 1 } : undefined}>
+            {RUN_MODE_LABELS[state.config.mode]}
           </BlancText>
         </View>
-        {tracker.gpsError ? (
-          <BlancText variant="footnote" tone="live" accessibilityRole="alert" style={{ marginHorizontal: space.gutter, marginTop: 4 }}>
-            {tracker.gpsError}
-          </BlancText>
-        ) : null}
+        <BlancText variant="secondary" tone={alert ? 'live' : 'graphite'} accessibilityLabel={SPOKEN_STATUS[status]}>
+          {RUN_STATUS_LABELS[status]}
+        </BlancText>
+      </View>
+      {tracker.gpsError ? (
+        <BlancText variant="footnote" tone="live" accessibilityRole="alert" style={{ marginHorizontal: space.gutter, marginTop: 4 }}>
+          {tracker.gpsError}
+        </BlancText>
+      ) : null}
 
-        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: space.gutter }}>
+      {/* At the accessibility text sizes this scrolls, so it grows from its content. */}
+      <View style={{ ...(large ? { flexGrow: 1, paddingVertical: 16 } : { flex: 1 }), justifyContent: 'center', paddingHorizontal: space.gutter }}>
+        {/* One fact for VoiceOver: "Lap pace, 7 minutes 59 seconds per mile". */}
+        <View accessible accessibilityLabel={tracker.resting && !restHero ? caption : `${caption}, ${spokenRun(restHero ? figure : pace)}`}>
           <BlancText variant="secondary" tone="graphite">
-            {restHero ? 'Rest' : tracker.resting ? 'Paused' : intervals ? 'Lap pace' : 'Pace'}
+            {caption}
           </BlancText>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 2 }} accessible accessibilityLabel={`${restHero ? 'Rest' : 'Pace'} ${figure} ${unit === '/mi' ? 'per mile' : ''}`}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
             <BlancText variant="figure" size={104} style={{ letterSpacing: -3, lineHeight: 116 }} numberOfLines={1} adjustsFontSizeToFit>
               {figure}
             </BlancText>
@@ -370,50 +453,70 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
               </BlancText>
             ) : null}
           </View>
-
-          <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginTop: 28 }} />
-          <View style={{ flexDirection: 'row', marginTop: 16 }}>
-            <Stat label="Time" value={formatRunClock(elapsedSeconds(state, now))} />
-            <Stat label="Distance" value={formatRunDistance(state.totalDistanceM)} />
-            <Stat label="Avg pace" value={formatRunPace(averagePaceSecPerMile(state, now)) ?? '—'} />
-          </View>
-
-          {intervals ? (
-            <>
-              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginTop: 20 }} />
-              <View style={{ flexDirection: 'row', marginTop: 16 }}>
-                <Detail
-                  label={tracker.resting ? 'Resting' : `Lap ${state.laps.length + 1}`}
-                  value={`${formatRunClock(currentLapSeconds(state, now))} · ${formatRunDistance(currentLapDistanceM(state))}`}
-                />
-                <Detail
-                  label="Last split"
-                  value={lastLap ? `${formatRunClock((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} · ${formatRunDistance(lastLap.distanceM)}` : '—'}
-                />
-              </View>
-            </>
-          ) : null}
-
-          {state.config.mode === 'sprints' ? (
-            <>
-              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginTop: 20 }} />
-              <View style={{ flexDirection: 'row', marginTop: 16 }}>
-                <Detail label="Sprints" value={`${state.reps.length}${state.sprintPhase === 'active' ? ' ●' : ''}`} />
-                <Detail
-                  label="Last rep"
-                  value={
-                    state.reps.length > 0
-                      ? `${formatRunDistance(state.reps[state.reps.length - 1].distanceM)} · ${state.reps[state.reps.length - 1].peakSpeedMps.toFixed(1)} m/s peak`
-                      : '—'
-                  }
-                />
-              </View>
-            </>
-          ) : null}
         </View>
 
-        {/* Big controls for running hands; finishing needs a hold. */}
-        <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.inset }}>
+        <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginTop: 28 }} />
+        <View style={large ? { marginTop: 16, gap: 14 } : { flexDirection: 'row', marginTop: 16 }}>
+          <Stat label="Time" value={formatRunClock(elapsedSeconds(state, now))} />
+          <Stat label="Distance" value={formatRunDistance(state.totalDistanceM)} />
+          <Stat label="Avg pace" name="Average pace" value={formatRunPace(averagePaceSecPerMile(state, now)) ?? '—'} />
+        </View>
+
+        {intervals ? (
+          <>
+            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginTop: 20 }} />
+            <View style={large ? { marginTop: 16, gap: 14 } : { flexDirection: 'row', marginTop: 16 }}>
+              <Detail
+                label={tracker.resting ? 'Resting' : `Lap ${state.laps.length + 1}`}
+                value={`${formatRunClock(currentLapSeconds(state, now))} · ${formatRunDistance(currentLapDistanceM(state))}`}
+              />
+              <Detail
+                label="Last split"
+                value={lastLap ? `${formatRunClock((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} · ${formatRunDistance(lastLap.distanceM)}` : '—'}
+              />
+            </View>
+          </>
+        ) : null}
+
+        {state.config.mode === 'sprints' ? (
+          <>
+            <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginTop: 20 }} />
+            <View style={large ? { marginTop: 16, gap: 14 } : { flexDirection: 'row', marginTop: 16 }}>
+              <Detail
+                label="Sprints"
+                value={`${state.reps.length}${state.sprintPhase === 'active' ? ' ●' : ''}`}
+                spoken={`${state.reps.length}${state.sprintPhase === 'active' ? ', sprinting now' : ''}`}
+              />
+              <Detail
+                label="Last rep"
+                value={
+                  state.reps.length > 0
+                    ? `${formatRunDistance(state.reps[state.reps.length - 1].distanceM)} · ${state.reps[state.reps.length - 1].peakSpeedMps.toFixed(1)} m/s peak`
+                    : '—'
+                }
+              />
+            </View>
+          </>
+        ) : null}
+      </View>
+    </>
+  );
+
+  return (
+    <>
+      <View style={{ flex: 1, backgroundColor: c.ground, paddingTop: insets.top + 10, paddingBottom: insets.bottom + 12 }}>
+        {large ? (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+            {body}
+          </ScrollView>
+        ) : (
+          body
+        )}
+
+        {/* Big controls for running hands; finishing needs a hold. At the
+            accessibility text sizes they stack, bottom up, so Rest and the
+            finish hold still keep their place while Split is away. */}
+        <View style={large ? { gap: 10, paddingHorizontal: space.inset, paddingTop: 12 } : { flexDirection: 'row', gap: 10, paddingHorizontal: space.inset }}>
           {intervals && !tracker.resting ? (
             <BigButton
               title="Split"
@@ -423,7 +526,7 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
                 tracker.split();
               }}
             />
-          ) : intervals ? (
+          ) : intervals && !large ? (
             // Resting keeps Split's place, so Resume and the finish hold never move under a finger.
             <View style={{ flex: 1 }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           ) : null}
@@ -441,14 +544,20 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+/**
+ * A figure with its label, read by VoiceOver as one fact ("Time, 12 minutes
+ * 4 seconds"); `name` is the label in full where it is shortened. At the
+ * accessibility text sizes stats stack (their row does), so they take no flex.
+ */
+function Stat({ label, name, value }: { label: string; name?: string; value: string }) {
+  const large = useLargeText();
   const [number, unit] = splitFigure(value);
   return (
-    <View style={{ flex: 1, minWidth: 0 }} accessible accessibilityLabel={`${label} ${value}`}>
+    <View style={large ? { minWidth: 0 } : { flex: 1, minWidth: 0 }} accessible accessibilityLabel={`${name ?? label}, ${spokenRun(value)}`}>
       <BlancText variant="footnote" tone="graphite">
         {label}
       </BlancText>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 2 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
         <BlancText variant="figure" size={30} style={{ lineHeight: 36 }} numberOfLines={1} adjustsFontSizeToFit>
           {number}
         </BlancText>
@@ -462,28 +571,32 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+/** A label over a value, one fact for VoiceOver; `spoken` is the value in words where shorthand won't do. */
+function Detail({ label, value, spoken }: { label: string; value: string; spoken?: string }) {
+  const large = useLargeText();
   return (
-    <View style={{ flex: 1, minWidth: 0 }} accessible accessibilityLabel={`${label} ${value}`}>
+    <View style={large ? { minWidth: 0 } : { flex: 1, minWidth: 0 }} accessible accessibilityLabel={`${label}, ${spoken ?? spokenRun(value)}`}>
       <BlancText variant="footnote" tone="graphite">
         {label}
       </BlancText>
-      <BlancText variant="bodyStrong" numberOfLines={1} style={{ marginTop: 3, fontVariant: ['tabular-nums'] }}>
+      <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1} style={{ marginTop: 3, fontVariant: ['tabular-nums'] }}>
         {value}
       </BlancText>
     </View>
   );
 }
 
+/** At the accessibility text sizes the run's controls stack: full width, as tall as their words. */
 function BigButton({ title, primary, onPress }: { title: string; primary?: boolean; onPress: () => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={title}
       onPress={onPress}
       style={({ pressed }) => ({
-        flex: 1,
-        height: 64,
+        ...(large ? { minHeight: 64, paddingVertical: 10, paddingHorizontal: 20 } : { flex: 1, height: 64 }),
         borderRadius: 32,
         borderCurve: 'continuous',
         alignItems: 'center',
@@ -491,7 +604,7 @@ function BigButton({ title, primary, onPress }: { title: string; primary?: boole
         backgroundColor: primary ? c.capsule : c.fill,
         transform: [{ scale: pressed ? 0.97 : 1 }],
       })}>
-      <BlancText variant="headline" tone={primary ? 'onCapsule' : 'ink'} size={18}>
+      <BlancText variant="headline" tone={primary ? 'onCapsule' : 'ink'} size={18} style={large ? { textAlign: 'center' } : undefined}>
         {title}
       </BlancText>
     </Pressable>
@@ -503,47 +616,51 @@ const HOLD_TO_FINISH_MS = 800;
 /** Finishing ends the run, so it takes a deliberate hold, never a stray tap. */
 function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   const [holding, setHolding] = useState(false);
   const [width, setWidth] = useState(0);
   const progress = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The fill shows how long is left to hold, so it runs under Reduce Motion
+  // too, like iOS's progress bars; skipped, it would read as done at once.
   const cancel = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     setHolding(false);
-    progress.value = withTiming(0, { duration: 150 });
+    progress.value = withTiming(0, { duration: 150, reduceMotion: ReduceMotion.Never });
   };
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
+  const complete = () => {
+    haptics.success();
+    onFinish();
+  };
+
   const begin = () => {
     haptics.tap();
     setHolding(true);
-    progress.value = withTiming(1, { duration: HOLD_TO_FINISH_MS, easing: Easing.linear });
+    progress.value = withTiming(1, { duration: HOLD_TO_FINISH_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never });
     timer.current = setTimeout(() => {
       timer.current = null;
       setHolding(false);
-      haptics.success();
-      onFinish();
+      complete();
     }, HOLD_TO_FINISH_MS);
   };
 
   const fill = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
-  // VoiceOver cannot hold, so its double tap asks instead.
+  // VoiceOver cannot hold, so its double tap (and its Finish run action) asks
+  // instead: a stray one never ends the run.
   const confirmFinish = () =>
     Alert.alert('Finish this run?', undefined, [
       { text: 'Keep running', style: 'cancel' },
-      {
-        text: 'Finish',
-        onPress: () => {
-          haptics.success();
-          onFinish();
-        },
-      },
+      { text: 'Finish', onPress: complete },
     ]);
   const title = holding ? 'Keep holding…' : 'Hold to finish';
+  // At the accessibility text sizes both copies of the words wrap alike.
+  const words = [{ textAlign: 'center' as const }, large ? { paddingHorizontal: 20 } : null];
 
   return (
     <Pressable
@@ -558,14 +675,21 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
       onPressIn={begin}
       onPressOut={cancel}
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-      style={{ flex: 1.3, height: 64, borderRadius: 32, borderCurve: 'continuous', overflow: 'hidden', backgroundColor: c.fill, justifyContent: 'center' }}>
-      <BlancText variant="headline" size={18} style={{ textAlign: 'center' }}>
+      style={{
+        ...(large ? { minHeight: 64, paddingVertical: 10 } : { flex: 1.3, height: 64 }),
+        borderRadius: 32,
+        borderCurve: 'continuous',
+        overflow: 'hidden',
+        backgroundColor: c.fill,
+        justifyContent: 'center',
+      }}>
+      <BlancText variant="headline" size={18} style={words}>
         {title}
       </BlancText>
       {/* The hold fills the capsule in ink, the words turning over as it passes them. */}
       <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, top: 0, bottom: 0, overflow: 'hidden', backgroundColor: c.capsule }, fill]}>
         <View style={{ width, height: '100%', justifyContent: 'center' }}>
-          <BlancText variant="headline" size={18} tone="onCapsule" style={{ textAlign: 'center' }}>
+          <BlancText variant="headline" size={18} tone="onCapsule" style={words}>
             {title}
           </BlancText>
         </View>
@@ -579,12 +703,14 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
 function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
   const c = useBlanc();
   const insets = useSafeAreaInsets();
+  const large = useLargeText();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [exportError, setExportError] = useState(false);
   const splits = finishedRunSplits(run);
   const [distance, distanceUnit] = splitFigure(formatRunDistance(run.totalDistanceM));
   const workSplits = splits.filter((split) => !split.isRest).length;
+  useAnnounce(saveError);
 
   const save = async () => {
     if (saving) return;
@@ -598,6 +724,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
         return;
       }
       haptics.success();
+      announce('Run saved');
       discard();
       // History already open in Train shows again without reading, so read its month here.
       void loadHistoryMonth();
@@ -662,10 +789,18 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
         <TopBar onClose={closeFinished} />
         <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={{ paddingHorizontal: space.gutter, paddingTop: 8 }}>
-            <BlancText variant="secondary" tone="graphite">
+            {/* The screen's title, as its top bar has none; days and months in full for VoiceOver. */}
+            <BlancText
+              variant="secondary"
+              tone="graphite"
+              accessibilityRole="header"
+              accessibilityLabel={`${RUN_MODE_LABELS[run.mode]}, ${format(run.startedAtMs, 'EEEE, MMMM d, h:mm a')}`}>
               {RUN_MODE_LABELS[run.mode]} · {format(run.startedAtMs, 'EEE, MMM d · h:mm a')}
             </BlancText>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 6, ...(large ? { flexWrap: 'wrap' } : null) }}
+              accessible
+              accessibilityLabel={`Distance, ${spokenRun(formatRunDistance(run.totalDistanceM))}`}>
               <BlancText variant="figure" size={88} style={{ letterSpacing: -2.5, lineHeight: 98 }}>
                 {distance}
               </BlancText>
@@ -673,9 +808,9 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
                 {distanceUnit}
               </BlancText>
             </View>
-            <View style={{ flexDirection: 'row', marginTop: 18 }}>
+            <View style={large ? { marginTop: 18, gap: 14 } : { flexDirection: 'row', marginTop: 18 }}>
               <Stat label="Time" value={formatRunClock(run.elapsedS)} />
-              <Stat label="Avg pace" value={finishedRunPace(run) ?? '—'} />
+              <Stat label="Avg pace" name="Average pace" value={finishedRunPace(run) ?? '—'} />
             </View>
           </View>
 
@@ -685,25 +820,26 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
                 {splits.map((split, index) => {
                   const pace = split.isRest ? null : formatRunPace(splitPaceSecPerMile(split));
                   return (
+                    // At the accessibility text sizes the columns give way to a line that wraps.
                     <View
                       key={`${split.key}-${index}`}
                       accessible
                       accessibilityLabel={
                         split.isRest
-                          ? `Rest, ${formatRunClock(split.durationS)}`
-                          : `Split ${split.key}, ${formatRunClock(split.durationS)}, ${formatRunDistance(split.distanceM)}${pace ? `, ${pace}` : ''}`
+                          ? `Rest, ${spokenRun(formatRunClock(split.durationS))}`
+                          : `Split ${split.key}, ${spokenRun(`${formatRunClock(split.durationS)} · ${formatRunDistance(split.distanceM)}${pace ? ` · ${pace}` : ''}`)}`
                       }
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 }}>
-                      <BlancText variant="meta" size={13} tone="graphite" style={{ width: 22 }}>
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7, ...(large ? { flexWrap: 'wrap' } : null) }}>
+                      <BlancText variant="meta" size={13} tone="graphite" style={large ? undefined : { width: 22 }}>
                         {split.isRest ? '·' : split.key}
                       </BlancText>
-                      <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={{ flex: 1 }}>
+                      <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={large ? undefined : { flex: 1 }}>
                         {formatRunClock(split.durationS)}
                       </BlancText>
-                      <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={{ flex: 1, textAlign: 'right' }}>
+                      <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={large ? undefined : { flex: 1, textAlign: 'right' }}>
                         {split.isRest ? 'rest' : formatRunDistance(split.distanceM)}
                       </BlancText>
-                      <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={{ width: 96, textAlign: 'right' }}>
+                      <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={large ? undefined : { width: 96, textAlign: 'right' }}>
                         {split.isRest ? '' : (pace ?? '—')}
                       </BlancText>
                     </View>

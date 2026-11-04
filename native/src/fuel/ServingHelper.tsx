@@ -9,9 +9,12 @@ import { Capsule } from '~/components/Capsule';
 import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
+import { speak, useAnnounce } from '~/lib/accessibility';
 import { workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
+
+import { spokenMacros } from './FoodLists';
 
 type Interpretation = Awaited<ReturnType<typeof interpretFoodServing>>;
 
@@ -37,6 +40,10 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   const request = useRef(0);
   // match nutrition_logs.servings DECIMAL(10,2)
   const logServings = result?.status === 'resolved' ? Math.round(result.servings * 100) / 100 : 0;
+  // Gemini's answer lands a moment after Interpret amount: VoiceOver hears it (errors announce themselves).
+  useAnnounce(
+    result?.status === 'clarification' ? result.message : result?.status === 'resolved' ? `Reads as ${display(result.servings)} servings` : null,
+  );
   useEffect(
     () => () => {
       request.current++;
@@ -124,7 +131,12 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
               ) : null}
               {result?.status === 'resolved' ? (
                 <View style={{ gap: 6 }}>
-                  <BlancText variant="secondary">
+                  <BlancText
+                    variant="secondary"
+                    // The bold servings are a nested text, which VoiceOver reads raw.
+                    accessibilityLabel={speak(
+                      `${display(result.quantity)} ${result.unit === 'piece' && result.quantity !== 1 ? 'pieces' : result.unit} ÷ ${display(result.basisQuantity)} per serving = ${display(result.servings)} servings`,
+                    )}>
                     {display(result.quantity)} {result.unit === 'piece' && result.quantity !== 1 ? 'pieces' : result.unit} ÷ {display(result.basisQuantity)} per serving ={' '}
                     <BlancText variant="secondary" weight="600">
                       {display(result.servings)} servings
@@ -140,7 +152,13 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
                       {logServings > 0 ? `Will log ${display(logServings)} servings, rounded to two decimals.` : 'This amount is too small to log. Enter at least 0.01 servings.'}
                     </BlancText>
                   ) : null}
-                  <BlancText variant="meta" tone="graphite">
+                  <BlancText
+                    variant="meta"
+                    tone="graphite"
+                    accessibilityLabel={spokenMacros(
+                      { calories: food.calories * logServings, protein: food.protein * logServings, carbs: food.carbs * logServings, fat: food.fat * logServings },
+                      display,
+                    )}>
                     {display(food.calories * logServings)} kcal · P {display(food.protein * logServings)} · C {display(food.carbs * logServings)} · F {display(food.fat * logServings)}
                   </BlancText>
                   <Capsule

@@ -11,6 +11,7 @@ import { FieldRow, FormNote, type TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
+import { announce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
@@ -34,6 +35,7 @@ const oneDecimal = (value: unknown) => String(Math.round((Number(value) || 0) * 
  */
 export default function SavedMealSheet() {
   const c = useBlanc();
+  const large = useLargeText();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [meal] = useState(() => useYouMealsStore.getState().meals?.find((entry) => entry.id === id) ?? null);
   const [initial] = useState<Draft>(() => ({
@@ -92,6 +94,8 @@ export default function SavedMealSheet() {
       Alert.alert('Saved, with one thing left', 'The original is still in saved meals. Delete it there when you’re back online. Past logs are unchanged.');
     } else {
       haptics.success();
+      // The sheet closes on success: VoiceOver says it went through.
+      announce('Saved meal updated');
     }
     setDone(true);
   };
@@ -101,7 +105,8 @@ export default function SavedMealSheet() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <BlancText variant="headline" accessibilityRole="header">
+          {/* At the accessibility sizes the title wraps, centred. */}
+          <BlancText variant="headline" accessibilityRole="header" style={large ? { textAlign: 'center' } : undefined}>
             Edit saved meal
           </BlancText>
         </View>

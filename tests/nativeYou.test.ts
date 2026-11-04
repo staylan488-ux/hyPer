@@ -14,6 +14,7 @@ import * as nutritionWizard from '@/lib/nutritionWizard';
 import * as settingsUx from '@/lib/settingsUx';
 import * as weightDisplayCore from '@/lib/weightDisplayCore';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -199,6 +200,7 @@ describe('Edit targets opened before the targets are read', () => {
       '~/components/Row': { Hairline: () => null },
       '~/components/Section': { Section: Wrap },
       '~/lib/format': { formatWhole: (value: number) => String(Math.round(value)) },
+      '~/lib/accessibility': silentAccessibility,
       '~/lib/haptics': { haptics: { success: vi.fn(), error: vi.fn() } },
       '~/lib/leaveGuard': { useLeaveGuard: vi.fn() },
       '~/lib/you': harness.you,
@@ -305,7 +307,7 @@ describe('Calculate targets opened before the profile is read', () => {
     const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
     const Sheet = loadNativeModule<{ default: ComponentType }>('app/targets-calculate.tsx', {
       '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
-      '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null },
+      '@expo/ui/swift-ui/modifiers': { accessibilityLabel: () => null, pickerStyle: () => null, tag: () => null },
       'expo-router': { router: { back: vi.fn(), replace: vi.fn() } },
       'expo-symbols': { SymbolView: () => null },
       'react-native': {
@@ -329,6 +331,7 @@ describe('Calculate targets opened before the profile is read', () => {
       '~/components/Row': { Hairline: () => null, Row: () => null },
       '~/components/Section': { Section: Wrap },
       '~/lib/format': { formatWhole: (value: number) => String(Math.round(value)) },
+      '~/lib/accessibility': silentAccessibility,
       '~/lib/haptics': { haptics: { success: vi.fn(), error: vi.fn(), select: vi.fn() } },
       '~/lib/leaveGuard': { useLeaveGuard: vi.fn() },
       '~/lib/you': harness.you,
@@ -531,6 +534,7 @@ describe('Food analysis after the Mac worker is saved', () => {
       '~/components/Label': { Label: Wrap },
       '~/components/Row': { Hairline: () => null, Row: (props: RowProps) => { rows[props.title] = props; return null; } },
       '~/components/TabScroll': { TabScroll: Wrap },
+      '~/lib/accessibility': silentAccessibility,
       '~/lib/haptics': { haptics: { select: vi.fn() } },
       '~/lib/you': { chooseAnalysisMode: vi.fn(), useAnalysisModeStore: create(() => ({ mode: 'worker' })) },
       '~/theme/blanc': { space: { section: 32 }, useBlanc: () => ({ ink: '#000', pressed: '#eee' }) },
@@ -553,7 +557,7 @@ function loadWeightScreen(you: YouModule, seen: { charts?: Array<{ days: number 
   const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
   return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weight.tsx', {
     '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
-    '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null },
+    '@expo/ui/swift-ui/modifiers': { accessibilityLabel: () => null, pickerStyle: () => null, tag: () => null },
     'date-fns': dateFns,
     'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
     'react-native': { ActionSheetIOS: {}, Alert: {}, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
@@ -570,6 +574,7 @@ function loadWeightScreen(you: YouModule, seen: { charts?: Array<{ days: number 
     '~/components/WeightChart': { WeightChart: (props: { days: number }) => { seen.charts?.push(props); return null; } },
     '~/lib/accountData': { useCurrentDayKey: clockKey },
     '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd'), today: clockKey },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
     '~/lib/motion': { rowEnter: null, rowExit: null, rowLayout: null },
     '~/lib/you': you,

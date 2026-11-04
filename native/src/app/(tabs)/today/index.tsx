@@ -18,6 +18,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { speak, useLargeText } from '~/lib/accessibility';
 import { useAccountRefresh } from '~/lib/accountData';
 import { useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
@@ -48,6 +49,7 @@ export default function TodayScreen() {
   const over = overTargetWord(goal);
   const rise = useIntroRise();
   const { refreshing, refresh } = useAccountRefresh();
+  const large = useLargeText();
 
   return (
     <>
@@ -89,14 +91,17 @@ export default function TodayScreen() {
               // The day's figures open Fuel, where they come from.
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Eaten ${formatWhole(totals.calories)} of ${formatWhole(target.calories)}, protein ${formatWhole(totals.protein)} of ${formatWhole(target.protein)} grams`}
+                accessibilityLabel={speak(
+                  `${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Eaten ${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal · protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
+                )}
                 accessibilityHint="Opens Fuel"
                 onPress={() => {
                   haptics.tap();
                   router.navigate('/fuel');
                 }}
                 style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
                   <RollingText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
                     {formatWhole(Math.abs(kcalLeft))}
                   </RollingText>
@@ -106,7 +111,7 @@ export default function TodayScreen() {
                     </BlancText>
                   </Animated.View>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
+                <View style={large ? { gap: 14, marginTop: 14 } : { flexDirection: 'row', gap: 20, marginTop: 14 }}>
                   <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
                   <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
                 </View>
@@ -118,6 +123,8 @@ export default function TodayScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityHint="Opens your targets"
+                // One line of text: the slop makes it 44 points tall, short of the sections around it.
+                hitSlop={{ top: 2, bottom: 22 }}
                 onPress={() => {
                   haptics.tap();
                   router.push('/you/targets');
@@ -169,6 +176,8 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
   const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = () => router.navigate('/train');
+  const large = useLargeText();
+  const line = current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session';
 
   return (
     // The whole card returns to the workout; its button resumes or finishes.
@@ -177,14 +186,15 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       // VoiceOver reads the card's parts and reaches its button on its own.
       accessible={false}
       accessibilityRole="button"
-      accessibilityLabel={`${session.dayName}, in progress, ${minutes} min, ${session.doneCount} of ${session.sets.length} sets done`}
-      accessibilityHint="Opens the workout"
       onPress={() => {
         haptics.tap();
         openWorkout();
       }}
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <View
+        accessible
+        accessibilityLabel={speak(`${session.dayName} · In progress · ${minutes} min`)}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...(large ? { flexWrap: 'wrap', columnGap: 12, rowGap: 4 } : null) }}>
         <BlancText variant="headline">{session.dayName}</BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
@@ -204,14 +214,18 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
 
       <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 14 }} />
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="bodyStrong" numberOfLines={1}>
+      {/* At the accessibility text sizes the button moves under the words. */}
+      <View style={large ? { gap: 12, marginTop: 14 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
+        <View
+          accessible
+          accessibilityLabel={speak(empty ? 'Add your first movement' : `${current ? current.movement.name : 'All sets done'} · ${line}`)}
+          style={large ? undefined : { flex: 1, minWidth: 0 }}>
+          <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
             {current ? current.movement.name : empty ? 'Add your first movement' : 'All sets done'}
           </BlancText>
           {empty ? null : (
-            <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-              {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}
+            <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+              {line}
             </BlancText>
           )}
         </View>
@@ -228,13 +242,15 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
 }
 
 function Meter({ label, value, of, progress, warnOver }: { label: string; value: string; of: string; progress: number; warnOver: boolean }) {
+  // At the accessibility text sizes the meters stack (see the caller) and the value wraps under its label.
+  const large = useLargeText();
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+    <View style={large ? undefined : { flex: 1 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', ...(large ? { flexWrap: 'wrap', columnGap: 8 } : null) }}>
         <BlancText variant="secondary" tone="graphite">
           {label}
         </BlancText>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', ...(large ? { flexWrap: 'wrap' } : null) }}>
           <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>
             {value}
           </RollingText>

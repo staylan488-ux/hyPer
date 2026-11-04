@@ -11,6 +11,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Tally } from '~/components/Tally';
+import { speak, useLargeText } from '~/lib/accessibility';
 import { savedLine, useFinishedStore } from '~/lib/finished';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { space, useBlanc } from '~/theme/blanc';
@@ -37,6 +38,7 @@ function useWeekCount(): number | null {
 
 export default function SessionDone() {
   const c = useBlanc();
+  const large = useLargeText();
   const summary = useFinishedStore((state) => state.summary);
   const planned = useAppStore((state) => state.activeSplit?.days_per_week ?? null);
   const weekCount = useWeekCount();
@@ -60,7 +62,8 @@ export default function SessionDone() {
     );
   }
 
-  const rows: [string, string][] = [
+  // Label, value, and what VoiceOver says for the value when it differs.
+  const rows: [string, string, string?][] = [
     ['Sets', String(summary.sets)],
     // Only when some set beat the same set last time: no zero.
     ...(summary.beat > 0 ? [['Beat last time', `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'}`] as [string, string]] : []),
@@ -68,7 +71,14 @@ export default function SessionDone() {
     ...(summary.volume > 0 ? [['Volume', `${formatWhole(summary.volume)} lb`] as [string, string]] : []),
     ['Time', `${summary.minutes} min`],
     ...(summary.best
-      ? [['Best set', summary.best.weight > 0 ? `${formatLoad(summary.best.weight)} × ${summary.best.reps}` : `${summary.best.reps} reps`] as [string, string]]
+      ? [
+          [
+            'Best set',
+            summary.best.weight > 0 ? `${formatLoad(summary.best.weight)} × ${summary.best.reps}` : `${summary.best.reps} reps`,
+            // With the movement's name from the line under the rows.
+            `${summary.best.weight > 0 ? `${formatLoad(summary.best.weight)} lb × ${summary.best.reps}` : `${summary.best.reps} reps`}, ${summary.best.name}`,
+          ] as [string, string, string],
+        ]
       : []),
   ];
 
@@ -77,7 +87,7 @@ export default function SessionDone() {
       <ScrollView
         style={{ backgroundColor: c.ground }}
         contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 56, paddingBottom: insets.bottom + 16, paddingHorizontal: space.gutter }}>
-        <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center' }}>
+        <BlancText variant="secondary" tone="graphite" accessibilityRole="header" style={{ textAlign: 'center' }}>
           Session complete
         </BlancText>
 
@@ -89,17 +99,28 @@ export default function SessionDone() {
             accessibilityLabel={`${summary.sets} of ${summary.marks.length} sets logged`}
           />
 
-          <BlancText variant="title" size={30} style={{ marginTop: 22, lineHeight: 36 }}>
+          <BlancText variant="title" size={30} accessibilityRole="header" style={{ marginTop: 22, lineHeight: 36 }}>
             {summary.dayName}
           </BlancText>
-          <BlancText variant="meta" size={13} tone="graphite" style={{ marginTop: 4 }}>
+          <BlancText
+            variant="meta"
+            size={13}
+            tone="graphite"
+            accessibilityLabel={format(summary.finishedAt, 'EEEE, MMMM d, h:mm a')}
+            style={{ marginTop: 4 }}>
             {format(summary.finishedAt, 'EEE · MMM d · h:mm a')}
           </BlancText>
 
           <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 20 }} />
           <View style={{ paddingVertical: 10 }}>
-            {rows.map(([label, value]) => (
-              <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 6 }}>
+            {rows.map(([label, value, spoken]) => (
+              // One fact for VoiceOver: "Volume, 12,400 pounds".
+              <View
+                key={label}
+                accessible
+                accessibilityLabel={speak(`${label}, ${spoken ?? value}`)}
+                // At the accessibility text sizes the value moves under its label when both don't fit.
+                style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, ...(large ? { flexWrap: 'wrap', columnGap: 12 } : { gap: 12 }) }}>
                 <BlancText variant="meta" size={14} tone="graphite">
                   {label}
                 </BlancText>
@@ -109,7 +130,15 @@ export default function SessionDone() {
               </View>
             ))}
             {summary.best ? (
-              <BlancText variant="meta" size={12} tone="graphite" numberOfLines={1} style={{ textAlign: 'right', marginTop: -2 }}>
+              // Read with the Best set row above.
+              <BlancText
+                variant="meta"
+                size={12}
+                tone="graphite"
+                numberOfLines={large ? undefined : 1}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+                style={{ textAlign: 'right', marginTop: -2 }}>
                 {summary.best.name}
               </BlancText>
             ) : null}

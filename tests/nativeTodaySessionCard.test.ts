@@ -9,6 +9,7 @@ import * as fuelSummary from '@/lib/fuelSummary';
 import * as todayModel from '@/lib/todayModel';
 import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,6 +58,7 @@ async function open() {
     '~/lib/brand': { useIntroRise: () => ({}) },
     '~/lib/finishWorkout': { useFinishWorkout: () => ({ finish, closing: false }) },
     '~/lib/format': { formatLoad: String, formatWhole: String },
+    '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop } },
     '~/lib/fuel': { today: () => '2026-11-04', todayTotalsShown: () => null, useFuelStore: create(() => ({})) },
     '~/lib/motion': { figureLayout: {} },

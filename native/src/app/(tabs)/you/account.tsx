@@ -9,6 +9,7 @@ import { FieldRow, FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
+import { useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -24,6 +25,9 @@ export default function AccountScreen() {
   const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
   const draft = name ?? saved;
   const changed = draft.trim() !== saved;
+  // Save name goes away once the name saves, and VoiceOver's focus with it;
+  // an error announces itself (FormNote).
+  useAnnounce(message && !message.alert ? message.text : null);
 
   useLeaveGuard(changed, { title: 'Discard your new name?' }, { busy: saving });
 
