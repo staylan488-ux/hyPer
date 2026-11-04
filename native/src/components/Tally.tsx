@@ -21,6 +21,8 @@ type TallyProps = {
 };
 
 const spring = { damping: 16, stiffness: 240, mass: 0.7 };
+/** Drawing in: damped almost to critical, so a written stroke lands at its height instead of bobbing past it. */
+const drawSpring = { damping: 24, stiffness: 240, mass: 0.7 };
 const GROUP = 5;
 /** Drawing in: wait for a full-screen modal to slide in, then one stroke every 45 ms. */
 const DRAW_START = 350;
@@ -91,7 +93,7 @@ function Stroke({ logged, next, height, size, appear }: { logged: boolean; next:
   }, [next, grow]);
 
   useEffect(() => {
-    shown.value = appear === null ? 1 : withDelay(appear, withSpring(1, spring));
+    shown.value = appear === null ? 1 : withDelay(appear, withSpring(1, drawSpring));
   }, [appear, shown]);
 
   const rise = size.grow;
@@ -121,7 +123,7 @@ function ClosingStroke({ closed, height, size, appear }: { closed: boolean; heig
       drawn.value = withSpring(closed ? 1 : 0, spring);
       return;
     }
-    drawn.value = withDelay(appear, withSpring(1, spring));
+    drawn.value = withDelay(appear, withSpring(1, drawSpring));
     const tick = setTimeout(haptics.select, appear);
     return () => clearTimeout(tick);
   }, [closed, appear, drawn]);

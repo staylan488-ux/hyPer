@@ -62,8 +62,10 @@ export default function SessionDone() {
 
   const slots = Math.max(planned ?? 0, weekCount ?? 0);
   const rows: [string, string][] = [
-    // "3 of 9" only when some sets were not logged.
-    ['Sets', summary.sets === summary.marks.length ? String(summary.sets) : `${summary.sets} of ${summary.marks.length}`],
+    // "3 of 9" only when some sets were not logged; no row for a session without sets.
+    ...(summary.marks.length > 0
+      ? [['Sets', summary.sets === summary.marks.length ? String(summary.sets) : `${summary.sets} of ${summary.marks.length}`] as [string, string]]
+      : []),
     // Only when some set beat the same set last time: no zero.
     ...(summary.beat > 0 ? [['Beat last time', `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'}`] as [string, string]] : []),
     // A bodyweight session moves no load: leave the zero out.
@@ -87,15 +89,18 @@ export default function SessionDone() {
 
           {/* At the cards' inset, so its edges line up with Done; a faint lift over the label's own edge. */}
           <Label style={{ marginTop: 34, paddingHorizontal: 26, paddingTop: 28, paddingBottom: 26, boxShadow: `0 0 0 0.5px ${c.labelEdge}, 0 1px 2px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.05)` }}>
-            <Tally
-              marks={summary.marks}
-              current={null}
-              height={22}
-              drawIn
-              accessibilityLabel={`${summary.sets} of ${summary.marks.length} sets logged`}
-            />
+            {/* A session without sets has no tally, as on Today. */}
+            {summary.marks.length > 0 ? (
+              <Tally
+                marks={summary.marks}
+                current={null}
+                height={22}
+                drawIn
+                accessibilityLabel={`${summary.sets} of ${summary.marks.length} sets logged`}
+              />
+            ) : null}
 
-            <BlancText variant="title" size={30} style={{ marginTop: 22, lineHeight: 36 }}>
+            <BlancText variant="title" size={30} style={{ marginTop: summary.marks.length > 0 ? 22 : 0, lineHeight: 36 }}>
               {summary.dayName}
             </BlancText>
             <BlancText variant="meta" size={13} tone="graphite" style={{ marginTop: 4 }}>
