@@ -11,7 +11,8 @@ export type PreviousWorkoutSetMap = Record<string, Record<number, Pick<WorkoutSe
 
 function toInputValue(value: number | null): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  // Loads are saved to the hundredth (46.25), so keep both decimals.
+  return String(Math.round(value * 100) / 100);
 }
 
 function hasAnyValue(set: Pick<WorkoutSet, 'weight' | 'reps' | 'rpe'> | null | undefined): boolean {
@@ -29,7 +30,9 @@ export function getSetAutofillValues({
   currentExerciseSets: WorkoutSet[];
   previousWorkoutSetsByExercise: PreviousWorkoutSetMap;
 }): AutofillSetValues | null {
-  if (setNumber <= 1) {
+  // A movement's first set here starts from last time. A superset swap's sets
+  // keep the round they took over, so its first can be past 1.
+  if (setNumber <= 1 || !currentExerciseSets.some((set) => set.set_number < setNumber)) {
     const previousWorkoutSet = previousWorkoutSetsByExercise[exerciseId]?.[setNumber];
     if (!hasAnyValue(previousWorkoutSet)) return null;
 
