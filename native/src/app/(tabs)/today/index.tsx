@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
@@ -33,6 +34,9 @@ export default function TodayScreen() {
   const session = useSessionModel();
   const plan = useTodayPlan();
   const target = useAppStore((state) => state.macroTarget);
+  // Until the saved target is read, no target is not yet "set one in You".
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const targetRead = useAppStore((state) => userId !== null && state.macroTargetLoadedForUserId === userId);
   const weekly = useAppStore((state) => state.weeklyVolume);
   // Yesterday's totals never show as today's after a failed new-day read.
   const totals = useFuelStore(todayTotalsShown);
@@ -107,6 +111,9 @@ export default function TodayScreen() {
                   <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
                 </View>
               </Pressable>
+            ) : !targetRead ? (
+              // Holds the figures' place (68 pt figure and the meters) until the target is read.
+              <View style={{ height: 118 }} />
             ) : (
               <Pressable
                 accessibilityRole="button"
