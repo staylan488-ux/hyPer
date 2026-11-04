@@ -511,8 +511,13 @@ export async function syncActivities(): Promise<string> {
 
 /** Moves an activity's strain and heart rate onto a workout; the activity leaves the day. */
 export async function attachStats(workout: Workout, activity: ActivitySession): Promise<boolean> {
+  const isCurrent = captureAccountScope();
   const updated = await useAppStore.getState().attachWhoopToWorkout(workout, activity).catch(() => null);
-  if (!updated) return false;
+  if (!updated) {
+    // The stats may have landed before hiding the activity failed: show what the server holds.
+    if (isCurrent()) void loadHistoryMonth();
+    return false;
+  }
   markChanged(updated.id);
   markGone(activity.id);
   useHistoryStore.setState((state) => ({

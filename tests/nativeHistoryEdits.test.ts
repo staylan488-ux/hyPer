@@ -281,6 +281,35 @@ describe('deleting a workout with WHOOP stats', () => {
     expect(shown('w1')!.whoop_session_id).toBeUndefined();
   });
 
+  it('reads the month again when attaching half-finished, so History shows the stats that landed', async () => {
+    const lift = workout('w1', [set('s1', 'bench')]);
+    server.workouts.set('w1', lift);
+    monthRead.mockResolvedValueOnce({ workouts: [lift], activities: [whoopRun] });
+    await history.loadHistoryMonth();
+    // The workout took the stats; hiding the activity failed.
+    const withStats = { ...lift, whoop_session_id: 'a1', strain: 8.2 } as HistoryWorkout;
+    monthRead.mockResolvedValueOnce({ workouts: [withStats], activities: [whoopRun] });
+
+    await expect(history.attachStats(lift, whoopRun)).resolves.toBe(false);
+    await vi.waitFor(() => expect(shown('w1')!.whoop_session_id).toBe('a1'));
+    expect(history.useHistoryStore.getState().activities).toEqual([whoopRun]);
+    expect(history.useHistoryStore.getState().failed).toBe(false);
+  });
+
+  it('reads nothing again when attaching fails after a sign-out', async () => {
+    const lift = workout('w1', [set('s1', 'bench')]);
+    monthRead.mockResolvedValueOnce({ workouts: [lift], activities: [whoopRun] });
+    await history.loadHistoryMonth();
+    monthRead.mockClear();
+    store.attachWhoopToWorkout.mockImplementationOnce(async () => {
+      invalidateAccountScope();
+      throw new Error('Could not finish attaching the WHOOP stats. Try again.');
+    });
+
+    await expect(history.attachStats(lift, whoopRun)).resolves.toBe(false);
+    expect(monthRead).not.toHaveBeenCalled();
+  });
+
   it('reads nothing again for a workout without WHOOP stats', async () => {
     await show(workout('w1', [set('s1', 'bench')]));
     monthRead.mockClear();
