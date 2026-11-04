@@ -118,10 +118,10 @@ export function runStatus(state: TrackerState, nowMs: number): RunStatus {
 }
 
 export const RUN_STATUS_LABELS: Record<RunStatus, string> = {
-  resting: 'resting',
-  acquiring: 'acquiring gps',
-  weak: 'gps weak',
-  ok: 'gps ok',
+  resting: 'Resting',
+  acquiring: 'Acquiring GPS',
+  weak: 'Weak GPS',
+  ok: 'GPS ready',
 };
 
 export interface RunSplitRow {
@@ -161,7 +161,7 @@ export function finishedRunPace(run: FinishedRun): string | null {
 
 /** "12:04" for a duration, or a dash. */
 export function formatRunClock(seconds: number | null | undefined): string {
-  return formatClockDuration(seconds) ?? '—';
+  return formatClockDuration(seconds) ?? '–';
 }
 
 /**

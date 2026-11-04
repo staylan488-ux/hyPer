@@ -70,7 +70,8 @@ export default function RunScreen() {
   const running = state?.status === 'running';
 
   // The lock screen and Dynamic Island follow every tick (the module sends at
-  // most one update every 3 seconds; iOS ticks the clock in between).
+  // most one update every 3 seconds; iOS ticks the clock in between). The
+  // widget reads "—" as no pace yet, so these keep the em dash.
   const paceLabel = running ? (formatRunPace(livePaceSecPerMile(state, tracker.nowMs)) ?? '—') : null;
   const averageLabel = running ? (formatRunPace(averagePaceSecPerMile(state, tracker.nowMs)) ?? '—') : null;
   const elapsedS = running ? elapsedSeconds(state, tracker.nowMs) : 0;
@@ -204,11 +205,9 @@ function Setup({ tracker }: { tracker: Tracker }) {
                   ))}
                 </Picker>
               </Host>
-              <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: 4, marginTop: 10 }}>
-                {mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}
-              </BlancText>
             </View>
           )}
+          {tracker.resumable ? null : <FormNote>{mode === 'intervals' ? 'Split on demand or by distance.' : 'Live and average pace.'}</FormNote>}
 
           {mode === 'intervals' && !tracker.resumable ? (
             <Section title="Auto-split">
@@ -287,7 +286,7 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
   const alert = status !== 'ok';
   // A rest lap has no pace; its clock is the figure worth reading.
   const restHero = tracker.resting && intervals;
-  const pace = formatRunPace(livePaceSecPerMile(state, now)) ?? '—';
+  const pace = formatRunPace(livePaceSecPerMile(state, now)) ?? '–';
   const [figure, unit] = restHero ? [formatRunClock(currentLapSeconds(state, now)), ''] : splitFigure(pace);
   const lastLap = state.laps.length > 0 ? state.laps[state.laps.length - 1] : null;
 
@@ -339,7 +338,7 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
           <View style={{ flexDirection: 'row', marginTop: 16 }}>
             <Stat label="Time" value={formatRunClock(elapsedSeconds(state, now))} />
             <Stat label="Distance" value={formatRunDistance(state.totalDistanceM)} />
-            <Stat label="Avg pace" value={formatRunPace(averagePaceSecPerMile(state, now)) ?? '—'} />
+            <Stat label="Avg pace" value={formatRunPace(averagePaceSecPerMile(state, now)) ?? '–'} />
           </View>
 
           {intervals ? (
@@ -350,10 +349,13 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
                   label={tracker.resting ? 'Resting' : `Lap ${state.laps.length + 1}`}
                   value={`${formatRunClock(currentLapSeconds(state, now))} · ${formatRunDistance(currentLapDistanceM(state))}`}
                 />
-                <Detail
-                  label="Last split"
-                  value={lastLap ? `${formatRunClock((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} · ${formatRunDistance(lastLap.distanceM)}` : '—'}
-                />
+                {/* Shown once there is a split to show. */}
+                {lastLap ? (
+                  <Detail
+                    label="Last split"
+                    value={`${formatRunClock((lastLap.endedAtMs - lastLap.startedAtMs) / 1000)} · ${formatRunDistance(lastLap.distanceM)}`}
+                  />
+                ) : null}
               </View>
             </>
           ) : null}
@@ -363,14 +365,12 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
               <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.hairline, marginTop: 20 }} />
               <View style={{ flexDirection: 'row', marginTop: 16 }}>
                 <Detail label="Sprints" value={`${state.reps.length}${state.sprintPhase === 'active' ? ' ●' : ''}`} />
-                <Detail
-                  label="Last rep"
-                  value={
-                    state.reps.length > 0
-                      ? `${formatRunDistance(state.reps[state.reps.length - 1].distanceM)} · ${state.reps[state.reps.length - 1].peakSpeedMps.toFixed(1)} m/s peak`
-                      : '—'
-                  }
-                />
+                {state.reps.length > 0 ? (
+                  <Detail
+                    label="Last rep"
+                    value={`${formatRunDistance(state.reps[state.reps.length - 1].distanceM)} · ${state.reps[state.reps.length - 1].peakSpeedMps.toFixed(1)} m/s peak`}
+                  />
+                ) : null}
               </View>
             </>
           ) : null}
@@ -637,7 +637,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
             </View>
             <View style={{ flexDirection: 'row', marginTop: 18 }}>
               <Stat label="Time" value={formatRunClock(run.elapsedS)} />
-              <Stat label="Avg pace" value={finishedRunPace(run) ?? '—'} />
+              <Stat label="Avg pace" value={finishedRunPace(run) ?? '–'} />
             </View>
           </View>
 
@@ -666,7 +666,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
                         {split.isRest ? 'rest' : formatRunDistance(split.distanceM)}
                       </BlancText>
                       <BlancText variant="meta" size={14} tone={split.isRest ? 'graphite' : 'ink'} style={{ width: 96, textAlign: 'right' }}>
-                        {split.isRest ? '' : (pace ?? '—')}
+                        {split.isRest ? '' : (pace ?? '–')}
                       </BlancText>
                     </View>
                   );
