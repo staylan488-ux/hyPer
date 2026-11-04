@@ -23,6 +23,7 @@ import {
   BLOOM,
   drawnMark,
   FOLD,
+  introWaits,
   landing,
   P_DRAWN,
   P_SIZE,
@@ -67,12 +68,8 @@ const ms = {
   handOver: 180,
   veil: 520,
   reveal: 700,
-  /** The first screen is known but has no resting mark yet: start without one after this long. */
-  firstScreen: 600,
   /** Frames never came smoothly: start anyway. */
   startFallback: 900,
-  /** Signed in, but no resting mark on screen after this long: fade out in place. */
-  noAnchor: 1200,
 };
 
 /**
@@ -180,7 +177,7 @@ export function BrandIntro({ ready, onDone, markless = false }: BrandIntroProps)
       setFirstScreen(true);
       return;
     }
-    const timer = setTimeout(() => setFirstScreen(true), markless ? 0 : ms.firstScreen);
+    const timer = setTimeout(() => setFirstScreen(true), introWaits(markless).firstScreen);
     return () => clearTimeout(timer);
   }, [ready, measure, firstScreen, markless]);
 
@@ -288,7 +285,7 @@ export function BrandIntro({ ready, onDone, markless = false }: BrandIntroProps)
   useEffect(() => {
     if (!started || leaving || !(spelled || skipped) || !ready) return;
     if (!measure) {
-      const timer = setTimeout(() => setNoAnchor(true), markless ? 0 : ms.noAnchor);
+      const timer = setTimeout(() => setNoAnchor(true), introWaits(markless).noAnchor);
       return () => clearTimeout(timer);
     }
     setLeaving(true);
