@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { memo, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
@@ -98,11 +98,13 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   // how many it shows. None is the empty line's to say.
   const shown = gym.length + (skillsOpen ? skills.length : 0);
   const announcedMuscle = useRef(muscle);
+  const onMuscleChange = useEffectEvent(() => {
+    if (library !== null && shown > 0) announce(`${shown} ${shown === 1 ? 'exercise' : 'exercises'}`);
+  });
   useEffect(() => {
     if (announcedMuscle.current === muscle) return;
     announcedMuscle.current = muscle;
-    if (library !== null && shown > 0) announce(`${shown} ${shown === 1 ? 'exercise' : 'exercises'}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    onMuscleChange();
   }, [muscle]);
 
   // "Create …" only when nothing in the library (or this edit) has that name.
