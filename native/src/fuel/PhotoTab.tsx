@@ -199,7 +199,7 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
   return (
     <View>
       <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 16 }}>
-        Add at least one photo of your meal. A top-down shot estimates portions best, but any angle works — add both for the most accuracy.
+        Add at least one photo of your meal. A top-down shot estimates portions best, but any angle works. Add both for the best estimate.
       </BlancText>
 
       <Section title="Photos">
