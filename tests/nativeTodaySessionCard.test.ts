@@ -39,6 +39,7 @@ async function open() {
     '@/lib/todayModel': todayModel,
     '@/lib/fuelSummary': fuelSummary,
     '@/stores/appStore': { useAppStore: create(() => ({ macroTarget: null, weeklyVolume: [], nutritionProfile: null })) },
+    '@/stores/authStore': { useAuthStore: create(() => ({ user: { id: 'user-1' } })) },
     '~/components/BlancText': { BlancText: ({ children }: PropsWithChildren) => createElement('span', null, children) },
     '~/components/BrandMark': { BrandMark: Empty, HEADER_MARK_SIZE: 24, headerMarkSlot: {} },
     '~/components/Capsule': {
