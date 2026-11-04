@@ -328,6 +328,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [dragging, setDragging] = useState(false);
   // The movement under the finger: a pair lifts as one, but a hold on B opens B.
   const touchedMovement = useRef<string | null>(null);
+  // Written through a callback: a ref written inline in the list would keep
+  // the React Compiler from memoizing the list.
+  const touchMovement = useCallback((id: string) => {
+    touchedMovement.current = id;
+  }, []);
   // Blocks: a superset pair moves as one. (Computed after every hook, so the
   // React Compiler can keep the movement list from rebuilding as you type.)
   const blocks = movementBlocks(
@@ -439,7 +444,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               node: block.map((id, index) => {
                 const movement = byId.get(id);
                 return movement ? (
-                  <View key={id} onTouchStart={() => { touchedMovement.current = id; }}>
+                  <View key={id} onTouchStart={() => touchMovement(id)}>
                     {index > 0 ? <Hairline /> : null}
                     {movementRow(movement, blocks.findIndex((entry) => entry === block))}
                   </View>
