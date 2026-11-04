@@ -88,6 +88,29 @@ describe('ingestion filters', () => {
     expect(state.totalDistanceM).toBe(0);
   });
 
+  it('keeps the lock and the distance through an occasional poor fix mid-run', () => {
+    const clean = shift(steadyRun5k.build());
+    // One poor fix every 30 s after lock, as a phone under trees or buildings gives.
+    const withPoorFixes = clean.map((sample, index) => (
+      index > 10 && index % 30 === 0 ? { ...sample, accuracyM: 45 } : sample
+    ));
+
+    const reference = drive(createTracker(defaultTrackerConfig('free'), T0), clean).state;
+    let state = createTracker(defaultTrackerConfig('free'), T0);
+    for (const [index, sample] of withPoorFixes.entries()) {
+      state = advanceTracker(state, sample).state;
+      if (index === 30) {
+        // the poor fix itself is rejected, but the run is not acquiring again
+        expect(state.hasGpsLock).toBe(true);
+        expect(isWarmingUp(state)).toBe(false);
+      }
+    }
+
+    expect(state.startedAtMs).toBe(reference.startedAtMs);
+    expect(state.totalDistanceM).toBeGreaterThan(reference.totalDistanceM * 0.98);
+    expect(state.totalDistanceM).toBeLessThan(reference.totalDistanceM * 1.01);
+  });
+
   it('drops teleport glitches but re-anchors after persistent jumps', () => {
     const config = defaultTrackerConfig('free');
     const tracker = createTracker(config, T0);
