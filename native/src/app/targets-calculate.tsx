@@ -24,6 +24,7 @@ import {
   wizardRateDisplay,
   wizardResult,
   wizardWeightChanged,
+  wizardWeightKg,
   type WizardDraft,
 } from '@/lib/nutritionWizard';
 import { useAppStore } from '@/stores/appStore';
@@ -143,7 +144,9 @@ function Calculator() {
       return;
     }
     const userId = useAuthStore.getState().user?.id;
-    if (userId && wizardWeightChanged(openedKg, outcome.weightKg)) {
+    // With no weigh-in known (none yet, or the read failed) the form opens at a
+    // default weight, which is recorded only once it is changed.
+    if (userId && wizardWeightChanged(openedKg ?? wizardWeightKg(initial), outcome.weightKg)) {
       try {
         await recordManualBodyWeight(userId, outcome.weightKg);
         void loadWeights();

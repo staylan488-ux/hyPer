@@ -397,6 +397,31 @@ describe('Calculate targets opened before the profile is read', () => {
     expect(recordManualBodyWeight).toHaveBeenCalledWith('user-1', 79.5);
   });
 
+  it('records no made-up weigh-in when the weights did not load and the default weight is left alone', async () => {
+    const { Sheet, reads, fields, buttons, useAppStore, getNutritionProfile, getBodyWeightHistorySince, recordManualBodyWeight } = calculatorHarness();
+    getNutritionProfile.mockResolvedValue(profile);
+    getBodyWeightHistorySince.mockRejectedValue(new Error('offline'));
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+    expect(fields.Weight.value).toBe('77');
+
+    await act(async () => { buttons['Save profile and review'].onPress(); });
+    expect(useAppStore.getState().updateNutritionProfile).toHaveBeenCalled();
+    expect(recordManualBodyWeight).not.toHaveBeenCalled();
+  });
+
+  it('still records a weight typed after the weights did not load', async () => {
+    const { Sheet, reads, fields, buttons, getNutritionProfile, getBodyWeightHistorySince, recordManualBodyWeight } = calculatorHarness();
+    getNutritionProfile.mockResolvedValue(profile);
+    getBodyWeightHistorySince.mockRejectedValue(new Error('offline'));
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+
+    await act(async () => { (fields.Weight as FieldProps & { onChangeText: (text: string) => void }).onChangeText('80,5'); });
+    await act(async () => { buttons['Save profile and review'].onPress(); });
+    expect(recordManualBodyWeight).toHaveBeenCalledWith('user-1', 80.5);
+  });
+
   it('offers Try again when the profile does not load', async () => {
     const { Sheet, reads, buttons, fields } = calculatorHarness();
     await mount(createElement(Sheet));
