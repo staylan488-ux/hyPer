@@ -21,6 +21,9 @@ export default function FuelMonthSheet() {
   const selected = new Date(`${useFuelStore.getState().selected}T12:00:00`);
   const [month, setMonth] = useState(() => startOfMonth(selected));
   const [logged, setLogged] = useState<Set<string>>(new Set());
+  // A month whose dates could not be read says so, rather than looking empty.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const today = startOfDay(new Date());
   const days = buildCalendarDays(month);
 
@@ -29,26 +32,33 @@ export default function FuelMonthSheet() {
     let current = true;
     const store = useFuelStore.getState();
     const key = format(month, 'yyyy-MM');
+    setFailed(false);
     if (store.loadedMonth === key) {
       setLogged(new Set(store.logs.map((log) => log.date)));
       return;
     }
     setLogged(new Set());
     void (async () => {
-      const userId = await getSessionUserId();
-      if (!userId) return;
-      const { data } = await supabase
-        .from('nutrition_logs')
-        .select('date')
-        .eq('user_id', userId)
-        .gte('date', dayKey(startOfMonth(month)))
-        .lte('date', dayKey(endOfMonth(month)));
-      if (current && data) setLogged(new Set((data as { date: string }[]).map((row) => row.date)));
+      try {
+        const userId = await getSessionUserId();
+        if (!userId) return;
+        const { data, error } = await supabase
+          .from('nutrition_logs')
+          .select('date')
+          .eq('user_id', userId)
+          .gte('date', dayKey(startOfMonth(month)))
+          .lte('date', dayKey(endOfMonth(month)));
+        if (!current) return;
+        if (error || !data) setFailed(true);
+        else setLogged(new Set((data as { date: string }[]).map((row) => row.date)));
+      } catch {
+        if (current) setFailed(true);
+      }
     })();
     return () => {
       current = false;
     };
-  }, [month]);
+  }, [month, attempt]);
 
   const canGoForward = !isAfter(startOfMonth(addMonths(month, 1)), today);
   // The chevrons tap on their own; a swipe ticks as the month changes.
@@ -134,6 +144,20 @@ export default function FuelMonthSheet() {
           </View>
         </View>
       </GestureDetector>
+
+      {failed ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            haptics.tap();
+            setAttempt((value) => value + 1);
+          }}
+          style={({ pressed }) => ({ alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, marginTop: 8, opacity: pressed ? 0.5 : 1 })}>
+          <BlancText variant="footnote" tone="live">
+            Couldn’t load this month. Tap to try again.
+          </BlancText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
