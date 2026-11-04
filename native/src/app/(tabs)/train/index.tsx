@@ -1,7 +1,7 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
-import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type Ref } from 'react';
+import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { AccessibilityInfo, Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -16,7 +16,7 @@ import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
 import { DragList } from '~/components/DragList';
 import { FigureInput } from '~/components/FigureInput';
-import type { TextField } from '~/components/Form';
+import { FormNote, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
@@ -28,7 +28,7 @@ import { UndoBar } from '~/components/UndoBar';
 import { useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatClock, formatRepRange, formatSet } from '~/lib/format';
+import { formatClock, formatRepRange, formatSet, formatTarget } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
@@ -88,6 +88,18 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
   };
 }
 
+/** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
+const FIGURE_SIZE = 76;
+
+/**
+ * The weight and reps share one size, stepping down as their digits add up,
+ * so "102.5 × 10" still fits the card beside its units.
+ */
+function figureSize(weight: string, reps: string): number {
+  const length = Math.max(1, weight.length) + Math.max(1, reps.length);
+  return length <= 5 ? FIGURE_SIZE : length <= 6 ? 64 : length <= 7 ? 56 : length <= 8 ? 50 : 44;
+}
+
 export default function TrainScreen() {
   const session = useSessionModel();
   if (!session) return <StartWorkout />;
@@ -103,7 +115,7 @@ function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; to
       <BlancText variant="meta" size={14} tone="graphite">
         {formatClock(elapsed)}
       </BlancText>
-      {`  ·  ${done} of ${total} sets`}
+      {total > 0 ? ` · ${done} of ${total} sets` : null}
     </BlancText>
   );
 }
@@ -191,6 +203,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const weight = draft ? parseNumber(draft.weight) : null;
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
+  const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
   const lastLine = last ? formatSet(last.weight, last.reps, { unit: false }) : '';
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
@@ -371,13 +384,42 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       ...(blockIndex > 0 ? [{ label: 'Move up', run: () => void moveBlock(blocks[blockIndex][0], blockIndex - 1) }] : []),
       ...(blockIndex < blocks.length - 1 ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1) }] : []),
     ];
+    // Each movement ends with its own tally; the next set stands taller on the row up now.
+    const tally = (
+      <Tally
+        compact
+        marks={movement.sets.map((set) => set.completed)}
+        current={isCurrent && current ? current.setNumber - 1 : null}
+        accessibilityLabel={`${movement.done} of ${movement.sets.length} sets done`}
+      />
+    );
+    // Up now, the card above says the rest; later rows give the target (this
+    // workout's set count) and last time.
+    const detail = isCurrent
+      ? 'Now'
+      : [
+          movement.superset
+            ? `Superset ${movement.superset.role}`
+            : movement.substitutesFor
+              ? `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+              : plan && (plan.target_reps_min || plan.target_reps_max)
+                ? formatTarget(movement.sets.length, plan.target_reps_min, plan.target_reps_max)
+                : null,
+          lastLine ? `last ${lastLine}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
     const row = movement.skipped ? (
       // Skipped for this workout; a tap brings it back as the one up now.
       <Row
         quiet
         title={movement.name}
         value={movement.done ? `Skipped · ${movement.done} of ${movement.sets.length}` : 'Skipped'}
-        leading={<SymbolView name="forward.end" size={13} weight="semibold" tintColor={c.graphite} />}
+        leading={
+          <Lead>
+            <SymbolView name="forward.end" size={13} weight="semibold" tintColor={c.graphite} />
+          </Lead>
+        }
         accessibilityLabel={`${movement.name}, skipped${movement.done ? `, ${movement.done} sets logged` : ''}. Bring back`}
         onPress={() => bringBack(movement, true)}
         actions={actions}
@@ -387,30 +429,24 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Row
         quiet
         title={movement.name}
-        value={`Done · ${movement.done} of ${movement.sets.length}`}
-        leading={<SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />}
+        leading={
+          <Lead>
+            <SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />
+          </Lead>
+        }
+        trailing={tally}
         accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
         onPress={() => openMovement(movement.exerciseId)}
         actions={actions}
       />
     ) : (
-      // Tap to work on a movement next.
+      // Up now, a tap opens its sets; any other row becomes the one up next, in place.
       <Row
         title={movement.name}
-        detail={[
-          isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
-          movement.superset
-            ? `superset ${movement.superset.role}`
-            : movement.substitutesFor
-            ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-            : plan && plan.target_reps_min && plan.target_reps_max
-              ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
-              : null,
-          lastLine ? `last ${lastLine}` : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-        chevron={!isCurrent}
+        detail={detail || undefined}
+        leading={<Lead />}
+        trailing={tally}
+        accessibilityLabel={[movement.name, detail, `${movement.done} of ${movement.sets.length} sets done`].filter(Boolean).join(', ')}
         onPress={isCurrent ? () => openMovement(movement.exerciseId) : () => focus(movement.exerciseId)}
         actions={actions}
       />
@@ -457,7 +493,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               <Hairline />
               <Row
                 title="Add movement"
-                leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />}
+                leading={
+                  <Lead>
+                    <SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />
+                  </Lead>
+                }
                 onPress={addMovement}
               />
             </Animated.View>
@@ -547,23 +587,26 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               </BlancText>
             ) : null}
 
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
+            {/* Holds the largest figures' height, so a step down in size never moves the card. */}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14, minHeight: Math.round(FIGURE_SIZE * 1.1) }}>
               <BigValue
                 ref={weightField}
                 value={draft.weight}
                 unit="lb"
+                size={figure}
                 accessibilityLabel="Weight in pounds"
                 onChange={(text) => setDraft({ ...draft, weight: text, touched: true })}
                 onFocus={() => setEditing('weight')}
                 onBlur={() => setEditing((field) => (field === 'weight' ? null : field))}
               />
-              <BlancText variant="figure" size={30} tone="graphite" style={{ marginBottom: 12 }}>
+              <BlancText variant="figure" size={Math.round(figure * 0.4)} tone="graphite" style={{ marginBottom: Math.round(figure * 0.16) }}>
                 ×
               </BlancText>
               <BigValue
                 ref={repsField}
                 value={draft.reps}
                 unit="reps"
+                size={figure}
                 integer
                 accessibilityLabel="Reps"
                 onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
@@ -632,10 +675,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           </View>
         ) : session.movements.length === 0 ? (
           // A flexible session starts empty and is built as it goes.
-          <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
-            <BlancText variant="headline">Add your first movement</BlancText>
-            <Capsule title="Add movement" size="large" fill onPress={addMovement} />
-          </Label>
+          <Capsule
+            title="Add your first movement"
+            size="large"
+            fill
+            onPress={addMovement}
+            style={{ marginHorizontal: space.inset, marginTop: 18 }}
+          />
         ) : (
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
             <View style={{ gap: 4 }}>
@@ -699,6 +745,11 @@ function renameWorkout(workoutId: string, dayName: string) {
   );
 }
 
+/** The movement rows' one leading slot (a check, the skip mark or nothing), so every name starts on the same edge. */
+function Lead({ children }: { children?: ReactNode }) {
+  return <View style={{ width: 16, alignItems: 'center' }}>{children}</View>;
+}
+
 /** A saved set beat last time: an up mark and the gain, in ink, for a moment. */
 function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
   const c = useBlanc();
@@ -719,6 +770,7 @@ function BigValue({
   ref,
   value,
   unit,
+  size,
   onChange,
   onFocus,
   onBlur,
@@ -728,6 +780,7 @@ function BigValue({
   ref: Ref<TextField>;
   value: string;
   unit: string;
+  size: number;
   onChange: (text: string) => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -744,7 +797,7 @@ function BigValue({
         // The key bar below brings − / +, Next and Done; no system bar.
         returnKeyType="default"
         value={value}
-        fontSize={76}
+        fontSize={size}
         onChangeText={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
@@ -908,24 +961,30 @@ function StartPlanned() {
       : plan.schedule.mode === 'fixed'
         ? 'Finishing a different day shifts the sessions after it.'
         : 'Finishing a different day moves the next session on from it.';
+  // The day the card above offers is not offered again.
+  const planned = plan.hero.kind === 'planned' ? plan.hero.day.id : null;
+  const otherDays = split ? split.days.filter((day) => day.id !== planned) : [];
 
   return (
     <>
       {header}
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {split ? [split.name, week && week >= 1 ? `week ${week}` : null].filter(Boolean).join(' · ') : 'No program yet'}
-        </BlancText>
+        {/* Without a program the card below says so. */}
+        {split ? (
+          <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+            {[split.name, week && week >= 1 ? `week ${week}` : null].filter(Boolean).join(' · ')}
+          </BlancText>
+        ) : null}
         <PlanCard hero={plan.hero} next={plan.next} place="train" />
-        {split && split.days.length > 0 ? (
+        {otherDays.length > 0 ? (
           <Section title="Other days">
             <Label>
-              {split.days.map((day, index) => (
+              {otherDays.map((day, index) => (
                 <View key={day.id}>
                   {index > 0 ? <Hairline /> : null}
                   <Row
                     title={day.day_name}
-                    detail={`${day.exercises.length} movements · ${day.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0)} sets`}
+                    detail={dayLine(day)}
                     trailing={
                       <Capsule
                         title={starting === day.id ? 'Starting' : 'Start'}
@@ -939,16 +998,19 @@ function StartPlanned() {
                 </View>
               ))}
             </Label>
-            {otherNote ? (
-              <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-                {otherNote}
-              </BlancText>
-            ) : null}
+            {otherNote ? <FormNote>{otherNote}</FormNote> : null}
           </Section>
         ) : null}
       </TabScroll>
     </>
   );
+}
+
+/** "5 movements · 17 sets", "1 movement · 1 set". */
+function dayLine(day: { exercises: { target_sets: number }[] }): string {
+  const movements = day.exercises.length;
+  const sets = day.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0);
+  return `${movements} ${movements === 1 ? 'movement' : 'movements'} · ${sets} ${sets === 1 ? 'set' : 'sets'}`;
 }
 
 const FLEX_NAME_LIMIT = 40;

@@ -29,15 +29,18 @@ export function WorkoutAccessory() {
   const left = restLeft(rest, now);
   const paused = rest?.status === 'paused' && left !== null;
   const resting = rest?.status === 'running' && left !== null && left > 0;
+  // The set is named as Train's card names it, per movement; the end states use Train's words.
   const status = resting
     ? `Rest ${formatClock(left)}`
     : paused
       ? `Rest paused · ${formatClock(left)}`
       : session.current
-        ? `Set ${session.current.index + 1} of ${session.sets.length} · ${session.current.movement.name}`
+        ? `${session.current.movement.name} · Set ${session.current.setNumber} of ${session.current.movement.sets.length}`
         : session.movements.length === 0
           ? 'No movements yet'
-          : 'All sets done';
+          : session.sets.length > 0
+            ? 'All sets logged'
+            : 'Nothing left to log';
 
   return (
     <Pressable
@@ -59,7 +62,8 @@ export function WorkoutAccessory() {
             <BlancText variant="footnote" weight="600">
               {session.dayName}
             </BlancText>
-            <BlancText variant="footnote" tone="graphite" numberOfLines={1} style={{ fontVariant: ['tabular-nums'] }}>
+            {/* A long name gives way in the middle, so the set count at the end stays. */}
+            <BlancText variant="footnote" tone="graphite" numberOfLines={1} ellipsizeMode="middle" style={{ fontVariant: ['tabular-nums'] }}>
               {status}
             </BlancText>
           </View>
