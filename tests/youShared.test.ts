@@ -111,10 +111,12 @@ describe('body weight words', () => {
 
   it('says when the last weigh-in was, or why there is none', () => {
     const now = new Date();
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: now.toISOString() }, 'kg')).toBe('Last 80.0 kg · today');
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: '2026-03-04T12:00:00Z' }, 'kg')).toBe('Last 80.0 kg · Mar 4');
-    expect(lastWeighInLabel(null, 'lb')).toBe('First weigh-in');
-    expect(lastWeighInLabel(null, 'lb', true)).toBe('History unavailable');
+    now.setHours(8, 0, 0, 0);
+    expect(lastWeighInLabel({ measured_at: now.toISOString() })).toBe('Last weighed today, 8:00 AM');
+    // Local time, so the day and hour do not depend on the machine's zone.
+    expect(lastWeighInLabel({ measured_at: '2026-03-04T18:30:00' })).toBe('Last weighed Mar 4, 6:30 PM');
+    expect(lastWeighInLabel(null)).toBe('First weigh-in');
+    expect(lastWeighInLabel(null, true)).toBe('History unavailable');
   });
 
   it('reads a typed weigh-in in the chosen unit', () => {

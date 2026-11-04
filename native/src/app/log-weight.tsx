@@ -13,7 +13,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { logWeighIn, setWeightUnit, useWeightStore } from '~/lib/you';
-import { useBlanc } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 /** Log weight: one number in the unit you weigh in, saved as a typed weigh-in. */
 export default function LogWeightSheet() {
@@ -103,7 +103,7 @@ export default function LogWeightSheet() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 12 }}>
           <BlancText variant="footnote" tone="graphite" style={{ flex: 1 }}>
-            {lastWeighInLabel(latest, unit, failedHistory)}
+            {lastWeighInLabel(latest, failedHistory)}
           </BlancText>
           <Host matchContents style={{ width: 110 }}>
             <Picker selection={unit} onSelectionChange={(next) => switchUnit(next as WeightUnit)} modifiers={[pickerStyle('segmented')]}>
@@ -118,10 +118,11 @@ export default function LogWeightSheet() {
             {error}
           </BlancText>
         ) : null}
+      </View>
 
-        <View style={{ marginTop: 22 }}>
-          <Capsule title={saveFailed ? 'Retry' : 'Save'} fill busy={saving} disabled={draft.trim() === ''} onPress={() => void save()} />
-        </View>
+      {/* The sheet's action, as large and at the same inset as the other sheets'. */}
+      <View style={{ marginHorizontal: space.inset, marginTop: 22 }}>
+        <Capsule title={saveFailed ? 'Retry' : 'Save'} size="large" fill busy={saving} disabled={draft.trim() === ''} onPress={() => void save()} />
       </View>
     </ScrollView>
   );

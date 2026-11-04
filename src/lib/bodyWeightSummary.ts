@@ -5,7 +5,7 @@ import { format, isToday } from 'date-fns';
 
 import { WINDOW_DAYS as ADAPTIVE_WINDOW_DAYS } from '@/lib/adaptiveExpenditure';
 import { lbsToKg } from '@/lib/nutritionCalculator';
-import { formatWeight, kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
+import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import { buildWeightTrend, type WeightSampleLike } from '@/lib/weightTrend';
 
 /** Enough history for a stable trend without pulling a year of rows. */
@@ -29,15 +29,14 @@ export function weeklyRateLabel(kgPerWeek: number | null, unit: WeightUnit): str
   return `${kgPerWeek > 0 ? '+' : '−'}${Math.abs(kgToUnit(kgPerWeek, unit)).toFixed(2)} ${unit}/wk`;
 }
 
-/** "Last 182.4 lb · today", the line under Log weight. */
-export function lastWeighInLabel(
-  latest: { kilograms: number; measured_at: string } | null,
-  unit: WeightUnit,
-  failed = false,
-): string {
+/**
+ * "Last weighed today, 8:00 AM", the line under Log weight: when, since the
+ * field's placeholder already shows the weight.
+ */
+export function lastWeighInLabel(latest: { measured_at: string } | null, failed = false): string {
   if (latest) {
     const date = new Date(latest.measured_at);
-    return `Last ${formatWeight(Number(latest.kilograms), unit)} ${unit} · ${isToday(date) ? 'today' : format(date, 'MMM d')}`;
+    return `Last weighed ${isToday(date) ? 'today' : format(date, 'MMM d')}, ${format(date, 'h:mm a')}`;
   }
   return failed ? 'History unavailable' : 'First weigh-in';
 }
