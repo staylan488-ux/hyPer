@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NativeRunControl } from '@/lib/nativeBridge';
 import type { NativeRunCursors } from '@/lib/nativeRunSource';
 import { RUN_TRACKER_STORAGE_KEY, restoreTracker, type GpsSample } from '@/lib/runTracker';
+import { playLapCue } from '@/lib/runTrackerCues';
 import { useRunTracker } from '@/hooks/useRunTracker';
 
 // Drive the hook's native wiring (tab switch -> resume -> reset callback)
@@ -49,6 +50,7 @@ const native = vi.hoisted(() => {
   const sources: Array<{
     args: unknown[];
     onSample?: (sample: GpsSample) => void;
+    onError?: (message: string, code?: string) => void;
     onControl?: (control: NativeRunControl) => void;
     stop: ReturnType<typeof vi.fn>;
     detach: ReturnType<typeof vi.fn>;
@@ -60,10 +62,11 @@ const native = vi.hoisted(() => {
       getNowMs: () => Date.now(),
       start: (
         onSample: (sample: GpsSample) => void,
-        _onError: (message: string) => void,
+        onError: (message: string, code?: string) => void,
         onControl?: (control: NativeRunControl) => void,
       ) => {
         entry.onSample = onSample;
+        entry.onError = onError;
         entry.onControl = onControl;
       },
       stop: entry.stop,
@@ -122,6 +125,7 @@ beforeEach(() => {
   storage = memoryStorage();
   native.sources.length = 0;
   native.isNativeIOS.mockReturnValue(true);
+  vi.mocked(playLapCue).mockClear();
   vi.stubGlobal('localStorage', storage);
   vi.stubGlobal('window', { setInterval: () => 0, clearInterval: () => undefined });
   vi.stubGlobal('document', { visibilityState: 'visible', addEventListener: vi.fn(), removeEventListener: vi.fn() });
@@ -254,5 +258,63 @@ describe('useRunTracker native resume wiring', () => {
     for (let seq = 13; seq <= 14; seq++) native.sources[1].onSample!(sample(seq));
     state = back.render().state!;
     expect(state.totalDistanceM).toBeGreaterThan(distance);
+  });
+});
+
+describe('useRunTracker GPS errors', () => {
+  it('clears a signal error once a fix arrives after it', () => {
+    const run = mount();
+    run.first.start('free', null);
+    const live = native.sources[0];
+    live.onSample!(sample(1));
+
+    live.onError!('The GPS signal is temporarily unavailable.', 'LOCATION_UNAVAILABLE');
+    expect(run.render().gpsError).toBe('The GPS signal is temporarily unavailable.');
+    // a fix from before the error (delivered late) proves nothing
+    live.onSample!(sample(2, Date.now() - 5_000));
+    expect(run.render().gpsError).toBe('The GPS signal is temporarily unavailable.');
+    live.onSample!(sample(3, Date.now() + 1_000));
+    expect(run.render().gpsError).toBeNull();
+  });
+
+  it('keeps a storage failure in view while samples keep arriving', () => {
+    const run = mount();
+    run.first.start('free', null);
+    const live = native.sources[0];
+    // The recorder sends a batch's samples, then the failure to store them.
+    live.onSample!(sample(1));
+    live.onError!('Run recovery storage failed.', 'PERSISTENCE_FAILED');
+    live.onSample!(sample(2, Date.now() + 1_000));
+    live.onError!('The GPS signal is temporarily unavailable.', 'LOCATION_UNAVAILABLE');
+    live.onSample!(sample(3, Date.now() + 2_000));
+
+    expect(run.render().gpsError).toBe('Run recovery storage failed.');
+  });
+});
+
+describe('useRunTracker cues', () => {
+  it('applies laps replayed after a resume without replaying their cues', () => {
+    const away = Date.now() - 300_000;
+    const run = mount();
+    run.first.start('intervals', 200);
+    for (let seq = 1; seq <= 5; seq++) native.sources[0].onSample!(sample(seq, away + seq * 1_000));
+    hooks.unmount();
+
+    // The screen comes back minutes later; the recorder kept going.
+    const back = mount();
+    back.first.resume();
+    const resumed = native.sources[1];
+    for (let seq = 6; seq <= 60; seq++) resumed.onSample!(sample(seq, away + seq * 1_000));
+    resumed.onControl!({ sequence: 1, timestampMs: away + 60_500, action: 'split' });
+    for (let seq = 61; seq <= 130; seq++) resumed.onSample!(sample(seq, away + seq * 1_000));
+
+    const replayed = back.render().state!;
+    expect(replayed.laps.map((lap) => lap.trigger)).toEqual(['manual', 'auto']);
+    expect(playLapCue).not.toHaveBeenCalled();
+
+    // A split taken now still sounds.
+    resumed.onControl!({ sequence: 2, timestampMs: Date.now(), action: 'split' });
+    expect(back.render().state!.laps).toHaveLength(3);
+    expect(playLapCue).toHaveBeenCalledTimes(1);
   });
 });
