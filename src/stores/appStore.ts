@@ -2591,13 +2591,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       .eq('user_id', userId);
 
     const updated = data as Workout;
-    set((state) => ({
-      currentWorkout: state.currentWorkout?.id === updated.id ? updated : state.currentWorkout,
+    const showLive = (row: Workout) => set((state) => ({
+      currentWorkout: state.currentWorkout?.id === row.id ? row : state.currentWorkout,
     }));
+    showLive(updated);
     // Not hidden, the activity would show beside the stats it gave the
-    // workout. Both writes are safe to repeat, so a retry finishes the job.
+    // workout. The stats come off again where possible, so the workout offers
+    // Add once more; either way a retry finishes the job.
     if (dismissError) {
       console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
+      const { data: cleared, error: clearError } = await supabase
+        .from('workouts')
+        .update(CLEARED_WHOOP_STATS)
+        .eq('id', workout.id)
+        .eq('user_id', userId)
+        .eq('whoop_session_id', session.id)
+        .select(WORKOUT_WITH_SETS_SELECT)
+        .maybeSingle();
+      if (clearError) console.error('Error taking the WHOOP stats back off the workout:', clearError);
+      else if (cleared) showLive(cleared as Workout);
       throw new Error('Could not finish attaching the WHOOP stats. Try again.');
     }
     return updated;

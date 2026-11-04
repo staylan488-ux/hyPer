@@ -286,7 +286,7 @@ describe('deleting a workout with WHOOP stats', () => {
     server.workouts.set('w1', lift);
     monthRead.mockResolvedValueOnce({ workouts: [lift], activities: [whoopRun] });
     await history.loadHistoryMonth();
-    // The workout took the stats; hiding the activity failed.
+    // The workout took the stats; hiding the activity and taking them back off both failed.
     const withStats = { ...lift, whoop_session_id: 'a1', strain: 8.2 } as HistoryWorkout;
     monthRead.mockResolvedValueOnce({ workouts: [withStats], activities: [whoopRun] });
 

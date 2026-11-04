@@ -101,12 +101,32 @@ describe('deleting a workout that carries WHOOP stats', () => {
 });
 
 describe('attaching WHOOP stats to a workout', () => {
-  it('reports a failure when the activity could not be hidden, so it never shows beside the stats', async () => {
+  it('takes the stats back off when the activity could not be hidden, so it never shows beside them', async () => {
     const live = workout({ completed: false });
     useAppStore.setState({ currentWorkout: live });
-    answer = (request) => (request.table === 'workouts' ? { data: { ...live, whoop_session_id: 'a1', strain: 11.2 } } : { error: failure });
+    answer = (request) => {
+      if (request.table !== 'workouts') return { error: failure };
+      return request.values?.whoop_session_id === null ? { data: { ...live, whoop_session_id: null, strain: null } } : { data: { ...live, whoop_session_id: 'a1', strain: 11.2 } };
+    };
 
     await expect(useAppStore.getState().attachWhoopToWorkout(live, whoopActivity)).rejects.toThrow('Try again');
+    // Only while the workout still carries this activity's stats, so "Not added" is true and Add is offered again.
+    expect(writesTo('workouts')[1]).toMatchObject({
+      op: 'update', values: { whoop_session_id: null, strain: null }, filters: { id: 'w1', user_id: 'user-1', whoop_session_id: 'a1' },
+    });
+    expect(useAppStore.getState().currentWorkout).toMatchObject({ whoop_session_id: null, strain: null });
+  });
+
+  it('keeps showing the stats that landed when taking them back off fails too', async () => {
+    const live = workout({ completed: false });
+    useAppStore.setState({ currentWorkout: live });
+    answer = (request) => {
+      if (request.table !== 'workouts') return { error: failure };
+      return request.values?.whoop_session_id === null ? { error: failure } : { data: { ...live, whoop_session_id: 'a1', strain: 11.2 } };
+    };
+
+    await expect(useAppStore.getState().attachWhoopToWorkout(live, whoopActivity)).rejects.toThrow('Try again');
+    expect(writesTo('workouts')).toHaveLength(2);
     // The stats did land on the workout; the live copy shows them.
     expect(useAppStore.getState().currentWorkout).toMatchObject({ whoop_session_id: 'a1', strain: 11.2 });
   });
