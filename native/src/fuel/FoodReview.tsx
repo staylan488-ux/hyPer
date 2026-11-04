@@ -175,7 +175,7 @@ export function FoodReview({ food, meta, servings: usual }: { food: Food; meta: 
           </RollingText>
           <Animated.View layout={figureLayout}>
             <BlancText variant="secondary" tone="graphite">
-              kcal · {formatWhole(protein)} g protein
+              {protein > 0 ? `kcal · ${formatWhole(protein)} g protein` : 'kcal'}
             </BlancText>
           </Animated.View>
         </View>

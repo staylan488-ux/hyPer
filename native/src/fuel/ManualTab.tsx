@@ -298,7 +298,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
       <Section title="Describe with AI" style={{ marginTop: 0 }}>
         <Label>
           {describeOpen ? (
-            <View style={{ padding: 16, gap: 12 }}>
+            <View style={{ paddingVertical: 16, paddingHorizontal: 18, gap: 12 }}>
               <TextInput
                 value={description}
                 onChangeText={(text) => setDescription(text.slice(0, DESCRIBE_LIMIT))}

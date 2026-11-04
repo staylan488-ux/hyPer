@@ -93,7 +93,7 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
         {open ? (
           <View>
             <Hairline />
-            <View style={{ padding: 16, gap: 12 }}>
+            <View style={{ paddingVertical: 16, paddingHorizontal: 18, gap: 12 }}>
               <BlancText variant="footnote" tone="graphite">
                 1 serving = {food.serving_label || `${display(food.serving_size)} ${food.serving_unit}`}. Gemini reads your amount; review it before applying.
               </BlancText>

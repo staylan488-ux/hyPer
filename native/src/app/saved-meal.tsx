@@ -145,7 +145,7 @@ export default function SavedMealSheet() {
               </View>
             ))}
           </Label>
-          <FormNote alert={Boolean(error)}>{error ?? 'Changes apply to future logs. Past logs stay as they were.'}</FormNote>
+          <FormNote alert={Boolean(error)}>{error ?? 'Changes apply to future logs, not past ones.'}</FormNote>
           <View style={{ marginHorizontal: 16, marginTop: 22 }}>
             <Capsule title="Save" size="large" fill busy={saving} disabled={!changed} onPress={() => void save()} />
           </View>

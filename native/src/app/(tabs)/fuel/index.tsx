@@ -450,11 +450,11 @@ function entryDetail(log: FoodLog): string {
   const parts = decodeMealComposition(log.food?.description);
   const time = format(getLogDate(log), 'h:mm a');
   const amount = parts ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
-  const protein = logMacro(log, 'protein');
+  const protein = Math.round(logMacro(log, 'protein') ?? 0);
   // As the web's ledger does, an AI estimate says so (one word, so the line stays quiet).
   const raw = log.source as string | undefined;
   const source = raw === 'gemini_estimate' || raw === 'gemini_trial' ? 'Estimate' : raw === 'gemini_label' ? 'From label' : null;
-  return [time, amount, protein ? `${formatWhole(protein)} g protein` : null, source].filter(Boolean).join(' · ');
+  return [time, amount, protein > 0 ? `${formatWhole(protein)} g protein` : null, source].filter(Boolean).join(' · ');
 }
 
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */
