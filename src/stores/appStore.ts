@@ -976,6 +976,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
+    // Gone even if the read after it fails; no read from before can bring it back.
+    flexTemplatesFlight.invalidate();
+    set({ flexTemplates: get().flexTemplates.filter((template) => template.id !== templateId) });
     await get().fetchFlexTemplates({ force: true });
   },
 
@@ -1839,15 +1842,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!removableSet) return;
 
-    const { error } = await supabase
+    // Only while it is still unlogged on the server: a set whose Log set is
+    // still saving must survive. Nothing deleted leaves the count as it was.
+    const { data: deleted, error } = await supabase
       .from('sets')
       .delete()
-      .eq('id', removableSet.id);
+      .eq('id', removableSet.id)
+      .eq('completed', false)
+      .select('id');
 
     if (error) {
       console.error('Error removing workout set:', error);
       return;
     }
+    if (!deleted?.some((row) => row.id === removableSet.id)) return;
 
     const latestWorkout = get().currentWorkout;
     if (!isAccountCurrent() || !latestWorkout || latestWorkout.id !== currentWorkout.id) return;
@@ -3166,8 +3174,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const nextPlan = toDayPlan(updatedPlan);
 
+    // The live workout takes the plan too when it had none yet (one History
+    // just made for a program session), as a skip or reorder does.
     const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (isCurrentAccount() && currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id === existingPlan.id) {
+    if (
+      isCurrentAccount()
+      && currentWorkout?.id === workoutId
+      && (currentWorkoutDayPlan?.workout_id !== workoutId || currentWorkoutDayPlan.id === existingPlan.id)
+    ) {
       set({ currentWorkoutDayPlan: nextPlan });
     }
 

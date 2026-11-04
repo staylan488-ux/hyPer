@@ -241,6 +241,25 @@ describe('preview uses real program and workout store paths', () => {
     expect(stored!.items.map((item) => item.order)).toEqual(stored!.items.map((_, index) => index));
   });
 
+  it('pairs a superset added in History to the live program workout on Train at once', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    await useAppStore.getState().fetchSplits();
+    const workout = useAppStore.getState().currentWorkout!;
+    // A plain program session: no swap, skip or reorder yet, so no plan.
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+    const base = workout.sets.at(-1)!.exercise_id;
+    const partner = (await client.from('exercises').select('*').eq('id', 'ex_pullup').single()).data;
+
+    await useAppStore.getState().addSupersetToWorkout(workout.id, base, partner);
+
+    const plan = useAppStore.getState().currentWorkoutDayPlan;
+    expect(plan?.workout_id).toBe(workout.id);
+    const model = buildSessionModel(useAppStore.getState().currentWorkout, { split: useAppStore.getState().activeSplit, plan }, null);
+    const paired = model?.movements.filter((movement) => movement.superset).map((movement) => [movement.exerciseId, movement.superset?.role]);
+    expect(paired).toContainEqual([base, 'A']);
+    expect(paired).toContainEqual(['ex_pullup', 'B']);
+  });
+
   it('persists movement order without changing sets, targets or the source program', async () => {
     await useAppStore.getState().fetchCurrentWorkout();
     const workout = useAppStore.getState().currentWorkout!;

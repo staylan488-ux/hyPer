@@ -8,7 +8,7 @@ vi.mock('@/lib/liveActivity', () => liveActivity);
 import { createRestTimerSession, readRestTimerSession, saveRestTimerSession } from '@/lib/restTimer';
 import { watchRestTimerSignOut, watchRestTimerWorkoutEnd } from '@/lib/restTimerWorkoutGuard';
 
-type State = { currentWorkout: { id: string } | null };
+type State = { currentWorkout: { id: string; completed?: boolean } | null };
 
 function createStore<State>(initial: State) {
   let state = initial;
@@ -86,6 +86,27 @@ describe('watchRestTimerWorkoutEnd', () => {
     store.set({ currentWorkout: null });
     expect(onRestCleared).toHaveBeenCalledTimes(1);
     expect(readRestTimerSession()).toBeNull();
+  });
+
+  it('clears and cancels when History completes the resting workout in place', () => {
+    saveRestTimerSession(createRestTimerSession('workout-1', 90));
+    const store = createStore<State>({ currentWorkout: { id: 'workout-1', completed: false } });
+    const onRestCleared = vi.fn();
+    watchRestTimerWorkoutEnd(store, onRestCleared);
+
+    // Logging the last set in History keeps the same workout, now completed.
+    store.set({ currentWorkout: { id: 'workout-1', completed: true } });
+
+    expect(readRestTimerSession()).toBeNull();
+    expect(notifications.cancelRestEndNotification).toHaveBeenCalledTimes(1);
+    expect(liveActivity.syncWorkoutActivityRest).toHaveBeenCalledWith(null);
+    expect(liveActivity.endWorkoutActivity).toHaveBeenCalledTimes(1);
+    expect(onRestCleared).toHaveBeenCalledTimes(1);
+
+    // The read that follows drops the finished workout: nothing more to clear.
+    store.set({ currentWorkout: null });
+    expect(notifications.cancelRestEndNotification).toHaveBeenCalledTimes(1);
+    expect(liveActivity.endWorkoutActivity).toHaveBeenCalledTimes(1);
   });
 
   it('drops the lock-screen rest but keeps the card when another workout takes over', () => {

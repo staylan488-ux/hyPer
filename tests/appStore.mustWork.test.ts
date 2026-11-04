@@ -708,7 +708,8 @@ describe('must-work store contracts', () => {
 
     useAppStore.setState({ currentWorkout });
 
-    const setsChain = createChain();
+    // The delete answers with the row it removed.
+    const setsChain = Object.assign(createChain(), { data: [{ id: 'set-3' }] });
 
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'sets') return setsChain;
@@ -724,6 +725,7 @@ describe('must-work store contracts', () => {
 
     expect(setsChain.delete).toHaveBeenCalledTimes(1);
     expect(setsChain.eq).toHaveBeenCalledWith('id', 'set-3');
+    expect(setsChain.eq).toHaveBeenCalledWith('completed', false);
   });
 
   it('saves flexible template from current workout and includes movement notes', async () => {
