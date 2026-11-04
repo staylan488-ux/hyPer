@@ -109,6 +109,14 @@ describe('body weight words', () => {
     expect(weeklyRateLabel(null, 'lb')).toBeNull();
   });
 
+  it('gives a flat rate no sign', () => {
+    expect(weeklyRateLabel(0, 'lb')).toBe('0.00 lb/wk');
+    expect(weeklyRateLabel(-0.001, 'lb')).toBe('0.00 lb/wk');
+    expect(weeklyRateLabel(0.002, 'kg')).toBe('0.00 kg/wk');
+    expect(weeklyRateLabel(-0.004, 'kg')).toBe('0.00 kg/wk');
+    expect(weeklyRateLabel(-0.005, 'kg')).toBe('−0.01 kg/wk');
+  });
+
   it('says when the last weigh-in was, or why there is none', () => {
     const now = new Date();
     expect(lastWeighInLabel({ kilograms: 80, measured_at: now.toISOString() }, 'kg')).toBe('Last 80.0 kg · today');
@@ -122,6 +130,13 @@ describe('body weight words', () => {
     expect(parseWeighIn('82.5', 'kg')).toEqual({ kilograms: 82.5 });
     expect(parseWeighIn('', 'kg')).toEqual({ error: 'Enter a weight first.' });
     expect(parseWeighIn('-3', 'kg')).toEqual({ error: 'Enter a weight first.' });
+  });
+
+  it('reads a weigh-in typed with a decimal comma', () => {
+    expect(parseWeighIn('80,5', 'kg')).toEqual({ kilograms: 80.5 });
+    expect(parseWeighIn('171,4', 'lb')).toEqual({ kilograms: lbsToKg(171.4) });
+    expect(convertWeighInDraft('77,7', 'kg', 'lb')).toBe('171.3');
+    expect(convertWeighInDraft('171,4', 'lb', 'kg')).toBe('77.7');
   });
 
   it('carries a typed weigh-in across a unit switch', () => {
@@ -157,6 +172,21 @@ describe('target calculator draft', () => {
     expect(metric).toMatchObject({ unitSystem: 'metric', weight: '78.4', heightCm: '178' });
     const back = switchWizardUnits(metric, 'imperial');
     expect(back).toMatchObject({ weight: '172.8', heightFeet: '5', heightInches: '10' });
+  });
+
+  it('reads weight and body fat typed with a decimal comma', () => {
+    const draft = { ...initialWizardDraft(profile, 78.4, now), unitSystem: 'metric' as const, weight: '80,5', bodyFat: '14,5' };
+    expect(wizardBodyReady(draft)).toBe(true);
+    expect(wizardBodyFatPct(draft)).toBe(14.5);
+    expect(wizardOutcome(draft, profile, now)).toMatchObject({ weightKg: 80.5, profile: { body_fat_pct: 14.5 } });
+    expect(switchWizardUnits(draft, 'imperial').weight).toBe('177.5');
+    expect(switchWizardUnits({ ...draft, unitSystem: 'imperial', weight: '177,5' }, 'metric').weight).toBe('80.5');
+  });
+
+  it('starts a 182 cm height at 6 ft 0 in, never 5 ft 12 in', () => {
+    const draft = initialWizardDraft({ ...profile, height_cm: 182 }, 78.4, now);
+    expect(draft).toMatchObject({ heightFeet: '6', heightInches: '0' });
+    expect(wizardOutcome(draft, profile, now).profile.height_cm).toBe(182.9);
   });
 
   it('keeps the rate inside the goal and resets it with a new goal', () => {

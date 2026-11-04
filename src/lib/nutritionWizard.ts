@@ -17,6 +17,7 @@ import {
   type NutritionGoal,
   type UnitSystem,
 } from '@/lib/nutritionCalculator';
+import { parseDecimal } from '@/lib/decimalText';
 import {
   ageFromBirthYear,
   birthYearFromAge,
@@ -101,8 +102,9 @@ function weightText(value: number): string {
   return String(Math.round(value * 10) / 10);
 }
 
+/** A typed number, a decimal comma included ("80,5"), held to its limits. */
 export function clampInput(value: string, min: number, max: number): number {
-  const parsed = parseFloat(value);
+  const parsed = parseDecimal(value);
   if (Number.isNaN(parsed)) return min;
   return Math.max(min, Math.min(max, parsed));
 }
@@ -146,17 +148,17 @@ export function switchWizardUnits(draft: WizardDraft, next: UnitSystem): WizardD
     return {
       ...draft,
       unitSystem: next,
-      weight: weightText(lbsToKg(parseFloat(draft.weight) || 170)),
+      weight: weightText(lbsToKg(parseDecimal(draft.weight) || 170)),
       heightCm: String(
-        Math.round(feetInchesToCm(parseFloat(draft.heightFeet) || 5, parseFloat(draft.heightInches) || 10)),
+        Math.round(feetInchesToCm(parseDecimal(draft.heightFeet) || 5, parseDecimal(draft.heightInches) || 10)),
       ),
     };
   }
-  const { feet, inches } = cmToFeetInches(parseFloat(draft.heightCm) || 178);
+  const { feet, inches } = cmToFeetInches(parseDecimal(draft.heightCm) || 178);
   return {
     ...draft,
     unitSystem: next,
-    weight: weightText(kgToLbs(parseFloat(draft.weight) || 77)),
+    weight: weightText(kgToLbs(parseDecimal(draft.weight) || 77)),
     heightFeet: String(feet),
     heightInches: String(inches),
   };
@@ -200,16 +202,16 @@ export function wizardHeightCm(draft: WizardDraft): number {
 export function wizardBodyFatPct(draft: WizardDraft): number | null {
   const trimmed = draft.bodyFat.trim();
   if (!trimmed) return null;
-  const parsed = parseFloat(trimmed);
+  const parsed = parseDecimal(trimmed);
   return Number.isFinite(parsed) ? Math.max(3, Math.min(60, parsed)) : null;
 }
 
 /** Age, weight and height are filled in well enough to go on. */
 export function wizardBodyReady(draft: WizardDraft): boolean {
   return (
-    parseFloat(draft.age) >= 13 &&
-    parseFloat(draft.weight) > 0 &&
-    (draft.unitSystem === 'imperial' ? parseFloat(draft.heightFeet) >= 3 : parseFloat(draft.heightCm) >= 100)
+    parseDecimal(draft.age) >= 13 &&
+    parseDecimal(draft.weight) > 0 &&
+    (draft.unitSystem === 'imperial' ? parseDecimal(draft.heightFeet) >= 3 : parseDecimal(draft.heightCm) >= 100)
   );
 }
 

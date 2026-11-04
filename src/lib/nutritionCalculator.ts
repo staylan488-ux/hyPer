@@ -402,8 +402,7 @@ export function feetInchesToCm(feet: number, inches: number): number {
 }
 
 export function cmToFeetInches(cm: number): { feet: number; inches: number } {
-  const totalInches = cm / 2.54;
-  const feet = Math.floor(totalInches / 12);
-  const inches = Math.round(totalInches % 12);
-  return { feet, inches };
+  // Rounded before the split: 71.6 in is 6 ft 0 in, not 5 ft 12 in.
+  const totalInches = Math.round(cm / 2.54);
+  return { feet: Math.floor(totalInches / 12), inches: totalInches % 12 };
 }

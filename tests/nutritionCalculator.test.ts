@@ -460,5 +460,8 @@ describe('unit conversions', () => {
     expect(feetInchesToCm(5, 10)).toBeCloseTo(177.8, 1);
     expect(cmToFeetInches(177.8)).toEqual({ feet: 5, inches: 10 });
     expect(cmToFeetInches(182.88)).toEqual({ feet: 6, inches: 0 });
+    // 71.65 in rounds to 6 ft, never "5 ft 12 in"
+    expect(cmToFeetInches(182)).toEqual({ feet: 6, inches: 0 });
+    expect(cmToFeetInches(180.5)).toEqual({ feet: 5, inches: 11 });
   });
 });
