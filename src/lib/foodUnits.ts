@@ -1,4 +1,5 @@
 // Amounts and units on the food review, shared by the web logger and the native app.
+import { parseDecimal } from '@/lib/decimalText';
 import {
   computeAmountFromServings,
   computeServingsFromAmount,
@@ -23,11 +24,25 @@ export function formatMeasurementAmount(value: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
 }
 
+/**
+ * A logged amount for display: the roundest of whole, one decimal or two that
+ * comes back to the same servings. Servings are saved with two decimals, so
+ * 150 g of a 28 g serving is kept as 5.36 servings (150.08 g) and shows as 150 g.
+ */
+export function roundestAmount(amount: number, servings: number, servingsFor: (amount: number) => number | null): number {
+  for (const scale of [1, 10]) {
+    const candidate = Math.round(amount * scale) / scale;
+    const back = candidate > 0 ? servingsFor(candidate) : null;
+    if (back !== null && Math.abs(back - servings) < 0.005) return candidate;
+  }
+  return Math.round(amount * 100) / 100;
+}
+
 type Basis = Pick<Food, 'serving_size' | 'serving_unit'>;
 
 /** Servings of the food for an amount in a unit; null when it cannot convert or is not above zero. */
 export function servingsForAmount(food: Basis, amountText: string, unit: MeasurementUnit): number | null {
-  const amount = parseFloat(amountText);
+  const amount = parseDecimal(amountText);
   if (unit === 'serving') return Number.isFinite(amount) && amount > 0 ? amount : null;
   return computeServingsFromAmount({
     amount,
@@ -39,7 +54,7 @@ export function servingsForAmount(food: Basis, amountText: string, unit: Measure
 
 /** The error under the amount, or null. */
 export function amountError(food: Basis, amountText: string, unit: MeasurementUnit): string | null {
-  const amount = parseFloat(amountText);
+  const amount = parseDecimal(amountText);
   if (!Number.isFinite(amount) || amount <= 0) return 'Enter a valid amount greater than zero.';
   if (servingsForAmount(food, amountText, unit) === null) {
     return `Can't convert ${unit} to ${food.serving_unit || 'serving'} for this food.`;

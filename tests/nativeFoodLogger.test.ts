@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as barcodes from '@/lib/barcodes';
+import * as decimalText from '@/lib/decimalText';
 import * as composition from '@/lib/mealComposition';
 import * as pendingEntry from '@/lib/pendingEntryId';
 import * as photoReview from '@/lib/photoReview';
@@ -46,6 +47,7 @@ function deferred<T>() {
 
 type Button = { title: string; disabled?: boolean; onPress: () => void };
 type Field = { label: string; onChangeText: (text: string) => void };
+type Input = { accessibilityLabel?: string; onChangeText?: (text: string) => void; onFocus?: () => void };
 type Context = { beginBusy: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null };
 type ReviewProps = {
   draft: composition.MealDraft;
@@ -53,7 +55,8 @@ type ReviewProps = {
   editingEntryId?: string;
   update: (patch: Partial<composition.MealDraft>) => void;
 };
-type ManualProps = { draft: { fields: { name: string } }; onGeminiHandoff?: (description: string) => void };
+type ManualDraft = { fields: Record<'name' | 'calories' | 'protein' | 'carbs' | 'fat', string>; selectedSavedMealId: string | null };
+type ManualProps = { draft: ManualDraft; setDraft: (update: (draft: ManualDraft) => ManualDraft) => void; onGeminiHandoff?: (description: string) => void };
 type PhotoDraft = { photos: Record<string, unknown>; items: photoReview.PhotoReviewItem[]; summary: string };
 type PhotoProps = { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void };
 type NativeModule = Record<string, unknown>;
@@ -77,6 +80,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
   const captured: {
     buttons: Record<string, Button>;
     fields: Record<string, Field>;
+    inputs: Record<string, Input>;
     picker?: { selection: string; onSelectionChange: (tab: string) => void };
     saved?: { onEditSavedMeal: (food: Food) => void };
     review?: ReviewProps;
@@ -87,7 +91,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     scanCurrent?: () => boolean;
     guard?: { on: boolean; message: { title: string } };
     focus?: () => void;
-  } = { buttons: {}, fields: {} };
+  } = { buttons: {}, fields: {}, inputs: {} };
   const ContextProvider = createContext<Context | null>(null);
   const useLogger = () => useContext(ContextProvider)!;
   const Probe = () => {
@@ -139,10 +143,14 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     'expo-image': { Image: Empty },
     'expo-image-manipulator': {},
     'expo-image-picker': {},
-    'react-native': { ActionSheetIOS: {}, Alert: { alert }, Pressable: Wrap, View: Wrap, ScrollView: Wrap, TextInput: Empty, Keyboard: { dismiss: noop }, ActivityIndicator: Empty, Linking: {}, Image: {} },
+    'react-native': {
+      ActionSheetIOS: {}, Alert: { alert }, Pressable: Wrap, View: Wrap, ScrollView: Wrap, Keyboard: { dismiss: noop }, ActivityIndicator: Empty, Linking: {}, Image: {},
+      TextInput: (props: Input) => { if (props.accessibilityLabel) captured.inputs[props.accessibilityLabel] = props; return null; },
+    },
     'react-native-keyboard-controller': { KeyboardAwareScrollView: Wrap },
     'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
     '@/lib/foodLoggerUtils': { toLocalTimeInput: () => '10:00' },
+    '@/lib/decimalText': decimalText,
     '@/lib/mealComposition': composition,
     '@/lib/foodTrial': { getFoodAnalysisMode: () => worker ? 'worker' : 'gemini' },
     '@/lib/nutritionGroups': { nutritionGroupLabel: () => '' },
@@ -431,5 +439,80 @@ describe('native food logger transitions', () => {
     await h.close();
     await act(async () => { access.resolve('test'); });
     expect(h.analyze).not.toHaveBeenCalled();
+  });
+});
+
+describe('native food logger amounts and replacements', () => {
+  it('logs comma decimals in Manual as typed, as the iOS decimal pad types them in many regions', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.tab('manual');
+    await act(async () => {
+      h.captured.fields.Name.onChangeText('Oats');
+      h.captured.fields.Calories.onChangeText('150,5');
+      h.captured.fields.Protein.onChangeText('5,5');
+      h.captured.inputs.Servings.onChangeText!('0,5');
+    });
+    await h.click('Log entry');
+    expect(h.resolveFood).toHaveBeenCalledWith(expect.objectContaining({ values: expect.objectContaining({ calories: 150.5, protein: 5.5 }) }));
+    expect(h.saveFood).toHaveBeenCalledWith(expect.objectContaining({ servings: 0.5 }));
+  });
+
+  it('takes a comma decimal as a meal ingredient amount', async () => {
+    const h = loggerHarness({ savedMeal: true });
+    await h.render();
+    await act(async () => { h.captured.inputs['Amount of Milk in ml'].onChangeText!('150,5'); });
+    await h.click('Save changes');
+    const [draft] = h.saveMeal.mock.lastCall as unknown as [composition.MealDraft];
+    expect(draft.ingredients[0].servings).toBeCloseTo(150.5 / 240);
+  });
+
+  it('saves a comma decimal from the saved meal editor', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.tab('saved');
+    await act(async () => { h.captured.saved!.onEditSavedMeal(savedMilk); });
+    await h.openSavedEditor();
+    await act(async () => { h.captured.fields.Calories.onChangeText('130,5'); });
+    await h.click('Save');
+    expect(h.replaceSimple).toHaveBeenCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130.5 }));
+  });
+
+  it('refuses to put several photo foods into one edited entry, unless they log as one meal', async () => {
+    localStorage.setItem(photoReview.COMBINE_MEAL_KEY, '0');
+    const h = loggerHarness({ editing: true, worker: true });
+    await h.render();
+    await h.tab('photo');
+    const plate = [photoItem, { ...photoItem, id: 'photo-oats', name: 'Oats' }];
+    await act(async () => { h.captured.photo!.setDraft((draft) => ({ ...draft, items: plate })); });
+    // each item would be written onto the same entry, so all but the last were lost
+    expect(h.captured.buttons['Log 2 items'].disabled).toBe(true);
+    expect(h.saveFood).not.toHaveBeenCalled();
+    await h.close();
+
+    localStorage.setItem(photoReview.COMBINE_MEAL_KEY, '1');
+    await h.render();
+    await h.tab('photo');
+    await act(async () => { h.captured.photo!.setDraft((draft) => ({ ...draft, items: plate })); });
+    expect(h.captured.buttons['Log 1 meal'].disabled).not.toBe(true);
+  });
+
+  it('never offers Update saved meal for a built meal picked in Manual, which would replace its recipe', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.tab('manual');
+    const pick = async (meal: Food) => {
+      await act(async () => {
+        h.captured.manual!.setDraft((draft) => ({
+          ...draft,
+          fields: { name: meal.name, calories: '200', protein: '8', carbs: '12', fat: '5' },
+          selectedSavedMealId: meal.id,
+        }));
+      });
+    };
+    await pick(recipe);
+    expect(h.captured.buttons['Update saved meal']).toBeUndefined();
+    await pick(savedMilk);
+    expect(h.captured.buttons['Update saved meal']).toBeDefined();
   });
 });

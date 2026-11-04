@@ -9,6 +9,7 @@ import {
   amountForUnit,
   formatMeasurementAmount,
   getCompatibleMeasurementUnits,
+  roundestAmount,
   servingsForAmount,
   type MeasurementUnit,
 } from '@/lib/foodUnits';
@@ -163,7 +164,10 @@ export function usualAmountInput(food: Pick<Food, 'serving_size' | 'serving_unit
     const own = units.find((candidate) => candidate === food.serving_unit?.trim().toLowerCase()) ?? units[1];
     const amount = amountForUnit(food, inServings, 'serving', own);
     const back = servingsForAmount(food, amount, own);
-    if (back !== null && Math.abs(back - servings) <= servings * 0.01) return { amount, unit: own };
+    if (back !== null && Math.abs(back - servings) <= servings * 0.01) {
+      const shown = roundestAmount(Number(amount), servings, (value) => servingsForAmount(food, String(value), own));
+      return { amount: formatMeasurementAmount(shown), unit: own };
+    }
   }
   return { amount: inServings, unit: 'serving' };
 }

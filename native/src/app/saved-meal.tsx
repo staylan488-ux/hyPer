@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, ScrollView, View } from 'react-native';
 
+import { parseDecimal } from '@/lib/decimalText';
 import { replaceSavedMeal } from '@/lib/savedMeals';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
@@ -74,10 +75,10 @@ export default function SavedMealSheet() {
     setError(null);
     const { id: replacement, retireFailed } = await replaceSavedMeal(userId, meal.id, {
       name,
-      calories: parseFloat(draft.calories) || 0,
-      protein: parseFloat(draft.protein) || 0,
-      carbs: parseFloat(draft.carbs) || 0,
-      fat: parseFloat(draft.fat) || 0,
+      calories: parseDecimal(draft.calories) || 0,
+      protein: parseDecimal(draft.protein) || 0,
+      carbs: parseDecimal(draft.carbs) || 0,
+      fat: parseDecimal(draft.fat) || 0,
     });
     if (!replacement) {
       haptics.error();

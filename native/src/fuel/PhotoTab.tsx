@@ -16,6 +16,7 @@ import {
   buildPhotoHint,
   COMBINE_MEAL_KEY,
   groundPhotoItems,
+  KEEP_ONE_FOOD,
   logPhotoItems,
   MAX_ANALYSIS_DATA_URL_CHARS,
   MAX_ANALYSIS_IMAGE_DIMENSION,
@@ -23,6 +24,7 @@ import {
   photoItemsInvalid,
   photoItemStatus,
   photoItemTotals,
+  photoLogsOneEntry,
   providerFallbackNote,
   providerName,
   type PhotoReviewItem,
@@ -279,6 +281,8 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
   const pending = useRef(createPendingEntryId()).current;
   const items = draft.items;
   const total = Math.round(items.reduce((sum, item) => sum + photoItemTotals(item).calories, 0));
+  // An edited entry is replaced by one entry: several foods only as one meal.
+  const keepOne = logger.purpose === 'log' && Boolean(logger.editing) && !photoLogsOneEntry(items, combine);
 
   const updateItem = (id: string, patch: Partial<PhotoReviewItem>) =>
     setDraft((current) => ({ ...current, items: current.items.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
@@ -346,6 +350,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
         combine,
         summary: draft.summary,
         provider: draft.provider,
+        replacing: Boolean(logger.editing),
         ensureFood: ensureFoodRow,
         saveEntry: async (foodId, servings, source) => {
           try {
@@ -483,6 +488,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
               </Label>
             </View>
           ) : null}
+          {keepOne ? <FormNote>{KEEP_ONE_FOOD}</FormNote> : null}
 
           <WhenBlock disabled={saving} />
 
@@ -517,7 +523,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                     : `Log ${items.length} item${items.length === 1 ? '' : 's'}`
               }
               busy={saving}
-              disabled={items.length === 0}
+              disabled={items.length === 0 || keepOne}
               onPress={() => void save()}
               style={{ flex: 1, alignSelf: 'stretch' }}
             />

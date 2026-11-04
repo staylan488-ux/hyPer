@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { ActionSheetIOS, Pressable, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { normalizeDecimalText } from '@/lib/decimalText';
 import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
@@ -218,7 +219,8 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   const c = useBlanc();
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const field = useRef<TextField>(null);
-  const valid = Number.isFinite(Number(value)) && Number(value) > 0;
+  const typed = Number(normalizeDecimalText(value));
+  const valid = Number.isFinite(typed) && typed > 0;
   const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: onRemove }];
   // A tap anywhere on the row puts the cursor in its amount; a hold offers Remove.
   const content = (
@@ -262,7 +264,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           }}
           onChangeText={(next) => {
             setValue(next);
-            const servings = Number(next) / item.food.serving_size;
+            const servings = Number(normalizeDecimalText(next)) / item.food.serving_size;
             const invalid =
               !Number.isFinite(servings) ||
               servings <= 0 ||
