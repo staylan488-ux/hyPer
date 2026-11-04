@@ -38,14 +38,17 @@ export default function ProgressScreen() {
   const active = useRef(true);
 
   const load = useCallback(async () => {
+    // A failed read leaves the store's volume as it was, so only a new one
+    // may say nothing was trained; a failure keeps what is shown.
+    const shown = useAppStore.getState().weeklyVolume;
     await Promise.all([
       Promise.resolve(useAppStore.getState().calculateWeeklyVolume())
         .catch(() => {})
         .finally(() => {
-          if (active.current) setVolumeRead(true);
+          if (active.current && useAppStore.getState().weeklyVolume !== shown) setVolumeRead(true);
         }),
       fetchTrainingHours().then((points) => {
-        if (active.current) setHours(points);
+        if (active.current && points) setHours(points);
       }),
       useAppStore.getState().fetchMacroTarget(),
     ]);
