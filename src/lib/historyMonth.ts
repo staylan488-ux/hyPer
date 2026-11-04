@@ -2,7 +2,7 @@ import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-
 
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
-import { getWorkoutStartDateKey, resolveEditedSetCompletedAt, resolveWorkoutTitle } from '@/lib/workoutSessions';
+import { getWorkoutStartDate, getWorkoutStartDateKey, resolveEditedSetCompletedAt, resolveWorkoutTitle } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySession, ExerciseSubstitution, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
@@ -145,14 +145,21 @@ export function moveHistoryMovement(orderedIds: string[], exerciseId: string, di
 
 /**
  * The update for a corrected past set: complete only with both weight and
- * reps; its completion time keeps the set's own, else the workout's, else now.
+ * reps. Its completion time keeps the set's own, else the workout's finish,
+ * else the workout's last logged set, else when it started: never now, which
+ * would stretch a week-old workout (and its finish) to today.
  */
 export function buildPastSetUpdate(
-  set: Pick<WorkoutSet, 'completed_at'>,
+  set: Pick<WorkoutSet, 'id' | 'completed_at'>,
   values: { weight: number | null; reps: number | null; rpe: number | null },
-  workoutCompletedAt: string | null | undefined,
+  workout: Pick<Workout, 'completed_at' | 'created_at' | 'date' | 'sets'>,
 ): Partial<WorkoutSet> {
   const completed = values.weight !== null && values.reps !== null;
+  const lastLogged = workout.sets
+    .filter((other) => other.id !== set.id && other.completed && other.completed_at)
+    .map((other) => new Date(other.completed_at as string).getTime())
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)[0];
   return {
     weight: values.weight,
     reps: values.reps,
@@ -161,7 +168,9 @@ export function buildPastSetUpdate(
     completed_at: resolveEditedSetCompletedAt({
       completed,
       existingSetCompletedAt: set.completed_at,
-      workoutCompletedAt,
+      workoutCompletedAt: workout.completed_at,
+      otherSetsCompletedAt: lastLogged === undefined ? null : new Date(lastLogged).toISOString(),
+      workoutStartedAt: getWorkoutStartDate(workout)?.toISOString() ?? null,
     }),
   };
 }
