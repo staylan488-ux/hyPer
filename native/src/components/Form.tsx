@@ -1,10 +1,11 @@
-import { DatePicker, Host } from '@expo/ui/swift-ui';
-import { datePickerStyle, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
+import { DatePicker, Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
+import { datePickerStyle, labelsHidden, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
 
 import { haptics } from '~/lib/haptics';
-import { type as typeScale, useBlanc } from '~/theme/blanc';
+import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 
@@ -132,23 +133,25 @@ export function NumberFieldRow({ value, onChangeValue, ...props }: Omit<FieldRow
  * switch stays where it was flipped while the change saves (the caller sets
  * `disabled` meanwhile) and goes back only if the saved value differs.
  */
-export function ToggleRow({ label, detail, value, onChange, disabled }: {
+export function ToggleRow({ label, detail, value, onChange, disabled, list }: {
   label: string;
   detail?: string;
   value: boolean;
   onChange: (value: boolean) => void;
   disabled?: boolean;
+  /** Among list Rows rather than form fields: 60 pt, label and line as a Row's. */
+  list?: boolean;
 }) {
   const [pending, setPending] = useState<boolean | null>(null);
   useEffect(() => {
     if (!disabled) setPending(null);
   }, [disabled, value]);
   return (
-    <View style={[rowStyle, { paddingVertical: 10 }]}>
+    <View style={[rowStyle, { paddingVertical: 10 }, list ? { minHeight: 60 } : null]}>
       <View style={{ flex: 1 }}>
-        <BlancText variant="body">{label}</BlancText>
+        <BlancText variant={list ? 'bodyStrong' : 'body'}>{label}</BlancText>
         {detail ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2 }}>
+          <BlancText variant={list ? 'secondary' : 'footnote'} tone="graphite" style={{ marginTop: list ? 1 : 2 }}>
             {detail}
           </BlancText>
         ) : null}
@@ -198,14 +201,82 @@ export function PickerRow({ label, value, mode, max, onChange, disabled }: {
   );
 }
 
-/** Text under a form block: a hint, or an error in red. */
+/** A label and iOS's pull-down menu of choices, like a Settings row. */
+export function MenuRow({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  const c = useBlanc();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }}>
+      <BlancText variant="body" style={{ flex: 1 }}>
+        {label}
+      </BlancText>
+      <Host matchContents>
+        <Picker
+          selection={value}
+          onSelectionChange={(next) => {
+            if (next === value) return;
+            haptics.select();
+            onChange(String(next));
+          }}
+          modifiers={[pickerStyle('menu'), tint(c.graphite)]}>
+          {options.map((option) => (
+            <SwiftText key={option.value} modifiers={[tag(option.value)]}>
+              {option.label}
+            </SwiftText>
+          ))}
+        </Picker>
+      </Host>
+    </View>
+  );
+}
+
+/** One choice of a list (a radio row): a fixed title, an optional quiet line, a checkmark when chosen. */
+export function ChoiceRow({ title, detail, checked, onPress }: { title: string; detail?: string; checked: boolean; onPress: () => void }) {
+  const c = useBlanc();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked }}
+      accessibilityLabel={detail ? `${title}, ${detail}` : title}
+      onPress={() => {
+        if (!checked) haptics.select();
+        onPress();
+      }}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 60,
+        paddingVertical: 10,
+        paddingLeft: 18,
+        paddingRight: 16,
+        backgroundColor: pressed ? c.pressed : 'transparent',
+      })}>
+      <View style={{ flex: 1 }}>
+        <BlancText variant="bodyStrong">{title}</BlancText>
+        {detail ? (
+          <BlancText variant="secondary" tone="graphite" style={{ marginTop: 1 }}>
+            {detail}
+          </BlancText>
+        ) : null}
+      </View>
+      {checked ? <SymbolView name="checkmark" size={15} weight="semibold" tintColor={c.ink} /> : null}
+    </Pressable>
+  );
+}
+
+/** Text under a form block: a hint, or an error in red. Starts on the row text's edge. */
 export function FormNote({ children, alert }: { children: ReactNode; alert?: boolean }) {
   return (
     <BlancText
       variant="footnote"
       tone={alert ? 'live' : 'graphite'}
       accessibilityRole={alert ? 'alert' : undefined}
-      style={{ marginHorizontal: 32, marginTop: 8 }}>
+      style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
       {children}
     </BlancText>
   );

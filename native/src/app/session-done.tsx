@@ -12,7 +12,7 @@ import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Tally } from '~/components/Tally';
 import { useFinishedStore } from '~/lib/finished';
-import { formatLoad, formatWhole } from '~/lib/format';
+import { formatSet, formatWhole } from '~/lib/format';
 import { space, useBlanc } from '~/theme/blanc';
 
 /** Sessions completed this Monday–Sunday training week. */
@@ -69,7 +69,7 @@ export default function SessionDone() {
     ...(summary.volume > 0 ? [['Volume', `${formatWhole(summary.volume)} lb`] as [string, string]] : []),
     ['Time', `${summary.minutes} min`],
     ...(summary.best
-      ? [['Best set', summary.best.weight > 0 ? `${formatLoad(summary.best.weight)} × ${summary.best.reps}` : `${summary.best.reps} reps`] as [string, string]]
+      ? [['Best set', formatSet(summary.best.weight, summary.best.reps)] as [string, string]]
       : []),
   ];
 

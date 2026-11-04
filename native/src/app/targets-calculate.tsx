@@ -1,7 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
 
@@ -30,11 +29,12 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, type TextField } from '~/components/Form';
+import { ChoiceRow, FieldRow, FormNote, type TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { Stepper } from '~/components/Stepper';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -174,7 +174,7 @@ export default function TargetsCalculateSheet() {
           {ACTIVITY_OPTIONS.map((option, index) => (
             <View key={option.value}>
               {index > 0 ? <Hairline /> : null}
-              <CheckRow title={sentence(option.label)} detail={option.hint} checked={draft.activity === option.value} onPress={() => update({ activity: option.value })} />
+              <ChoiceRow title={sentence(option.label)} detail={option.hint} checked={draft.activity === option.value} onPress={() => update({ activity: option.value })} />
             </View>
           ))}
         </Label>
@@ -186,7 +186,7 @@ export default function TargetsCalculateSheet() {
           {GOAL_OPTIONS.map((option, index) => (
             <View key={option.value}>
               {index > 0 ? <Hairline /> : null}
-              <CheckRow
+              <ChoiceRow
                 title={sentence(option.label)}
                 detail={option.hint}
                 checked={draft.goal === option.value}
@@ -197,10 +197,9 @@ export default function TargetsCalculateSheet() {
           {draft.goal !== 'maintain' ? (
             <>
               <Hairline />
-              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingHorizontal: 12, gap: 8 }}>
-                <StepButton symbol="minus" label="Decrease rate" disabled={!rateBounds.slower} onPress={() => setDraft((current) => stepWizardRate(current, -1))} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingLeft: 18, paddingRight: 16, gap: 12 }}>
                 <View
-                  style={{ flex: 1, alignItems: 'center' }}
+                  style={{ flex: 1 }}
                   accessible
                   accessibilityRole="adjustable"
                   accessibilityLabel="Rate"
@@ -220,7 +219,14 @@ export default function TargetsCalculateSheet() {
                     About {rate.weeklyChange.toFixed(2)} {rate.unit} a week · {rate.monthlyChange.toFixed(1)} a month
                   </BlancText>
                 </View>
-                <StepButton symbol="plus" label="Increase rate" disabled={!rateBounds.faster} onPress={() => setDraft((current) => stepWizardRate(current, 1))} />
+                <Stepper
+                  canMinus={rateBounds.slower}
+                  canPlus={rateBounds.faster}
+                  minusLabel="Decrease rate"
+                  plusLabel="Increase rate"
+                  onMinus={() => setDraft((current) => stepWizardRate(current, -1))}
+                  onPlus={() => setDraft((current) => stepWizardRate(current, 1))}
+                />
               </View>
             </>
           ) : null}
@@ -246,14 +252,14 @@ export default function TargetsCalculateSheet() {
           {burns.learned !== null ? (
             <>
               <Hairline />
-              <CheckRow
+              <ChoiceRow
                 title={`Learned burn · ${formatWhole(burns.learned)} kcal`}
                 detail="From your food logs and weigh-ins; keeps adapting"
                 checked={draft.burn === 'learned'}
                 onPress={() => update({ burn: 'learned' })}
               />
               <Hairline />
-              <CheckRow
+              <ChoiceRow
                 title={`Formula burn · ${formatWhole(burns.formula)} kcal`}
                 detail="From your body and activity; stays as set"
                 checked={draft.burn === 'formula'}
@@ -363,64 +369,6 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
       <BlancText variant="body" tone="graphite" style={{ minWidth: 30 }}>
         in
       </BlancText>
-    </Pressable>
-  );
-}
-
-function CheckRow({ title, detail, checked, onPress }: { title: string; detail: string; checked: boolean; onPress: () => void }) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ checked }}
-      accessibilityLabel={`${title}, ${detail}`}
-      onPress={() => {
-        if (!checked) haptics.select();
-        onPress();
-      }}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 60,
-        paddingVertical: 10,
-        paddingLeft: 18,
-        paddingRight: 16,
-        backgroundColor: pressed ? c.pressed : 'transparent',
-      })}>
-      <View style={{ flex: 1 }}>
-        <BlancText variant={checked ? 'bodyStrong' : 'body'}>{title}</BlancText>
-        <BlancText variant="footnote" tone="graphite" style={{ marginTop: 1 }}>
-          {detail}
-        </BlancText>
-      </View>
-      {checked ? <SymbolView name="checkmark" size={15} weight="semibold" tintColor={c.ink} /> : null}
-    </Pressable>
-  );
-}
-
-function StepButton({ symbol, label, disabled, onPress }: { symbol: 'minus' | 'plus'; label: string; disabled: boolean; onPress: () => void }) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={() => {
-        haptics.select();
-        onPress();
-      }}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: pressed ? c.pressed : c.fill,
-        opacity: disabled ? 0.35 : 1,
-      })}>
-      <SymbolView name={symbol} size={15} weight="semibold" tintColor={c.ink} />
     </Pressable>
   );
 }

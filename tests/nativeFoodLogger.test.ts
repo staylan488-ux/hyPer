@@ -175,6 +175,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true },
     '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: Wrap },
+    '~/components/Stepper': { Stepper: Empty },
     '~/lib/format': { formatWhole: String },
     '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood },
     '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },

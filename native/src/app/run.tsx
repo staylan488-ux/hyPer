@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
+import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -45,7 +45,7 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote } from '~/components/Form';
+import { FieldRow, FormNote, MenuRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
@@ -273,39 +273,6 @@ function Setup({ tracker }: { tracker: Tracker }) {
         </KeyboardStickyView>
       </View>
     </>
-  );
-}
-
-/** A label and iOS's pull-down menu of choices, like a Settings row. */
-function MenuRow({ label, value, options, onChange }: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (value: string) => void;
-}) {
-  const c = useBlanc();
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }}>
-      <BlancText variant="body" style={{ flex: 1 }}>
-        {label}
-      </BlancText>
-      <Host matchContents>
-        <Picker
-          selection={value}
-          onSelectionChange={(next) => {
-            if (next === value) return;
-            haptics.select();
-            onChange(String(next));
-          }}
-          modifiers={[pickerStyle('menu'), tint(c.graphite)]}>
-          {options.map((option) => (
-            <SwiftText key={option.value} modifiers={[tag(option.value)]}>
-              {option.label}
-            </SwiftText>
-          ))}
-        </Picker>
-      </Host>
-    </View>
   );
 }
 

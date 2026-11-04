@@ -28,7 +28,7 @@ import { UndoBar } from '~/components/UndoBar';
 import { useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
+import { formatClock, formatRepRange, formatSet } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
@@ -192,6 +192,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
   const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
+  const lastLine = last ? formatSet(last.weight, last.reps, { unit: false }) : '';
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
 
   const blocked = current?.blocked ?? null;
@@ -350,6 +351,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const complete = movement.done === movement.sets.length;
     const plan = movement.plan;
     const lastSet = previous[movement.exerciseId]?.[1];
+    const lastLine = lastSet ? formatSet(lastSet.weight, lastSet.reps, { unit: false }) : '';
     const hasSetsLeft = movement.sets.some((set) => !set.completed);
     // Swipe to swap or skip a movement with sets to go and, in a flexible
     // session, to take it out (asks first).
@@ -404,7 +406,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             : plan && plan.target_reps_min && plan.target_reps_max
               ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
               : null,
-          lastSet && lastSet.weight !== null ? `last ${formatLoad(lastSet.weight)} × ${lastSet.reps ?? '–'}` : null,
+          lastLine ? `last ${lastLine}` : null,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -572,16 +574,18 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Pill
+                <Chip
                   label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
                   accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
+                  haptic={false}
                   onPress={pickRpe}
                 />
                 {/* For this workout only; the program keeps it. */}
-                <Pill
+                <Chip
                   label="Skip"
                   accessibilityLabel={`Skip ${current.movement.name}`}
                   accessibilityHint="For this workout only. Undo brings it back."
+                  haptic={false}
                   onPress={() => {
                     haptics.tap();
                     skip(current.movement);
@@ -590,10 +594,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               </View>
               {beat?.fresh ? (
                 <BeatLine key={beat.key} gain={beat.gain} style={{ marginLeft: 12 }} />
-              ) : last && last.weight !== null && last.reps !== null ? (
+              ) : lastLine ? (
                 <Animated.View key="last" entering={FadeIn.duration(220)} style={{ flexShrink: 1, marginLeft: 12 }}>
                   <BlancText variant="meta" tone="graphite" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                    Last time {formatLoad(last.weight)} × {last.reps}
+                    Last time {lastLine}
                   </BlancText>
                 </Animated.View>
               ) : null}
@@ -692,40 +696,6 @@ function renameWorkout(workoutId: string, dayName: string) {
     ],
     'plain-text',
     dayName,
-  );
-}
-
-/** A quiet pill beside the figures (RPE, Skip): 32 points drawn, 44 to touch. */
-function Pill({
-  label,
-  accessibilityLabel,
-  accessibilityHint,
-  onPress,
-}: {
-  label: string;
-  accessibilityLabel: string;
-  accessibilityHint?: string;
-  onPress: () => void;
-}) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityHint={accessibilityHint}
-      onPress={onPress}
-      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-      style={({ pressed }) => ({
-        height: 32,
-        paddingHorizontal: 12,
-        borderRadius: 16,
-        justifyContent: 'center',
-        backgroundColor: pressed ? c.pressed : c.fill,
-      })}>
-      <BlancText variant="footnote" weight="500">
-        {label}
-      </BlancText>
-    </Pressable>
   );
 }
 

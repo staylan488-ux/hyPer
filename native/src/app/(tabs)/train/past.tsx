@@ -15,11 +15,11 @@ import type { WorkoutSet } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Label } from '~/components/Label';
 import type { MenuAction } from '~/components/HoldMenu';
+import { LoggedSetRow } from '~/components/LoggedSetRow';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { formatLoad } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
   attachStats,
@@ -186,6 +186,8 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
   // One Add set at a time: taps while one is saving do nothing.
   const adding = useRef(false);
   const [addingShown, setAddingShown] = useState(false);
+  // One set with an RPE keeps the column on every row, so the numbers line up.
+  const rpeColumn = movement.sets.some((set) => set.rpe);
   const line = [
     movement.substitutesFor ? `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}` : null,
     movement.partnerName ? `Superset with ${movement.partnerName}` : null,
@@ -321,7 +323,7 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
         {movement.sets.map((set, index) => (
           <Animated.View key={set.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
             {index > 0 ? <Hairline /> : null}
-            <SetRow workoutId={workout.id} movement={movement} set={set} number={index + 1} />
+            <SetRow workoutId={workout.id} movement={movement} set={set} number={index + 1} rpeColumn={rpeColumn} />
           </Animated.View>
         ))}
         <Animated.View layout={rowLayout}>
@@ -334,11 +336,9 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
 }
 
 /** A set: tap to correct; swipe to delete (all the way deletes); hold for the menu. */
-function SetRow({ workoutId, movement, set, number }: { workoutId: string; movement: HistoryMovement; set: WorkoutSet; number: number }) {
+function SetRow({ workoutId, movement, set, number, rpeColumn }: { workoutId: string; movement: HistoryMovement; set: WorkoutSet; number: number; rpeColumn: boolean }) {
   const c = useBlanc();
   const name = `${movement.name} set ${number}`;
-  const logged = set.weight !== null && set.reps !== null;
-  const numbers = logged ? `${formatLoad(set.weight)} lb × ${set.reps}` : 'Not logged';
   const edit = () => router.push({ pathname: '/past-set', params: { workout: workoutId, set: set.id, number: String(number) } });
   // The row leaves at once; a delete that fails brings it back.
   const remove = () =>
@@ -357,14 +357,7 @@ function SetRow({ workoutId, movement, set, number }: { workoutId: string; movem
   return (
     <SwipeRow name={name} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row
-          title={`Set ${number}`}
-          quiet={!set.completed}
-          value={set.rpe ? `${numbers}   RPE ${set.rpe}` : numbers}
-          onPress={edit}
-          menu={menu}
-          accessibilityLabel={`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}`}
-        />
+        <LoggedSetRow number={number} set={set} rpeColumn={rpeColumn} onPress={edit} menu={menu} />
       </View>
     </SwipeRow>
   );

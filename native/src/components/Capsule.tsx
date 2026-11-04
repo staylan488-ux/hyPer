@@ -43,6 +43,9 @@ export function Capsule({
   const height = size === 'large' ? 54 : 44;
   const primary = variant === 'primary';
   const inactive = disabled || busy;
+  // A primary that cannot be used yet sits back in the track's grey rather
+  // than as a faded ink slab; quiet capsules fade.
+  const resting = primary && disabled && !busy;
 
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
@@ -73,8 +76,8 @@ export function Capsule({
           alignItems: 'center',
           justifyContent: 'center',
           alignSelf: fill ? 'stretch' : 'flex-start',
-          backgroundColor: primary ? c.capsule : c.fill,
-          opacity: disabled ? 0.4 : 1,
+          backgroundColor: resting ? c.track : primary ? c.capsule : c.fill,
+          opacity: disabled && !resting ? 0.4 : 1,
         },
         animated,
         style,
@@ -86,7 +89,7 @@ export function Capsule({
           {icon}
           <BlancText
             variant="headline"
-            tone={primary ? 'onCapsule' : 'ink'}
+            tone={resting ? 'upcoming' : primary ? 'onCapsule' : 'ink'}
             size={size === 'large' ? 17 : 16}
             numberOfLines={1}
             style={{ lineHeight: size === 'large' ? 22 : 20 }}>

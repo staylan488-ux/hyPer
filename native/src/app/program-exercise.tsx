@@ -1,7 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { SymbolView, type SFSymbol } from 'expo-symbols';
-import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useRef } from 'react';
+import { ScrollView, View } from 'react-native';
 
 import { normalizeSetRange } from '@/lib/setRangeNotes';
 import { useSplitEditStore } from '@/stores/splitEditStore';
@@ -11,6 +10,7 @@ import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { Stepper } from '~/components/Stepper';
 import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -123,39 +123,15 @@ function StepperRow({ label, value, min, max, onChange }: {
 }) {
   const latest = useRef({ value, onChange });
   latest.current = { value, onChange };
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearInterval(timer.current);
-  }, []);
 
+  // The Stepper ticks for its own presses; VoiceOver's steps tick here.
   const step = (delta: number) => {
     const next = Math.max(min, Math.min(max, latest.current.value + delta));
     if (next === latest.current.value) return false;
-    haptics.select();
     latest.current.onChange(next);
     latest.current.value = next;
     return true;
   };
-  const stop = () => {
-    if (timer.current) clearInterval(timer.current);
-    timer.current = null;
-  };
-
-  const button = (symbol: SFSymbol, delta: number, disabled: boolean, name: string) => (
-    <StepButton
-      symbol={symbol}
-      disabled={disabled}
-      accessibilityLabel={`${name} ${label}`}
-      onPress={() => step(delta)}
-      onHold={() => {
-        stop();
-        timer.current = setInterval(() => {
-          if (!step(delta)) stop();
-        }, 110);
-      }}
-      onRelease={stop}
-    />
-  );
 
   return (
     <View
@@ -164,49 +140,25 @@ function StepperRow({ label, value, min, max, onChange }: {
       accessibilityLabel={label}
       accessibilityValue={{ text: String(value) }}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-      onAccessibilityAction={(event) => step(event.nativeEvent.actionName === 'increment' ? 1 : -1)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingLeft: 18, paddingRight: 12 }}>
+      onAccessibilityAction={(event) => {
+        if (step(event.nativeEvent.actionName === 'increment' ? 1 : -1)) haptics.select();
+      }}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingLeft: 18, paddingRight: 16 }}>
       <BlancText variant="body" style={{ flex: 1 }}>
         {label}
       </BlancText>
-      <RollingText variant="figure" size={24} style={{ minWidth: 40, textAlign: 'center' }}>
+      <RollingText variant="figure" size={24} style={{ minWidth: 40, textAlign: 'right' }}>
         {String(value)}
       </RollingText>
-      {button('minus', -1, value <= min, 'Fewer')}
-      {button('plus', 1, value >= max, 'More')}
+      <Stepper
+        repeat
+        canMinus={value > min}
+        canPlus={value < max}
+        minusLabel={`Fewer ${label}`}
+        plusLabel={`More ${label}`}
+        onMinus={() => step(-1)}
+        onPlus={() => step(1)}
+      />
     </View>
-  );
-}
-
-function StepButton({ symbol, disabled, accessibilityLabel, onPress, onHold, onRelease }: {
-  symbol: SFSymbol;
-  disabled: boolean;
-  accessibilityLabel: string;
-  onPress: () => void;
-  onHold: () => void;
-  onRelease: () => void;
-}) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityLabel={accessibilityLabel}
-      disabled={disabled}
-      onPress={onPress}
-      onLongPress={onHold}
-      delayLongPress={350}
-      onPressOut={onRelease}
-      // 36 points drawn, 44 to touch.
-      hitSlop={{ top: 4, bottom: 4 }}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 36,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: pressed ? c.pressed : c.fill,
-        opacity: disabled ? 0.35 : 1,
-      })}>
-      <SymbolView name={symbol} size={15} weight="semibold" tintColor={c.ink} />
-    </Pressable>
   );
 }

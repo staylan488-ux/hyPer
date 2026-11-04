@@ -27,10 +27,12 @@ export function Section({ title, action, note, accessory, children, style }: Sec
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: 12,
           minHeight: 44,
           paddingHorizontal: space.gutter,
         }}>
-        <BlancText variant="section" accessibilityRole="header">
+        {/* A long title wraps rather than pushing the action off the screen. */}
+        <BlancText variant="section" accessibilityRole="header" style={{ flexShrink: 1 }}>
           {title}
           {note ? (
             <BlancText variant="secondary" tone="graphite">

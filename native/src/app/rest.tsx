@@ -4,6 +4,7 @@ import { Alert, Pressable, View } from 'react-native';
 import { parseRestInput } from '@/lib/restTimer';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Chip } from '~/components/Chip';
 import { GlassButton } from '~/components/GlassButton';
 import { RollingText } from '~/components/RollingText';
 import { formatClock } from '~/lib/format';
@@ -125,9 +126,9 @@ export default function RestSheet() {
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, paddingHorizontal: space.inset }}>
         {PRESETS.map((preset) => (
-          <Chip key={preset} label={formatClock(preset)} selected={length === preset} onPress={() => choose(preset)} />
+          <Chip key={preset} label={formatClock(preset)} selected={length === preset} tabular haptic={false} style={{ minWidth: 58 }} onPress={() => choose(preset)} />
         ))}
-        <Chip label={custom ? formatClock(length) : 'Custom'} selected={custom} onPress={chooseCustom} />
+        <Chip label={custom ? formatClock(length) : 'Custom'} selected={custom} tabular haptic={false} style={{ minWidth: 58 }} onPress={chooseCustom} />
       </View>
 
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 24, paddingHorizontal: space.inset }}>
@@ -161,29 +162,5 @@ export default function RestSheet() {
         )}
       </View>
     </View>
-  );
-}
-
-function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      hitSlop={{ top: 5, bottom: 5 }}
-      style={({ pressed }) => ({
-        height: 36,
-        minWidth: 58,
-        paddingHorizontal: 12,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.fill,
-      })}>
-      <BlancText variant="footnote" weight="600" tone={selected ? 'onCapsule' : 'ink'} style={{ fontVariant: ['tabular-nums'] }}>
-        {label}
-      </BlancText>
-    </Pressable>
   );
 }

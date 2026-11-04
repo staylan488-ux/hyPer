@@ -20,7 +20,7 @@ import { MuscleFigure } from '~/components/MuscleFigure';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
-import { formatWhole } from '~/lib/format';
+import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -208,13 +208,6 @@ function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<Mus
       />
     </View>
   );
-}
-
-function formatMinutes(minutes: number): string {
-  if (minutes <= 0) return '0 min';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
 /** Eight weeks of training time; this week in ink. */

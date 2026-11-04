@@ -11,6 +11,8 @@ type TallyProps = {
   current: number | null;
   /** Stroke height; the next set's stroke is taller. */
   height?: number;
+  /** The small size for a list row: thin strokes, height 12, tight gaps. */
+  compact?: boolean;
   accessibilityLabel: string;
   style?: ViewStyle;
 };
@@ -18,12 +20,21 @@ type TallyProps = {
 const spring = { damping: 16, stiffness: 240, mass: 0.7 };
 const GROUP = 5;
 
+/** Stroke width, gaps and how much taller the next stroke stands, per size. */
+const SIZES = {
+  regular: { width: 2, nextWidth: 2.5, gap: 6, groupGap: 14, rowGap: 10, grow: 8, closing: 2 },
+  compact: { width: 1.5, nextWidth: 2, gap: 4, groupGap: 8, rowGap: 6, grow: 4, closing: 1.5 },
+};
+type Size = (typeof SIZES)['regular'];
+
 /**
  * hyPer's set tally, counted the way a paper training log is: one stroke per
  * set in groups of five. Logged strokes are ink, the next set's stroke stands
  * taller, and a group of five logged sets is closed with a diagonal stroke.
  */
-export function Tally({ marks, current, height = 18, accessibilityLabel, style }: TallyProps) {
+export function Tally({ marks, current, height: tall, compact, accessibilityLabel, style }: TallyProps) {
+  const size = compact ? SIZES.compact : SIZES.regular;
+  const height = tall ?? (compact ? 12 : 18);
   const groups: number[][] = [];
   marks.forEach((_, index) => {
     if (index % GROUP === 0) groups.push([]);
@@ -35,15 +46,20 @@ export function Tally({ marks, current, height = 18, accessibilityLabel, style }
       accessible
       accessibilityRole="text"
       accessibilityLabel={accessibilityLabel}
-      style={[{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, minHeight: height + 8 }, style]}>
+      // A long session wraps onto a second line instead of running off the edge.
+      style={[
+        { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', columnGap: size.groupGap, rowGap: size.rowGap, minHeight: height + size.grow },
+        style,
+      ]}>
       {groups.map((indexes, groupIndex) => {
         const closed = indexes.length === GROUP && indexes.every((index) => marks[index]);
         return (
-          <View key={groupIndex} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6 }}>
+          // Each group keeps room for the taller next stroke, so wrapped lines never shift.
+          <View key={groupIndex} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: size.gap, minHeight: height + size.grow }}>
             {indexes.map((index) => (
-              <Stroke key={index} logged={marks[index]} next={index === current} height={height} />
+              <Stroke key={index} logged={marks[index]} next={index === current} height={height} size={size} />
             ))}
-            <ClosingStroke closed={closed} height={height} />
+            <ClosingStroke closed={closed} height={height} size={size} />
           </View>
         );
       })}
@@ -51,7 +67,7 @@ export function Tally({ marks, current, height = 18, accessibilityLabel, style }
   );
 }
 
-function Stroke({ logged, next, height }: { logged: boolean; next: boolean; height: number }) {
+function Stroke({ logged, next, height, size }: { logged: boolean; next: boolean; height: number; size: Size }) {
   const c = useBlanc();
   const grow = useSharedValue(next ? 1 : 0);
 
@@ -59,14 +75,15 @@ function Stroke({ logged, next, height }: { logged: boolean; next: boolean; heig
     grow.value = withSpring(next ? 1 : 0, spring);
   }, [next, grow]);
 
-  const animated = useAnimatedStyle(() => ({ height: height + grow.value * 8 }));
+  const rise = size.grow;
+  const animated = useAnimatedStyle(() => ({ height: height + grow.value * rise }));
 
   return (
     <Animated.View
       style={[
         {
-          width: next ? 2.5 : 2,
-          borderRadius: 1.25,
+          width: next ? size.nextWidth : size.width,
+          borderRadius: size.nextWidth / 2,
           backgroundColor: logged || next ? c.ink : c.track,
         },
         animated,
@@ -76,7 +93,7 @@ function Stroke({ logged, next, height }: { logged: boolean; next: boolean; heig
 }
 
 /** The diagonal that closes a finished group of five. */
-function ClosingStroke({ closed, height }: { closed: boolean; height: number }) {
+function ClosingStroke({ closed, height, size }: { closed: boolean; height: number; size: Size }) {
   const c = useBlanc();
   const drawn = useSharedValue(closed ? 1 : 0);
 
@@ -84,9 +101,9 @@ function ClosingStroke({ closed, height }: { closed: boolean; height: number }) 
     drawn.value = withSpring(closed ? 1 : 0, spring);
   }, [closed, drawn]);
 
-  // Five strokes span 4 gaps of 6 pt plus five widths of 2 pt: about 34 pt.
-  const span = 34;
-  const length = Math.sqrt(span * span + height * height) + 6;
+  // Five strokes span 4 gaps plus five widths: about 34 pt, 23.5 compact.
+  const span = 4 * size.gap + 5 * size.width;
+  const length = Math.sqrt(span * span + height * height) + size.gap;
   const angle = `${-Math.atan2(height, span)}rad`;
 
   const animated = useAnimatedStyle(() => ({
@@ -101,10 +118,10 @@ function ClosingStroke({ closed, height }: { closed: boolean; height: number }) 
         {
           position: 'absolute',
           left: span / 2 - length / 2,
-          bottom: height / 2 - 1,
+          bottom: height / 2 - size.closing / 2,
           width: length,
-          height: 2,
-          borderRadius: 1,
+          height: size.closing,
+          borderRadius: size.closing / 2,
           backgroundColor: c.ink,
           transformOrigin: 'center',
         },

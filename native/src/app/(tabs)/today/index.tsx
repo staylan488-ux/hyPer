@@ -20,7 +20,7 @@ import { Track } from '~/components/Track';
 import { useAccountRefresh } from '~/lib/accountData';
 import { useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatLoad, formatWhole } from '~/lib/format';
+import { formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
@@ -241,7 +241,8 @@ function Meter({ label, value, of, progress, warnOver }: { label: string; value:
 /** "Set 2 of 3", with the load only once it is known. */
 function setLine(setNumber: number, sets: number, weight: number | null, reps: number | null): string {
   const base = `Set ${setNumber} of ${sets}`;
-  return weight !== null && reps !== null ? `${base} · ${formatLoad(weight)} lb × ${reps}` : base;
+  const load = formatSet(weight, reps);
+  return load ? `${base} · ${load}` : base;
 }
 
 /** "2 under · 1 over", leaving out zeros. */

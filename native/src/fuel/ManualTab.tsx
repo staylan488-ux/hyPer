@@ -21,6 +21,7 @@ import { FieldRow, FormNote, ToggleRow, type TextField } from '~/components/Form
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { Stepper } from '~/components/Stepper';
 import { SAVE_FAILED, saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
@@ -282,8 +283,8 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
     }
   };
 
+  // The Stepper plays each step's tick.
   const stepServings = (delta: number) => {
-    haptics.select();
     setDraft((current) => {
       const now = parseFloat(current.servings);
       const next = Math.max(0.25, Math.round(((Number.isFinite(now) ? now : 1) + delta) * 100) / 100);
@@ -409,11 +410,10 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
             );
           })}
           <Hairline />
-          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 10, gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 16, gap: 12 }}>
             <BlancText variant="body" style={{ flex: 1 }}>
               Servings
             </BlancText>
-            <StepButton symbol="minus" label="Fewer servings" disabled={servingsValue <= 0.25} onPress={() => stepServings(-0.25)} />
             <TextInput
               value={draft.servings}
               onChangeText={(text) => setDraft((current) => ({ ...current, servings: text }))}
@@ -422,9 +422,15 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
               accessibilityLabel="Servings"
               selectTextOnFocus
               lineBreakModeIOS="tail"
-              style={[typeScale.field, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
+              style={[typeScale.field, { color: c.ink, minWidth: 48, textAlign: 'right', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
             />
-            <StepButton symbol="plus" label="More servings" onPress={() => stepServings(0.25)} />
+            <Stepper
+              canMinus={servingsValue > 0.25}
+              minusLabel="Fewer servings"
+              plusLabel="More servings"
+              onMinus={() => stepServings(-0.25)}
+              onPlus={() => stepServings(0.25)}
+            />
           </View>
         </Label>
         {selectedSavedMeal ? <FormNote>{usingSavedValues ? 'Using saved meal values' : 'Editing saved meal values'}</FormNote> : null}
@@ -464,27 +470,5 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
         />
       </View>
     </View>
-  );
-}
-
-function StepButton({ symbol, label, onPress, disabled }: { symbol: 'plus' | 'minus'; label: string; onPress: () => void; disabled?: boolean }) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: disabled ? 0.35 : pressed ? 0.5 : 1,
-      })}>
-      <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill }}>
-        <SymbolView name={symbol} size={13} weight="bold" tintColor={c.ink} />
-      </View>
-    </Pressable>
   );
 }
