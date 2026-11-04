@@ -80,8 +80,8 @@ export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType,
       <TextInput
         ref={field}
         placeholderTextColor={c.upcoming}
-        accessibilityLabel={fieldLabel(label, unit)}
-        accessibilityHint={invalid ? 'Check this value' : undefined}
+        // The red label's meaning, in words.
+        accessibilityLabel={invalid ? `${fieldLabel(label, unit)}, invalid` : fieldLabel(label, unit)}
         keyboardType={keyboardType}
         returnKeyType={wraps ? returnKeyType ?? 'done' : numberPadReturnKey(keyboardType, returnKeyType)}
         {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: 'blurAndSubmit' as const } : null)}
@@ -166,8 +166,8 @@ export function NumberFieldRow({ value, onChangeValue, ...props }: Omit<FieldRow
  * A labelled switch row, with an optional quiet line under the label. The
  * switch stays where it was flipped while the change saves (the caller sets
  * `disabled` meanwhile) and goes back only if the saved value differs.
- * VoiceOver finds one element, the switch, with the label as its name and
- * the quiet line as its hint.
+ * VoiceOver finds one element, the switch, named with the label and the
+ * quiet line, as iOS reads a settings cell with a subtitle.
  */
 export function ToggleRow({ label, detail, value, onChange, disabled }: {
   label: string;
@@ -191,8 +191,7 @@ export function ToggleRow({ label, detail, value, onChange, disabled }: {
         ) : null}
       </View>
       <Switch
-        accessibilityLabel={label}
-        accessibilityHint={detail}
+        accessibilityLabel={detail ? `${label}, ${detail}` : label}
         value={pending ?? value}
         disabled={disabled}
         onValueChange={(next) => {

@@ -62,6 +62,13 @@ describe('VoiceOver words for Blanc shorthand', () => {
     expect(speak('↑ Beat last time · +5 lb')).toBe('Beat last time, +5 pounds');
     expect(speak('1,858 kcal left')).toBe('1,858 calories left');
     expect(speak('kcal over')).toBe('calories over');
+    // As the app writes durations and run distances: "1h 20m", "400 m", "+30 s".
+    expect(speak('1h 20m')).toBe('1 hour 20 minutes');
+    expect(speak('2 h · 45m')).toBe('2 hours, 45 minutes');
+    expect(speak('400 m · 3.1 mi · 5 km')).toBe('400 meters, 3.1 miles, 5 kilometers');
+    expect(speak('+30 s')).toBe('+30 seconds');
+    expect(speak('Peak 4.2 m/s')).toBe('Peak 4.2 meters per second');
+    expect(speak('3 sets · 12 min')).toBe('3 sets, 12 minutes');
   });
 
   it('leaves words, dates and plain numbers alone', () => {

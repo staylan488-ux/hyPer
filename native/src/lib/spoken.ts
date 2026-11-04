@@ -1,18 +1,35 @@
 // The words VoiceOver speaks for Blanc's shorthand ("3 × 8–12 · last 135 lb").
 // Plain functions, no React Native, so the shared tests can run them.
 
-const UNITS: [RegExp, string, string][] = [
-  [/kcal\b/, 'calorie', 'calories'],
-  [/lbs?\b/, 'pound', 'pounds'],
-  [/kg\b/, 'kilogram', 'kilograms'],
-  [/g\b/, 'gram', 'grams'],
-  [/oz\b/, 'ounce', 'ounces'],
-  [/ml\b/, 'milliliter', 'milliliters'],
-  [/mi\b/, 'mile', 'miles'],
-  [/km\b/, 'kilometer', 'kilometers'],
-  [/min\b/, 'minute', 'minutes'],
-  [/sec\b/, 'second', 'seconds'],
+type Unit = {
+  /** The unit as written, a regular expression source. */
+  written: string;
+  one: string;
+  many: string;
+  /** How the app writes it after a number: "20m" is minutes, "400 m" metres. */
+  space?: 'attached' | 'spaced';
+};
+
+// Longer units before the ones they start with ("m/s" before "m").
+const UNITS: Unit[] = [
+  { written: 'm/s', one: 'meter per second', many: 'meters per second' },
+  { written: 'kcal', one: 'calorie', many: 'calories' },
+  { written: 'lbs?', one: 'pound', many: 'pounds' },
+  { written: 'kg', one: 'kilogram', many: 'kilograms' },
+  { written: 'g', one: 'gram', many: 'grams' },
+  { written: 'oz', one: 'ounce', many: 'ounces' },
+  { written: 'ml', one: 'milliliter', many: 'milliliters' },
+  { written: 'mi', one: 'mile', many: 'miles' },
+  { written: 'km', one: 'kilometer', many: 'kilometers' },
+  { written: 'min', one: 'minute', many: 'minutes' },
+  { written: 'sec', one: 'second', many: 'seconds' },
+  { written: 'h', one: 'hour', many: 'hours' },
+  { written: 's', one: 'second', many: 'seconds', space: 'spaced' },
+  { written: 'm', one: 'minute', many: 'minutes', space: 'attached' },
+  { written: 'm', one: 'meter', many: 'meters', space: 'spaced' },
 ];
+
+const GAP = { attached: '', spaced: ' ', either: ' ?' } as const;
 
 /**
  * What VoiceOver should say for a line written in Blanc's shorthand: the
@@ -27,9 +44,9 @@ export function speak(text: string): string {
     .replace(/(\d)\s*[–—]\s*(\d)/g, '$1 to $2')
     .replace(/(\d) \/ (\d)/g, '$1 of $2')
     .replace(/↑\s*/g, '');
-  for (const [unit, one, many] of UNITS) {
+  for (const { written, one, many, space } of UNITS) {
     spoken = spoken.replace(
-      new RegExp(`(^|[^\\w.,])(\\d[\\d,]*(?:\\.\\d+)?) ?${unit.source}`, 'g'),
+      new RegExp(`(^|[^\\w.,])(\\d[\\d,]*(?:\\.\\d+)?)${GAP[space ?? 'either']}${written}\\b`, 'g'),
       (_match, before: string, value: string) => `${before}${value} ${value === '1' ? one : many}`,
     );
   }
