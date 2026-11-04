@@ -283,7 +283,8 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
   const now = tracker.nowMs;
   const intervals = state.config.mode === 'intervals';
   const status = runStatus(state, now);
-  const alert = status !== 'ok';
+  // Only weak GPS is a warning; resting and finding GPS are not.
+  const alert = status === 'weak';
   // A rest lap has no pace; its clock is the figure worth reading.
   const restHero = tracker.resting && intervals;
   const pace = formatRunPace(livePaceSecPerMile(state, now)) ?? '–';
