@@ -3,7 +3,7 @@
 // holds what the native screens share between them.
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
@@ -32,6 +32,7 @@ import { whoopCallbackStatus } from '@/lib/whoopStatus';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import type { Food } from '@/types';
+import { isPreviewActive } from '~/platform/previewFlag';
 
 const currentUserId = () => useAuthStore.getState().user?.id ?? null;
 
@@ -136,6 +137,9 @@ export async function connectOrSyncHealth(): Promise<boolean> {
     return true;
   } catch (error) {
     useHealthStore.setState({
+      // The switch follows the stored setting: once access was granted it is
+      // on, even if that first sync failed, and automatic sync retries.
+      enabled: isHealthWeightSyncEnabled(),
       message: { text: error instanceof Error ? error.message : 'Apple Health sync failed.', alert: true },
     });
     return false;
@@ -167,10 +171,11 @@ export const useTargetsStore = create<TargetsState>(() => ({ status: 'loading', 
 /**
  * Reads the saved targets and nutrition profile together, as the web You page
  * does. A successful empty read clears them; a failed one keeps what is shown.
+ * True once they are read for this account.
  */
-export async function loadTargets(): Promise<void> {
+export async function loadTargets(): Promise<boolean> {
   const userId = currentUserId();
-  if (!userId) return;
+  if (!userId) return false;
   const isCurrent = captureAccountScope();
   useTargetsStore.setState({ status: 'loading' });
   try {
@@ -179,7 +184,7 @@ export async function loadTargets(): Promise<void> {
       getNutritionProfile(userId),
     ]);
     if (target.error) throw target.error;
-    if (!isCurrent()) return;
+    if (!isCurrent()) return false;
     useAppStore.setState({
       macroTarget: target.data ?? null,
       nutritionProfile: profile,
@@ -187,9 +192,42 @@ export async function loadTargets(): Promise<void> {
       nutritionProfileLoadedForUserId: userId,
     });
     useTargetsStore.setState({ status: 'ready' });
+    return true;
   } catch {
     if (isCurrent()) useTargetsStore.setState({ status: 'error' });
+    return false;
   }
+}
+
+/**
+ * Whether the saved targets (or the nutrition profile) are read for the
+ * signed-in account, reading them if not. The edit sheet and the calculator
+ * start from them, so they wait: opened before the read (Fuel's figures on a
+ * cold launch) they began at the defaults, and saving wrote those over the
+ * real targets, or a profile without its learned burn.
+ */
+export function useTargetsLoaded(what: 'targets' | 'profile'): { loaded: boolean; failed: boolean; retry: () => void } {
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const loaded = useAppStore((state) =>
+    userId !== null
+    && (what === 'targets' ? state.macroTargetLoadedForUserId : state.nutritionProfileLoadedForUserId) === userId);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (loaded) return;
+    let live = true;
+    void loadTargets().then((ok) => {
+      if (live && !ok) setFailed(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [loaded, attempt]);
+  const retry = () => {
+    setFailed(false);
+    setAttempt((count) => count + 1);
+  };
+  return { loaded, failed: !loaded && failed, retry };
 }
 
 export function stageTargets(draft: TargetDraft, extra: { coach?: CoachRecommendation; profileSaved?: boolean } = {}) {
@@ -243,18 +281,32 @@ export function editSavedMeal(meal: Food) {
  */
 const WHOOP_RETURN = 'app.hyper.mobile://settings';
 
-/** Connects WHOOP through iOS's sign-in sheet. Null when the person closed the sheet. */
+/** The first import; one that fails waits for Sync now or the next return to the app. */
+function startWhoopImport() {
+  useAppStore.getState().syncWhoop().catch(() => {});
+}
+
+/**
+ * Connects WHOOP through iOS's sign-in sheet, then starts the first import
+ * (the sheet never sends the app to the background, so the foreground sync
+ * would wait for the next return). Null when the person closed the sheet.
+ */
 export async function connectWhoop(): Promise<{ ok: boolean; message: string } | null> {
   try {
     const authorizeUrl = await useAppStore.getState().connectWhoop(WHOOP_RETURN);
-    // Sample data connects without a consent screen.
-    if (!authorizeUrl) return { ok: true, message: 'WHOOP connected.' };
+    if (!authorizeUrl) {
+      // Sample data connects without a consent screen.
+      if (!isPreviewActive()) return { ok: false, message: 'WHOOP connection failed. Try again.' };
+      startWhoopImport();
+      return { ok: true, message: 'WHOOP connected.' };
+    }
     const result = await WebBrowser.openAuthSessionAsync(authorizeUrl, WHOOP_RETURN, { preferEphemeralSession: false });
     if (result.type === 'cancel' || result.type === 'dismiss') return null;
     if (result.type !== 'success' || whoopCallbackStatus(result.url) !== 'connected') {
       return { ok: false, message: 'WHOOP connection failed. Try again.' };
     }
     await useAppStore.getState().fetchWhoopConnection();
+    startWhoopImport();
     return { ok: true, message: 'WHOOP connected.' };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

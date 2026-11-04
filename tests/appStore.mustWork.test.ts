@@ -3798,3 +3798,36 @@ describe('saveTrackedRun WHOOP absorb failures', () => {
     expect(deletes[0].filters).toContainEqual(['eq', 'id', whoopCopy.id]);
   });
 });
+
+describe('settings writes report a missing sign-in instead of success', () => {
+  const signedOut = 'You are signed out. Sign in and try again.';
+  const saved = { id: 'macro-1', user_id: 'user-1', calories: 2300, protein: 180, carbs: 240, fat: 70 };
+
+  beforeEach(() => {
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null } });
+    supabaseMock.from.mockImplementation((table: string) => {
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    useAppStore.setState({ macroTarget: saved as never, whoopConnection: { user_id: 'user-1' } as never });
+  });
+
+  it('does not report daily targets saved', async () => {
+    await expect(useAppStore.getState().updateMacroTarget({ calories: 2000 })).rejects.toThrow(signedOut);
+    expect(useAppStore.getState().macroTarget).toEqual(saved);
+  });
+
+  it('does not report the nutrition profile saved', async () => {
+    await expect(useAppStore.getState().updateNutritionProfile({
+      sex: 'male', birth_year: 1995, height_cm: 180, body_fat_pct: null, activity: 'moderately_active',
+      goal: 'maintain', rate_pct_per_week: 0, unit_system: 'metric', adaptive_enabled: true,
+      phase_started_on: '2026-11-01', expenditure_kcal: 2600, expenditure_confidence: 'learning',
+      expenditure_updated_at: null,
+    })).rejects.toThrow(signedOut);
+  });
+
+  it('does not report WHOOP connected or disconnected', async () => {
+    await expect(useAppStore.getState().connectWhoop('app.hyper.mobile://settings')).rejects.toThrow(signedOut);
+    await expect(useAppStore.getState().disconnectWhoop()).rejects.toThrow(signedOut);
+    expect(useAppStore.getState().whoopConnection).toEqual({ user_id: 'user-1' });
+  });
+});

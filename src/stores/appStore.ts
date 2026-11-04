@@ -2222,7 +2222,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   connectWhoop: async (returnTo) => {
     const userId = await getSessionUserId();
-    if (!userId) return null;
+    // Returning quietly read as connected.
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
     if (isPreviewActive()) {
       // sandbox: connecting just plants a mock metadata row
@@ -2247,7 +2248,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   disconnectWhoop: async () => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return;
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
+    if (!isAccountCurrent()) return;
 
     if (isPreviewActive()) {
       await supabase.from('whoop_connections').delete().eq('user_id', userId);
@@ -3449,7 +3451,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateMacroTarget: async (target) => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return;
+    // Returning quietly read as saved.
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
+    if (!isAccountCurrent()) return;
 
     const { data, error } = await supabase
       .from('macro_targets')
@@ -3490,7 +3494,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateNutritionProfile: async (input) => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return;
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
+    if (!isAccountCurrent()) return;
 
     // Changing goal or rate starts a new phase; the expenditure estimator uses
     // that date to skip the glycogen/water transient that follows.
