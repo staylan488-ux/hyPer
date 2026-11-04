@@ -28,6 +28,12 @@ export function moveMovementBlock(blocks: string[][], sourceId: string, destinat
   return remaining.flat();
 }
 
+/** The movement a hold on a block opens: the one touched when it is in that block, else the block's first. */
+export function heldMovement(blocks: string[][], key: string, touched: string | null): string {
+  const block = blocks.find((entry) => entry[0] === key);
+  return touched !== null && block?.includes(touched) ? touched : key;
+}
+
 export function movementScrollSpeed(pointerY: number, top: number, bottom: number): number {
   const edge = Math.min(64, Math.max(0, (bottom - top) / 4));
   if (!edge) return 0;

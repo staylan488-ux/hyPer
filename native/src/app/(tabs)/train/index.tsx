@@ -7,7 +7,7 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
+import { heldMovement, moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
@@ -341,6 +341,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [reordering, setReordering] = useState(false);
   const [orderRevision, setOrderRevision] = useState(0);
   const [dragging, setDragging] = useState(false);
+  // The movement under the finger: a pair lifts as one, but a hold on B opens B.
+  const touchedMovement = useRef<string | null>(null);
   const moveBlock = async (key: string, index: number) => {
     if (reordering) return;
     const ids = moveMovementBlock(blocks, key, index);
@@ -624,7 +626,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 node: block.map((id, index) => {
                   const movement = byId.get(id);
                   return movement ? (
-                    <View key={id}>
+                    <View key={id} onTouchStart={() => { touchedMovement.current = id; }}>
                       {index > 0 ? <Hairline /> : null}
                       {movementRow(movement, blocks.findIndex((entry) => entry === block))}
                     </View>
@@ -635,7 +637,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               revision={orderRevision}
               roundBottom={!session.flexible}
               onMove={(key, index) => void moveBlock(key, index)}
-              onHold={(key) => openMovement(key)}
+              onHold={(key) => openMovement(heldMovement(blocks, key, touchedMovement.current))}
               onDragging={setDragging}
             />
             {session.flexible ? (
