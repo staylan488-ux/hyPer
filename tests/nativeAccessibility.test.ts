@@ -202,6 +202,12 @@ describe('contrast', () => {
     expect(palette('darkContrast').ground).toBe(palette('dark').ground);
     expect(palette('darkContrast').brand).toBe(palette('dark').brand);
   });
+
+  it('draws white swipe labels on a red that reads with Increase Contrast, in both appearances', () => {
+    // SwipeRow uses the light contrast red as its fill whenever Increase Contrast is on.
+    expect(contrast('#FFFFFF', palette('lightContrast').live)).toBeGreaterThanOrEqual(4.5);
+    expect(readFileSync(path.join(SOURCE, 'components/SwipeRow.tsx'), 'utf8')).toMatch(/useIncreaseContrast\(\) \? palettes\.lightContrast\.live : c\.live/);
+  });
 });
 
 describe('native accessibility', () => {

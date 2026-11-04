@@ -21,7 +21,7 @@ import { FieldRow, FormNote, ToggleRow, type TextField } from '~/components/Form
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { SAVE_FAILED, saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
@@ -493,13 +493,15 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
 
 function StepButton({ symbol, label, onPress, disabled }: { symbol: 'plus' | 'minus'; label: string; onPress: () => void; disabled?: boolean }) {
   const c = useBlanc();
+  const screenReader = useScreenReader();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      // The adjustable Servings label does what these do for VoiceOver.
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
+      // The adjustable Servings label does what these do for VoiceOver, so
+      // they're hidden from it; Voice Control and keyboards keep them.
+      accessibilityElementsHidden={screenReader}
+      importantForAccessibility={screenReader ? 'no-hide-descendants' : 'auto'}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({

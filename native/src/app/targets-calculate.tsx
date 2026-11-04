@@ -35,7 +35,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -431,13 +431,15 @@ function CheckRow({ title, detail, checked, onPress }: { title: string; detail: 
 
 function StepButton({ symbol, label, disabled, onPress }: { symbol: 'minus' | 'plus'; label: string; disabled: boolean; onPress: () => void }) {
   const c = useBlanc();
+  const screenReader = useScreenReader();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
-      // The rate between the buttons is adjustable: VoiceOver steps it there, in one stop.
-      accessibilityElementsHidden
+      // The rate between the buttons is adjustable: VoiceOver steps it there,
+      // in one stop. Voice Control and keyboards keep the buttons.
+      accessibilityElementsHidden={screenReader}
       disabled={disabled}
       onPress={() => {
         haptics.select();

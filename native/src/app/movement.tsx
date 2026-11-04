@@ -2,7 +2,7 @@ import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { format, parseISO } from 'date-fns';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View, type AccessibilityActionEvent } from 'react-native';
+import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, useWindowDimensions, View, type AccessibilityActionEvent } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { useAppStore } from '@/stores/appStore';
@@ -503,7 +503,8 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
  * longer fit side by side, so "× reps" wraps under the weight when it must.
  */
 function SetFigures({ weight, reps }: { weight: ReactNode; reps: ReactNode }) {
-  const large = useLargeText();
+  // As the live card's figures: wraps from the larger standard sizes on.
+  const large = useWindowDimensions().fontScale > 1;
   const times = (
     <BlancText variant="figure" size={24} tone="graphite" accessibilityElementsHidden importantForAccessibility="no" style={{ marginBottom: 8 }}>
       ×

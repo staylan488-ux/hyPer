@@ -12,6 +12,7 @@ import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
+import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { chooseAnalysisMode, useAnalysisModeStore, type AnalysisMode } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
@@ -37,7 +38,12 @@ export default function AnalysisScreen() {
         const token = data.session?.access_token;
         if (!token) throw new Error('Sign in again to check usage.');
         const line = foodTrialUsageLine(await getFoodTrialStatus(token));
-        if (current) setUsage({ text: line });
+        if (current) {
+          setUsage({ text: line });
+          // Arrives after a network check, so VoiceOver hears it; errors
+          // announce themselves (FormNote alert).
+          announce(line);
+        }
       } catch (error) {
         if (current) setUsage({ text: error instanceof Error ? error.message : 'Could not check usage.', failed: true });
       }

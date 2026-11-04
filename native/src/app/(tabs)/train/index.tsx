@@ -2,7 +2,7 @@ import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref } from 'react';
-import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
+import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -807,7 +807,9 @@ function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
  * when it must.
  */
 function FigureRow({ weight, reps }: { weight: ReactNode; reps: ReactNode }) {
-  const large = useLargeText();
+  // Weight and reps outgrow the card from the larger standard text sizes on;
+  // the wrapping row looks the same while they still fit.
+  const large = useWindowDimensions().fontScale > 1;
   // The fields name themselves; the "×" is only drawn.
   const times = (
     <BlancText variant="figure" size={30} tone="graphite" accessibilityElementsHidden importantForAccessibility="no" style={{ marginBottom: 12 }}>
