@@ -22,7 +22,7 @@ import { useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { today, useFuelStore } from '~/lib/fuel';
+import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
@@ -34,7 +34,8 @@ export default function TodayScreen() {
   const plan = useTodayPlan();
   const target = useAppStore((state) => state.macroTarget);
   const weekly = useAppStore((state) => state.weeklyVolume);
-  const totals = useFuelStore((state) => state.todayTotals);
+  // Yesterday's totals never show as today's after a failed new-day read.
+  const totals = useFuelStore(todayTotalsShown);
   const week = summarizeWeekVolume(weekly);
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;

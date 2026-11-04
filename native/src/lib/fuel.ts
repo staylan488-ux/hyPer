@@ -71,6 +71,14 @@ type FuelState = {
   deleteGroup: (group: NutritionGroup) => Promise<boolean>;
 };
 
+/**
+ * Today's totals as Today shows them: nothing eaten until they have loaded for
+ * the current today. A new day whose read failed keeps the old day's totals in
+ * the store (still right for that day); they are never shown as today's.
+ */
+export const todayTotalsShown = (state: Pick<FuelState, 'todayKey' | 'todayLoadedKey' | 'todayTotals'>): MacroTotals =>
+  state.todayLoadedKey === state.todayKey ? state.todayTotals : emptyTotals;
+
 // The latest month request wins; an older answer is dropped.
 let monthRequest = 0;
 let todayRequest = 0;
