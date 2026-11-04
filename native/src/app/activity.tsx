@@ -1,4 +1,4 @@
-import { format, parseISO } from 'date-fns';
+import { endOfDay, format, parseISO } from 'date-fns';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActionSheetIOS, Pressable, View } from 'react-native';
@@ -12,7 +12,7 @@ import { FieldRow, FormNote, PickerRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
-import { useNow } from '~/lib/fuel';
+import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { confirmDeleteActivity, saveActivity, useHistoryStore } from '~/lib/history';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -29,8 +29,9 @@ function startDay(day?: string): string {
 /** Adds or edits an activity: type, name, day, start, length and notes, with the web's rules. */
 export default function ActivitySheet() {
   const c = useBlanc();
-  // Read every render: kept with the form, a sheet open past midnight couldn't pick the new day.
-  const now = useNow();
+  // The date picker ends on today, moving on at midnight while the sheet is open.
+  const currentDay = useCurrentDayKey();
+  const latestDay = endOfDay(parseISO(currentDay));
   const params = useLocalSearchParams<{ id?: string; day?: string }>();
   const stored = useHistoryStore((state) => state.activities.find((activity) => activity.id === params.id) ?? null);
   // A delete takes the activity off History at once; the sheet keeps it
@@ -149,7 +150,7 @@ export default function ActivitySheet() {
       </Label>
 
       <Label style={{ marginTop: 18 }}>
-        <PickerRow label="Date" mode="date" value={date} max={now} onChange={setDate} />
+        <PickerRow label="Date" mode="date" value={date} max={latestDay} onChange={setDate} />
         <Hairline />
         {start ? (
           <PickerRow label="Start" mode="time" value={start} onChange={setStart} />

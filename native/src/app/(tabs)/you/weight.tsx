@@ -17,7 +17,8 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
-import { dayKey, today, useTodayKey } from '~/lib/fuel';
+import { useCurrentDayKey } from '~/lib/accountData';
+import { dayKey, today } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteWeighIn, loadWeights, setWeightUnit, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
@@ -37,8 +38,8 @@ export default function WeightScreen() {
   const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
   const showTrend = trend.latestEwmaKg !== null && trend.fittedDayCount >= 2;
   const { refreshing, refresh } = usePullRefresh(loadWeights);
-  // Read every render and handed to the rows, so "Today" moves on at midnight.
-  const todayKey = useTodayKey();
+  // Handed to the rows, so "Today" moves on at midnight.
+  const todayKey = useCurrentDayKey();
 
   useEffect(() => {
     void loadWeights();

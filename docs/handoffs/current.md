@@ -116,8 +116,11 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   barcode and serving through edits; Log food holds while a save runs;
   comma decimals are read everywhere; You waits for saved targets; weigh-ins
   read 90 days, as the chart shows; a bodyweight movement logs an empty
-  weight as 0; the live workout's day can't be removed from the program; and
-  the sample backend returns deleted rows like PostgREST. Checked with the
+  weight as 0; the live workout's day can't be removed from the program; the
+  sample backend returns deleted rows like PostgREST; and, after merging the
+  speed pass, screens and sheets left open past midnight move on with the day
+  (Fuel's Copy to today and week strip, Train's program week, Progress's week,
+  weigh-in "Today" labels, Schedule's Day 1, the date pickers). Checked with the
   web suite, lint, build, test types, native `tsc` and an iOS bundle export;
   not run in a simulator or on a phone (the intro from a widget, the
   widgets' Swift, drag and swipe feel, the disabled Log food tabs). Left for
@@ -128,7 +131,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   programs exist but none is active; device surfaces are cleaned only when
   the tabs unmount (sign-in flow); Health sync and run state are per device,
   not per account; beat last time compares a swapped superset's first set
-  with last time's set 2; a swap while a set saves can add a set.
+  with last time's set 2; a swap while a set saves can add a set; a pull to
+  refresh still running at midnight can set the account's day back to the
+  day before until the next refresh.
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

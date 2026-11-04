@@ -47,11 +47,13 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - The React Compiler (app.json) memoizes every component it can compile. A value
   read during render from outside React (`new Date()`, `today()`, `isToday`) is
   kept with the component's other values, so a screen or sheet left open past
-  midnight keeps yesterday: read the clock through `useTodayKey` or `useNow`
-  (`native/src/lib/fuel.ts`), or the account's day through `useAccountDay`, and
-  hand it down as a prop. A ref written inline in JSX drops the memo around it;
-  write it through a stable callback. A test runs a file as compiled with
-  `loadNativeModule(file, imports, { compile: true })`.
+  midnight keeps yesterday. Read the day through a hook in
+  `native/src/lib/accountData.ts`: `useCurrentDayKey` (the clock's day, rendering
+  again at midnight) or `useAccountDay` (the day the account data was read
+  for), and derive dates from that key so they stay memoized (a `new Date()`
+  made on every render undoes the memo around it). A ref written inline in JSX
+  drops the memo around it; write it through a stable callback. A test runs a
+  file as compiled with `loadNativeModule(file, imports, { compile: true })`.
 - `native/modules/hyper-view` reads a view's real window frame from UIKit. React
   Native's own measure works from its layout tree, which does not know where iOS
   put an item inside a navigation bar.

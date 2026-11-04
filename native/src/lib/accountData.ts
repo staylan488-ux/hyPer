@@ -31,6 +31,17 @@ export const useAccountDay = create<{ dayKey: string; refreshedAt: number; loadi
 }));
 
 /**
+ * Today's key by the clock, read on every render (a hook by name, so the React
+ * Compiler never keeps an earlier answer), and rendering the caller again when
+ * the account's day moves on at midnight, so a screen or sheet left open
+ * overnight follows without being touched.
+ */
+export function useCurrentDayKey(): string {
+  useAccountDay((state) => state.dayKey);
+  return todayKey(new Date());
+}
+
+/**
  * Bumped when finished workouts may have changed outside the live session
  * (History deleted one or an edit there finished one, or a pull to refresh),
  * so Today and Train re-read what was done and where the plan stands.
