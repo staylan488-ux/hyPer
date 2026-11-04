@@ -506,12 +506,14 @@ export function SearchTab() {
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const trimmed = query.trim();
-  // A result's detail read is a lookup: it claims the sheet until the review opens, as Scan's does.
-  const { beginBusy } = logger;
+  // A result's portion read claims the sheet until the review opens, so Snap a
+  // meal can't hide that review behind the camera. Closing meanwhile loses
+  // nothing, so it is not held (beginRead, not beginBusy).
+  const { beginRead } = logger;
   useEffect(() => {
     if (!opening) return;
-    return beginBusy();
-  }, [opening, beginBusy]);
+    return beginRead();
+  }, [opening, beginRead]);
 
   useEffect(() => {
     if (trimmed.length < 2) {

@@ -42,7 +42,8 @@ export type VolumeBody = { weekStart: string; weeklyVolume: MuscleVolume[]; volu
 export type TargetBody = { value: MacroTarget | null };
 export type ProfileBody = { value: NutritionProfile | null };
 export type TodayBody = { dayKey: string; totals: MacroTotals };
-export type MonthBody = { month: string; logs: FoodLog[]; groups: NutritionGroup[] };
+/** `dayKey`: the today part's day when this month was saved beside it. */
+export type MonthBody = { month: string; dayKey: string; logs: FoodLog[]; groups: NutritionGroup[] };
 export type SeedHero =
   | { kind: 'planned'; dayId: string }
   | { kind: 'done'; title: string }
@@ -195,7 +196,8 @@ export function planLaunchRestore(copies: Partial<Record<Part, Envelope>>, userI
   let fuel: LaunchRestore['fuel'] = null;
   if (isObject(today) && typeof today.dayKey === 'string' && DAY_KEY.test(today.dayKey) && isTotals(today.totals)) {
     const totals = today.dayKey === key ? today.totals : today.dayKey < key ? { ...ZERO } : null;
-    if (totals) fuel = { todayKey: key, totals, month: monthOf(copies.month?.body, userId, now, key, totals) };
+    const saved = { dayKey: today.dayKey, totals: today.totals };
+    if (totals) fuel = { todayKey: key, totals, month: monthOf(copies.month?.body, userId, now, saved, { dayKey: key, totals }) };
   }
 
   const training = trainingOf(copies.training?.body);
@@ -219,15 +221,20 @@ export function planLaunchRestore(copies: Partial<Record<Part, Envelope>>, userI
   };
 }
 
-function monthOf(body: unknown, userId: string, now: Date, key: string, totals: MacroTotals): MonthBody | null {
+/**
+ * This month, only beside the today part it was saved with (the same day and
+ * figures: a month left behind while Fuel showed another month is not), and
+ * in step with today's figures now, or Fuel and Today would disagree.
+ */
+function monthOf(body: unknown, userId: string, now: Date, saved: TodayBody, current: TodayBody): MonthBody | null {
   const month = format(now, 'yyyy-MM');
-  if (!isObject(body) || body.month !== month) return null;
+  if (!isObject(body) || body.month !== month || body.dayKey !== saved.dayKey) return null;
   const inMonth = (rows: Row[]) => rows.every((row) => typeof row.date === 'string' && row.date.startsWith(`${month}-`));
   if (!owned(body.logs, userId) || !inMonth(body.logs) || !owned(body.groups, userId) || !inMonth(body.groups)) return null;
   const logs = body.logs as unknown as FoodLog[];
-  // The month must agree with today's figures, or Fuel and Today would disagree.
-  if (!sameTotals(todayTotalsOf(logs, key), totals)) return null;
-  return { month, logs, groups: body.groups as unknown as NutritionGroup[] };
+  if (!sameTotals(todayTotalsOf(logs, saved.dayKey), saved.totals)) return null;
+  if (!sameTotals(todayTotalsOf(logs, current.dayKey), current.totals)) return null;
+  return { month, dayKey: saved.dayKey, logs, groups: body.groups as unknown as NutritionGroup[] };
 }
 
 /** The part of today's hero worth keeping for the next cold start the same day. */

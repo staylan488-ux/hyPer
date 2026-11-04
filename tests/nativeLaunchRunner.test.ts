@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as zustand from 'zustand';
 
+import * as reminderPlan from '../native/src/lib/fuelReminderPlan';
 import type * as LaunchActions from '../native/src/lib/launchActions';
 import { loadNativeModule } from './helpers/loadNativeModule';
 
@@ -256,5 +257,111 @@ describe('useLaunchActions', () => {
     expect(remove).toHaveBeenCalledOnce();
     expect(appListeners.size).toBe(0);
     root = createRoot(document.createElement('div'));
+  });
+});
+
+// A tap on the Fuel reminder (or its Snap a meal button) is read at the root,
+// beside takeNativeLaunch, so it is a press from the tap on: a minute at most,
+// forgotten when the app is left, never kept for the tabs to find later.
+describe('a Fuel reminder tap', () => {
+  const DEFAULT_ACTION = 'expo.modules.notifications.actions.DEFAULT';
+  type Response = { actionIdentifier: string; notification: { date: number; request: { identifier: string } } };
+  const tap = (actionIdentifier = DEFAULT_ACTION): Response => ({
+    actionIdentifier,
+    notification: { date: 1, request: { identifier: reminderPlan.fuelReminderId('2026-11-04') } },
+  });
+  let stored: Response | null = null;
+  let responder: ((response: Response) => void) | null = null;
+  const notifications = {
+    DEFAULT_ACTION_IDENTIFIER: DEFAULT_ACTION,
+    getLastNotificationResponse: () => stored,
+    clearLastNotificationResponse: () => { stored = null; },
+    addNotificationResponseReceivedListener: (listener: (response: Response) => void) => {
+      responder = listener;
+      return { remove: () => { responder = null; } };
+    },
+    setNotificationCategoryAsync: async () => ({}),
+  };
+  const fakeStore = <T extends object>(state: T) => zustand.create<T>(() => state);
+  /** The root layout's module scope: iOS presses, then reminder taps. */
+  const launchApp = () => {
+    const reminder = loadNativeModule<{ followReminderTaps: () => void }>('lib/fuelReminder.ts', {
+      'expo-notifications': notifications,
+      zustand,
+      '@/lib/appVisibility': { onAppVisible: () => () => {} },
+      '@/stores/appStore': { useAppStore: fakeStore({}) },
+      '@/stores/authStore': { useAuthStore: fakeStore({ user: null }) },
+      './fuel': { useFuelStore: fakeStore({}) },
+      './fuelReminderPlan': reminderPlan,
+      './launchActions': launchActions,
+    });
+    launch.takeNativeLaunch();
+    reminder.followReminderTaps();
+  };
+  beforeEach(() => {
+    stored = null;
+    responder = null;
+  });
+
+  it('opens Log food for the tap that launched the app, with the intro left out', async () => {
+    stored = tap();
+    launchApp();
+    expect(launch.launchWaiting()).toBe(true);
+    expect(stored).toBeNull();
+    await render();
+    expect(push).toHaveBeenCalledOnce();
+    expect(push).toHaveBeenCalledWith('/log-food');
+  });
+
+  it('opens the camera for the Snap a meal button, also while the app runs', async () => {
+    launchApp();
+    await render();
+    await act(async () => { responder?.(tap(reminderPlan.FUEL_REMINDER_SNAP_ACTION)); });
+    expect(push).toHaveBeenCalledOnce();
+    expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { start: 'camera' } });
+  });
+
+  it('forgets a tap made during the offline wait once the app is left, so a later visit opens nothing', async () => {
+    stored = tap(reminderPlan.FUEL_REMINDER_SNAP_ACTION);
+    launchApp();
+    await render({ screen: 'offline', tabs: false });
+    await emitAppState('background');
+    expect(store().press).toBeNull();
+    // Hours later, signal again: the session reconnects and the tabs mount.
+    await emitAppState('active');
+    await render({ screen: 'app' });
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('lets a tap go when the offline wait outlasts a minute', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(1_000_000);
+      stored = tap();
+      launchApp();
+      await render({ screen: 'offline', tabs: false });
+      vi.setSystemTime(1_000_000 + launchActions.LAUNCH_PRESS_TTL_MS + 1);
+      await render({ screen: 'app' });
+      expect(push).not.toHaveBeenCalled();
+      expect(store().press).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('runs a tap made during the offline wait when the reconnect lands within the minute', async () => {
+    launchApp();
+    await render({ screen: 'offline', tabs: false });
+    await act(async () => { responder?.(tap()); });
+    await render({ screen: 'app' });
+    expect(push).toHaveBeenCalledOnce();
+    expect(push).toHaveBeenCalledWith('/log-food');
+  });
+
+  it('forgets a tap that lands on the sign-in screen', async () => {
+    stored = tap();
+    launchApp();
+    await render({ screen: 'sign-in', tabs: false });
+    expect(store().press).toBeNull();
   });
 });

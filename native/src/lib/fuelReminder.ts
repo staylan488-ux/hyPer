@@ -304,6 +304,7 @@ function followAccount(userId: string) {
 
 // The response last acted on, so one tap that arrives both stored and as an event opens once.
 let lastOpened: string | null = null;
+let followingTaps = false;
 
 /**
  * A tap on the reminder opens Log food on Recent; its Snap a meal button
@@ -333,21 +334,33 @@ function registerReminderActions() {
   }
 }
 
-/** Taps: one that launched the app (read once), then each one while it runs. */
-function followTaps() {
+/**
+ * Root layout, at module scope beside takeNativeLaunch: reminder taps for the
+ * whole run of the app, the one that launched it (read once) and each one
+ * after. Read there, not in the tabs, a tap becomes a press the moment it
+ * lands, so the press rules apply from the tap: a cold launch leaves the intro
+ * out, the offline wait keeps it a minute at most, and leaving the app or the
+ * sign-in screen forgets it. Once per run; a second call does nothing.
+ */
+export function followReminderTaps(): void {
+  if (followingTaps) return;
+  followingTaps = true;
   registerReminderActions();
+  // Listen first, then take: a tap that lands in between is read by one or the other (lastOpened keeps it to one press).
+  try {
+    Notifications.addNotificationResponseReceivedListener(onReminderResponse);
+  } catch {
+    // unavailable
+  }
   try {
     onReminderResponse(Notifications.getLastNotificationResponse());
   } catch {
     // unavailable
   }
-  const subscription = Notifications.addNotificationResponseReceivedListener(onReminderResponse);
-  return () => subscription.remove();
 }
 
-/** Mounted once (tab layout). */
+/** Mounted once (tab layout). Taps are read at the root (followReminderTaps). */
 export function useFuelReminder() {
   const userId = useAuthStore((state) => state.user?.id ?? null);
   useEffect(() => (userId ? followAccount(userId) : undefined), [userId]);
-  useEffect(() => followTaps(), []);
 }

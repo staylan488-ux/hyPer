@@ -10,8 +10,8 @@ import { loadNativeModule } from './helpers/loadNativeModule';
 
 // Snap a meal refuses while a lookup runs (log-food.tsx's sheetSnap). Opening a
 // USDA result reads its portion first, so Search claims the sheet until the
-// review opens, as Scan's barcode lookup does; a press meanwhile can't hide
-// the review behind the camera.
+// review opens (a read claim: closing loses nothing, so the leave guard stays
+// out of it); a press meanwhile can't hide the review behind the camera.
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
 const Empty = () => null;
@@ -34,9 +34,10 @@ const pressables: Press[] = [];
 const inputs: Record<string, Input> = {};
 let detail = deferred<Food>();
 const release = vi.fn();
+const beginRead = vi.fn(() => release);
 const beginBusy = vi.fn(() => release);
 const chooseFood = vi.fn();
-const logger = { purpose: 'log', editing: null, beginBusy, chooseFood, addIngredients: noop, groups: [], when: {} };
+const logger = { purpose: 'log', editing: null, beginBusy, beginRead, chooseFood, addIngredients: noop, groups: [], when: {} };
 
 const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType }>('fuel/FoodLists.tsx', {
   'expo-symbols': { SymbolView: Empty },
@@ -86,7 +87,6 @@ beforeEach(() => {
   pressables.length = 0;
   detail = deferred();
   release.mockClear();
-  beginBusy.mockClear();
   chooseFood.mockClear();
   root = createRoot(document.createElement('div'));
 });
@@ -108,7 +108,9 @@ async function openResult() {
 describe('Search: a result being opened claims the sheet', () => {
   it('holds the claim until the review opens', async () => {
     await openResult();
-    expect(beginBusy).toHaveBeenCalledOnce();
+    expect(beginRead).toHaveBeenCalledOnce();
+    // a read, not a lookup the leave guard holds the sheet for
+    expect(beginBusy).not.toHaveBeenCalled();
     expect(release).not.toHaveBeenCalled();
     expect(chooseFood).not.toHaveBeenCalled();
     const portioned = { ...milk, serving_label: '1 cup' };

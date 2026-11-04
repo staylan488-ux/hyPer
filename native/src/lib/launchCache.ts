@@ -275,7 +275,7 @@ function freshBody(part: Part, userId: string): unknown {
       return dayFresh ? { dayKey: f.todayKey, totals: f.todayTotals } : undefined;
     case 'month':
       return dayFresh && f.loadedMonth === f.todayKey.slice(0, 7) && !isFuelMonthFromCopy() && own(f.logs) && own(f.groups)
-        ? { month: f.loadedMonth, logs: f.logs, groups: f.groups }
+        ? { month: f.loadedMonth, dayKey: f.todayKey, logs: f.logs, groups: f.groups }
         : undefined;
     case 'training': {
       if (a.workoutLoadedForUserId !== userId) return undefined;

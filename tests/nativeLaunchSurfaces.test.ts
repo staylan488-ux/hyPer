@@ -128,7 +128,10 @@ describe('Snap a meal surfaces', () => {
     const layout = read('src/app/_layout.tsx');
     const intro = read('src/components/BrandIntro.tsx');
     // taken at module scope, so the first render already sees the press
-    expect(layout.slice(0, layout.indexOf('export default function RootLayout'))).toMatch(/^takeNativeLaunch\(\);$/m);
+    const moduleScope = layout.slice(0, layout.indexOf('export default function RootLayout'));
+    expect(moduleScope).toMatch(/^takeNativeLaunch\(\);$/m);
+    // a Fuel reminder tap too, so it is a press from the tap on (never left for the tabs to find later)
+    expect(moduleScope).toMatch(/^followReminderTaps\(\);$/m);
     expect(layout).toMatch(/const \[introDone, setIntroDone\] = useState\(\(\) => [^\n]*\|\| launchWaiting\(\)\);/);
     expect(layout).toContain('const hurryIntro = useLaunchActions(screen, introDone);');
     expect(layout).toMatch(/<BrandIntro [^>]*hurry=\{hurryIntro\}/);

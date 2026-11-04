@@ -13,6 +13,7 @@ import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
+import { followReminderTaps } from '~/lib/fuelReminder';
 import { installLaunchCache } from '~/lib/launchCache';
 import { backendOf } from '~/lib/launchSnapshot';
 import { launchWaiting, takeNativeLaunch, useLaunchActions } from '~/lib/launch';
@@ -41,6 +42,9 @@ installLaunchCache({
 });
 // A press of Snap a meal, Log food or Train that launched the app (lib/launch.ts).
 takeNativeLaunch();
+// A tap on the Fuel reminder, or its Snap a meal button, becomes the same press
+// the moment it lands, at launch or later (lib/fuelReminder.ts).
+followReminderTaps();
 // Otherwise restore the saved session (Keychain) and follow auth changes, as
 // the web app does on launch.
 if (!isPreviewActive()) void useAuthStore.getState().initialize();

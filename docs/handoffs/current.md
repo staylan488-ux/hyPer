@@ -64,8 +64,8 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     screen, Action button), App Shortcuts (Snap a meal, Log food, Open Train)
     and quick actions (Snap a meal, Log food, Train). The menu's "Start
     workout" became Train, which only opens the tab (the owner chose it).
-    Closing Log food while a Search result's portion loads now asks first, as
-    other lookups do. Device checks: the Xcode 26.6 build (App Intents
+    A press waits out a Search result's portion read; closing Log food then
+    still closes, as before. Device checks: the Xcode 26.6 build (App Intents
     metadata, phrase validation, any openAppWhenRun warning); the control
     pressed warm, cold and locked (if it doesn't open the app, use the
     OpenIntent fallback in the design); Shortcuts listing Snap a meal once;
@@ -90,13 +90,16 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     (needs a schema change to prevent); unchanged quick starts renew their
     copy only every 30 days.
   - Fuel reminder (the menu's "Bulk nudge"): You's switch and time, local only.
-    A tap opens Log food, and pressing and holding it offers Snap a meal.
-    Device checks: the permission prompt and the red note when notifications
-    are off; `-hyperAction fuelReminder` on the lock screen; no banner with the
-    app in front; logging enough before the time cancels it; a time zone and a
-    DST change; sign-out and an expired session leave nothing pending; You's
-    Time row motion and its 5 PM to 11 PM limit; the calorie wording needs the
-    owner's goal saved as Bulk or Lean bulk.
+    A tap opens Log food, and pressing and holding it offers Snap a meal;
+    the root reads taps from launch, so they follow the press rules. Device
+    checks: a tap cold (intro left out or hurried), warm, and on the offline
+    screen then left (nothing opens on the next visit); the permission
+    prompt and the red note when notifications are off; `-hyperAction
+    fuelReminder` on the lock screen; no banner with the app in front;
+    logging enough before the time cancels it; a time zone and a DST change;
+    sign-out and an expired session leave nothing pending; You's Time row
+    motion and its 5 PM to 11 PM limit; the calorie wording needs the owner's
+    goal saved as Bulk or Lean bulk.
   - Seen in passing, existing behaviour: a Fuel entry deleted during a
     pull-to-refresh read can come back (fixed only while the copy is shown),
     and the schedule editor's default day never takes effect because Today's

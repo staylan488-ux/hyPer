@@ -49,9 +49,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   waits for the workout read), saves a part only from this launch's reads or
   the person's edits, and never runs in preview. Today's plan-card seed is
   drawn only while its `planBasis` (program days, saved schedule, adaptive
-  scheduling) matches the live one. Sign-out, another account, a launch with
-  no saved sign-in and each new build drop it. While Fuel shows the copied
-  month it makes no default meals, and an edit re-reads the month
+  scheduling) matches the live one, and Fuel's month only beside the today
+  figures it was saved with (its `dayKey`). Sign-out, another account, a
+  launch with no saved sign-in and each new build drop it. While Fuel shows
+  the copied month it makes no default meals, and an edit re-reads the month
   (`editsCopy` in `native/src/lib/fuel.ts`). Bump `LAUNCH_SNAPSHOT_VERSION`
   when a kept type changes in a way a screen reads.
 - The live workout follows the shared session plan rules in `src/lib/sessionPlan.ts`
@@ -269,8 +270,11 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   app it goes quietly to Notification Center (the one handler is in
   `platform/restNotifications.ts`). A tap posts a Log food press and its Snap
   a meal button (category `fuelReminder`) a Snap a meal press, so both run like
-  the quick actions below. The trigger has no time zone, so after travel it
-  follows the new zone from the next return to the front.
+  the quick actions below. The root layout reads taps from launch
+  (`followReminderTaps` beside `takeNativeLaunch`), never the tabs, so a tap
+  made on the offline or sign-in screen keeps the press rules and never opens
+  on a later visit. The trigger has no time zone, so after travel it follows
+  the new zone from the next return to the front.
 - The Live Activity is SwiftUI in a widget extension, added on prebuild by
   [plugins/withHyperWidgets.js](../../../native/plugins/withHyperWidgets.js)
   from [targets/widgets](../../../native/targets/widgets/). The card's data,
@@ -357,6 +361,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   Log food sheet answers through `sheetSnap` (takes the photo as a new entry
   for now, starts over in place when it holds nothing, otherwise refuses with
   an error haptic and "Finish what's open, then try again." for VoiceOver).
+  Search's portion read holds a press off (`beginRead`) without holding the
+  sheet: closing then still closes, while `beginBusy` lookups ask first.
   Train only switches tabs when nothing covers them and never starts a
   workout. One system picker at a time (`pickFoodPhoto`), none while a
   photo's action sheet is up (`showPhotoChoices`). Intents that open the app

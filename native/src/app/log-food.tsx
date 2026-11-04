@@ -74,6 +74,21 @@ const sameGroups = (a: NutritionGroup[], b: NutritionGroup[]) =>
 /** The same saved foods, field for field, in the same order. */
 const sameFoods = (a: Food[], b: Food[]) => a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
 
+/** Claims that owners take and let go of: each cleanup releases only its own claim, once. */
+function useClaims(): [number, () => () => void] {
+  const [claims, setClaims] = useState(0);
+  const begin = useCallback(() => {
+    setClaims((count) => count + 1);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      setClaims((count) => count - 1);
+    };
+  }, []);
+  return [claims, begin];
+}
+
 /**
  * Log food, or edit an entry: Recent, Saved, Search (USDA), Scan, Manual and Photo,
  * a review for a chosen food, and the meal builder, by the web logger's rules.
@@ -220,17 +235,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   // A photo, describe or barcode lookup running. Each tab claims the sheet
   // while its own lookup runs and lets go when it ends, so a tab opening or
   // finishing never clears another tab's lookup.
-  const [busyClaims, setBusyClaims] = useState(0);
+  const [busyClaims, beginBusy] = useClaims();
   const busy = busyClaims > 0;
-  const beginBusy = useCallback(() => {
-    setBusyClaims((count) => count + 1);
-    let active = true;
-    return () => {
-      if (!active) return;
-      active = false;
-      setBusyClaims((count) => count - 1);
-    };
-  }, []);
+  // A Search result's portion read: it holds Snap a meal off (the review is
+  // about to open), but closing loses nothing, so the sheet closes as before.
+  const [readClaims, beginRead] = useClaims();
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
   // effect closes.
@@ -398,8 +407,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       composeMeal: (food, editSaved) => startMeal(food, editSaved),
       complete,
       beginBusy,
+      beginRead,
     }),
-    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy],
+    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead],
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
@@ -501,7 +511,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     const answer = sheetSnap({
       newEntry: !editing && !savedMeal && !saveFrom,
       pickerUp: foodPickerUp(),
-      occupied: closing || busy || Boolean(chosen) || Boolean(meal && !paused) || tab === 'scan' || manualDescribed.current,
+      occupied: closing || busy || readClaims > 0 || Boolean(chosen) || Boolean(meal && !paused) || tab === 'scan' || manualDescribed.current,
       holdsWork: unsaved,
       analysisDraftOnly:
         (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) && !manualHasChanges(manual, manualBase, savedMeals) && !(meal && storageFailed),

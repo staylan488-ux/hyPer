@@ -96,6 +96,7 @@ let visible: (() => void) | null = null;
 
 type Mod = {
   useFuelReminder: () => void;
+  followReminderTaps: () => void;
   useFuelReminderStore: { getState: () => { userId: string | null; settings: { enabled: boolean; minutes: number }; permission: string | null } };
   setFuelReminderEnabled: (enabled: boolean) => void;
   setFuelReminderTime: (minutes: number) => void;
@@ -447,10 +448,13 @@ describe('signing out', () => {
 });
 
 describe('a tap on the reminder', () => {
+  // Read at the root from launch (followReminderTaps, beside takeNativeLaunch).
   // The press then runs like the Home Screen quick action of the same name
   // (after the intro, with the app in front): see nativeLaunchRunner.test.ts.
+  const follow = () => act(async () => { mod.followReminderTaps(); });
+
   it('opens Log food once, through the launch press store', async () => {
-    await render();
+    await follow();
     await act(async () => { ios.responder?.(response(id(DAY), 1)); });
     expect(postLaunchPress).toHaveBeenCalledTimes(1);
     expect(postLaunchPress).toHaveBeenCalledWith('log-food');
@@ -460,14 +464,14 @@ describe('a tap on the reminder', () => {
   });
 
   it('opens the camera from the reminder’s Snap a meal button', async () => {
-    await render();
+    await follow();
     await act(async () => { ios.responder?.(response(id(DAY), 1, plan.FUEL_REMINDER_SNAP_ACTION)); });
     expect(postLaunchPress).toHaveBeenCalledTimes(1);
     expect(postLaunchPress).toHaveBeenCalledWith('snap-meal');
   });
 
   it('registers the Snap a meal button, which brings the app to the front', async () => {
-    await render();
+    await follow();
     expect(notifications.setNotificationCategoryAsync).toHaveBeenCalledWith('fuelReminder', [
       { identifier: 'snapMeal', buttonTitle: 'Snap a meal', options: { opensAppToForeground: true } },
     ]);
@@ -476,7 +480,7 @@ describe('a tap on the reminder', () => {
   });
 
   it('ignores Rest over, other notifications and unknown actions', async () => {
-    await render();
+    await follow();
     await act(async () => {
       ios.responder?.(response('hyper-rest-over', 1));
       ios.responder?.(response('something-else', 1));
@@ -487,13 +491,34 @@ describe('a tap on the reminder', () => {
 
   it('opens Log food for the tap that launched the app, and forgets it', async () => {
     ios.last = response(id(DAY), 1);
-    await render();
+    await follow();
     expect(postLaunchPress).toHaveBeenCalledWith('log-food');
     expect(notifications.clearLastNotificationResponse).toHaveBeenCalled();
     expect(ios.last).toBeNull();
     // The same tap arriving again as an event opens nothing more.
     await act(async () => { ios.responder?.(response(id(DAY), 1)); });
     expect(postLaunchPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('listens before it takes the stored tap, and follows once however often it is called', async () => {
+    ios.last = response(id(DAY), 1);
+    await follow();
+    await follow();
+    expect(notifications.addNotificationResponseReceivedListener.mock.invocationCallOrder[0])
+      .toBeLessThan(notifications.getLastNotificationResponse.mock.invocationCallOrder[0]);
+    expect(notifications.addNotificationResponseReceivedListener).toHaveBeenCalledTimes(1);
+    expect(notifications.setNotificationCategoryAsync).toHaveBeenCalledTimes(1);
+    expect(postLaunchPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves taps to the root: the tab layout’s hook neither reads nor hears them', async () => {
+    ios.last = response(id(DAY), 1);
+    await render();
+    await settle();
+    expect(notifications.getLastNotificationResponse).not.toHaveBeenCalled();
+    expect(notifications.addNotificationResponseReceivedListener).not.toHaveBeenCalled();
+    expect(postLaunchPress).not.toHaveBeenCalled();
+    expect(ios.last).not.toBeNull();
   });
 });
 

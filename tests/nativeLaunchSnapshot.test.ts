@@ -164,7 +164,7 @@ describe('today’s figures', () => {
 
   it('keeps this month only when its rows are the account’s, in the month, and agree with today', () => {
     const logs = [log('a', DAY, 500, 30), log('b', DAY, 360, 22), log('c', '2026-11-01', 900)];
-    const month = (body: Record<string, unknown>) => envelope('month', { month: '2026-11', logs, groups: [group('g1', DAY)], ...body });
+    const month = (body: Record<string, unknown>) => envelope('month', { month: '2026-11', dayKey: DAY, logs, groups: [group('g1', DAY)], ...body });
     const figures = totals(860, 52, 10, 4);
     expect(plan({ today: today(DAY, figures), month: month({}) }).fuel?.month?.logs).toHaveLength(3);
     expect(plan({ today: today(DAY, figures), month: month({ month: '2026-10' }) }).fuel?.month).toBeNull();
@@ -174,8 +174,24 @@ describe('today’s figures', () => {
     const disagreeing = plan({ today: today(DAY, totals(1000, 52, 10, 4)), month: month({}) });
     expect(disagreeing.fuel).toMatchObject({ totals: totals(1000, 52, 10, 4), month: null });
     // Yesterday's copy of this month has nothing for today, so it agrees with zeros.
-    const fromYesterday = envelope('month', { month: '2026-11', logs: [log('c', '2026-11-01', 900)], groups: [] });
-    expect(plan({ today: today('2026-11-03'), month: fromYesterday }).fuel?.month?.logs).toHaveLength(1);
+    const yesterday = [log('c', '2026-11-01', 900), log('e', '2026-11-03', 860, 52)];
+    const fromYesterday = envelope('month', { month: '2026-11', dayKey: '2026-11-03', logs: yesterday, groups: [] });
+    expect(plan({ today: today('2026-11-03', totals(860, 52, 5, 2)), month: fromYesterday }).fuel).toMatchObject({ totals: totals(0, 0, 0, 0), month: { logs: yesterday } });
+    // A month without its day (an older shape) is read again.
+    const undated = envelope('month', { month: '2026-11', logs, groups: [] });
+    expect(plan({ today: today(DAY, figures), month: undated }).fuel?.month).toBeNull();
+  });
+
+  it('keeps an earlier day’s month only beside the today figures it was saved with', () => {
+    // Saved on the 3rd with Fuel on November; later that day Fuel showed October
+    // while food was logged from Today, so only today's figures were saved again.
+    const left = envelope('month', { month: '2026-11', dayKey: '2026-11-03', logs: [log('e', '2026-11-03', 500, 30)], groups: [] });
+    const restored = plan({ today: today('2026-11-03'), month: left });
+    // Nothing is logged on the 4th yet (zeros agree), but the 3rd would show too little.
+    expect(restored.fuel).toMatchObject({ todayKey: DAY, totals: totals(0, 0, 0, 0), month: null });
+    // A month saved on another day than today's figures is read again, too.
+    const otherDay = envelope('month', { month: '2026-11', dayKey: '2026-11-02', logs: [log('e', '2026-11-03', 860, 52)], groups: [] });
+    expect(plan({ today: today('2026-11-03', totals(860, 52, 5, 2)), month: otherDay }).fuel?.month).toBeNull();
   });
 });
 

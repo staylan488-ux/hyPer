@@ -61,7 +61,7 @@ const bodies = (): Record<string, unknown> => ({
   target: { value: target },
   profile: { value: { user_id: USER, goal: 'lean_bulk' } },
   today: { dayKey: DAY, totals: { calories: 860, protein: 52, carbs: 10, fat: 4 } },
-  month: { month: '2026-11', logs: [log('a', DAY, 500, 30), log('b', DAY, 360, 22)], groups: [] },
+  month: { month: '2026-11', dayKey: DAY, logs: [log('a', DAY, 500, 30), log('b', DAY, 360, 22)], groups: [] },
   training: { workout: null, today: seed },
 });
 const stamp = (part: string, userId = USER) => ({ v: 1, part, userId, backend: BACKEND, build: BUILD, savedAt: NOW.getTime() - 3_600_000 });
@@ -178,6 +178,46 @@ describe('restoring the copy at launch', () => {
     await signIn(modules);
     expect(modules.app.getState().currentWorkout).toBeNull();
     expect(modules.cache.useLaunchHint.getState()).toEqual({ seed: null, holdPlan: true });
+  });
+
+  it('brings the month back the next day only beside the figures it was saved with', async () => {
+    const NEXT_DAY = new Date(2026, 10, 5, 9, 0, 0);
+    /** Day one: Fuel on this month, so today's figures and the month are saved together. */
+    const dayOne = async () => {
+      vi.setSystemTime(NOW);
+      const modules = await load();
+      const storage = spyStorage();
+      install(modules, storage);
+      await signIn(modules);
+      freshFuel(modules);
+      await vi.advanceTimersByTimeAsync(1_000);
+      return { modules, storage };
+    };
+    const nextDay = async (storage: SpyStorage) => {
+      vi.setSystemTime(NEXT_DAY);
+      const modules = await load();
+      install(modules, storage);
+      await signIn(modules);
+      return modules.fuel.getState();
+    };
+
+    const plain = await dayOne();
+    expect(await nextDay(plain.storage)).toMatchObject({
+      todayKey: '2026-11-05', todayTotals: { calories: 0 }, loadedMonth: '2026-11', logs: [{ id: 'a' }],
+    });
+
+    // Later on day one Fuel goes to October and food is logged from Today:
+    // today's figures are saved again, but the month (still this month's older copy) can't be.
+    const { modules, storage } = await dayOne();
+    modules.fuel.setState({ loadedMonth: '2026-10', logs: [], groups: [] });
+    modules.fuel.setState({ todayTotals: { calories: 860, protein: 52, carbs: 10, fat: 4 } });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(saved(storage, 'today')?.body).toEqual({ dayKey: DAY, totals: { calories: 860, protein: 52, carbs: 10, fat: 4 } });
+    expect(saved(storage, 'month')?.body).toMatchObject({ dayKey: DAY, logs: [{ id: 'a' }] });
+    // The next day that month no longer matches the figures it was left beside: Fuel reads it instead.
+    expect(await nextDay(storage)).toMatchObject({
+      todayKey: '2026-11-05', todayTotals: { calories: 0 }, loadedMonth: null, status: 'idle', logs: [],
+    });
   });
 
   it('never overwrites stores that already hold data', async () => {
@@ -312,7 +352,7 @@ describe('saving only what this launch read', () => {
     freshFuel(modules);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(saved(storage, 'today')?.body).toEqual({ dayKey: DAY, totals: { calories: 500, protein: 30, carbs: 5, fat: 2 } });
-    expect(saved(storage, 'month')?.body).toMatchObject({ month: '2026-11', logs: [{ id: 'a' }] });
+    expect(saved(storage, 'month')?.body).toMatchObject({ month: '2026-11', dayKey: DAY, logs: [{ id: 'a' }] });
     expect(saved(storage, 'program')).toBeNull();
 
     modules.app.setState({ hydratedForUserId: USER });

@@ -51,7 +51,7 @@ function deferred<T>() {
 
 type Button = { title: string; disabled?: boolean; onPress: () => void };
 type Field = { label: string; onChangeText: (text: string) => void };
-type Context = { beginBusy: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null } };
+type Context = { beginBusy: () => () => void; beginRead: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null } };
 type ReviewProps = {
   draft: composition.MealDraft;
   savedTarget?: Food;
@@ -436,6 +436,22 @@ describe('native food logger transitions', () => {
     expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
   });
 
+  it('closes freely while a Search result’s portion read runs, and holds for an analysis', async () => {
+    const h = loggerHarness();
+    await h.render();
+    let read!: () => void;
+    await act(async () => { read = h.captured.context!.beginRead(); });
+    // Nothing is lost by closing during a read: no question, and Build a meal stays open.
+    expect(h.captured.guard!.on).toBe(false);
+    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
+    await act(async () => { read(); read(); });
+    let busy!: () => void;
+    await act(async () => { busy = h.captured.context!.beginBusy(); });
+    expect(h.captured.guard).toEqual({ on: true, message: { title: 'Stop the analysis?', message: 'The result is lost if you close now.' } });
+    await act(async () => { busy(); });
+    expect(h.captured.guard!.on).toBe(false);
+  });
+
   it('releases each busy owner once without clearing another owner', async () => {
     const h = loggerHarness();
     await h.render();
@@ -678,6 +694,7 @@ describe('native food logger: Snap a meal', () => {
     }],
     ['the Scan tab open', (h) => h.tab('scan')],
     ['a lookup running', (h) => act(async () => { h.captured.context!.beginBusy(); })],
+    ['a Search result’s portion read running', (h) => act(async () => { h.captured.context!.beginRead(); })],
     ['a meal being built', (h) => h.click('Build a meal')],
   ])('refuses with %s, and changes nothing', async (_case, setup) => {
     const h = loggerHarness();
