@@ -126,6 +126,16 @@ describe('Progress after a failed read', () => {
     expect(shown()).toContain('Nothing trained yet this week');
   });
 
+  it('says nothing was trained once another read finds an empty week after its own failed', async () => {
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    await open();
+    expect(shown()).not.toContain('Nothing trained yet this week');
+
+    // Back online, the account load on foreground reads the week and finds nothing.
+    await act(async () => { appStore.setState({ weeklyVolume: [] }); });
+    expect(shown()).toContain('Nothing trained yet this week');
+  });
+
   it('still says nothing was trained when an earlier read found an empty week', async () => {
     // The account load read the week and found nothing; Progress's own read fails.
     appStore.setState({ weeklyVolume: [] });

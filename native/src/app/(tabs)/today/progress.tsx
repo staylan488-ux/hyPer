@@ -26,14 +26,13 @@ import { space, useBlanc } from '~/theme/blanc';
 
 const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
-// A read that worked always stores a new list, and sign-out puts back
-// initialAppData's, so a different list means this account's week was read.
-const weekRead = () => useAppStore.getState().weeklyVolume !== initialAppData.weeklyVolume;
-
 /** Progress: this week's volume by muscle, training time over eight weeks, and the last week's eating. */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
-  const [volumeRead, setVolumeRead] = useState(weekRead);
+  // A read that worked always stores a new list (a failed one leaves it as it
+  // was), and sign-out puts back initialAppData's, so a different list means
+  // this account's week was read, by this screen or any other.
+  const volumeRead = useAppStore((state) => state.weeklyVolume !== initialAppData.weeklyVolume);
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
   const [open, setOpen] = useState<MuscleGroup | null>(null);
   // Pull to refresh reads everything again; the nutrition block remounts to refetch.
@@ -42,15 +41,8 @@ export default function ProgressScreen() {
   const active = useRef(true);
 
   const load = useCallback(async () => {
-    // A failed read leaves the store's volume as it was, so only a read that
-    // worked, this one or an earlier one, may say nothing was trained.
-    const shown = useAppStore.getState().weeklyVolume;
     await Promise.all([
-      Promise.resolve(useAppStore.getState().calculateWeeklyVolume())
-        .catch(() => {})
-        .finally(() => {
-          if (active.current && (useAppStore.getState().weeklyVolume !== shown || weekRead())) setVolumeRead(true);
-        }),
+      Promise.resolve(useAppStore.getState().calculateWeeklyVolume()).catch(() => {}),
       fetchTrainingHours().then((points) => {
         if (active.current && points) setHours(points);
       }),
