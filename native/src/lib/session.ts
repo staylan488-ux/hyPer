@@ -48,10 +48,11 @@ const sharedSessionModel = sessionModelCache();
 export function useSessionModel(): SessionModel | null {
   const workout = useAppStore((state) => state.currentWorkout);
   const split = useAppStore((state) => state.activeSplit);
+  const splits = useAppStore((state) => state.splits);
   const plan = useAppStore((state) => state.currentWorkoutDayPlan);
   const focused = useFocusStore((state) => state.exerciseId);
   const skips = usePendingSkips((state) => (workout && state.workoutId === workout.id ? state.skips : NO_SKIPS));
-  return sharedSessionModel(workout, { split, plan, skips }, focused);
+  return sharedSessionModel(workout, { split, splits, plan, skips }, focused);
 }
 
 /**
@@ -64,11 +65,11 @@ export function useHasLiveSession(): boolean {
 
 /** The same, outside a component. */
 export function liveSessionModel(): SessionModel | null {
-  const { currentWorkout, activeSplit, currentWorkoutDayPlan } = useAppStore.getState();
+  const { currentWorkout, activeSplit, splits, currentWorkoutDayPlan } = useAppStore.getState();
   const pending = usePendingSkips.getState();
   return sharedSessionModel(
     currentWorkout,
-    { split: activeSplit, plan: currentWorkoutDayPlan, skips: currentWorkout && pending.workoutId === currentWorkout.id ? pending.skips : NO_SKIPS },
+    { split: activeSplit, splits, plan: currentWorkoutDayPlan, skips: currentWorkout && pending.workoutId === currentWorkout.id ? pending.skips : NO_SKIPS },
     useFocusStore.getState().exerciseId,
   );
 }

@@ -2,10 +2,19 @@ import { endWorkoutActivity, syncWorkoutActivityRest } from '@/lib/liveActivity'
 import { cancelRestEndNotification } from '@/lib/restNotifications';
 import { clearRestTimerSession, readRestTimerSession } from '@/lib/restTimer';
 
-interface ActiveWorkoutStore {
-  getState(): { currentWorkout: { id: string } | null };
-  subscribe(listener: (state: { currentWorkout: { id: string } | null }) => void): () => void;
+interface ActiveWorkoutState {
+  currentWorkout: { id: string; completed?: boolean } | null;
 }
+
+interface ActiveWorkoutStore {
+  getState(): ActiveWorkoutState;
+  subscribe(listener: (state: ActiveWorkoutState) => void): () => void;
+}
+
+// A workout completed in place (History logging its last set) keeps its id
+// with completed: true, and has ended just the same.
+const liveWorkoutId = ({ currentWorkout }: ActiveWorkoutState) =>
+  currentWorkout && !currentWorkout.completed ? currentWorkout.id : null;
 
 interface SignedInUserStore {
   getState(): { user: { id: string } | null };
@@ -14,16 +23,17 @@ interface SignedInUserStore {
 
 /**
  * The rest timer outlives the Train page, so a workout that ends elsewhere
- * (deleted in History, finished on another device) must not leave a
- * "Rest over" notification or lock-screen countdown armed. Reacts only when a
- * known workout id goes away: the cold-start null → id restore is left alone.
+ * (deleted or completed in History, finished on another device) must not
+ * leave a "Rest over" notification or lock-screen countdown armed. Reacts
+ * only when a known workout id goes away: the cold-start null → id restore is
+ * left alone.
  * `onRestCleared` lets an app that holds the rest in memory (native) drop it too.
  */
 export function watchRestTimerWorkoutEnd(store: ActiveWorkoutStore, onRestCleared?: () => void): () => void {
-  let activeId = store.getState().currentWorkout?.id ?? null;
+  let activeId = liveWorkoutId(store.getState());
 
   return store.subscribe((state) => {
-    const nextId = state.currentWorkout?.id ?? null;
+    const nextId = liveWorkoutId(state);
     if (nextId === activeId) return;
     const endedId = activeId;
     activeId = nextId;

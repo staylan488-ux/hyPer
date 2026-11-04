@@ -328,11 +328,14 @@ export interface VolumeLandmark {
   mrv: number;
 }
 
+export type VolumeStatus = 'below_mev' | 'mev_mav' | 'mav' | 'approaching_mrv' | 'above_mrv';
+
 export interface MuscleVolume {
   muscle_group: MuscleGroup;
   weekly_sets: number;
   landmark?: VolumeLandmark;
-  status: 'below_mev' | 'mev_mav' | 'mav' | 'approaching_mrv' | 'above_mrv';
+  /** null: no landmark to grade against (traps has no default). */
+  status: VolumeStatus | null;
 }
 
 export interface SplitTemplate {
@@ -359,17 +362,17 @@ export interface SplitTemplate {
 export const MUSCLE_GROUP_LABELS: Record<MuscleGroup, string> = {
   chest: 'Chest',
   back: 'Back',
-  shoulders: 'Shoulders (General)',
-  side_delts: 'Side Delts',
-  rear_delts: 'Rear Delts',
-  front_delts: 'Front Delts',
+  shoulders: 'Shoulders',
+  side_delts: 'Side delts',
+  rear_delts: 'Rear delts',
+  front_delts: 'Front delts',
   biceps: 'Biceps',
   triceps: 'Triceps',
   quads: 'Quadriceps',
   hamstrings: 'Hamstrings',
   glutes: 'Glutes',
   calves: 'Calves',
-  core: 'Core/Abs',
+  core: 'Core',
   traps: 'Traps',
 };
 

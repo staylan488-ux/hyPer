@@ -34,6 +34,7 @@ import {
   dedupeSavedMealsByName,
   insertSavedMeal,
   listSavedMealRows,
+  replaceSavedMeal,
   retireSavedMeal,
 } from '@/lib/savedMeals';
 
@@ -119,7 +120,8 @@ describe('saved meal writes', () => {
     expect(await retireSavedMeal('user-a', 'meal-1')).toEqual({ error: null });
     expect(mocks.chains).toEqual([[
       ['from', 'foods'],
-      ['update', { source: 'manual_entry' }],
+      // a deleted product no longer answers a scan of its barcode
+      ['update', { source: 'manual_entry', external_source: null, external_id: null }],
       ['eq', 'id', 'meal-1'],
       ['eq', 'user_id', 'user-a'],
       ['in', 'source', ['saved_meal', 'custom']],
@@ -130,6 +132,169 @@ describe('saved meal writes', () => {
     const error = { message: 'offline' };
     mocks.results.push({ error });
     expect(await retireSavedMeal('user-a', 'meal-1')).toEqual({ error });
+  });
+});
+
+describe('replacing a saved meal', () => {
+  const read = [
+    ['from', 'foods'],
+    ['select', 'serving_size, serving_unit, external_source, external_id'],
+    ['eq', 'id', 'old'],
+    ['eq', 'user_id', 'user-a'],
+    ['maybeSingle'],
+  ];
+  const retire = [
+    ['from', 'foods'],
+    ['update', { source: 'manual_entry', external_source: null, external_id: null }],
+    ['eq', 'id', 'old'],
+    ['eq', 'user_id', 'user-a'],
+    ['in', 'source', ['saved_meal', 'custom']],
+  ];
+
+  it('keeps the serving basis of the meal it replaces', async () => {
+    mocks.results.push({ data: { serving_size: 250, serving_unit: 'g', external_source: null, external_id: null } }, { data: { id: 'new' } });
+
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains).toEqual([
+      read,
+      [['from', 'foods'], ['insert', { user_id: 'user-a', ...values, source: 'saved_meal', serving_size: 250, serving_unit: 'g' }], ['select', 'id'], ['single']],
+      retire,
+    ]);
+  });
+
+  it('moves a barcode to the new meal, so a scan logs the edited numbers', async () => {
+    mocks.results.push(
+      { data: { serving_size: '6.00', serving_unit: 'piece', external_source: 'barcode', external_id: '0123456789012' } },
+      {},
+      { data: { id: 'new' } },
+    );
+
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains).toEqual([
+      read,
+      // one row per barcode: the old row lets go of it before the new one takes it
+      [['from', 'foods'], ['update', { external_source: null, external_id: null }], ['eq', 'id', 'old'], ['eq', 'user_id', 'user-a']],
+      [
+        ['from', 'foods'],
+        ['insert', { user_id: 'user-a', ...values, source: 'saved_meal', external_source: 'barcode', external_id: '0123456789012', serving_size: 6, serving_unit: 'piece' }],
+        ['select', 'id'],
+        ['single'],
+      ],
+      retire,
+    ]);
+  });
+
+  it('gives the barcode back to the old meal when the new one cannot be saved', async () => {
+    mocks.results.push(
+      { data: { serving_size: 1, serving_unit: 'serving', external_source: 'barcode', external_id: '0123456789012' } },
+      {},
+      { error: { message: 'offline' } },
+    );
+
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    expect(mocks.chains).toHaveLength(4);
+    expect(mocks.chains[3]).toEqual([
+      ['from', 'foods'],
+      ['update', { external_source: 'barcode', external_id: '0123456789012' }],
+      ['eq', 'id', 'old'],
+      ['eq', 'user_id', 'user-a'],
+    ]);
+  });
+
+  // The lost-barcode memory lives in the module, so each test below ends with it empty.
+  const barcode = { external_source: 'barcode', external_id: '0123456789012' };
+  const bound = { data: { serving_size: 1, serving_unit: 'serving', ...barcode } };
+  const empty = { data: { serving_size: 1, serving_unit: 'serving', external_source: null, external_id: null } };
+  const insert = (kept: object = {}) => [
+    ['from', 'foods'],
+    ['insert', { user_id: 'user-a', ...values, source: 'saved_meal', ...kept, serving_size: 1, serving_unit: 'serving' }],
+    ['select', 'id'],
+    ['single'],
+  ];
+  const release = [['from', 'foods'], ['update', { external_source: null, external_id: null }], ['eq', 'id', 'old'], ['eq', 'user_id', 'user-a']];
+  // The old row lets go of the barcode, the insert fails, and giving it back fails too.
+  const loseBarcode = async () => {
+    mocks.results.push(bound, {}, { error: { message: 'offline' } }, { error: { message: 'offline' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    mocks.chains.length = 0;
+  };
+
+  it('keeps a barcode it could not give back, and the next try from any caller saves it on the new meal', async () => {
+    await loseBarcode();
+
+    // The old row no longer has it; a fresh caller passes nothing and the new meal still takes it.
+    mocks.results.push(empty, { data: { id: 'new' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains).toEqual([read, insert(barcode), retire]);
+
+    // Saved on the new meal, so it is not kept for another try.
+    mocks.chains.length = 0;
+    mocks.results.push(empty, { data: { id: 'newer' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'newer', retireFailed: false });
+    expect(mocks.chains[1]).toEqual(insert());
+  });
+
+  it('keeps that barcode while a retry fails, and lets it go once the old meal has it back', async () => {
+    await loseBarcode();
+    mocks.results.push({ error: { message: 'offline' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+
+    mocks.chains.length = 0;
+    mocks.results.push(empty, { error: { message: 'offline' } }, {});
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    expect(mocks.chains[1]).toEqual(insert(barcode));
+    expect(mocks.chains[2]).toEqual([['from', 'foods'], ['update', barcode], ['eq', 'id', 'old'], ['eq', 'user_id', 'user-a']]);
+
+    // The old row has it again, so nothing is kept for the next try.
+    mocks.chains.length = 0;
+    mocks.results.push(empty, { data: { id: 'new' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains[1]).toEqual(insert());
+  });
+
+  it('lets that barcode go on a unique clash, since another row holds it', async () => {
+    await loseBarcode();
+    mocks.results.push(empty, { error: { code: '23505' } }, { error: { code: '23505' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+
+    mocks.chains.length = 0;
+    mocks.results.push(empty, { data: { id: 'new' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains[1]).toEqual(insert());
+  });
+
+  it('keeps a barcode whose release failed, in case the release landed and only its answer was lost', async () => {
+    mocks.results.push(bound, { error: { message: 'offline' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    expect(mocks.chains).toEqual([read, release]);
+
+    // It had landed: the old row reads empty, and the new meal still takes the barcode.
+    mocks.chains.length = 0;
+    mocks.results.push(empty, { data: { id: 'new' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains).toEqual([read, insert(barcode), retire]);
+
+    // A barcode still on the old row wins over the one kept, and moves as usual.
+    mocks.chains.length = 0;
+    const other = { external_source: 'barcode', external_id: '9876543210987' };
+    mocks.results.push(bound, { error: { message: 'offline' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    mocks.chains.length = 0;
+    mocks.results.push({ data: { serving_size: 1, serving_unit: 'serving', ...other } }, {}, { data: { id: 'new' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains).toEqual([read, release, insert(other), retire]);
+  });
+
+  it('changes nothing when the old meal cannot be read', async () => {
+    mocks.results.push({ error: { message: 'offline' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: null, retireFailed: false });
+    expect(mocks.chains).toHaveLength(1);
+  });
+
+  it('still saves as one serving when the old row is gone', async () => {
+    mocks.results.push({ data: null }, { data: { id: 'new' } });
+    expect(await replaceSavedMeal('user-a', 'old', values)).toEqual({ id: 'new', retireFailed: false });
+    expect(mocks.chains[1][1]).toEqual(['insert', { user_id: 'user-a', ...values, source: 'saved_meal', serving_size: 1, serving_unit: 'serving' }]);
   });
 });
 

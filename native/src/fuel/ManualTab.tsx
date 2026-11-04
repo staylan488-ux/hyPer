@@ -2,11 +2,12 @@ import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, TextInput, View } from 'react-native';
 
+import { parseDecimal } from '@/lib/decimalText';
 import { describeTargetUnchanged, type ManualFoodFields } from '@/lib/foodLoggerUtils';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
 import { formatMacroInput } from '@/lib/foodUnits';
 import { resolveManualFood, type OneOffFood } from '@/lib/manualFood';
-import { createMealIngredient } from '@/lib/mealComposition';
+import { createMealIngredient, decodeMealComposition } from '@/lib/mealComposition';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { providerFallbackNote } from '@/lib/photoReview';
@@ -21,11 +22,14 @@ import { FieldRow, FormNote, ToggleRow, type TextField } from '~/components/Form
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { Stepper } from '~/components/Stepper';
+import { speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { SAVE_FAILED, saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
+import { spokenMacros } from './FoodLists';
 import { WhenBlock } from './WhenBlock';
 
 export type ManualDraft = {
@@ -59,10 +63,10 @@ const DESCRIBE_LIMIT = 1500;
 
 const valuesOf = (fields: ManualFoodFields) => ({
   name: fields.name.trim(),
-  calories: parseFloat(fields.calories) || 0,
-  protein: parseFloat(fields.protein) || 0,
-  carbs: parseFloat(fields.carbs) || 0,
-  fat: parseFloat(fields.fat) || 0,
+  calories: parseDecimal(fields.calories) || 0,
+  protein: parseDecimal(fields.protein) || 0,
+  carbs: parseDecimal(fields.carbs) || 0,
+  fat: parseDecimal(fields.fat) || 0,
 });
 
 const MACRO_FIELDS = ['calories', 'protein', 'carbs', 'fat'] as const;
@@ -87,6 +91,8 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   onGeminiHandoff?: (description: string) => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
+  const screenReader = useScreenReader();
   const logger = useLogger();
   const [nameFocused, setNameFocused] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -120,9 +126,19 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   // Next on the keyboard walks Name and the macros in order.
   const macroFields = useRef<(TextField | null)[]>([]);
   const usingSavedValues = Boolean(selectedSavedMeal && foodValuesMatch(selectedSavedMeal, values));
+  // A built meal's recipe is changed in the meal builder; numbers typed here would replace it.
+  const builtMeal = Boolean(selectedSavedMeal && decodeMealComposition(selectedSavedMeal.description));
   const suggestions = nameFocused ? savedMealSuggestions(savedMeals, draft.fields.name) : [];
-  const servings = parseFloat(draft.servings);
+  const servings = parseDecimal(draft.servings);
   const servingsValue = Number.isFinite(servings) && servings > 0 ? servings : 1;
+
+  // What lands without a press of its own being spoken: the AI's estimate,
+  // and a saved meal updated (its failures announce themselves as alerts).
+  const estimateWords = estimate
+    ? `${estimate.name}: ${spokenMacros({ calories: estimate.calories, protein: estimate.protein_g, carbs: estimate.carbs_g, fat: estimate.fat_g })}${estimate.notes ? `. ${estimate.notes}` : ''}`
+    : null;
+  useAnnounce(estimateWords ? `Estimate for ${estimateWords}` : null);
+  useAnnounce(mealMessage && !mealMessage.alert ? mealMessage.text : null);
 
   const setField = (field: keyof ManualFoodFields, value: string) => setDraft((current) => ({ ...current, fields: { ...current.fields, [field]: value } }));
 
@@ -173,7 +189,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   };
 
   const updateSavedMeal = async () => {
-    if (!draft.selectedSavedMealId || updatingMeal) return;
+    if (!draft.selectedSavedMealId || updatingMeal || builtMeal) return;
     if (!values.name) {
       haptics.error();
       setMealMessage({ text: 'Meal name is required to update.', alert: true });
@@ -230,6 +246,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
     setSaving(true);
     setError(null);
     setMealMessage(null);
+    const release = logger.beginSave();
     try {
       const userId = await getSessionUserId();
       if (!userId) {
@@ -279,13 +296,14 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
       setError(SAVE_FAILED);
     } finally {
       setSaving(false);
+      release();
     }
   };
 
+  // The Stepper plays each step's tick.
   const stepServings = (delta: number) => {
-    haptics.select();
     setDraft((current) => {
-      const now = parseFloat(current.servings);
+      const now = parseDecimal(current.servings);
       const next = Math.max(0.25, Math.round(((Number.isFinite(now) ? now : 1) + delta) * 100) / 100);
       return { ...current, servings: String(next) };
     });
@@ -294,10 +312,10 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   return (
     <View>
       {/* Describe with AI */}
-      <Section title="Describe with AI">
+      <Section title="Describe with AI" style={{ marginTop: 0 }}>
         <Label>
           {describeOpen ? (
-            <View style={{ padding: 16, gap: 12 }}>
+            <View style={{ paddingVertical: 16, paddingHorizontal: 18, gap: 12 }}>
               <TextInput
                 value={description}
                 onChangeText={(text) => setDescription(text.slice(0, DESCRIBE_LIMIT))}
@@ -311,7 +329,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
                 accessibilityLabel="Describe the food"
                 style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
               />
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={large ? { alignItems: 'flex-start', gap: 12 } : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <BlancText variant="footnote" tone="graphite">
                   {description.trim().length < 5 ? 'At least 5 characters' : `${description.length} / ${DESCRIBE_LIMIT}`}
                 </BlancText>
@@ -341,7 +359,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
         </Label>
         {describeError ? <FormNote alert>{describeError}</FormNote> : null}
         {estimate ? (
-          <FormNote>
+          <FormNote accessibilityLabel={estimateWords ?? undefined}>
             {estimate.name}: {Math.round(estimate.calories)} kcal · P {Math.round(estimate.protein_g)} · C {Math.round(estimate.carbs_g)} · F {Math.round(estimate.fat_g)}
             {estimate.notes ? `. ${estimate.notes}` : ''}
           </FormNote>
@@ -373,15 +391,16 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
               <Hairline />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Use saved meal ${meal.name}`}
+                accessibilityLabel={`Use saved meal ${meal.name}, ${speak(`${Math.round(meal.calories)} kcal${Math.round(meal.protein) > 0 ? ` · ${Math.round(meal.protein)} g protein` : ''}`)}`}
                 onPress={() => {
                   haptics.tap();
                   pickSuggestion(meal);
                 }}
                 style={({ pressed }) => ({ paddingVertical: 10, paddingLeft: 32, paddingRight: 16, backgroundColor: pressed ? c.pressed : 'transparent' })}>
                 <BlancText variant="secondary">{meal.name}</BlancText>
-                <BlancText variant="meta" tone="graphite">
-                  {Math.round(meal.calories)} kcal · P {Math.round(meal.protein)}
+                <BlancText variant="footnote" tone="graphite">
+                  {Math.round(meal.calories)} kcal
+                  {Math.round(meal.protein) > 0 ? ` · ${Math.round(meal.protein)} g protein` : ''}
                 </BlancText>
               </Pressable>
             </View>
@@ -409,22 +428,44 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
             );
           })}
           <Hairline />
-          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 10, gap: 6 }}>
-            <BlancText variant="body" style={{ flex: 1 }}>
-              Servings
-            </BlancText>
-            <StepButton symbol="minus" label="Fewer servings" disabled={servingsValue <= 0.25} onPress={() => stepServings(-0.25)} />
+          {/* At the accessibility sizes the label takes its own line and the amount and stepper sit under it. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 16, gap: 12, ...(large ? { flexWrap: 'wrap', paddingTop: 10 } : null) }}>
+            {/* The stepper for VoiceOver: swipe up or down on Servings; the − and + are hidden behind it. */}
+            <View
+              accessible
+              accessibilityRole="adjustable"
+              accessibilityLabel="Servings"
+              accessibilityValue={{ text: `${servingsValue} serving${servingsValue === 1 ? '' : 's'}` }}
+              accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+              onAccessibilityAction={(event) => {
+                if (event.nativeEvent.actionName === 'increment') stepServings(0.25);
+                else if (servingsValue > 0.25) stepServings(-0.25);
+              }}
+              style={large ? { flexBasis: '100%' } : { flex: 1 }}>
+              <BlancText variant="body">Servings</BlancText>
+            </View>
             <TextInput
               value={draft.servings}
               onChangeText={(text) => setDraft((current) => ({ ...current, servings: text }))}
               keyboardType="decimal-pad"
               returnKeyType="done"
-              accessibilityLabel="Servings"
+              // Typed by hand; the adjustable Servings before it steps by a quarter.
+              accessibilityLabel="Exact servings"
               selectTextOnFocus
               lineBreakModeIOS="tail"
-              style={[typeScale.field, { color: c.ink, minWidth: 48, textAlign: 'center', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
+              style={[typeScale.field, { color: c.ink, minWidth: 48, textAlign: 'right', fontVariant: ['tabular-nums'], padding: 0, minHeight: 44 }]}
             />
-            <StepButton symbol="plus" label="More servings" onPress={() => stepServings(0.25)} />
+            {/* The adjustable Servings label does what these do for VoiceOver, so
+                they're hidden from it; Voice Control and keyboards keep them. */}
+            <View accessibilityElementsHidden={screenReader} importantForAccessibility={screenReader ? 'no-hide-descendants' : 'auto'}>
+              <Stepper
+                canMinus={servingsValue > 0.25}
+                minusLabel="Fewer servings"
+                plusLabel="More servings"
+                onMinus={() => stepServings(-0.25)}
+                onPlus={() => stepServings(0.25)}
+              />
+            </View>
           </View>
         </Label>
         {selectedSavedMeal ? <FormNote>{usingSavedValues ? 'Using saved meal values' : 'Editing saved meal values'}</FormNote> : null}
@@ -432,7 +473,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
 
       {logger.purpose === 'log' ? (
         <View style={{ marginTop: 18 }}>
-          {selectedSavedMeal && !usingSavedValues ? (
+          {selectedSavedMeal && !usingSavedValues && !builtMeal ? (
             <View style={{ paddingHorizontal: space.gutter }}>
               <Capsule title="Update saved meal" variant="quiet" busy={updatingMeal} disabled={saving} onPress={() => void updateSavedMeal()} />
             </View>
@@ -453,7 +494,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
       <WhenBlock disabled={saving} />
 
       {error ? <FormNote alert>{error}</FormNote> : null}
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 20 }}>
+      <View style={{ paddingHorizontal: space.inset, marginTop: 20 }}>
         <Capsule
           title={logger.purpose === 'ingredients' ? 'Add ingredient' : logger.editing ? 'Save changes' : 'Log entry'}
           size="large"
@@ -464,27 +505,5 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
         />
       </View>
     </View>
-  );
-}
-
-function StepButton({ symbol, label, onPress, disabled }: { symbol: 'plus' | 'minus'; label: string; onPress: () => void; disabled?: boolean }) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 44,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: disabled ? 0.35 : pressed ? 0.5 : 1,
-      })}>
-      <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill }}>
-        <SymbolView name={symbol} size={13} weight="bold" tintColor={c.ink} />
-      </View>
-    </Pressable>
   );
 }

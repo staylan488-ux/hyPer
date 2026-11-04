@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  sync: vi.fn<(userId: string, signal?: AbortSignal) => Promise<void>>(),
+  sync: vi.fn<(userId: string, signal?: AbortSignal) => Promise<{ imported: number }>>(),
   enable: vi.fn<() => Promise<void>>(),
   remove: vi.fn<() => Promise<void>>(),
   stopWatching: vi.fn(),
@@ -38,8 +38,9 @@ import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root;
 let host: HTMLDivElement;
+const onImported = vi.fn();
 function Probe({ userId }: { userId?: string }) {
-  useNativeHealthSync(userId);
+  useNativeHealthSync(userId, onImported);
   return null;
 }
 const render = async (userId?: string) => {
@@ -51,7 +52,8 @@ describe('automatic Health sync lifecycle', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
-    mocks.sync.mockReset().mockImplementation(async () => {});
+    mocks.sync.mockReset().mockImplementation(async () => ({ imported: 0 }));
+    onImported.mockReset();
     mocks.enable.mockReset().mockResolvedValue();
     mocks.remove.mockReset().mockResolvedValue();
     mocks.visible = null;
@@ -90,5 +92,26 @@ describe('automatic Health sync lifecycle', () => {
 
     expect(mocks.changed).toBeNull();
     expect(mocks.sync).not.toHaveBeenCalled();
+  });
+
+  it('tells You to read the weights again after an automatic sync imports weigh-ins', async () => {
+    mocks.sync.mockResolvedValueOnce({ imported: 0 }).mockResolvedValueOnce({ imported: 2 });
+    await render('user-1');
+    expect(mocks.sync).toHaveBeenCalledTimes(1);
+    expect(onImported).not.toHaveBeenCalled();
+
+    await act(async () => { mocks.visible?.(); });
+    expect(mocks.sync).toHaveBeenCalledTimes(2);
+    expect(onImported).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report an import that finished after the switch turned off', async () => {
+    let finish!: (result: { imported: number }) => void;
+    mocks.sync.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    await render('user-1');
+    await render(undefined);
+    await act(async () => { finish({ imported: 3 }); });
+
+    expect(onImported).not.toHaveBeenCalled();
   });
 });

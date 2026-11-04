@@ -107,6 +107,21 @@ export function livePaceSecPerMile(state: TrackerState, nowMs: number): number |
   return currentLapAveragePaceSecPerMile(state, nowMs) ?? averagePaceSecPerMile(state, nowMs);
 }
 
+/**
+ * Why Start cannot track, from the location permission it asks for: location
+ * refused ('off'), or allowed without Precise Location ('approximate'), when
+ * every fix is a kilometre or more out and GPS never locks. A device that
+ * does not say whether location is precise goes ahead.
+ */
+export function runLocationBlock(
+  permission: { location: string; precise?: boolean } | null,
+): 'off' | 'approximate' | null {
+  if (!permission) return null;
+  if (permission.location === 'denied' || permission.location === 'restricted') return 'off';
+  const allowed = permission.location === 'whenInUse' || permission.location === 'always';
+  return allowed && permission.precise === false ? 'approximate' : null;
+}
+
 export type RunStatus = 'resting' | 'acquiring' | 'weak' | 'ok';
 
 /** The live status line, most urgent first. */
@@ -118,10 +133,10 @@ export function runStatus(state: TrackerState, nowMs: number): RunStatus {
 }
 
 export const RUN_STATUS_LABELS: Record<RunStatus, string> = {
-  resting: 'resting',
-  acquiring: 'acquiring gps',
-  weak: 'gps weak',
-  ok: 'gps ok',
+  resting: 'Resting',
+  acquiring: 'Acquiring GPS',
+  weak: 'Weak GPS',
+  ok: 'GPS ready',
 };
 
 export interface RunSplitRow {
@@ -149,6 +164,14 @@ export function finishedRunSplits(run: FinishedRun): RunSplitRow[] {
   }));
 }
 
+/**
+ * Whether a saved run's split (an activity segment) was a rest. Runs saved
+ * before the split's kind was kept read as efforts, as they always did.
+ */
+export function isRestSegment(segment: { raw: Record<string, unknown> | null }): boolean {
+  return segment.raw?.kind === 'rest';
+}
+
 /** A split's pace, or null for a rest or a split too short to pace. */
 export function splitPaceSecPerMile(split: RunSplitRow): number | null {
   return split.isRest ? null : paceSecondsPerMile(split.distanceM, split.durationS);
@@ -161,7 +184,7 @@ export function finishedRunPace(run: FinishedRun): string | null {
 
 /** "12:04" for a duration, or a dash. */
 export function formatRunClock(seconds: number | null | undefined): string {
-  return formatClockDuration(seconds) ?? '—';
+  return formatClockDuration(seconds) ?? '–';
 }
 
 /**

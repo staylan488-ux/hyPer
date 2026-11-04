@@ -27,7 +27,7 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { invalidateAccountScope } from '@/lib/accountScope';
-import { resetFuel, useFuelStore } from '../native/src/lib/fuel';
+import { resetFuel, todayTotalsShown, useFuelStore } from '../native/src/lib/fuel';
 
 const DAY = '2026-11-03';
 const logged = { date: DAY, servings: 1, food: { calories: 500, protein: 30, carbs: 40, fat: 25 } };
@@ -66,6 +66,19 @@ describe('nutrition readiness for widgets', () => {
     expect(useFuelStore.getState()).toMatchObject({
       todayKey: '2026-11-04', todayLoadedKey: DAY, todayTotals: { calories: 500 },
     });
+  });
+
+  it('shows nothing eaten on a new day whose food read failed, not yesterday’s totals', async () => {
+    await useFuelStore.getState().loadToday(DAY);
+    expect(todayTotalsShown(useFuelStore.getState()).calories).toBe(500);
+
+    reads.food.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    await useFuelStore.getState().loadToday('2026-11-04');
+    expect(todayTotalsShown(useFuelStore.getState())).toEqual({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+    reads.food.mockResolvedValue({ data: [{ ...logged, date: '2026-11-04' }], error: null });
+    await useFuelStore.getState().loadToday('2026-11-04');
+    expect(todayTotalsShown(useFuelStore.getState()).calories).toBe(500);
   });
 
   it('does not publish readiness while a group read failed', async () => {

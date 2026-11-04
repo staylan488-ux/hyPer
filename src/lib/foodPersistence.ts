@@ -5,14 +5,24 @@ import type { Food } from '@/types';
 
 export type OneServingFoodValues = { name: string; calories: number; protein: number; carbs: number; fat: number };
 
+/** What a row taking another's place keeps from it: its serving and its barcode. */
+export type KeptFoodFields = {
+  serving_size: number;
+  serving_unit: string;
+  external_source?: string;
+  external_id?: string;
+};
+
 /**
  * Inserts a food whose macros describe one serving (a saved meal or a one-off
- * manual entry) and returns its id, or null with the error when it fails.
+ * manual entry) and returns its id, or null with the error when it fails. The
+ * serving is 1 serving unless `kept` gives another (250 g, 6 piece).
  */
 export async function insertOneServingFood(
   userId: string,
   values: OneServingFoodValues,
   source: 'saved_meal' | 'manual_entry',
+  kept?: KeptFoodFields,
 ): Promise<{ id: string | null; error: unknown }> {
   const payload = {
     user_id: userId,
@@ -22,14 +32,15 @@ export async function insertOneServingFood(
     carbs: values.carbs,
     fat: values.fat,
     source,
+    ...(kept?.external_source && kept.external_id ? { external_source: kept.external_source, external_id: kept.external_id } : {}),
   };
 
   let { data, error } = await supabase
     .from('foods')
     .insert({
       ...payload,
-      serving_size: 1,
-      serving_unit: 'serving',
+      serving_size: kept?.serving_size ?? 1,
+      serving_unit: kept?.serving_unit ?? 'serving',
     })
     .select('id')
     .single();

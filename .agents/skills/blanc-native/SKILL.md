@@ -44,6 +44,16 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `removeLastUncompletedSet`, `substituteWorkoutExercise`,
   `switchBackWorkoutExercise`); movement notes use the shared `noteAutosave`
   through `native/src/lib/notes.ts`, and a swap waits for pending notes.
+- The React Compiler (app.json) memoizes every component it can compile. A value
+  read during render from outside React (`new Date()`, `today()`, `isToday`) is
+  kept with the component's other values, so a screen or sheet left open past
+  midnight keeps yesterday. Read the day through a hook in
+  `native/src/lib/accountData.ts`: `useCurrentDayKey` (the clock's day, rendering
+  again at midnight) or `useAccountDay` (the day the account data was read
+  for), and derive dates from that key so they stay memoized (a `new Date()`
+  made on every render undoes the memo around it). A ref written inline in JSX
+  drops the memo around it; write it through a stable callback. A test runs a
+  file as compiled with `loadNativeModule(file, imports, { compile: true })`.
 - `native/modules/hyper-view` reads a view's real window frame from UIKit. React
   Native's own measure works from its layout tree, which does not know where iOS
   put an item inside a navigation bar.
@@ -105,6 +115,33 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - No costume luxury: no serif type outside the P, no Roman numerals,
   faux-editorial copy, glow, 3D or particles. Sentence case. Touch targets at
   least 44 pt.
+- Accessibility (2026-11-04): the app works with VoiceOver, every text size up
+  to AX5, Increase Contrast and Reduce Motion, and looks exactly the same at
+  iOS's default settings. Keep it that way in new work:
+  - Text grows along each role's iOS text style ([textSize](../../../native/src/theme/textSize.ts),
+    through BlancText); big figures stop at 1.3×. Layout for the accessibility
+    sizes goes behind `useLargeText()` from
+    [accessibility](../../../native/src/lib/accessibility.ts) (stack side by
+    side text, wrap, lift `numberOfLines`, `minHeight` for `height`, scroll a
+    `fitToContents` sheet), so the default code path never changes.
+  - VoiceOver reads one stop per fact, in words: BlancText speaks plain string
+    children through `speak()` ("8–10 reps · 135 lb" as "8 to 10 reps, 135
+    pounds"); labels holding a clock use `spokenClock`. Every control has a
+    role, a label and its state; a visible label beside a control is hidden
+    from VoiceOver; a number between − and + is one adjustable element; long
+    press, drag and swipe also exist as custom actions.
+  - Status changes a sighted person sees (an error, a save, results, a timer
+    ending) are announced with `useAnnounce` or `announce`.
+    `accessibilityLiveRegion` does nothing on iOS, and a test forbids it.
+    `onMagicTap` does not fire on React Native 0.88's New Architecture (its
+    native side reads `onAccessibilityMagicTap`), so Train's and rest's Magic
+    Tap handlers stay silent until React Native fixes it.
+  - Text colours come from `useBlanc()`, which switches to the Increase
+    Contrast palettes; never hard-code one. Reanimated follows Reduce Motion
+    live; an animation marked `ReduceMotion.Never` needs its own plain fade.
+  - `tests/nativeAccessibility.test.ts` checks what it can from the source
+    (labels on fields, images and icon buttons, roles on pressables, the
+    spoken words, the contrast ratios).
 - Restraint over completeness (the owner found the web app bloated: numbers and
   text everywhere). A card carries one title, at most one quiet line and at most
   one action. Leave out zeros, placeholders ("– lb × –") and figures that repeat
@@ -192,7 +229,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   a flexible-session feature, as on the web.
 - Supersets in either mode follow the shared `supersetFlows` and
   `supersetLogBlock`: rounds go A1, B1, A2, rest comes after B only, and a set
-  out of turn shows why instead of logging. The one exercise picker
+  out of turn shows why instead of logging. A round waits only for a partner
+  set that exists and is unfinished, so the longer movement carries on alone. The one exercise picker
   (`native/src/app/swap.tsx`) serves swap, add and superset through its
   `mode` parameter.
 - Reorder in the live workout is in place (the owner's call on 2026-10-28,
@@ -307,9 +345,14 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `native/modules/hyper-widget-data`: `native/src/lib/widgets.ts` builds it
   from Today's rules (`widgetPlan.ts`, two weeks of plan ahead) and clears it
   on sign-out. At midnight they turn to the next day on their own. Tapping
-  one opens Fuel or Train (`hyper-native://fuel`, `://train`).
+  one opens Fuel or Train (`hyper-native://fuel`, `://train`). A tap that
+  launches the app is kept through the intro and the account load
+  ([launchLink](../../../native/src/lib/launchLink.ts)), and the intro then
+  fades without flying the P, since that screen has no mark to land on.
 - A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
-  closing asks first, and after Discard it steps aside before closing. Never
+  closing asks first, and after Discard it steps aside before closing. While
+  a save runs, pass `busy` so a close waits for it (Log food claims it for
+  each tab's save, apart from lookups). Never
   re-dispatch the held action straight from `usePreventRemove`'s callback;
   the guard is still on and asks again forever.
 - A sideways swipe on a pushed screen is iOS 26's swipe-back. Horizontal
@@ -374,6 +417,11 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   `xcrun simctl launch <udid> app.hyper.native -hyperRoute /train -hyperAction logSet`,
   then `xcrun simctl io <udid> screenshot <file>`. Check light and dark
   (`xcrun simctl ui <udid> appearance dark`).
+- Accessibility: `xcrun simctl ui <udid> content_size accessibility-extra-extra-extra-large`
+  shows AX5 (`large` is the default) and `xcrun simctl ui <udid> increase_contrast enabled`
+  the contrast palette; check every changed screen at both and at the default.
+  VoiceOver can't be driven by a script in the simulator: use Accessibility
+  Inspector on the Mac, or VoiceOver on the phone.
 - Lock screen and Dynamic Island: a UI test presses Home
   (`XCUIDevice.shared.press(.home)`) or locks the simulator with the private
   `pressLockButton` selector, then saves `XCUIScreen.main.screenshot()`. The

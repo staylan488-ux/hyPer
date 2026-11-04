@@ -1,8 +1,8 @@
 import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
+import { useMemo, useState, useSyncExternalStore } from 'react';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
@@ -16,7 +16,7 @@ import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
 import { alreadyOnDay } from '@/lib/repeatEntries';
-import { readSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { readSavedFoodsCache, subscribeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { canSaveAsMeal } from '@/lib/savedMealFromLog';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -31,8 +31,10 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { DayMark } from '~/fuel/DayMark';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
-import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
+import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useYouMealsStore } from '~/lib/you';
@@ -41,6 +43,12 @@ import { space, useBlanc } from '~/theme/blanc';
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
 
 const CHECK_CONNECTION = 'Check your connection and try again.';
+
+/**
+ * The week strip's cells are a fixed seven across: their text stops growing
+ * at about iOS's largest standard size, as Calendar's do.
+ */
+const DAY_CELL_TEXT_MAX = 1.3;
 
 /**
  * A Fuel write's result: a success tick, or an error buzz and an alert, so a
@@ -80,8 +88,15 @@ function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
 /**
  * The saved meals this session last read (Log food's Saved list, else You's),
  * so a built saved meal logged from Saved does not offer Save as meal again.
+ * Watched, not read once: Save as meal closes without refreshing Fuel, and the
+ * offer follows the list it reloads.
  */
-const knownSavedMeals = () => readSavedFoodsCache(useAuthStore.getState().user?.id) ?? useYouMealsStore.getState().meals;
+function useKnownSavedMeals() {
+  const userId = useAuthStore((state) => state.user?.id);
+  const logged = useSyncExternalStore(subscribeSavedFoodsCache, () => readSavedFoodsCache(userId));
+  const you = useYouMealsStore((state) => state.meals);
+  return logged ?? you;
+}
 
 /** Opens the meal builder with these foods at the amounts eaten, to keep as a saved meal; nothing is logged. */
 function saveAsMeal(logs: FoodLog[]) {
@@ -106,16 +121,34 @@ function useLateNight(live: boolean, logs: FoodLog[]) {
 
 export default function FuelScreen() {
   const target = useAppStore((state) => state.macroTarget);
+  const userId = useAuthStore((state) => state.user?.id);
+  // Only a saved target is measured against: before the account's targets
+  // load nothing is shown, and with none saved, one quiet line asks for one.
+  const targetKnown = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId);
+  const kcalTarget = target && target.calories > 0 ? target.calories : null;
   // Bulking, going past a target is a good day, not a red one.
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const { selected, logs, groups, loaded, status } = useFuelDay();
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
-  const live = selected === useTodayKey();
+  // Read on every render and handed down, so the rows' "today" changes at
+  // midnight with the screen's rather than staying memoized with their entries.
+  const todayKey = useTodayKey();
+  const live = selected === todayKey;
   const totals = sumMacros(logs);
   const summary = fuelDaySummary({ totals, target, live, selectedDate, goal });
-  const daysWithLogs = useMemo(() => new Set(monthLogs.map((log) => log.date)), [monthLogs]);
+  // Each day's kcal in the loaded month, for the week strip's marks.
+  const dayKcal = useMemo(() => {
+    const byDay = new Map<string, number>();
+    for (const log of monthLogs) byDay.set(log.date, (byDay.get(log.date) ?? 0) + (logMacro(log, 'calories') ?? 0));
+    return byDay;
+  }, [monthLogs]);
   const lateNight = useLateNight(live, logs);
+  // The capped figure and the words beside it outgrow one line from the larger
+  // standard sizes on; then the words go under the figure.
+  const grown = useWindowDimensions().fontScale > 1;
+  const loadFailed = status === 'error' && !loaded;
+  useAnnounce(loadFailed ? "This day's food could not load. Pull down to try again." : null);
 
   // The day's groups in order, Unassigned first when it has entries. Empty
   // named meals stay out of the way; a meal or snack added by hand stays.
@@ -167,43 +200,59 @@ export default function FuelScreen() {
           {fuelDayTitle(selectedDate)}
         </BlancText>
 
-        <WeekStrip selected={selectedDate} daysWithLogs={daysWithLogs} />
+        <WeekStrip selected={selectedDate} dayKcal={dayKcal} target={kcalTarget} goal={goal} todayKey={todayKey} />
 
         {/* The day's figure and the macros open the targets, the numbers they measure against. */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={loaded ? `${formatWhole(totals.calories)} of ${formatWhole(summary.targets.calories)} kcal` : `Target ${formatWhole(summary.targets.calories)} kcal`}
-          accessibilityHint="Edits your calorie target"
+          // The figure, its target and the line under it, as one fact.
+          accessibilityLabel={speak(
+            kcalTarget
+              ? loaded
+                ? `${formatWhole(totals.calories)} of ${formatWhole(kcalTarget)} kcal${live ? ` · ${summary.logLine}` : ''}`
+                : `Target ${formatWhole(kcalTarget)} kcal`
+              : loaded
+                ? `${formatWhole(totals.calories)} kcal`
+                : 'Calories',
+          )}
+          accessibilityHint={kcalTarget ? 'Edits your calorie target' : 'Sets your calorie target'}
           onPress={() => editTarget('calories')}
           style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
             {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
             <RollingText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
               {loaded ? formatWhole(totals.calories) : '–'}
             </RollingText>
-            <Animated.View layout={figureLayout}>
+            <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
               <BlancText variant="secondary" tone="graphite">
-                of {formatWhole(summary.targets.calories)} kcal
+                {kcalTarget ? `of ${formatWhole(kcalTarget)} kcal` : 'kcal'}
               </BlancText>
             </Animated.View>
           </View>
-          <View style={{ marginTop: 10 }}>
-            <Track progress={totals.calories / summary.targets.calories} warnOver={warnsOverTarget('calories', goal)} />
-          </View>
-          {live && loaded ? (
+          {kcalTarget ? (
+            <View style={{ marginTop: 10 }}>
+              <Track progress={totals.calories / kcalTarget} warnOver={warnsOverTarget('calories', goal)} />
+            </View>
+          ) : null}
+          {kcalTarget && live && loaded ? (
             <BlancText variant="secondary" tone={summary.kcalOverWarns ? 'live' : 'graphite'} style={{ marginTop: 10 }}>
               {summary.logLine}
+            </BlancText>
+          ) : null}
+          {!kcalTarget && targetKnown ? (
+            <BlancText variant="secondary" tone="graphite" style={{ marginTop: 10 }}>
+              Set a calorie target
             </BlancText>
           ) : null}
         </Pressable>
 
         <Section title="Macros">
           <Label style={{ overflow: 'hidden' }}>
-            <MacroRow macro="protein" value={totals.protein} target={summary.targets.protein} goal={goal} />
+            <MacroRow macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
             <Hairline />
-            <MacroRow macro="carbs" value={totals.carbs} target={summary.targets.carbs} goal={goal} />
+            <MacroRow macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} />
             <Hairline />
-            <MacroRow macro="fat" value={totals.fat} target={summary.targets.fat} goal={goal} />
+            <MacroRow macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} />
           </Label>
         </Section>
 
@@ -213,34 +262,32 @@ export default function FuelScreen() {
           <View>
             {unassigned.length > 0 ? (
               <Animated.View key="unassigned" entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} />
+                <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ) : null}
             {sections.map(({ group, logs: entries }) => (
               <Animated.View key={group.id} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} />
+                <MealSection title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ))}
 
             {loaded && logs.length === 0 ? (
               <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ marginTop: 36, alignItems: 'center', gap: 6, paddingHorizontal: space.gutter }}>
-                <BlancText variant="bodyStrong">Nothing logged yet</BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  {live ? 'Your first entry sets the tone for the day.' : `No entries on ${format(selectedDate, 'MMM d')}.`}
-                </BlancText>
+                <BlancText variant="bodyStrong">{live ? 'Nothing logged yet' : 'Nothing logged'}</BlancText>
                 <Capsule title="Log food" onPress={() => logFood(selected)} style={{ marginTop: 12, alignSelf: 'center' }} />
               </Animated.View>
             ) : null}
 
-            {loaded ? (
-              <Animated.View layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
+            {/* Another meal is for a day that has begun. */}
+            {loaded && logs.length > 0 ? (
+              <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
                 <Capsule title="Add meal or snack" variant="quiet" onPress={() => addMealOrSnack()} style={{ alignSelf: 'center' }} />
               </Animated.View>
             ) : null}
           </View>
         </LayoutAnimationConfig>
 
-        {status === 'error' && !loaded ? (
+        {loadFailed ? (
           <BlancText variant="secondary" tone="live" style={{ margin: space.gutter }}>
             This day's food could not load. Pull down to try again.
           </BlancText>
@@ -257,17 +304,27 @@ function addMealOrSnack() {
   });
 }
 
-/** Sunday-first week; swipe for the week before or after. Future days are not selectable. */
-function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: Set<string> }) {
+/**
+ * Sunday-first week; swipe for the week before or after. Future days are not
+ * selectable. Under each date, how far its food went toward the target.
+ */
+function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
+  selected: Date;
+  dayKcal: Map<string, number>;
+  target: number | null;
+  goal: NutritionGoal | undefined;
+  todayKey: string;
+}) {
   const c = useBlanc();
   const days = weekDays(selected);
-  const now = startOfDay(new Date());
+  const now = startOfDay(new Date(`${todayKey}T12:00:00`));
   const go = (weeks: number) => {
     const target = addWeeks(selected, weeks);
     const next = isAfter(startOfDay(target), now) ? now : target;
-    if (isSameDay(next, selected)) return;
+    if (isSameDay(next, selected)) return null;
     haptics.select();
     useFuelStore.getState().select(dayKey(next));
+    return next;
   };
   const swipe = Gesture.Pan()
     .activeOffsetX([-24, 24])
@@ -277,34 +334,41 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
       if (event.translationX < -50) go(1);
       else if (event.translationX > 50) go(-1);
     });
+  // The swipe, for VoiceOver: each day offers the week before and after.
+  const weekActions = [
+    { name: 'previousWeek', label: 'Previous week' },
+    ...(isSameDay(selected, now) ? [] : [{ name: 'nextWeek', label: 'Next week' }]),
+  ];
 
   return (
     <GestureDetector gesture={swipe}>
-      <View
-        accessible
-        accessibilityRole="adjustable"
-        accessibilityLabel={`Week of ${format(days[0], 'MMMM d')}`}
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-        onAccessibilityAction={(event) => go(event.nativeEvent.actionName === 'increment' ? 1 : -1)}
-        style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 16 }}>
-        {days.map((day) => {
+      {/* Each day is its own button, so VoiceOver can pick any of them. */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 16 }}>
+        {/* Keyed by weekday, so a week change updates the same buttons and VoiceOver keeps its place. */}
+        {days.map((day, index) => {
           const key = dayKey(day);
           const isSelected = isSameDay(day, selected);
           const isToday = isSameDay(day, now);
           const future = isAfter(startOfDay(day), now);
+          const kcal = dayKcal.get(key);
           return (
             <Pressable
-              key={key}
+              key={index}
               disabled={future}
               accessibilityRole="button"
-              accessibilityLabel={format(day, 'EEEE, MMMM d')}
+              accessibilityLabel={`${isToday ? 'Today, ' : ''}${format(day, 'EEEE, MMMM d')}${kcal === undefined ? '' : `, ${speak(`${formatWhole(kcal)} kcal`)}`}`}
               accessibilityState={{ selected: isSelected, disabled: future }}
+              accessibilityActions={weekActions}
+              onAccessibilityAction={(event) => {
+                const next = go(event.nativeEvent.actionName === 'nextWeek' ? 1 : -1);
+                if (next) announce(`${isSameDay(next, now) ? 'Today, ' : ''}${format(next, 'EEEE, MMMM d')}`);
+              }}
               onPress={() => {
                 haptics.select();
                 useFuelStore.getState().select(key);
               }}
               style={({ pressed }) => ({ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.35 : pressed ? 0.5 : 1 })}>
-              <BlancText variant="footnote" tone="graphite">
+              <BlancText variant="footnote" tone="graphite" maxFontSizeMultiplier={DAY_CELL_TEXT_MAX}>
                 {format(day, 'EEEEE')}
               </BlancText>
               <View
@@ -316,11 +380,16 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
                   justifyContent: 'center',
                   backgroundColor: isSelected ? c.capsule : 'transparent',
                 }}>
-                <BlancText variant="body" weight={isToday || isSelected ? '600' : '400'} tone={isSelected ? 'onCapsule' : 'ink'} style={{ fontVariant: ['tabular-nums'] }}>
+                <BlancText
+                  variant="body"
+                  weight={isToday || isSelected ? '600' : '400'}
+                  tone={isSelected ? 'onCapsule' : 'ink'}
+                  maxFontSizeMultiplier={DAY_CELL_TEXT_MAX}
+                  style={{ fontVariant: ['tabular-nums'] }}>
                   {format(day, 'd')}
                 </BlancText>
               </View>
-              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: daysWithLogs.has(key) ? c.graphite : 'transparent' }} />
+              <DayMark logged={kcal !== undefined} kcal={kcal} target={target} goal={goal} />
             </Pressable>
           );
         })}
@@ -329,20 +398,22 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
   );
 }
 
-function MealSection({ title, group, logs, groups, lateNight, day }: {
+function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
   title: string;
   group?: NutritionGroup;
   logs: FoodLog[];
   groups: NutritionGroup[];
   lateNight: boolean;
   day: string;
+  todayKey: string;
 }) {
   const c = useBlanc();
   const kcal = logs.reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0);
+  const savedMeals = useKnownSavedMeals();
   // A past day's meal can be logged again today, and any day's kept as a
   // saved meal (Unassigned too).
-  const copyable = day !== today() && logs.some((log) => log.food);
-  const savable = canSaveAsMeal(logs, knownSavedMeals());
+  const copyable = day !== todayKey && logs.some((log) => log.food);
+  const savable = canSaveAsMeal(logs, savedMeals);
 
   const groupMenu = () => {
     const reuse = [
@@ -409,7 +480,7 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
         {logs.map((log, index) => (
           <Animated.View key={log.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
             {index > 0 ? <Hairline /> : null}
-            <EntryRow log={log} groups={groups} lateNight={lateNight} />
+            <EntryRow log={log} groups={groups} lateNight={lateNight} todayKey={todayKey} />
           </Animated.View>
         ))}
         {logs.length === 0 && group ? (
@@ -426,16 +497,17 @@ function entryDetail(log: FoodLog): string {
   const parts = decodeMealComposition(log.food?.description);
   const time = format(getLogDate(log), 'h:mm a');
   const amount = parts ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
-  const protein = logMacro(log, 'protein');
+  const protein = Math.round(logMacro(log, 'protein') ?? 0);
   // As the web's ledger does, an AI estimate says so (one word, so the line stays quiet).
   const raw = log.source as string | undefined;
   const source = raw === 'gemini_estimate' || raw === 'gemini_trial' ? 'Estimate' : raw === 'gemini_label' ? 'From label' : null;
-  return [time, amount, protein ? `${formatWhole(protein)} g protein` : null, source].filter(Boolean).join(' · ');
+  return [time, amount, protein > 0 ? `${formatWhole(protein)} g protein` : null, source].filter(Boolean).join(' · ');
 }
 
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */
-function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionGroup[]; lateNight: boolean }) {
+function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: NutritionGroup[]; lateNight: boolean; todayKey: string }) {
   const c = useBlanc();
+  const savedMeals = useKnownSavedMeals();
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
   // The row slides away at once; it comes back if the delete fails.
@@ -462,11 +534,11 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
       ? [{ title: 'Move to yesterday', symbol: 'arrow.uturn.backward', removes: true, run: () => report(useFuelStore.getState().moveEntryToYesterday(log.id), 'Not moved') }]
       : []),
     // A past day's entry can be logged again today.
-    ...(log.date !== today() && log.food
+    ...(log.date !== todayKey && log.food
       ? [{ title: 'Copy to today', symbol: 'doc.on.doc', run: () => copyToToday([log], groups.find((group) => group.id === log.group_id) ?? null) }]
       : []),
     // Any entry can be kept as a saved meal, unless it is one already.
-    ...(canSaveAsMeal([log], knownSavedMeals()) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
+    ...(canSaveAsMeal([log], savedMeals) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
     { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 
@@ -498,30 +570,39 @@ const MACRO_NAMES: Record<Exclude<FuelMacro, 'calories'>, string> = { protein: '
 /**
  * One macro against its target; a tap opens that target to change. Its line
  * turns red past target only where that is a warning for the goal: never for
- * protein, never while gaining.
+ * protein, never while gaining. Without a saved target it is the grams alone,
+ * and "–" until the day has loaded.
  */
-function MacroRow({ macro, value, target, goal }: { macro: Exclude<FuelMacro, 'calories'>; value: number; target: number; goal: NutritionGoal | undefined }) {
+function MacroRow({ macro, value, target, loaded, goal }: {
+  macro: Exclude<FuelMacro, 'calories'>;
+  value: number;
+  target: number | null;
+  loaded: boolean;
+  goal: NutritionGoal | undefined;
+}) {
   const c = useBlanc();
+  const large = useLargeText();
   const name = MACRO_NAMES[macro];
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${name}, ${formatWhole(value)} of ${formatWhole(target)} g`}
+      accessibilityLabel={loaded ? speak(`${name}, ${formatWhole(value)}${target ? ` of ${formatWhole(target)}` : ''} g`) : name}
       accessibilityHint={`Edits your ${name.toLowerCase()} target`}
       onPress={() => editTarget(macro)}
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, gap: 9, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      {/* At the accessibility sizes the numbers go under the name when they don't fit beside it. */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null) }}>
         <BlancText variant="body">{name}</BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
           <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>
-            {formatWhole(value)}
+            {loaded ? formatWhole(value) : '–'}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {` / ${formatWhole(target)} g`}
+            {target ? ` / ${formatWhole(target)} g` : loaded ? ' g' : ''}
           </BlancText>
         </View>
       </View>
-      <Track progress={target > 0 ? value / target : 0} warnOver={warnsOverTarget(macro, goal)} />
+      {target ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : null}
     </Pressable>
   );
 }

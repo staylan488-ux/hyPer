@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { ActionSheetIOS, Pressable, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { normalizeDecimalText } from '@/lib/decimalText';
 import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
@@ -14,14 +15,16 @@ import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote, PickerRow, ToggleRow, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/components/HoldMenu';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
+import { speak, spokenUnit, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { timeAsDate } from '~/lib/foodLogger';
 import { groupsForDay } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
@@ -54,13 +57,14 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
   const valid = Boolean(draft.name.trim()) && draft.ingredients.length > 0 && Boolean(draft.time) && invalidRows.length === 0;
   const frozen = busy || draft.locked;
   // Saved meals are one per name: a taken name puts this meal in that one's place.
-  const { savedMeals } = useLogger();
+  const { savedMeals, beginSave } = useLogger();
   const replaces = saveOnly ? savedMealNamed(savedMeals, draft.name, draft.entryId) : undefined;
 
   const save = async () => {
     if (!valid || busy) return;
     setBusy(true);
     setError('');
+    const release = beginSave();
     try {
       // A draft can outlive its meal group, or be restored on another day:
       // check the group still exists before writing.
@@ -91,6 +95,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
       setError(`${failure instanceof Error ? failure.message : 'Could not save the meal.'} Your meal is kept here. Retry to finish saving.`);
     } finally {
       setBusy(false);
+      release();
     }
   };
 
@@ -113,21 +118,29 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         </Label>
       </View>
 
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
+      {/* The meal's totals read as one fact. */}
+      <View
+        accessible
+        accessibilityLabel={speak(
+          `${formatWhole(totals.calories)} kcal · protein ${amount(totals.protein)} g · carbs ${amount(totals.carbs)} g · fat ${amount(totals.fat)} g`,
+        )}
+        style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <BlancText variant="figure" size={56}>
+          <RollingText variant="figure" size={56}>
             {formatWhole(totals.calories)}
-          </BlancText>
-          <BlancText variant="secondary" tone="graphite">
-            kcal
-          </BlancText>
+          </RollingText>
+          <Animated.View layout={figureLayout}>
+            <BlancText variant="secondary" tone="graphite">
+              kcal
+            </BlancText>
+          </Animated.View>
         </View>
         <BlancText variant="secondary" tone="graphite">
           P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g
         </BlancText>
       </View>
 
-      <Section title="Ingredients" note={String(draft.ingredients.length)} action={draft.locked ? undefined : { title: 'Add', onPress: onAddIngredients }}>
+      <Section title="Ingredients" action={frozen ? undefined : { title: 'Add', onPress: onAddIngredients }}>
         <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
           {draft.ingredients.map((item, index) => (
             <Animated.View key={item.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
@@ -184,7 +197,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
                 onChange={(date) => update({ time: format(date, 'HH:mm') })}
               />
               <Hairline />
-              <Row title="Add to" value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
+              <Row form title="Add to" value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
               <Hairline />
               <ToggleRow label="Save as reusable meal" value={draft.saveAsReusableMeal} disabled={frozen} onChange={(saveAsReusableMeal) => update({ saveAsReusableMeal })} />
             </Label>
@@ -192,7 +205,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         ) : null}
 
         {error ? <FormNote alert>{error}</FormNote> : null}
-        <View style={{ paddingHorizontal: space.gutter, marginTop: 20, gap: 12 }}>
+        <View style={{ paddingHorizontal: space.inset, marginTop: 20, gap: 12 }}>
           <Capsule
             title={draft.locked ? 'Retry save' : saveOnly ? 'Save meal' : savedTarget || editingEntryId ? 'Save changes' : 'Log meal'}
             size="large"
@@ -216,10 +229,15 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   onRemove: () => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const field = useRef<TextField>(null);
-  const valid = Number.isFinite(Number(value)) && Number(value) > 0;
+  const typed = Number(normalizeDecimalText(value));
+  const valid = Number.isFinite(typed) && typed > 0;
+  useAnnounce(valid ? null : 'Enter an amount greater than zero.');
   const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: onRemove }];
+  // "559 kcal · 31 g protein", without protein that rounds to none.
+  const line = `${formatWhole(item.food.calories * item.servings)} kcal${Math.round(item.food.protein * item.servings) > 0 ? ` · ${formatWhole(item.food.protein * item.servings)} g protein` : ''}`;
   // A tap anywhere on the row puts the cursor in its amount; a hold offers Remove.
   const content = (
     <Pressable
@@ -239,13 +257,22 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
             }
       }
       style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: c.label }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="bodyStrong" numberOfLines={1}>
+      {/* At the accessibility sizes the name takes its own line and the amount sits under it. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
+        <View
+          accessible
+          accessibilityLabel={`${item.food.name}, ${speak(line)}`}
+          // the row's swipe and hold, as on its amount field
+          accessibilityActions={disabled ? undefined : [{ name: 'remove', label: 'Remove' }]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'remove') onRemove();
+          }}
+          style={large ? { flexBasis: '100%' } : { flex: 1, minWidth: 0 }}>
+          <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
             {item.food.name}
           </BlancText>
-          <BlancText variant="meta" tone="graphite" style={{ marginTop: 2 }} numberOfLines={1}>
-            {Math.round(item.food.calories * item.servings)} kcal · P {amount(item.food.protein * item.servings)} g
+          <BlancText variant="secondary" tone="graphite" style={{ marginTop: 1 }} numberOfLines={large ? undefined : 1}>
+            {line}
           </BlancText>
         </View>
         <TextInput
@@ -255,14 +282,14 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           keyboardType="decimal-pad"
           returnKeyType="done"
           selectTextOnFocus
-          accessibilityLabel={`Amount of ${item.food.name} in ${item.food.serving_unit}`}
+          accessibilityLabel={`Amount of ${item.food.name}, ${spokenUnit(item.food.serving_unit)}`}
           accessibilityActions={disabled ? undefined : [{ name: 'remove', label: 'Remove' }]}
           onAccessibilityAction={(event) => {
             if (event.nativeEvent.actionName === 'remove') onRemove();
           }}
           onChangeText={(next) => {
             setValue(next);
-            const servings = Number(next) / item.food.serving_size;
+            const servings = Number(normalizeDecimalText(next)) / item.food.serving_size;
             const invalid =
               !Number.isFinite(servings) ||
               servings <= 0 ||
@@ -273,7 +300,14 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           lineBreakModeIOS="tail"
           style={[typeScale.field, { color: valid ? c.ink : c.live, minWidth: 56, minHeight: 44, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
         />
-        <BlancText variant="body" tone="graphite" numberOfLines={1} style={{ maxWidth: 64 }}>
+        {/* The field's name says the unit. */}
+        <BlancText
+          variant="body"
+          tone="graphite"
+          numberOfLines={large ? undefined : 1}
+          style={large ? undefined : { maxWidth: 64 }}
+          accessibilityElementsHidden
+          importantForAccessibility="no">
           {item.food.serving_unit}
         </BlancText>
       </View>

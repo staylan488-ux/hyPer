@@ -17,7 +17,7 @@ import {
   type Solid,
   type ViewSide,
 } from '@/lib/maquette';
-import type { MuscleGroup, MuscleVolume } from '@/types';
+import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
@@ -30,6 +30,13 @@ const BOX = { width: FIGURE_WIDTH * 2 + GAP, height: VIEW.top - VIEW.bottom };
 /** A muscle reaches at least this far from its centre to the finger, in points (44 across). */
 const REACH = 22;
 const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
+
+/** Muscles in the order they are drawn, chest to calves; VoiceOver steps through them so. */
+const DRAWN = [...new Set(MUSCLE_PARTS.map((part) => part.muscle))];
+const drawnPlace = (muscle: MuscleGroup) => {
+  const index = DRAWN.indexOf(muscle === 'shoulders' ? 'front_delts' : muscle);
+  return index < 0 ? DRAWN.length : index;
+};
 
 /** Whether a drawn part is the chosen muscle; general shoulders stand for the three delt heads. */
 const isChosen = (selected: MuscleGroup | null, muscle: MuscleGroup) =>
@@ -73,7 +80,9 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * more sets, red past the recoverable ceiling. Tap a muscle to choose it (a
  * near miss counts; small ones like the side delts reach a fingertip); the
  * others quiet down. Tapping it again, or away from every muscle, clears it.
- * VoiceOver chooses from the list of muscles below the figure instead.
+ * For VoiceOver the figure is one adjustable element: swiping up and down
+ * steps through this week's muscles (the rows of the list below it), and
+ * down past the first clears the choice.
  */
 export function MuscleFigure({ volume, selected, onPick, height = 300 }: {
   volume: MuscleVolume[];
@@ -97,8 +106,32 @@ export function MuscleFigure({ volume, selected, onPick, height = 300 }: {
     else if (selected !== null) onPick(null);
   };
 
+  const choices = useMemo(() => volume.map((entry) => entry.muscle_group).sort((a, b) => drawnPlace(a) - drawnPlace(b)), [volume]);
+  const step = (direction: 1 | -1) => {
+    const next = (selected ? choices.indexOf(selected) : -1) + direction;
+    if (next >= -1 && next < choices.length) onPick(next === -1 ? null : choices[next]);
+  };
+  const entry = selected ? volume.find((candidate) => candidate.muscle_group === selected) : undefined;
+  const sets = entry ? (Number.isInteger(entry.weekly_sets) ? entry.weekly_sets : entry.weekly_sets.toFixed(1)) : null;
+  const spokenValue = selected
+    ? `${MUSCLE_GROUP_LABELS[selected]}${entry ? `, ${sets} ${entry.weekly_sets === 1 ? 'set' : 'sets'}` : ''}`
+    : 'None chosen';
+
   return (
-    <View>
+    <View
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel="Muscle figure"
+      accessibilityHint="Swipe up or down to choose a muscle."
+      accessibilityValue={{ text: spokenValue }}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'increment') step(1);
+        if (event.nativeEvent.actionName === 'decrement') step(-1);
+      }}
+      // A double tap would land between the two figures and clear the
+      // choice by chance; the figure is chosen by swiping.
+      onAccessibilityTap={() => undefined}>
       {/* One touch area for the figure: the shapes themselves are too small to aim at. */}
       <Pressable
         accessible={false}

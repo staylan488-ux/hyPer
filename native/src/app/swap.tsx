@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import type { Exercise } from '@/types';
 import { ExercisePicker } from '~/components/ExercisePicker';
+import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
@@ -16,10 +17,11 @@ import { useSessionModel, type Movement, type SessionModel } from '~/lib/session
 
 type PickMode = 'swap' | 'add' | 'superset';
 
-const COPY: Record<PickMode, { title: string; verb: string; failed: string; fallback: string }> = {
-  swap: { title: 'Swap for this workout', verb: 'Swap to', failed: 'Not swapped', fallback: 'Could not swap the exercise. Try again.' },
-  add: { title: 'Add a movement', verb: 'Add', failed: 'Not added', fallback: 'Could not add the exercise. Try again.' },
-  superset: { title: 'Add a superset', verb: 'Pair with', failed: 'Not added', fallback: 'Could not add the superset. Try again.' },
+/** `done`: what VoiceOver hears once the pick saves and the sheet closes. */
+const COPY: Record<PickMode, { title: string; verb: string; done: string; failed: string; fallback: string }> = {
+  swap: { title: 'Swap for this workout', verb: 'Swap to', done: 'Swapped to', failed: 'Not swapped', fallback: 'Could not swap the exercise. Try again.' },
+  add: { title: 'Add a movement', verb: 'Add', done: 'Added', failed: 'Not added', fallback: 'Could not add the exercise. Try again.' },
+  superset: { title: 'Add a superset', verb: 'Pair with', done: 'Paired with', failed: 'Not added', fallback: 'Could not add the superset. Try again.' },
 };
 
 /**
@@ -95,6 +97,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     });
     if (saved) {
       haptics.success();
+      announce(`${copy.done} ${exercise.name}`);
       setExit('back');
     } else {
       haptics.error();
@@ -113,6 +116,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     try {
       await pickInWorkout(session, mode, movement, exercise);
       haptics.success();
+      announce(`${copy.done} ${exercise.name}`);
       setExit(exitTo);
     } catch (error) {
       haptics.error();

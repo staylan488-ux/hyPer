@@ -137,9 +137,9 @@ export interface WeekVolumeSummary {
   over: number;
 }
 
-/** Muscles trained this week and where they sit against their landmarks. */
+/** Muscles trained this week and where they sit against their landmarks; one with none to grade against is left out. */
 export function summarizeWeekVolume(weeklyVolume: MuscleVolume[]): WeekVolumeSummary {
-  const trained = (weeklyVolume ?? []).filter((volume) => volume.weekly_sets > 0);
+  const trained = (weeklyVolume ?? []).filter((volume) => volume.weekly_sets > 0 && volume.status !== null);
   return {
     trained: trained.length,
     under: trained.filter((volume) => volume.status === 'below_mev').length,
@@ -155,7 +155,7 @@ export interface VolumeInsight {
   muscle: string;
   headline: string;
   detail: string;
-  /** The short flag line under the week summary. */
+  /** The short flag line under the week summary, after "Muscle: ". */
   flag: string;
 }
 
@@ -177,7 +177,7 @@ export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null 
       muscle: labeled(below),
       headline: `${labeled(below)} is under-stimulated`,
       detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
-      flag: `under · add ~${gap} ${gap === 1 ? 'set' : 'sets'} this week`,
+      flag: `add about ${gap} ${gap === 1 ? 'set' : 'sets'} this week`,
     };
   }
 
@@ -195,7 +195,7 @@ export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null 
       detail: past
         ? `${over.weekly_sets} sets this week — pull back or plan a deload.`
         : `${over.weekly_sets} sets this week — hold here rather than adding more.`,
-      flag: past ? 'past recoverable volume · pull back' : 'nearing its ceiling · hold here',
+      flag: past ? 'over its ceiling' : 'near its ceiling',
     };
   }
 
@@ -208,7 +208,7 @@ export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null 
       muscle: labeled(inZone),
       headline: `${labeled(inZone)} is in the adaptive zone`,
       detail: `${inZone.weekly_sets} sets this week — right where growth compounds. Hold the line.`,
-      flag: 'in the adaptive zone · hold the line',
+      flag: 'in its best range',
     };
   }
 
@@ -221,6 +221,8 @@ export interface TodayHeroInput {
   heroLoading: boolean;
   currentWorkout: Workout | null;
   currentWorkoutDayPlan: WorkoutDayPlan | null;
+  /** Every loaded program: a live session keeps its day after another program is set active. */
+  splits?: readonly Split[];
   /** undefined: not known yet; null: no session completed today. */
   todayDone: { title: string } | null | undefined;
   workoutMode: WorkoutMode;
@@ -244,6 +246,7 @@ export function todayHero(input: TodayHeroInput): HeroState {
     heroLoading,
     currentWorkout,
     currentWorkoutDayPlan,
+    splits = [],
     todayDone,
     workoutMode,
     activeSplit,
@@ -260,7 +263,8 @@ export function todayHero(input: TodayHeroInput): HeroState {
   if (heroLoading) return { kind: 'loading' };
 
   if (currentWorkout && !currentWorkout.completed) {
-    const workoutDay = activeSplit?.days.find((day) => day.id === currentWorkout.split_day_id);
+    const isWorkoutDay = (day: SplitDay) => day.id === currentWorkout.split_day_id;
+    const workoutDay = activeSplit?.days.find(isWorkoutDay) ?? splits.flatMap((split) => split.days).find(isWorkoutDay);
     const upcomingSet = getWorkoutResumeSet(currentWorkout, workoutDay, currentWorkoutDayPlan);
     const upcomingName = upcomingSet ? upcomingSet.exercise?.name
       ?? workoutDay?.exercises.find((exercise) => exercise.exercise_id === upcomingSet.exercise_id)?.exercise?.name
@@ -271,7 +275,7 @@ export function todayHero(input: TodayHeroInput): HeroState {
     const dayName =
       currentWorkout.split_day_id === null
         ? 'Flexible'
-        : activeSplit?.days.find((d) => d.id === currentWorkout.split_day_id)?.day_name ?? 'Session';
+        : workoutDay?.day_name ?? 'Session';
     return {
       kind: 'resume',
       completedSets: done,
@@ -310,23 +314,30 @@ export function todayHero(input: TodayHeroInput): HeroState {
   return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
 }
 
-/** On a rest day, the next planned session by the same schedule rules, as "Tomorrow · Lower". */
-export function nextPlannedSession(input: {
+type NextPlannedInput = {
   activeSplit: Split | null;
   schedule: PlanSchedule | null;
   scheduleWorkouts: ScheduleWorkout[];
   adaptiveSchedulingEnabled: boolean;
   dayKey: string;
-}): string | null {
+};
+
+/** The first session planned after dayKey by the schedule rules, with its label ("Tomorrow · Lower"). */
+export function nextPlannedDay(input: NextPlannedInput): { day: SplitDay; label: string } | null {
   const { activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey } = input;
   if (!activeSplit || !schedule) return null;
   const base = parseISO(dayKey);
   for (let offset = 1; offset <= 14; offset += 1) {
     const date = addDays(base, offset);
     const day = plannedDayForDate(date, activeSplit.days, schedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
-    if (day) return `${offset === 1 ? 'Tomorrow' : format(date, 'EEE')} · ${day.day_name}`;
+    if (day) return { day, label: `${offset === 1 ? 'Tomorrow' : format(date, 'EEE')} · ${day.day_name}` };
   }
   return null;
+}
+
+/** On a rest day, the next planned session by the same schedule rules, as "Tomorrow · Lower". */
+export function nextPlannedSession(input: NextPlannedInput): string | null {
+  return nextPlannedDay(input)?.label ?? null;
 }
 
 /** Sessions planned this training week; flexible mode has no weekly plan to count against. */

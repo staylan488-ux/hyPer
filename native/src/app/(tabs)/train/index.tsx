@@ -1,13 +1,13 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
-import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type Ref } from 'react';
-import { AccessibilityInfo, Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
+import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref } from 'react';
+import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
+import { heldMovement, moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
@@ -16,7 +16,7 @@ import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
 import { DragList } from '~/components/DragList';
 import { FigureInput } from '~/components/FigureInput';
-import type { TextField } from '~/components/Form';
+import { FormNote, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
@@ -25,18 +25,19 @@ import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { TabScroll, tabBarCover } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
-import { useAccountRefresh } from '~/lib/accountData';
+import { announce, screenReaderRunning, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
+import { formatClock, formatRepRange, formatSet, formatTarget } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
-import { startRest } from '~/lib/rest';
-import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { restSecondsFor, startRest } from '~/lib/rest';
+import { liveSessionModel, useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
-import { chooseRpe, parseNumber } from '~/lib/setEntry';
-import { useTodayPlan } from '~/lib/today';
+import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
+import { useFinishedToday, useTodayPlan } from '~/lib/today';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -49,6 +50,8 @@ type Draft = { setId: string; weight: string; reps: string; rpe: number | null; 
 const BEAT_MOMENT_MS = 4000;
 /** How long Undo stays after a skip, as in the program editor. */
 const UNDO_MS = 5000;
+/** With VoiceOver, which takes a few swipes to reach the bar at the foot. */
+const UNDO_MS_SCREEN_READER = 20000;
 /** Each skip's own token, so Undo and a failed save only ever clear their own skip. */
 let skipCount = 0;
 const nextSkipKey = () => (skipCount += 1);
@@ -88,6 +91,18 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
   };
 }
 
+/** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
+const FIGURE_SIZE = 76;
+
+/**
+ * The weight and reps share one size, stepping down as their digits add up,
+ * so "102.5 × 10" still fits the card beside its units.
+ */
+function figureSize(weight: string, reps: string): number {
+  const length = Math.max(1, weight.length) + Math.max(1, reps.length);
+  return length <= 5 ? FIGURE_SIZE : length <= 6 ? 64 : length <= 7 ? 56 : length <= 8 ? 50 : 44;
+}
+
 export default function TrainScreen() {
   const session = useSessionModel();
   if (!session) return <StartWorkout />;
@@ -99,17 +114,23 @@ function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; to
   const now = useNow(1000);
   const elapsed = Math.max(0, (now - startedAt.getTime()) / 1000);
   return (
-    <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+    <BlancText
+      variant="secondary"
+      tone="graphite"
+      // The clock in words; the tally just below reads the sets.
+      accessibilityLabel={`Workout time, ${spokenClock(elapsed)}`}
+      style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
       <BlancText variant="meta" size={14} tone="graphite">
         {formatClock(elapsed)}
       </BlancText>
-      {`  ·  ${done} of ${total} sets`}
+      {total > 0 ? ` · ${done} of ${total} sets` : null}
     </BlancText>
   );
 }
 
 function LiveWorkout({ session }: { session: SessionModel }) {
   const c = useBlanc();
+  const large = useLargeText();
   const previous = usePreviousTargets(session.workoutId);
   const previousNotes = usePreviousNotes(session);
   const logSet = useAppStore((state) => state.logSet);
@@ -161,7 +182,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [undo, setUndo] = useState<{ key: number; exerciseId: string; name: string; wasCurrent: boolean } | null>(null);
   useEffect(() => {
     if (!undo) return;
-    const timer = setTimeout(() => setUndo((latest) => (latest?.key === undo.key ? null : latest)), UNDO_MS);
+    const timer = setTimeout(
+      () => setUndo((latest) => (latest?.key === undo.key ? null : latest)),
+      screenReaderRunning() ? UNDO_MS_SCREEN_READER : UNDO_MS,
+    );
     return () => clearTimeout(timer);
   }, [undo]);
   const weightField = useRef<TextField>(null);
@@ -188,13 +212,31 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   });
   useEffect(() => onPreviousChange(), [previous]);
 
-  const weight = draft ? parseNumber(draft.weight) : null;
+  // On a bodyweight movement an empty weight logs as 0: no "0" to type first.
+  const weight = draft ? weightToLog(draft.weight, isBodyweight(current?.set.exercise)) : null;
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
+  const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
+  const lastLine = last ? formatSet(last.weight, last.reps, { unit: false }) : '';
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
+  // "Set 2 of 4 · 8–10 reps" under the movement's name.
+  const cardLine = current
+    ? [
+        `Set ${current.setNumber} of ${current.movement.sets.length}`,
+        current.movement.superset
+          ? `superset with ${current.movement.superset.partnerName}`
+          : current.movement.substitutesFor
+            ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+            : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
 
   const blocked = current?.blocked ?? null;
+  // Why the set can't log yet (a superset's turn), as it appears.
+  useAnnounce(failed ? null : blocked);
 
   const log = async () => {
     if (!current || !draft || weight === null || reps === null || saving || blocked) return;
@@ -204,6 +246,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     setBeat(null);
     const logged = current.set;
     const loggedReps = Math.round(reps);
+    // One line for VoiceOver per log: focus stays on Log set while the card
+    // changes under it, so nothing else says the set saved.
+    const spoken = [`Set ${current.setNumber} of ${current.movement.sets.length} logged`];
     const saved = await succeeds(async () => {
       await logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined);
       // Beating the same set last time gets a firmer haptic and a quiet line.
@@ -211,7 +256,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       if (gain) {
         haptics.beat();
         setBeat({ key: Date.now(), gain, fresh: true });
-        AccessibilityInfo.announceForAccessibility(`Beat last time, ${gain}`);
+        spoken.push(`beat last time, ${gain}`);
       } else {
         haptics.success();
       }
@@ -220,11 +265,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       const after = afterLoggedSet(session, logged, useAppStore.getState().currentWorkout?.sets ?? []);
       const chosen = useFocusStore.getState().exerciseId;
       if (after.nextExerciseId && (!chosen || chosen === logged.exercise_id)) focus(after.nextExerciseId);
-      if (after.rest) startRest(current.movement.exerciseId);
+      if (after.rest) {
+        startRest(current.movement.exerciseId);
+        spoken.push(`rest ${spokenClock(restSecondsFor(current.movement.exerciseId))}`);
+      }
+      if (!liveSessionModel()?.current) spoken.push('all sets logged');
+      announce(spoken.join(', '));
     });
     if (!saved) {
       haptics.error();
       setFailedSetId(logged.id);
+      announce('Not saved. Your numbers are kept; try again.');
     }
     setSaving(false);
   };
@@ -252,8 +303,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     Keyboard.dismiss();
     const wasCurrent = movement.exerciseId === current?.movement.exerciseId;
     const key = nextSkipKey();
+    // The Undo bar announces "<name> skipped" as it appears.
     setUndo({ key, exerciseId: movement.exerciseId, name: movement.name, wasCurrent });
-    AccessibilityInfo.announceForAccessibility(`${movement.name} skipped`);
     void setSkipped(session.workoutId, movement, true).then((saved) => {
       if (saved) return;
       setUndo((latest) => (latest?.key === key ? null : latest));
@@ -266,9 +317,25 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     setUndo((latest) => (latest?.exerciseId === movement.exerciseId ? null : latest));
     if (next) focus(movement.exerciseId);
     void setSkipped(session.workoutId, movement, false);
+    announce(`${movement.name} brought back${next ? ', up now' : ''}`);
   };
 
   const { finish, closing } = useFinishWorkout(session);
+
+  // Magic Tap (a two-finger double tap) logs the set that's ready, exactly
+  // as Log set does, and otherwise says why it can't.
+  const magicLog = () => {
+    if (closing) return;
+    if (!current || !draft) {
+      announce(session.movements.length === 0 ? 'Add a movement first' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log');
+      return;
+    }
+    if (saving) return announce('Saving the set');
+    if (blocked) return announce(blocked);
+    if (!ready) return announce(weight === null ? (reps === null ? 'Enter the weight and reps first' : 'Enter the weight first') : 'Enter the reps first');
+    haptics.tap();
+    void log();
+  };
 
   // The header is built once per name and state, never per keystroke or
   // clock tick, so its buttons are not re-sent to iOS under the finger.
@@ -325,18 +392,28 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [reordering, setReordering] = useState(false);
   const [orderRevision, setOrderRevision] = useState(0);
   const [dragging, setDragging] = useState(false);
+  // The movement under the finger: a pair lifts as one, but a hold on B opens B.
+  const touchedMovement = useRef<string | null>(null);
+  // Written through a callback: a ref written inline in the list would keep
+  // the React Compiler from memoizing the list.
+  const touchMovement = useCallback((id: string) => {
+    touchedMovement.current = id;
+  }, []);
   // Blocks: a superset pair moves as one. (Computed after every hook, so the
   // React Compiler can keep the movement list from rebuilding as you type.)
   const blocks = movementBlocks(
     session.movements.map((movement) => ({ id: movement.exerciseId, name: movement.name, supersetGroupId: movement.superset?.groupId })),
   );
   const byId = new Map(session.movements.map((movement) => [movement.exerciseId, movement]));
-  const moveBlock = async (key: string, index: number) => {
+  // `spoken`: what VoiceOver hears once a Move up or Move down saves (the
+  // row moves under its focus without a word).
+  const moveBlock = async (key: string, index: number, spoken?: string) => {
     if (reordering) return;
     const ids = moveMovementBlock(blocks, key, index);
     setReordering(true);
     try {
       await reorderMovements(session.workoutId, ids);
+      announce(spoken);
     } catch (failure) {
       haptics.error();
       setOrderRevision((value) => value + 1);
@@ -350,6 +427,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const complete = movement.done === movement.sets.length;
     const plan = movement.plan;
     const lastSet = previous[movement.exerciseId]?.[1];
+    const lastLine = lastSet ? formatSet(lastSet.weight, lastSet.reps, { unit: false }) : '';
     const hasSetsLeft = movement.sets.some((set) => !set.completed);
     // Swipe to swap or skip a movement with sets to go and, in a flexible
     // session, to take it out (asks first).
@@ -366,16 +444,51 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const actions = [
       { label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) },
       ...(hasSetsLeft && !movement.skipped ? [{ label: 'Skip for this workout', run: () => skip(movement) }] : []),
-      ...(blockIndex > 0 ? [{ label: 'Move up', run: () => void moveBlock(blocks[blockIndex][0], blockIndex - 1) }] : []),
-      ...(blockIndex < blocks.length - 1 ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1) }] : []),
+      ...(blockIndex > 0
+        ? [{ label: 'Move up', run: () => void moveBlock(blocks[blockIndex][0], blockIndex - 1, `${movement.name} moved up`) }]
+        : []),
+      ...(blockIndex < blocks.length - 1
+        ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1, `${movement.name} moved down`) }]
+        : []),
     ];
+    // Each movement ends with its own tally; the next set stands taller on the row up now.
+    // The tally keeps 4 pt on top for that stroke; the same below centres the strokes on the row.
+    const tally = (
+      <Tally
+        compact
+        marks={movement.sets.map((set) => set.completed)}
+        current={isCurrent && current ? current.setNumber - 1 : null}
+        accessibilityLabel={`${movement.done} of ${movement.sets.length} sets done`}
+        style={{ marginBottom: 4 }}
+      />
+    );
+    // Up now, the card above says the rest; later rows give the target (this
+    // workout's set count) and last time.
+    const detail = isCurrent
+      ? 'Now'
+      : [
+          movement.superset
+            ? `Superset ${movement.superset.role}`
+            : movement.substitutesFor
+              ? `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+              : plan && (plan.target_reps_min || plan.target_reps_max)
+                ? formatTarget(movement.sets.length, plan.target_reps_min, plan.target_reps_max)
+                : null,
+          lastLine ? `last ${lastLine}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ');
     const row = movement.skipped ? (
       // Skipped for this workout; a tap brings it back as the one up now.
       <Row
         quiet
         title={movement.name}
         value={movement.done ? `Skipped · ${movement.done} of ${movement.sets.length}` : 'Skipped'}
-        leading={<SymbolView name="forward.end" size={13} weight="semibold" tintColor={c.graphite} />}
+        leading={
+          <Lead>
+            <SymbolView name="forward.end" size={13} weight="semibold" tintColor={c.graphite} />
+          </Lead>
+        }
         accessibilityLabel={`${movement.name}, skipped${movement.done ? `, ${movement.done} sets logged` : ''}. Bring back`}
         onPress={() => bringBack(movement, true)}
         actions={actions}
@@ -385,31 +498,33 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Row
         quiet
         title={movement.name}
-        value={`Done · ${movement.done} of ${movement.sets.length}`}
-        leading={<SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />}
+        leading={
+          <Lead>
+            <SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />
+          </Lead>
+        }
+        trailing={tally}
         accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
         onPress={() => openMovement(movement.exerciseId)}
         actions={actions}
       />
     ) : (
-      // Tap to work on a movement next.
+      // Up now, a tap opens its sets; any other row becomes the one up next, in place.
       <Row
         title={movement.name}
-        detail={[
-          isCurrent ? 'Now' : `${movement.done} of ${movement.sets.length}`,
-          movement.superset
-            ? `superset ${movement.superset.role}`
-            : movement.substitutesFor
-            ? `instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-            : plan && plan.target_reps_min && plan.target_reps_max
-              ? `${plan.target_sets} × ${plan.target_reps_min}–${plan.target_reps_max}`
-              : null,
-          lastSet && lastSet.weight !== null ? `last ${formatLoad(lastSet.weight)} × ${lastSet.reps ?? '–'}` : null,
-        ]
-          .filter(Boolean)
-          .join(' · ')}
-        chevron={!isCurrent}
-        onPress={isCurrent ? () => openMovement(movement.exerciseId) : () => focus(movement.exerciseId)}
+        detail={detail || undefined}
+        leading={<Lead />}
+        trailing={tally}
+        accessibilityLabel={[movement.name, detail, `${movement.done} of ${movement.sets.length} sets done`].filter(Boolean).join(', ')}
+        onPress={
+          isCurrent
+            ? () => openMovement(movement.exerciseId)
+            : () => {
+                focus(movement.exerciseId);
+                // The card above changes; VoiceOver stays on this row.
+                announce(`${movement.name}, up now`);
+              }
+        }
         actions={actions}
       />
     );
@@ -436,8 +551,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               node: block.map((id, index) => {
                 const movement = byId.get(id);
                 return movement ? (
-                  <View key={id}>
-                    {index > 0 ? <Hairline /> : null}
+                  <View key={id} onTouchStart={() => touchMovement(id)}>
+                    {index > 0 ? <Hairline inset={46} /> : null}
                     {movementRow(movement, blocks.findIndex((entry) => entry === block))}
                   </View>
                 ) : null;
@@ -446,16 +561,22 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             enabled={!reordering}
             revision={orderRevision}
             roundBottom={!session.flexible}
+            // Rules start at the names, past each row's 16 pt mark.
+            ruleInset={46}
             onMove={(key, index) => void moveBlock(key, index)}
-            onHold={(key) => openMovement(key)}
+            onHold={(key) => openMovement(heldMovement(blocks, key, touchedMovement.current))}
             onDragging={setDragging}
           />
           {session.flexible ? (
             <Animated.View layout={rowLayout}>
-              <Hairline />
+              <Hairline inset={46} />
               <Row
                 title="Add movement"
-                leading={<SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />}
+                leading={
+                  <Lead>
+                    <SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />
+                  </Lead>
+                }
                 onPress={addMovement}
               />
             </Animated.View>
@@ -472,6 +593,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         // Once Finish is confirmed, its saved summary must not race new edits.
         pointerEvents={closing ? 'none' : 'auto'}
         accessibilityElementsHidden={closing}
+        onMagicTap={magicLog}
         // A lifted movement holds the page still while it is dragged.
         scrollEnabled={!dragging}
         keyboardShouldPersistTaps="handled"
@@ -483,13 +605,16 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         }}>
         <Elapsed startedAt={session.startedAt} done={session.doneCount} total={session.sets.length} />
 
-        <Tally
-          marks={session.sets.map((set) => set.completed)}
-          current={current?.index ?? null}
-          height={20}
-          style={{ marginHorizontal: space.gutter, marginTop: 16 }}
-          accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
-        />
+        {/* An empty session has no marks to draw. */}
+        {session.sets.length > 0 ? (
+          <Tally
+            marks={session.sets.map((set) => set.completed)}
+            current={current?.index ?? null}
+            height={20}
+            style={{ marginHorizontal: space.gutter, marginTop: 16 }}
+            accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
+          />
+        ) : null}
 
         {current && draft ? (
           <View ref={cardRef} collapsable={false}>
@@ -500,7 +625,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               {/* The name and its line open the movement's sets, note and swap, like ⋯. */}
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${current.movement.name}, set ${current.setNumber} of ${current.movement.sets.length}`}
+                accessibilityLabel={speak(`${current.movement.name}, ${cardLine}`)}
                 accessibilityHint="Opens its sets, note and swap"
                 onPress={() => {
                   haptics.tap();
@@ -511,20 +636,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   openMovement(current.movement.exerciseId);
                 }}
                 style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.55 : 1 })}>
-                <BlancText variant="title" numberOfLines={2}>
+                <BlancText variant="title" numberOfLines={large ? undefined : 2}>
                   {current.movement.name}
                 </BlancText>
                 <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
-                  {[
-                    `Set ${current.setNumber} of ${current.movement.sets.length}`,
-                    current.movement.superset
-                      ? `superset with ${current.movement.superset.partnerName}`
-                      : current.movement.substitutesFor
-                        ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-                        : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
+                  {cardLine}
                 </BlancText>
               </Pressable>
               <Pressable
@@ -540,48 +656,60 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               </Pressable>
             </View>
             {current.movement.note ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={2} style={{ marginTop: 6 }}>
+              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
                 {current.movement.note}
               </BlancText>
             ) : null}
 
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14 }}>
-              <BigValue
-                ref={weightField}
-                value={draft.weight}
-                unit="lb"
-                accessibilityLabel="Weight in pounds"
-                onChange={(text) => setDraft({ ...draft, weight: text, touched: true })}
-                onFocus={() => setEditing('weight')}
-                onBlur={() => setEditing((field) => (field === 'weight' ? null : field))}
-              />
-              <BlancText variant="figure" size={30} tone="graphite" style={{ marginBottom: 12 }}>
-                ×
-              </BlancText>
-              <BigValue
-                ref={repsField}
-                value={draft.reps}
-                unit="reps"
-                integer
-                accessibilityLabel="Reps"
-                onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
-                onFocus={() => setEditing('reps')}
-                onBlur={() => setEditing((field) => (field === 'reps' ? null : field))}
-              />
-            </View>
+            <FigureRow
+              size={figure}
+              weight={
+                <BigValue
+                  ref={weightField}
+                  value={draft.weight}
+                  unit="lb"
+                  size={figure}
+                  accessibilityLabel="Weight in pounds"
+                  onChange={(text) => setDraft({ ...draft, weight: text, touched: true })}
+                  onFocus={() => setEditing('weight')}
+                  onBlur={() => setEditing((field) => (field === 'weight' ? null : field))}
+                />
+              }
+              reps={
+                <BigValue
+                  ref={repsField}
+                  value={draft.reps}
+                  unit="reps"
+                  size={figure}
+                  integer
+                  accessibilityLabel="Reps"
+                  onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
+                  onFocus={() => setEditing('reps')}
+                  onBlur={() => setEditing((field) => (field === 'reps' ? null : field))}
+                />
+              }
+            />
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Pill
+            {/* At the accessibility text sizes "Last time" sits under the pills, whole. */}
+            <View
+              style={
+                large
+                  ? { alignItems: 'flex-start', gap: 10, marginTop: 12 }
+                  : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }
+              }>
+              <View style={{ flexDirection: 'row', gap: 8, ...(large ? { flexWrap: 'wrap' } : null) }}>
+                <Chip
                   label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
                   accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
+                  haptic={false}
                   onPress={pickRpe}
                 />
                 {/* For this workout only; the program keeps it. */}
-                <Pill
+                <Chip
                   label="Skip"
                   accessibilityLabel={`Skip ${current.movement.name}`}
                   accessibilityHint="For this workout only. Undo brings it back."
+                  haptic={false}
                   onPress={() => {
                     haptics.tap();
                     skip(current.movement);
@@ -589,17 +717,24 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 />
               </View>
               {beat?.fresh ? (
-                <BeatLine key={beat.key} gain={beat.gain} style={{ marginLeft: 12 }} />
-              ) : last && last.weight !== null && last.reps !== null ? (
-                <Animated.View key="last" entering={FadeIn.duration(220)} style={{ flexShrink: 1, marginLeft: 12 }}>
-                  <BlancText variant="meta" tone="graphite" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-                    Last time {formatLoad(last.weight)} × {last.reps}
+                <BeatLine key={beat.key} gain={beat.gain} style={large ? undefined : { marginLeft: 12 }} />
+              ) : lastLine ? (
+                <Animated.View key="last" entering={FadeIn.duration(220)} style={large ? undefined : { flexShrink: 1, marginLeft: 12 }}>
+                  <BlancText
+                    variant="meta"
+                    tone="graphite"
+                    numberOfLines={large ? undefined : 1}
+                    adjustsFontSizeToFit={!large}
+                    minimumFontScale={0.8}
+                    // With its unit in words: "Last time, 80 pounds × 10".
+                    accessibilityLabel={speak(`Last time, ${formatSet(last?.weight, last?.reps)}`)}>
+                    Last time {lastLine}
                   </BlancText>
                 </Animated.View>
               ) : null}
             </View>
             {lastNote ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={2} style={{ marginTop: 10 }}>
+              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 10 }}>
                 Last note, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
               </BlancText>
             ) : null}
@@ -609,7 +744,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 Not saved. Your numbers are kept; try again.
               </BlancText>
             ) : blocked ? (
-              <BlancText variant="footnote" tone="graphite" accessibilityLiveRegion="polite" style={{ marginTop: 14 }}>
+              <BlancText variant="footnote" tone="graphite" style={{ marginTop: 14 }}>
                 {blocked}
               </BlancText>
             ) : null}
@@ -628,10 +763,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           </View>
         ) : session.movements.length === 0 ? (
           // A flexible session starts empty and is built as it goes.
-          <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
-            <BlancText variant="headline">Add your first movement</BlancText>
-            <Capsule title="Add movement" size="large" fill onPress={addMovement} />
-          </Label>
+          <Capsule
+            title="Add your first movement"
+            size="large"
+            fill
+            onPress={addMovement}
+            style={{ marginHorizontal: space.inset, marginTop: 18 }}
+          />
         ) : (
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
             <View style={{ gap: 4 }}>
@@ -658,6 +796,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         <KeyboardStickyView style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
           <KeyBar
             step={editing === 'weight' ? '5 lb' : '1'}
+            spokenStep={editing === 'weight' ? '5 pounds' : '1 rep'}
             onMinus={() => bump(editing, editing === 'weight' ? -5 : -1)}
             onPlus={() => bump(editing, editing === 'weight' ? 5 : 1)}
             onNext={editing === 'weight' ? () => repsField.current?.focus() : undefined}
@@ -695,53 +834,65 @@ function renameWorkout(workoutId: string, dayName: string) {
   );
 }
 
-/** A quiet pill beside the figures (RPE, Skip): 32 points drawn, 44 to touch. */
-function Pill({
-  label,
-  accessibilityLabel,
-  accessibilityHint,
-  onPress,
-}: {
-  label: string;
-  accessibilityLabel: string;
-  accessibilityHint?: string;
-  onPress: () => void;
-}) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityHint={accessibilityHint}
-      onPress={onPress}
-      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-      style={({ pressed }) => ({
-        height: 32,
-        paddingHorizontal: 12,
-        borderRadius: 16,
-        justifyContent: 'center',
-        backgroundColor: pressed ? c.pressed : c.fill,
-      })}>
-      <BlancText variant="footnote" weight="500">
-        {label}
-      </BlancText>
-    </Pressable>
-  );
+/** The movement rows' one leading slot (a check, the skip mark or nothing), so every name starts on the same edge. */
+function Lead({ children }: { children?: ReactNode }) {
+  return <View style={{ width: 16, alignItems: 'center' }}>{children}</View>;
 }
 
 /** A saved set beat last time: an up mark and the gain, in ink, for a moment. */
 function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
   const c = useBlanc();
+  const large = useLargeText();
   return (
     <Animated.View
       entering={FadeIn.duration(180)}
       exiting={FadeOut.duration(220)}
       style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }, style]}>
       <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} />
-      <BlancText variant="meta" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ flexShrink: 1 }}>
+      <BlancText variant="meta" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1 }}>
         Beat last time · {gain}
       </BlancText>
     </Animated.View>
+  );
+}
+
+/**
+ * Weight × reps at the figures' shared `size`. It holds the largest figures'
+ * height, so a step down in size never moves the card. At the accessibility
+ * text sizes the capped figures and their grown units no longer fit side by
+ * side, so "× reps" wraps under the weight when it must.
+ */
+function FigureRow({ weight, reps, size }: { weight: ReactNode; reps: ReactNode; size: number }) {
+  // Weight and reps outgrow the card from the larger standard text sizes on;
+  // the wrapping row looks the same while they still fit.
+  const large = useWindowDimensions().fontScale > 1;
+  const minHeight = Math.round(FIGURE_SIZE * 1.1);
+  // The fields name themselves; the "×" is only drawn.
+  const times = (
+    <BlancText
+      variant="figure"
+      size={Math.round(size * 0.4)}
+      tone="graphite"
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      style={{ marginBottom: Math.round(size * 0.16) }}>
+      ×
+    </BlancText>
+  );
+  return large ? (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', columnGap: 14, rowGap: 4, marginTop: 14, minHeight }}>
+      {weight}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14 }}>
+        {times}
+        {reps}
+      </View>
+    </View>
+  ) : (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: 14, minHeight }}>
+      {weight}
+      {times}
+      {reps}
+    </View>
   );
 }
 
@@ -749,6 +900,7 @@ function BigValue({
   ref,
   value,
   unit,
+  size,
   onChange,
   onFocus,
   onBlur,
@@ -758,6 +910,7 @@ function BigValue({
   ref: Ref<TextField>;
   value: string;
   unit: string;
+  size: number;
   onChange: (text: string) => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -774,7 +927,7 @@ function BigValue({
         // The key bar below brings − / +, Next and Done; no system bar.
         returnKeyType="default"
         value={value}
-        fontSize={76}
+        fontSize={size}
         onChangeText={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
@@ -783,16 +936,37 @@ function BigValue({
         maxLength={6}
         accessibilityLabel={accessibilityLabel}
       />
-      <BlancText variant="secondary" tone="graphite">
+      {/* The field's label names the unit. */}
+      <BlancText variant="secondary" tone="graphite" accessibilityElementsHidden importantForAccessibility="no">
         {unit}
       </BlancText>
     </Pressable>
   );
 }
 
+/**
+ * The key bar's text grows no further than this, like iOS's own bars above
+ * the keyboard: its three keys must share one row at every text size.
+ */
+const KEY_BAR_MAX_SCALE = 2;
+
 /** Quick steps that ride on the number pad, plus Next (weight to reps) or Done (the pad has no return key). */
-function KeyBar({ step, onMinus, onPlus, onNext }: { step: string; onMinus: () => void; onPlus: () => void; onNext?: () => void }) {
+function KeyBar({
+  step,
+  spokenStep,
+  onMinus,
+  onPlus,
+  onNext,
+}: {
+  step: string;
+  /** The step in words for VoiceOver: "5 pounds", "1 rep". */
+  spokenStep: string;
+  onMinus: () => void;
+  onPlus: () => void;
+  onNext?: () => void;
+}) {
   const c = useBlanc();
+  const large = useLargeText();
   const key = (label: string, onPress: () => void, accessibilityLabel: string) => (
     <Pressable
       accessibilityRole="button"
@@ -801,13 +975,13 @@ function KeyBar({ step, onMinus, onPlus, onNext }: { step: string; onMinus: () =
       // 36 points drawn, 44 or more to touch.
       hitSlop={{ top: 8, bottom: 8 }}
       style={({ pressed }) => ({
-        height: 36,
+        ...(large ? { minHeight: 36, paddingVertical: 6 } : { height: 36 }),
         paddingHorizontal: 14,
         borderRadius: 18,
         justifyContent: 'center',
         backgroundColor: pressed ? c.pressed : c.label,
       })}>
-      <BlancText variant="secondary" weight="600">
+      <BlancText variant="secondary" weight="600" maxFontSizeMultiplier={KEY_BAR_MAX_SCALE}>
         {label}
       </BlancText>
     </Pressable>
@@ -824,8 +998,8 @@ function KeyBar({ step, onMinus, onPlus, onNext }: { step: string; onMinus: () =
         borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: c.hairline,
       }}>
-      {key(`− ${step}`, onMinus, `Minus ${step}`)}
-      {key(`+ ${step}`, onPlus, `Plus ${step}`)}
+      {key(`− ${step}`, onMinus, `Minus ${spokenStep}`)}
+      {key(`+ ${step}`, onPlus, `Plus ${spokenStep}`)}
       <View style={{ flex: 1 }} />
       {onNext
         ? key(
@@ -922,13 +1096,16 @@ function useStartHeader(title: string) {
 
 /** Program mode: today's card by the schedule, then any other day to start instead. */
 function StartPlanned() {
+  const large = useLargeText();
   const split = useAppStore((state) => state.activeSplit);
   const { starting, start } = useStartSession();
   const plan = useTodayPlan();
   const header = useStartHeader('Train');
   const { refreshing, refresh } = useAccountRefresh();
+  // The account's day, as the card below: the week moves on with it overnight.
+  const dayKey = useAccountDay((state) => state.dayKey);
   const week = plan.schedule
-    ? differenceInCalendarWeeks(new Date(), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
+    ? differenceInCalendarWeeks(parseISO(dayKey), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
     : null;
   // How finishing another day moves the plan, by the web's rule.
   const otherNote = !plan.schedule
@@ -938,47 +1115,66 @@ function StartPlanned() {
       : plan.schedule.mode === 'fixed'
         ? 'Finishing a different day shifts the sessions after it.'
         : 'Finishing a different day moves the next session on from it.';
+  // The day the card above offers, or shows as done today, is not offered again.
+  const planned = plan.hero.kind === 'planned' ? plan.hero.day.id : null;
+  const finished = useFinishedToday(plan.hero.kind === 'done');
+  // While the plan, or History's read of today's workout, loads the list waits,
+  // so a day is never offered and then taken back.
+  const holding = plan.hero.kind === 'loading' || (plan.hero.kind === 'done' && finished === undefined);
+  const otherDays = split && !holding ? split.days.filter((day) => day.id !== planned && day.id !== finished?.splitDayId) : [];
 
   return (
     <>
       {header}
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {split ? [split.name, week && week >= 1 ? `week ${week}` : null].filter(Boolean).join(' · ') : 'No program yet'}
-        </BlancText>
+        {/* Without a program the card below says so. */}
+        {split ? (
+          <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+            {[split.name, week && week >= 1 ? `week ${week}` : null].filter(Boolean).join(' · ')}
+          </BlancText>
+        ) : null}
         <PlanCard hero={plan.hero} next={plan.next} place="train" />
-        {split && split.days.length > 0 ? (
-          <Section title="Other days">
-            <Label>
-              {split.days.map((day, index) => (
-                <View key={day.id}>
-                  {index > 0 ? <Hairline /> : null}
-                  <Row
-                    title={day.day_name}
-                    detail={`${day.exercises.length} movements · ${day.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0)} sets`}
-                    trailing={
-                      <Capsule
-                        title={starting === day.id ? 'Starting' : 'Start'}
-                        variant="quiet"
-                        busy={starting === day.id}
-                        disabled={starting !== null}
-                        onPress={() => void start(day.id)}
-                      />
-                    }
-                  />
-                </View>
-              ))}
-            </Label>
-            {otherNote ? (
-              <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-                {otherNote}
-              </BlancText>
-            ) : null}
-          </Section>
+        {otherDays.length > 0 ? (
+          // Arrives with the card's fade, once its rows are known.
+          <Animated.View entering={FadeIn.duration(220)}>
+            <Section title="Other days">
+              <Label>
+                {otherDays.map((day, index) => {
+                  const startButton = (
+                    <Capsule
+                      title={starting === day.id ? 'Starting' : 'Start'}
+                      // Each day's button names its day.
+                      accessibilityLabel={`${starting === day.id ? 'Starting' : 'Start'} ${day.day_name}`}
+                      variant="quiet"
+                      busy={starting === day.id}
+                      disabled={starting !== null}
+                      onPress={() => void start(day.id)}
+                    />
+                  );
+                  return (
+                    <View key={day.id}>
+                      {index > 0 ? <Hairline /> : null}
+                      <Row title={day.day_name} detail={dayLine(day)} trailing={large ? undefined : startButton} />
+                      {/* At the accessibility text sizes the button would squeeze the day's words: it goes under them. */}
+                      {large ? <View style={{ paddingLeft: 18, paddingRight: 16, paddingBottom: 12 }}>{startButton}</View> : null}
+                    </View>
+                  );
+                })}
+              </Label>
+              {otherNote ? <FormNote>{otherNote}</FormNote> : null}
+            </Section>
+          </Animated.View>
         ) : null}
       </TabScroll>
     </>
   );
+}
+
+/** "5 movements · 17 sets", "1 movement · 1 set". */
+function dayLine(day: { exercises: { target_sets: number }[] }): string {
+  const movements = day.exercises.length;
+  const sets = day.exercises.reduce((sum, exercise) => sum + exercise.target_sets, 0);
+  return `${movements} ${movements === 1 ? 'movement' : 'movements'} · ${sets} ${sets === 1 ? 'set' : 'sets'}`;
 }
 
 const FLEX_NAME_LIMIT = 40;

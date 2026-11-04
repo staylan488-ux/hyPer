@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { ActionSheetIOS, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { barcodeProviderLabel } from '@/lib/barcodeLookup';
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -21,23 +22,28 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
+import { speak, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { SAVE_FAILED, saveFoodEntry } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
+import { figureLayout } from '~/lib/motion';
 import { space } from '~/theme/blanc';
 
 import { useLogger, type ChosenMeta } from './context';
+import { spokenMacros } from './FoodLists';
 import { ServingHelper } from './ServingHelper';
 import { WhenBlock } from './WhenBlock';
 
 /**
  * The chosen food: how much, when, then log it (or add it to the meal). A food
  * from Recent opens at its usual amount, in its own unit when it is weighed or
- * measured (150 g rather than 1.5 servings).
+ * measured (150 g rather than 1.5 servings). The header's back chevron changes the food.
  */
-export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food; meta: ChosenMeta; servings?: number; onBack: () => void }) {
+export function FoodReview({ food, meta, servings: usual }: { food: Food; meta: ChosenMeta; servings?: number }) {
   const logger = useLogger();
+  const large = useLargeText();
   const units = getCompatibleMeasurementUnits(food.serving_unit);
   const [initial] = useState(() => (usual ? usualAmountInput(food, usual) : { amount: '1', unit: 'serving' as MeasurementUnit }));
   const [amount, setAmount] = useState(initial.amount);
@@ -53,6 +59,18 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
   const invalid = amountError(food, amount, unit);
   const kcal = servings === null ? 0 : Math.round(food.calories * servings);
   const protein = servings === null ? 0 : Math.round(food.protein * servings);
+  // With one unit there is no choice to offer: the amount says what it counts,
+  // in the food's own word when one serving is one of it ("1 scoop").
+  const ownUnit = food.serving_unit?.trim();
+  const amountUnit =
+    units.length > 1
+      ? undefined
+      : ownUnit && ownUnit.toLowerCase() !== 'serving' && Number(food.serving_size) === 1
+        ? ownUnit
+        : parseFloat(amount) === 1
+          ? 'serving'
+          : 'servings';
+  const basis = foodBasisLabel(food);
 
   const chooseUnit = () => {
     const options = [...units, 'Cancel'];
@@ -78,6 +96,7 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
     }
     setSaving(true);
     setError(null);
+    const release = logger.beginSave();
     try {
       const foodId = await ensureFoodRow(food);
       if (!foodId) throw new Error(SAVE_FAILED);
@@ -97,20 +116,23 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
       setError(SAVE_FAILED);
     } finally {
       setSaving(false);
+      release();
     }
   };
 
   return (
     <View>
       <View style={{ paddingHorizontal: space.gutter, marginTop: 8 }}>
-        <BlancText variant="title">{food.name}</BlancText>
+        <BlancText variant="title" accessibilityRole="header">
+          {food.name}
+        </BlancText>
         {meta?.source === 'barcode' ? (
           <BlancText variant="footnote" tone="graphite" style={{ marginTop: 4 }}>
             Barcode {meta.barcode} · {barcodeProviderLabel(meta.provider)}
           </BlancText>
         ) : null}
-        <BlancText variant="secondary" tone="graphite" style={{ marginTop: 6 }}>
-          {foodMacroLine(food)} {foodBasisLabel(food)}
+        <BlancText variant="secondary" tone="graphite" style={{ marginTop: 6 }} accessibilityLabel={`${speak(basis[0].toUpperCase() + basis.slice(1))}, ${spokenMacros(food)}`}>
+          {basis[0].toUpperCase() + basis.slice(1)} · {foodMacroLine(food)}
         </BlancText>
       </View>
 
@@ -122,12 +144,17 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
             onChangeText={setAmount}
             keyboardType="decimal-pad"
             selectTextOnFocus
+            unit={amountUnit}
             invalid={Boolean(invalid)}
             // Typing the amount by hand sets the helper aside, so Log entry is ready.
             onFocus={() => setHelperOpen(false)}
           />
-          <Hairline />
-          <Row title="Unit" value={unit} chevron={units.length > 1} onPress={units.length > 1 ? chooseUnit : undefined} />
+          {units.length > 1 ? (
+            <>
+              <Hairline />
+              <Row form title="Unit" value={unit} chevron onPress={chooseUnit} />
+            </>
+          ) : null}
         </Label>
         {invalid ? <FormNote alert>{invalid}</FormNote> : null}
         <ServingHelper
@@ -145,30 +172,37 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
 
       <WhenBlock disabled={saving} />
 
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 28 }}>
+      {/* One fact for VoiceOver: what this entry adds. */}
+      <View
+        accessible
+        accessibilityLabel={speak(`This entry · ${formatWhole(kcal)} kcal${protein > 0 ? ` · ${formatWhole(protein)} g protein` : ''}`)}
+        style={{ paddingHorizontal: space.gutter, marginTop: 28 }}>
         <BlancText variant="secondary" tone="graphite">
           This entry
         </BlancText>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2 }}>
-          <BlancText variant="figure" size={44}>
+        {/* At the accessibility sizes the words go under the figure when they don't fit beside it. */}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
+          <RollingText variant="figure" size={56}>
             {formatWhole(kcal)}
-          </BlancText>
-          <BlancText variant="secondary" tone="graphite">
-            kcal · {formatWhole(protein)} g protein
-          </BlancText>
+          </RollingText>
+          <Animated.View layout={figureLayout} style={large ? { flexShrink: 1 } : undefined}>
+            <BlancText variant="secondary" tone="graphite">
+              {protein > 0 ? `kcal · ${formatWhole(protein)} g protein` : 'kcal'}
+            </BlancText>
+          </Animated.View>
         </View>
       </View>
 
       {error ? <FormNote alert>{error}</FormNote> : null}
 
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-        <Capsule title="Change food" variant="quiet" onPress={onBack} disabled={saving} />
+      <View style={{ paddingHorizontal: space.inset, marginTop: 20 }}>
         <Capsule
           title={logger.purpose === 'ingredients' ? 'Add ingredient' : logger.editing ? 'Save changes' : 'Log entry'}
+          size="large"
+          fill
           onPress={() => void save()}
           busy={saving}
           disabled={servings === null || helperOpen}
-          style={{ flex: 1, alignSelf: 'stretch' }}
         />
       </View>
     </View>

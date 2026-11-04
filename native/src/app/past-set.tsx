@@ -1,19 +1,24 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, View } from 'react-native';
+import { Keyboard, ScrollView, View } from 'react-native';
 
 import { buildPastSetUpdate } from '@/lib/historyMonth';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Chip } from '~/components/Chip';
 import { FigureInput } from '~/components/FigureInput';
 import type { TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
+import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
-import { useBlanc } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
+
+/** Text VoiceOver skips: the fields are named "Weight in pounds" and "Reps", and the × is read as part of neither. */
+const spokenByField = { accessibilityElementsHidden: true, importantForAccessibility: 'no' as const };
 
 /**
  * Corrects one set of a past workout. Clearing weight or reps leaves the set
@@ -21,6 +26,7 @@ import { useBlanc } from '~/theme/blanc';
  */
 export default function PastSetSheet() {
   const c = useBlanc();
+  const large = useLargeText();
   const params = useLocalSearchParams<{ workout: string; set: string; number?: string }>();
   const workout = useHistoryStore((state) => state.workouts.find((entry) => entry.id === params.workout) ?? null);
   const set = workout?.sets.find((entry) => entry.id === params.set) ?? null;
@@ -42,6 +48,7 @@ export default function PastSetSheet() {
       reps.trim() !== (set.reps == null ? '' : String(set.reps)) ||
       rpe !== (set.rpe ?? null));
   useLeaveGuard(dirty && !saved, { title: 'Discard this correction?' }, { busy: saving });
+  useAnnounce(failed && 'Not saved. Your numbers are kept; try again.');
 
   const save = async () => {
     if (!workout || !set || saving) return;
@@ -51,11 +58,14 @@ export default function PastSetSheet() {
     const weightValue = weight.trim() ? parseNumber(weight) : null;
     const repsValue = reps.trim() ? parseNumber(reps) : null;
     const values = { weight: weightValue, reps: repsValue === null ? null : Math.round(repsValue), rpe };
-    const ok = await editPastWorkout(workout.id, () =>
-      useAppStore.getState().updateSet(set.id, buildPastSetUpdate(set, values, workout.completed_at)),
-    );
+    const ok = await editPastWorkout(workout.id, () => {
+      // A logged set takes its time from the workout as it is when the save runs.
+      const latest = useHistoryStore.getState().workouts.find((entry) => entry.id === workout.id) ?? workout;
+      return useAppStore.getState().updateSet(set.id, buildPastSetUpdate(set, values, latest));
+    });
     if (ok) {
       haptics.success();
+      announce(`Set ${number} saved`);
       setSaved(true);
     } else {
       haptics.error();
@@ -69,11 +79,16 @@ export default function PastSetSheet() {
   }, [saved]);
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} keyboardShouldPersistTaps="handled" scrollEnabled={false}>
+    <ScrollView
+      style={{ backgroundColor: c.ground }}
+      contentContainerStyle={{ paddingBottom: 28 }}
+      keyboardShouldPersistTaps="handled"
+      // The sheet fits its content; at the accessibility text sizes that can pass the screen's height.
+      scrollEnabled={large}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <BlancText variant="headline" numberOfLines={1} accessibilityRole="header">
+        <View style={{ flex: 1, alignItems: 'center' }} accessible accessibilityRole="header" accessibilityLabel={`${name}, set ${number}`}>
+          <BlancText variant="headline" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
             {name}
           </BlancText>
           <BlancText variant="footnote" tone="graphite">
@@ -84,8 +99,9 @@ export default function PastSetSheet() {
       </View>
 
       {set ? (
-        <View style={{ paddingHorizontal: 24, paddingTop: 18 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+        <View style={{ paddingHorizontal: space.inset, paddingTop: 18 }}>
+          {/* At the accessibility text sizes the reps go under the weight when both do not fit. */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
               <FigureInput
                 ref={weightField}
@@ -108,11 +124,11 @@ export default function PastSetSheet() {
                 maxLength={6}
                 accessibilityLabel="Weight in pounds"
               />
-              <BlancText variant="secondary" tone="graphite">
+              <BlancText variant="secondary" tone="graphite" {...spokenByField}>
                 lb
               </BlancText>
             </View>
-            <BlancText variant="figure" size={26} tone="graphite" style={{ marginBottom: 10 }}>
+            <BlancText variant="figure" size={26} tone="graphite" style={{ marginBottom: 10 }} {...spokenByField}>
               ×
             </BlancText>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
@@ -126,32 +142,20 @@ export default function PastSetSheet() {
                 maxLength={4}
                 accessibilityLabel="Reps"
               />
-              <BlancText variant="secondary" tone="graphite">
+              <BlancText variant="secondary" tone="graphite" {...spokenByField}>
                 reps
               </BlancText>
             </View>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
+          <Chip
+            label={rpe ? `RPE ${rpe}` : 'Add RPE'}
             accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
             disabled={saving}
-            // 34 points drawn, 44 to touch.
-            hitSlop={{ top: 5, bottom: 5 }}
+            haptic={false}
             onPress={() => chooseRpe(setRpe)}
-            style={({ pressed }) => ({
-              alignSelf: 'flex-start',
-              height: 34,
-              paddingHorizontal: 14,
-              marginTop: 14,
-              borderRadius: 17,
-              justifyContent: 'center',
-              backgroundColor: pressed ? c.pressed : c.fill,
-            })}>
-            <BlancText variant="footnote" weight="500">
-              {rpe ? `RPE ${rpe}` : 'Add RPE'}
-            </BlancText>
-          </Pressable>
+            style={{ alignSelf: 'flex-start', marginTop: 14 }}
+          />
 
           {failed ? (
             <BlancText variant="footnote" tone="live" style={{ marginTop: 12 }} accessibilityRole="alert">
@@ -160,7 +164,7 @@ export default function PastSetSheet() {
           ) : null}
 
           <View style={{ marginTop: 20 }}>
-            <Capsule title={failed ? 'Retry' : 'Save'} fill busy={saving} onPress={() => void save()} />
+            <Capsule title={failed ? 'Retry' : 'Save'} size="large" fill busy={saving} onPress={() => void save()} />
           </View>
         </View>
       ) : (

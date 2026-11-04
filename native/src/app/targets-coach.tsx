@@ -3,7 +3,13 @@ import { useEffect, useState } from 'react';
 import { Keyboard, ScrollView, TextInput, View } from 'react-native';
 
 import { getBodyWeightHistorySince } from '@/lib/healthWeights';
-import { buildCoachContext, coachSource, requestTargetSuggestion, type CoachRecommendation } from '@/lib/nutritionCoach';
+import {
+  buildCoachContext,
+  coachSource,
+  coachTrendKgPerWeek,
+  requestTargetSuggestion,
+  type CoachRecommendation,
+} from '@/lib/nutritionCoach';
 import { COACH_GOALS_KEY } from '@/lib/photoAnalysis';
 import { supabase } from '@/lib/supabase';
 import { buildWeightTrend } from '@/lib/weightTrend';
@@ -14,6 +20,7 @@ import { FormNote, ToggleRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
+import { useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -48,6 +55,8 @@ export default function TargetsCoachSheet() {
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CoachRecommendation | null>(null);
+  // The coach can take minutes; a failure shows above the button.
+  useAnnounce(error);
 
   // Closing while the coach works would drop its answer; ask first.
   useLeaveGuard(asking, { title: 'Stop waiting for suggestions?', message: 'The goal you wrote is kept.' });
@@ -78,7 +87,9 @@ export default function TargetsCoachSheet() {
       let trendKgPerWeek: number | null = null;
       if (share) {
         try {
-          trendKgPerWeek = buildWeightTrend(await getBodyWeightHistorySince(userId, 21), { windowDays: 21 }).kgPerWeek;
+          trendKgPerWeek = coachTrendKgPerWeek(
+            buildWeightTrend(await getBodyWeightHistorySince(userId, 21), { windowDays: 21 }),
+          );
         } catch {
           // A missing trend does not stop a suggestion from the basic stats.
         }
@@ -148,14 +159,10 @@ export default function TargetsCoachSheet() {
       </Label>
       <FormNote>
         Your profile, current targets and goal are sent either way.{' '}
-        {coachSource() === 'gemini' ? 'Gemini answers; it counts toward the daily analysis limit.' : 'Your Mac worker answers.'}
+        {coachSource() === 'gemini' ? 'Gemini answers, and it counts toward the daily analysis limit.' : 'Your Mac worker answers.'}
       </FormNote>
 
-      {error ? (
-        <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 12 }} accessibilityRole="alert">
-          {error}
-        </BlancText>
-      ) : null}
+      {error ? <FormNote alert>{error}</FormNote> : null}
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         <Capsule
           title={asking ? 'Asking the coach' : 'Get suggestions'}

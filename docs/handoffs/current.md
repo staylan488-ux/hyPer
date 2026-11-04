@@ -55,6 +55,25 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   iOS bundle export and eight review agents; not run in a simulator or on a
   phone. Worth a hand check: swipe, the press spring, drag-to-reorder and
   logging food.
+- 2026-11-04: a design review of every screen (branch
+  `claude/project-thread-5xt4wh`), inside Blanc. Shared pieces first: one way
+  to write a set ("80 lb × 10", bodyweight "10 reps"), a target ("4 × 8–10"),
+  a length ("1 h 5 min"); one stepper, pill, logged-set row and radio row;
+  disabled primaries in track grey; footnotes on the row text edge. Then each
+  area: Today's finished day stays a record of the session; Progress shows
+  words only where a muscle needs something; session done's tally draws itself
+  in; Train's movement rows share one layout with a small tally each and the
+  set figures shrink to fit; History shows the running workout as live and a
+  past workout as a receipt; Log food's lists sit in cards with one food line
+  and quiet add buttons; Fuel invents no target; You's figures roll. Judged
+  from web captures of the real app (SF Pro, sample data, light and dark,
+  side by side with main) by three rounds of fresh juries; checked with the
+  web suite, lint, build and native `tsc`. Not run in a simulator or on a
+  phone. Worth a hand check: the Appearance menu (now a SwiftUI Menu with its
+  own label), session done's draw-in and its ticks, the set card's figure
+  steps while typing, hold-to-repeat on the program editor's steppers, swipe
+  and hold on Log food's rows, and the Train and Today record after a real
+  workout with a schedule.
 - 2026-11-01: Skip a movement in a live workout (the owner's ask). Run in the
   simulator on 2026-11-04 (sample data, light and dark): Skip on the card, a
   row's swipe and the movement sheet, Undo, bringing it back, the counts,
@@ -99,6 +118,61 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   light/dark appearance and recorded cold-launch intro. Hardware
   camera/barcodes, HealthKit, device widget/Live Activity failure scenarios and
   real-account behavior remain unverified. No auth flow or schema changes.
+- 2026-11-04: a whole-app bug hunt (branch `claude/project-thread-afhkpw`,
+  one PR) fixed about 80 bugs, each with a test, with no auth flow or schema
+  change. Two rounds of parallel reviewers found them, a skeptic checked each
+  finding, and three independent reviews of the fixes found 24 more problems
+  (several were slips in this PR's own fixes), all but one fixed in the same
+  PR. Among them: a widget or card tap that launches the
+  app opens its screen; superset rounds carry on when the partner has no set
+  for that round; set count, note and movement order changes stay in step
+  while saves run; a failed workout mode save is kept and sent again; History
+  edits no longer undo each other, a set logged later is dated by its
+  workout, and Today and Train follow History changes; weekly volume grades
+  against default landmarks when none are saved (traps are not graded);
+  WHOOP stats attach, detach and workout deletes never leave the activity
+  hidden; activity edits keep times to the second; a saved product keeps its
+  barcode and serving through edits; Log food holds while a save runs;
+  comma decimals are read everywhere; You waits for saved targets; weigh-ins
+  read 90 days, as the chart shows; a bodyweight movement logs an empty
+  weight as 0; the live workout's day can't be removed from the program; the
+  sample backend returns deleted rows like PostgREST; and, after merging the
+  speed pass, screens and sheets left open past midnight move on with the day
+  (Fuel's Copy to today and week strip, Train's program week, Progress's week,
+  weigh-in "Today" labels, Schedule's Day 1, the date pickers). Checked with the
+  web suite, lint, build, test types, native `tsc` and an iOS bundle export;
+  not run in a simulator or on a phone (the intro from a widget, the
+  widgets' Swift, drag and swipe feel, the disabled Log food tabs). Left for
+  the owner: editing a weighed entry (200 g) opens per-serving Manual with no
+  grams; products edited or deleted before this fix may still answer scans
+  with their old numbers (needs a one-time data repair); Recent keeps old
+  numbers after a saved meal is edited; "No program yet" shows when other
+  programs exist but none is active; device surfaces are cleaned only when
+  the tabs unmount (sign-in flow); Health sync and run state are per device,
+  not per account; beat last time compares a swapped superset's first set
+  with last time's set 2; a swap while a set saves can add a set; a pull to
+  refresh still running at midnight can set the account's day back to the
+  day before until the next refresh.
+- 2026-11-04: accessibility pass on the native app (branch
+  `claude/project-thread-r1h1a2`): VoiceOver labels, roles, states and
+  announcements on every screen, layouts for the accessibility text sizes,
+  44 pt touch targets, Increase Contrast palettes and live Reduce Motion, with
+  nothing changed at the default settings. Checked with the web suite, lint,
+  build, native `tsc` and an iOS bundle export; not run in a simulator, on a
+  phone or with VoiceOver. To check on a device: every screen at AX5 and with
+  VoiceOver, the run screen's live view, SwiftUI pickers' spoken names, and
+  that announcements made as a sheet closes are not cut off. Magic Tap is
+  wired but React Native 0.88 drops it (see the blanc-native skill).
+- 2026-11-04: the bug hunt, accessibility pass and design review above were
+  stacked in that order on one branch (`claude/project-thread-n0vtco`), one
+  PR that supersedes the three. Where the design review rebuilt a control,
+  the accessibility pass's VoiceOver, large-text and announcement work was put
+  on the new one (Row, Form's MenuRow and ChoiceRow, LoggedSetRow, the shared
+  Stepper inside adjustable rows, Tally's draw-in follows Reduce Motion live),
+  and every bug-hunt fix was kept under the new look. Checked with the web
+  suite, lint, build, native `tsc`, an iOS bundle export and a React Compiler
+  audit (no function skipped that main or the design review compiles); not
+  run in a simulator, on a phone or with VoiceOver.
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.
@@ -115,5 +189,5 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 - Left as is on purpose (interaction audit, 2026-10-28): logged sets in a live
   workout are corrected, not deleted (History deletes them); the Appearance
   row's whole-row menu (needs a SwiftUI row); a long press on Fuel's meal
-  headers; removing an activity's start time; quick start chips' long press;
+  headers; quick start chips' long press;
   header ⋯ menus stay silent (iOS gives them no tap callback).

@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
@@ -17,12 +18,13 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { speak, useLargeText } from '~/lib/accessibility';
 import { useAccountRefresh } from '~/lib/accountData';
 import { useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatLoad, formatWhole } from '~/lib/format';
+import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { today, useFuelStore } from '~/lib/fuel';
+import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
@@ -33,8 +35,12 @@ export default function TodayScreen() {
   const session = useSessionModel();
   const plan = useTodayPlan();
   const target = useAppStore((state) => state.macroTarget);
+  // Until the saved target is read, no target is not yet "set one in You".
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const targetRead = useAppStore((state) => userId !== null && state.macroTargetLoadedForUserId === userId);
   const weekly = useAppStore((state) => state.weeklyVolume);
-  const totals = useFuelStore((state) => state.todayTotals);
+  // Yesterday's totals never show as today's after a failed new-day read.
+  const totals = useFuelStore(todayTotalsShown);
   const week = summarizeWeekVolume(weekly);
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;
@@ -43,6 +49,7 @@ export default function TodayScreen() {
   const over = overTargetWord(goal);
   const rise = useIntroRise();
   const { refreshing, refresh } = useAccountRefresh();
+  const large = useLargeText();
 
   return (
     <>
@@ -84,14 +91,17 @@ export default function TodayScreen() {
               // The day's figures open Fuel, where they come from.
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Eaten ${formatWhole(totals.calories)} of ${formatWhole(target.calories)}, protein ${formatWhole(totals.protein)} of ${formatWhole(target.protein)} grams`}
+                accessibilityLabel={speak(
+                  `${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Eaten ${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal · protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
+                )}
                 accessibilityHint="Opens Fuel"
                 onPress={() => {
                   haptics.tap();
                   router.navigate('/fuel');
                 }}
                 style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
                   <RollingText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
                     {formatWhole(Math.abs(kcalLeft))}
                   </RollingText>
@@ -101,22 +111,27 @@ export default function TodayScreen() {
                     </BlancText>
                   </Animated.View>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 20, marginTop: 14 }}>
+                <View style={large ? { gap: 14, marginTop: 14 } : { flexDirection: 'row', gap: 20, marginTop: 14 }}>
                   <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
                   <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
                 </View>
               </Pressable>
+            ) : !targetRead ? (
+              // Holds the figures' place (68 pt figure and the meters) until the target is read.
+              <View style={{ height: 118 }} />
             ) : (
               <Pressable
                 accessibilityRole="button"
                 accessibilityHint="Opens your targets"
+                // One line of text: the slop makes it 44 points tall, short of the sections around it.
+                hitSlop={{ top: 2, bottom: 22 }}
                 onPress={() => {
                   haptics.tap();
                   router.push('/you/targets');
                 }}
                 style={({ pressed }) => ({ marginHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
                 <BlancText variant="secondary" tone="graphite">
-                  Set a calorie target in You to see what's left today.
+                  Set a calorie target
                 </BlancText>
               </Pressable>
             )}
@@ -139,7 +154,7 @@ export default function TodayScreen() {
                   <Hairline />
                   <Row
                     title={`${week.inRange} of ${week.trained} muscles in range`}
-                    detail={insight ? `${insight.muscle} ${insight.flag}` : muscleCounts(week.under, week.over)}
+                    detail={insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over)}
                     chevron
                     onPress={() => router.push('/today/progress')}
                   />
@@ -157,8 +172,18 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
   const c = useBlanc();
   const minutes = Math.max(0, Math.round((now - session.startedAt.getTime()) / 60_000));
   const current = session.current;
+  // A flexible session starts empty: nothing to finish yet, as on Train,
+  // which asks for its first movement.
+  const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = () => router.navigate('/train');
+  const large = useLargeText();
+  const title = current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log';
+  const line = current
+    ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
+    : empty
+      ? 'Add your first movement in Train'
+      : 'Finish to save the session';
 
   return (
     // The whole card returns to the workout; its button resumes or finishes.
@@ -167,43 +192,51 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       // VoiceOver reads the card's parts and reaches its button on its own.
       accessible={false}
       accessibilityRole="button"
-      accessibilityLabel={`${session.dayName}, in progress, ${minutes} min, ${session.doneCount} of ${session.sets.length} sets done`}
-      accessibilityHint="Opens the workout"
       onPress={() => {
         haptics.tap();
         openWorkout();
       }}
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <BlancText variant="headline">{session.dayName}</BlancText>
+      <View
+        accessible
+        accessibilityLabel={speak(`${session.dayName} · In progress · ${formatMinutes(minutes)}`)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
+        {/* A long day name gives way; the live state always shows. At the
+            accessibility text sizes the name wraps and the live state moves under it. */}
+        <BlancText variant="headline" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
+          {session.dayName}
+        </BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
           <BlancText variant="footnote" tone="graphite">
-            In progress · {minutes} min
+            In progress · {formatMinutes(minutes)}
           </BlancText>
         </View>
       </View>
 
-      <Tally
-        marks={session.sets.map((set) => set.completed)}
-        current={current?.index ?? null}
-        height={16}
-        style={{ marginTop: 14 }}
-        accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
-      />
+      {empty ? null : (
+        <Tally
+          marks={session.sets.map((set) => set.completed)}
+          current={current?.index ?? null}
+          height={16}
+          style={{ marginTop: 14 }}
+          accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
+        />
+      )}
 
       <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 14 }} />
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <BlancText variant="bodyStrong" numberOfLines={1}>
-            {current ? current.movement.name : 'All sets done'}
+      {/* At the accessibility text sizes the button moves under the words. */}
+      <View style={large ? { gap: 12, marginTop: 14 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
+        <View accessible accessibilityLabel={speak(`${title} · ${line}`)} style={large ? undefined : { flex: 1, minWidth: 0 }}>
+          <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
+            {title}
           </BlancText>
-          <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-            {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}
+          <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+            {line}
           </BlancText>
         </View>
-        {current ? (
+        {current || empty ? (
           <Capsule title="Resume" onPress={openWorkout} />
         ) : (
           // Every set is logged: Finish finishes here, as it does on Train.
@@ -216,13 +249,15 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
 }
 
 function Meter({ label, value, of, progress, warnOver }: { label: string; value: string; of: string; progress: number; warnOver: boolean }) {
+  // At the accessibility text sizes the meters stack (see the caller) and the value wraps under its label.
+  const large = useLargeText();
   return (
-    <View style={{ flex: 1 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+    <View style={large ? undefined : { flex: 1 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', ...(large ? { flexWrap: 'wrap', columnGap: 8 } : null) }}>
         <BlancText variant="secondary" tone="graphite">
           {label}
         </BlancText>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', ...(large ? { flexWrap: 'wrap' } : null) }}>
           <RollingText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], textAlign: 'right' }}>
             {value}
           </RollingText>
@@ -241,7 +276,8 @@ function Meter({ label, value, of, progress, warnOver }: { label: string; value:
 /** "Set 2 of 3", with the load only once it is known. */
 function setLine(setNumber: number, sets: number, weight: number | null, reps: number | null): string {
   const base = `Set ${setNumber} of ${sets}`;
-  return weight !== null && reps !== null ? `${base} · ${formatLoad(weight)} lb × ${reps}` : base;
+  const load = formatSet(weight, reps);
+  return load ? `${base} · ${load}` : base;
 }
 
 /** "2 under · 1 over", leaving out zeros. */

@@ -1,6 +1,7 @@
+import { format, isValid, parseISO } from 'date-fns';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import {
   activityTypeLabel,
@@ -10,7 +11,8 @@ import {
   formatSegmentDistance,
   paceSecondsPerMile,
 } from '@/lib/activityMetrics';
-import { formatActivityDuration, formatActivityStartTime, resolveActivityTitle } from '@/lib/activitySessions';
+import { formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle } from '@/lib/activitySessions';
+import { isRestSegment } from '@/lib/runDisplay';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySegment } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -18,11 +20,24 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useHistoryStore } from '~/lib/history';
-import { space } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 const SOURCE_LABELS: Record<string, string> = { whoop: 'WHOOP', gps: 'Recorded in hyPer', manual: 'Added by hand' };
+
+/** A pace ("7:32 /mi") in words: "7 minutes 32 seconds per mile". */
+function spokenPace(secondsPerMile: number | null): string | null {
+  return secondsPerMile !== null && formatPace(secondsPerMile) ? `${spokenClock(Math.round(secondsPerMile))} per mile` : null;
+}
+
+/** A split's distance with metres in words ("400 meters"); Row speaks miles itself. */
+function spokenSegmentDistance(distanceM: number | null): string | null {
+  const shown = formatSegmentDistance(distanceM);
+  return shown?.endsWith(' m') ? `${shown.slice(0, -2)} meters` : shown;
+}
 
 /**
  * One activity as History keeps it: what WHOOP or the run recorder measured,
@@ -30,6 +45,7 @@ const SOURCE_LABELS: Record<string, string> = { whoop: 'WHOOP', gps: 'Recorded i
  * the activity sheet.
  */
 export default function ActivityViewScreen() {
+  const c = useBlanc();
   const { id } = useLocalSearchParams<{ id: string }>();
   const stored = useHistoryStore((state) => state.activities.find((entry) => entry.id === id) ?? null);
   // The last one seen: deleted from its edit sheet, it stays drawn under the
@@ -44,6 +60,7 @@ export default function ActivityViewScreen() {
     }, [gone]),
   );
   const [segments, setSegments] = useState<ActivitySegment[] | null | undefined>(undefined);
+  useAnnounce(segments === null && 'Splits could not load');
 
   useEffect(() => {
     if (!id) return;
@@ -72,12 +89,24 @@ export default function ActivityViewScreen() {
 
   const title = resolveActivityTitle(activity);
   const typeLabel = activityTypeLabel(activity);
-  const duration = formatActivityDuration(activity.duration_seconds);
-  const pace = activity.activity_type === 'run' ? formatPace(paceSecondsPerMile(activity.distance_m, activity.duration_seconds)) : null;
+  const duration = activity.duration_seconds && activity.duration_seconds > 0 ? formatMinutes(Math.max(1, Math.round(activity.duration_seconds / 60))) : null;
+  const paceSeconds = activity.activity_type === 'run' ? paceSecondsPerMile(activity.distance_m, activity.duration_seconds) : null;
+  const pace = activity.activity_type === 'run' ? formatPace(paceSeconds) : null;
+  // The head the past workout has: the day, when it started and how long it ran.
+  const day = parseISO(getActivitySessionDateKey(activity));
+  const startedAt = formatActivityStartTime(activity.started_at);
+  const meta = [isValid(day) ? format(day, 'EEE · MMM d') : null, startedAt, duration].filter(Boolean).join(' · ');
+  // VoiceOver hears the day and month in full and the length in words:
+  // "Tuesday, October 27, 7:00 AM, 45 minutes".
+  const spokenMeta = speak([isValid(day) ? format(day, 'EEEE, MMMM d') : null, startedAt, duration].filter(Boolean).join(', '));
+  // What VoiceOver says for a row whose value is shorthand ("7:32 /mi", "bpm").
+  const spokenValues: Record<string, string | null> = {
+    Pace: spokenPace(paceSeconds),
+    'Average heart rate': activity.avg_hr != null ? `${activity.avg_hr} beats per minute` : null,
+    'Max heart rate': activity.max_hr != null ? `${activity.max_hr} beats per minute` : null,
+  };
   const rows: [string, string][] = [
     ...(typeLabel !== title ? [['Activity', typeLabel] as [string, string]] : []),
-    ...(activity.started_at ? [['Started', formatActivityStartTime(activity.started_at)] as [string, string]] : []),
-    ...(duration !== '-' ? [['Duration', duration] as [string, string]] : []),
     ...(formatDistanceMi(activity.distance_m) ? [['Distance', formatDistanceMi(activity.distance_m) as string] as [string, string]] : []),
     ...(pace ? [['Pace', pace] as [string, string]] : []),
     ...(activity.strain != null ? [['Strain', activity.strain.toFixed(1)] as [string, string]] : []),
@@ -89,6 +118,7 @@ export default function ActivityViewScreen() {
   // As on the web: only the recording's own laps are splits; a WHOOP record
   // absorbed into a run adds its numbers, not rows. One segment is the whole run.
   const splits = (segments ?? []).filter((segment) => segment.source === activity.source);
+  const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
 
   return (
     <>
@@ -101,30 +131,39 @@ export default function ActivityViewScreen() {
               label: 'Edit',
               onPress: () => {
                 haptics.tap();
-                router.push({ pathname: '/activity', params: { id: activity.id } });
+                edit();
               },
             },
           ],
         }}
       />
       <TabScroll>
-        <Section title="Summary">
-          <Label>
-            {rows.map(([label, value], index) => (
-              <View key={label}>
-                {index > 0 ? <Hairline inset={18} /> : null}
-                <Row title={label} quiet value={value} />
-              </View>
-            ))}
-          </Label>
-        </Section>
+        <BlancText variant="meta" size={13} tone="graphite" accessibilityLabel={spokenMeta} style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+          {meta}
+        </BlancText>
+        <Label style={{ marginTop: 18 }}>
+          {rows.map(([label, value], index) => (
+            <View key={label}>
+              {index > 0 ? <Hairline inset={18} /> : null}
+              <ValueRow label={label} value={value} accessibilityLabel={spokenValues[label] ? `${label}, ${spokenValues[label]}` : undefined} />
+            </View>
+          ))}
+        </Label>
 
         {activity.notes?.trim() ? (
           <Section title="Notes">
-            <Label>
-              <BlancText variant="body" style={{ paddingHorizontal: 18, paddingVertical: 14 }}>
-                {activity.notes.trim()}
-              </BlancText>
+            {/* The note opens the editor, as Edit does. */}
+            <Label style={{ overflow: 'hidden' }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityHint="Edit activity"
+                onPress={() => {
+                  haptics.tap();
+                  edit();
+                }}
+                style={({ pressed }) => ({ paddingHorizontal: 18, paddingVertical: 14, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+                <BlancText variant="body">{activity.notes.trim()}</BlancText>
+              </Pressable>
             </Label>
           </Section>
         ) : null}
@@ -132,29 +171,36 @@ export default function ActivityViewScreen() {
         {splits.length >= 2 ? (
           <Section title="Splits">
             <Label>
-              {splits.map((segment, index) => (
-                <View key={segment.id}>
-                  {index > 0 ? <Hairline inset={18} /> : null}
-                  <Row
-                    title={`${index + 1}`}
-                    quiet
-                    detail={formatSegmentDistance(segment.distance_m) ?? undefined}
-                    value={[
-                      formatClockDuration(segment.duration_seconds),
-                      formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
-                    ]
-                      .filter(Boolean)
-                      .join('  ·  ')}
-                    accessibilityLabel={`Split ${index + 1}, ${[
-                      formatSegmentDistance(segment.distance_m),
-                      formatClockDuration(segment.duration_seconds),
-                      formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
-                    ]
-                      .filter(Boolean)
-                      .join(', ')}`}
-                  />
-                </View>
-              ))}
+              {splits.map((segment, index) => {
+                // A rest reads as on the finished run: its time, no distance or pace.
+                const rest = isRestSegment(segment);
+                const time = formatClockDuration(segment.duration_seconds);
+                const distance = rest ? null : formatSegmentDistance(segment.distance_m);
+                const pace = rest ? null : formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds));
+                const spokenTime =
+                  segment.duration_seconds != null && segment.duration_seconds >= 0 ? spokenClock(Math.round(segment.duration_seconds)) : null;
+                return (
+                  <View key={segment.id}>
+                    {index > 0 ? <Hairline inset={18} /> : null}
+                    <ValueRow
+                      label={rest ? '·' : `${index + 1}`}
+                      detail={rest ? 'rest' : distance ?? undefined}
+                      value={[time, pace].filter(Boolean).join(' · ')}
+                      accessibilityLabel={
+                        rest
+                          ? ['Rest', spokenTime].filter(Boolean).join(', ')
+                          : `Split ${index + 1}, ${[
+                              spokenSegmentDistance(segment.distance_m),
+                              spokenTime,
+                              spokenPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
+                            ]
+                              .filter(Boolean)
+                              .join(', ')}`
+                      }
+                    />
+                  </View>
+                );
+              })}
             </Label>
           </Section>
         ) : null}
@@ -165,5 +211,24 @@ export default function ActivityViewScreen() {
         ) : null}
       </TabScroll>
     </>
+  );
+}
+
+/**
+ * A measured value as the receipt at Finish writes one: the label in graphite, the figure in ink, read as one
+ * and in words ("Energy, 450 calories"). At the accessibility text sizes the figure goes under the label.
+ */
+function ValueRow({ label, detail, value, accessibilityLabel }: { label: string; detail?: string; value: string; accessibilityLabel?: string }) {
+  const large = useLargeText();
+  const figure = (
+    <BlancText variant="body" style={{ fontVariant: ['tabular-nums'] }}>
+      {value}
+    </BlancText>
+  );
+  return (
+    <View accessible accessibilityLabel={speak(accessibilityLabel ?? `${label}, ${value}`)}>
+      <Row title={label} detail={detail} quiet trailing={large ? undefined : figure} />
+      {large ? <View style={{ paddingLeft: 18, paddingRight: 16, paddingBottom: 12 }}>{figure}</View> : null}
+    </View>
   );
 }

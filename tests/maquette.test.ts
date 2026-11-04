@@ -43,6 +43,11 @@ describe('volume maquette', () => {
     expect(shades.get('back')).toMatchObject({ ink: 0, hot: false, sets: 0, status: null });
   });
 
+  it('shades an ungraded muscle as trained, never as past its ceiling', () => {
+    const shades = shadeMuscles([volume('traps', 6, null)]);
+    expect(shades.get('traps')).toMatchObject({ ink: 0.2, hot: false, sets: 6, status: null });
+  });
+
   it('lets general shoulder volume stand in for untracked deltoid heads', () => {
     const shades = shadeMuscles([volume('shoulders', 10, 'mev_mav'), volume('rear_delts', 6, 'mav')]);
     expect(shades.get('front_delts')?.ink).toBe(0.4);

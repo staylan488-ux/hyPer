@@ -8,12 +8,14 @@ import { create } from 'zustand';
 import type { ConfirmOptions } from '@/lib/confirmDialog';
 import { dismissPlanStartPrompt, shouldPromptPlanStart } from '@/lib/planSchedule';
 import { renameTemplateWithConfirm } from '@/lib/programSummary';
+import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore, type SavedSplit } from '@/stores/splitEditStore';
-import type { DraftExercise } from '@/lib/splitDraft';
-import type { FlexDayTemplate, Split } from '@/types';
+import { dayLabel, type DraftExercise, type DraftSplit } from '@/lib/splitDraft';
+import type { FlexDayTemplate, Split, Workout } from '@/types';
 
+import { formatTarget } from './format';
 import { haptics } from './haptics';
 
 /** The web's confirm question as an iOS alert. */
@@ -46,16 +48,18 @@ export function newProgram() {
 /**
  * After a program is created or set active: offers to set Day 1 and the
  * rhythm when it has no schedule yet, unless Later was chosen for it.
+ * Resolves true when it asked, since its alert already says the program is active.
  */
-export async function offerPlanStart(splitId: string, name: string) {
+export async function offerPlanStart(splitId: string, name: string): Promise<boolean> {
   const user = userId();
-  if (!user || !(await shouldPromptPlanStart(user, splitId))) return;
+  if (!user || !(await shouldPromptPlanStart(user, splitId))) return false;
   // Only for the program that is still the active one.
-  if (useAppStore.getState().activeSplit?.id !== splitId) return;
+  if (useAppStore.getState().activeSplit?.id !== splitId) return false;
   Alert.alert(`${name} is active`, 'Set your Day 1 and weekly rhythm now. It takes about 15 seconds and lets hyPer call your next session.', [
     { text: 'Later', style: 'cancel', onPress: () => dismissPlanStartPrompt(user, splitId) },
     { text: 'Set now', onPress: () => router.push('/schedule') },
   ]);
+  return true;
 }
 
 /** After the editor saves: a new program may need a schedule; an edit needs a fresh list. */
@@ -64,15 +68,16 @@ export function afterProgramSaved(saved: SavedSplit) {
   else void useAppStore.getState().fetchSplits({ force: true });
 }
 
-export async function setActiveProgram(split: Split) {
+/** Resolves true when the plan-start alert was shown. */
+export async function setActiveProgram(split: Split): Promise<boolean> {
   const result = await useAppStore.getState().setActiveSplit(split.id);
   if (!result.ok) {
     haptics.error();
     Alert.alert('Not changed', result.reason ?? 'Could not set the active program.');
-    return;
+    return false;
   }
   haptics.success();
-  await offerPlanStart(split.id, split.name);
+  return offerPlanStart(split.id, split.name);
 }
 
 /** The program a workout in progress came from, which must not be deleted under it. */
@@ -80,6 +85,39 @@ function programInUse(split: Split): boolean {
   const workout = useAppStore.getState().currentWorkout;
   if (!workout || workout.completed || !workout.split_day_id) return false;
   return split.days.some((day) => day.id === workout.split_day_id);
+}
+
+/** The program day a workout in progress came from, or null. */
+export function liveWorkoutDayId(workout: Pick<Workout, 'split_day_id' | 'completed'> | null): string | null {
+  return workout && !workout.completed ? workout.split_day_id : null;
+}
+
+function refuseLiveDay(label: string) {
+  haptics.error();
+  Alert.alert('Finish your workout first', `Today's workout is ${label}.`);
+}
+
+/**
+ * Removing the day a workout in progress came from would drop that session
+ * (its workout loses the day), so the editor refuses, as deleting its program
+ * does. True when refused.
+ */
+export function refuseRemovingLiveDay(dayId: string, label: string): boolean {
+  if (dayId !== liveWorkoutDayId(useAppStore.getState().currentWorkout)) return false;
+  refuseLiveDay(label);
+  return true;
+}
+
+/** The same at Save, for a draft that left the day out (a restored one can). True when refused. */
+export function refuseSavingWithoutLiveDay(draft: Pick<DraftSplit, 'id' | 'days' | '_isNew'>): boolean {
+  const { currentWorkout, activeSplit, splits } = useAppStore.getState();
+  const dayId = liveWorkoutDayId(currentWorkout);
+  if (!dayId || draft._isNew || draft.days.some((day) => day.id === dayId)) return false;
+  const saved = [activeSplit, ...splits].find((split) => split?.id === draft.id);
+  const index = saved?.days.findIndex((day) => day.id === dayId) ?? -1;
+  if (!saved || index < 0) return false;
+  refuseLiveDay(dayLabel(saved.days[index], index));
+  return true;
 }
 
 /**
@@ -180,11 +218,28 @@ export async function startQuickStart(template: FlexDayTemplate): Promise<void> 
   }
 }
 
-/** "3 × 8–12", or "2–4 sets × 8–12" with a set range. */
+/** "3 × 8–12", "5 × 5", or "2–4 × 8–12" with a set range. */
 export function targetsLine(exercise: DraftExercise): string {
-  const sets = exercise.target_sets_min === exercise.target_sets_max
-    ? `${exercise.target_sets}`
-    : `${exercise.target_sets_min}–${exercise.target_sets_max} sets`;
-  return `${sets} × ${exercise.target_reps_min}–${exercise.target_reps_max}`;
+  return formatTarget(exercise.target_sets, exercise.target_reps_min, exercise.target_reps_max, {
+    min: exercise.target_sets_min,
+    max: exercise.target_sets_max,
+  });
+}
+
+/**
+ * A saved program exercise or planned movement written the same way, its set
+ * range read from its notes; null when it names no set count.
+ */
+export function planTarget(item: {
+  notes?: string | null;
+  target_sets?: number | null;
+  target_reps_min?: number | null;
+  target_reps_max?: number | null;
+}): string | null {
+  if (typeof item.target_sets !== 'number' || item.target_sets < 1) return null;
+  const range = parseSetRangeNotes(item.notes, item.target_sets);
+  // Without a range the count stays as saved (a session may hold up to 12).
+  if (range.minSets === range.maxSets) return formatTarget(item.target_sets, item.target_reps_min, item.target_reps_max);
+  return formatTarget(range.targetSets, item.target_reps_min, item.target_reps_max, { min: range.minSets, max: range.maxSets });
 }
 

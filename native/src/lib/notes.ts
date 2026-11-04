@@ -109,7 +109,9 @@ function noteSaver(): NoteAutosaver {
           ? latest.currentWorkoutDayPlan
           : await latest.fetchWorkoutDayPlanByWorkoutId(workoutId, { throwOnError: true });
         if (!isCurrentAccount()) throw new Error('The signed-in account changed.');
-        if (!plan) throw new Error('Could not load the workout notes. Try again.');
+        // A failed read throws above; no plan means the workout was deleted,
+        // and a retry that can never succeed would block every later change.
+        if (!plan) return;
         await latest.updateWorkoutDayPlanItems(
           workoutId,
           plan.items.map((item) => (item.exercise_id === exerciseId ? { ...item, notes: nextNote } : item)),

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, View, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
@@ -25,7 +26,10 @@ type CapsuleProps = {
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const pressSpring = { damping: 20, stiffness: 420, mass: 0.6 };
 
-/** Blanc's button: a capsule that gives under the finger. */
+/**
+ * Blanc's button: a capsule that gives under the finger. At the accessibility
+ * text sizes it grows taller and its title wraps instead of being cut short.
+ */
 export function Capsule({
   title,
   onPress,
@@ -39,10 +43,14 @@ export function Capsule({
   style,
 }: CapsuleProps) {
   const c = useBlanc();
+  const large = useLargeText();
   const scale = useSharedValue(1);
   const height = size === 'large' ? 54 : 44;
   const primary = variant === 'primary';
   const inactive = disabled || busy;
+  // A primary that cannot be used yet sits back in the track's grey rather
+  // than as a faded ink slab; quiet capsules fade.
+  const resting = primary && disabled && !busy;
 
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
 
@@ -64,7 +72,9 @@ export function Capsule({
       }}
       style={[
         {
-          height,
+          // The drawn height below the accessibility text sizes; at them, at
+          // least that and as tall as the title needs.
+          ...(large ? { minHeight: height, paddingVertical: 10 } : { height }),
           // A capsule that fills its space only needs room for its round ends,
           // so short titles fit when several share a row.
           paddingHorizontal: fill ? 12 : size === 'large' ? 26 : 20,
@@ -73,8 +83,8 @@ export function Capsule({
           alignItems: 'center',
           justifyContent: 'center',
           alignSelf: fill ? 'stretch' : 'flex-start',
-          backgroundColor: primary ? c.capsule : c.fill,
-          opacity: disabled ? 0.4 : 1,
+          backgroundColor: resting ? c.track : primary ? c.capsule : c.fill,
+          opacity: disabled && !resting ? 0.4 : 1,
         },
         animated,
         style,
@@ -82,14 +92,14 @@ export function Capsule({
       {busy ? (
         <ActivityIndicator color={primary ? c.onCapsule : c.ink} />
       ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, large ? { flexShrink: 1 } : null]}>
           {icon}
           <BlancText
             variant="headline"
-            tone={primary ? 'onCapsule' : 'ink'}
+            tone={resting ? 'upcoming' : primary ? 'onCapsule' : 'ink'}
             size={size === 'large' ? 17 : 16}
-            numberOfLines={1}
-            style={{ lineHeight: size === 'large' ? 22 : 20 }}>
+            numberOfLines={large ? 3 : 1}
+            style={[{ lineHeight: size === 'large' ? 22 : 20 }, large ? { flexShrink: 1, textAlign: 'center' } : null]}>
             {title}
           </BlancText>
         </View>

@@ -95,8 +95,8 @@ describe('target rules shared by the web and native You', () => {
 
   it('words the resume result and the sign-out question', () => {
     expect(resumeAdaptiveMessage(false, 'updated')).toMatch(/Complete nutrition setup/);
-    expect(resumeAdaptiveMessage(true, 'failed')).toMatch(/could not run right now/);
-    expect(resumeAdaptiveMessage(true, 'unchanged')).toMatch(/Recalculation was requested/);
+    expect(resumeAdaptiveMessage(true, 'failed')).toMatch(/once the app can recalculate/);
+    expect(resumeAdaptiveMessage(true, 'unchanged')).toMatch(/as your logs and weigh-ins come in/);
     expect(signOutQuestion(false)).toBe('Sign out?');
     expect(signOutQuestion(true, true)).toBe('Sign out and discard unsaved edits? Already saved profile details and weight will be kept.');
   });
@@ -109,12 +109,26 @@ describe('body weight words', () => {
     expect(weeklyRateLabel(null, 'lb')).toBeNull();
   });
 
+  it('gives a flat rate no sign', () => {
+    expect(weeklyRateLabel(0, 'lb')).toBe('0.00 lb/wk');
+    expect(weeklyRateLabel(-0.001, 'lb')).toBe('0.00 lb/wk');
+    expect(weeklyRateLabel(0.002, 'kg')).toBe('0.00 kg/wk');
+    expect(weeklyRateLabel(-0.004, 'kg')).toBe('0.00 kg/wk');
+    expect(weeklyRateLabel(-0.005, 'kg')).toBe('−0.01 kg/wk');
+  });
+
   it('says when the last weigh-in was, or why there is none', () => {
     const now = new Date();
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: now.toISOString() }, 'kg')).toBe('Last 80.0 kg · today');
-    expect(lastWeighInLabel({ kilograms: 80, measured_at: '2026-03-04T12:00:00Z' }, 'kg')).toBe('Last 80.0 kg · Mar 4');
-    expect(lastWeighInLabel(null, 'lb')).toBe('First weigh-in');
-    expect(lastWeighInLabel(null, 'lb', true)).toBe('History unavailable');
+    now.setHours(8, 0, 0, 0);
+    expect(lastWeighInLabel({ measured_at: now.toISOString() })).toBe('Last weighed today, 8:00 AM');
+    // Local time, so the day and hour do not depend on the machine's zone.
+    expect(lastWeighInLabel({ measured_at: '2026-03-04T18:30:00' })).toBe('Last weighed Mar 4, 6:30 PM');
+    expect(lastWeighInLabel(null)).toBe('First weigh-in');
+    expect(lastWeighInLabel(null, true)).toBe('History unavailable');
+    // a sheet left open past midnight passes the day it now is
+    const morning = new Date(2026, 10, 4, 7, 0);
+    expect(lastWeighInLabel({ measured_at: morning.toISOString() }, false, '2026-11-04')).toBe('Last weighed today, 7:00 AM');
+    expect(lastWeighInLabel({ measured_at: morning.toISOString() }, false, '2026-11-05')).toBe('Last weighed Nov 4, 7:00 AM');
   });
 
   it('reads a typed weigh-in in the chosen unit', () => {
@@ -122,6 +136,13 @@ describe('body weight words', () => {
     expect(parseWeighIn('82.5', 'kg')).toEqual({ kilograms: 82.5 });
     expect(parseWeighIn('', 'kg')).toEqual({ error: 'Enter a weight first.' });
     expect(parseWeighIn('-3', 'kg')).toEqual({ error: 'Enter a weight first.' });
+  });
+
+  it('reads a weigh-in typed with a decimal comma', () => {
+    expect(parseWeighIn('80,5', 'kg')).toEqual({ kilograms: 80.5 });
+    expect(parseWeighIn('171,4', 'lb')).toEqual({ kilograms: lbsToKg(171.4) });
+    expect(convertWeighInDraft('77,7', 'kg', 'lb')).toBe('171.3');
+    expect(convertWeighInDraft('171,4', 'lb', 'kg')).toBe('77.7');
   });
 
   it('carries a typed weigh-in across a unit switch', () => {
@@ -157,6 +178,37 @@ describe('target calculator draft', () => {
     expect(metric).toMatchObject({ unitSystem: 'metric', weight: '78.4', heightCm: '178' });
     const back = switchWizardUnits(metric, 'imperial');
     expect(back).toMatchObject({ weight: '172.8', heightFeet: '5', heightInches: '10' });
+  });
+
+  it('reads weight and body fat typed with a decimal comma', () => {
+    const draft = { ...initialWizardDraft(profile, 78.4, now), unitSystem: 'metric' as const, weight: '80,5', bodyFat: '14,5' };
+    expect(wizardBodyReady(draft)).toBe(true);
+    expect(wizardBodyFatPct(draft)).toBe(14.5);
+    expect(wizardOutcome(draft, profile, now)).toMatchObject({ weightKg: 80.5, profile: { body_fat_pct: 14.5 } });
+    expect(switchWizardUnits(draft, 'imperial').weight).toBe('177.5');
+    expect(switchWizardUnits({ ...draft, unitSystem: 'imperial', weight: '177,5' }, 'metric').weight).toBe('80.5');
+  });
+
+  it('starts a 182 cm height at 6 ft 0 in, never 5 ft 12 in', () => {
+    const draft = initialWizardDraft({ ...profile, height_cm: 182 }, 78.4, now);
+    expect(draft).toMatchObject({ heightFeet: '6', heightInches: '0' });
+    expect(wizardOutcome(draft, profile, now).profile.height_cm).toBe(182.9);
+  });
+
+  it('carries 6 ft 0 in across a unit switch as about 183 cm, never 6 ft 10 in', () => {
+    const imperial = initialWizardDraft({ ...profile, height_cm: 182 }, 78.4, now);
+    expect(switchWizardUnits(imperial, 'metric').heightCm).toBe('183');
+    const metric = initialWizardDraft({ ...profile, height_cm: 182, unit_system: 'metric' }, 78.4, now);
+    const there = switchWizardUnits(metric, 'imperial');
+    expect(there).toMatchObject({ heightFeet: '6', heightInches: '0' });
+    expect(switchWizardUnits(there, 'metric').heightCm).toBe('183');
+    // Inches are held to 0–11, as Save holds them.
+    expect(switchWizardUnits({ ...imperial, heightInches: '13' }, 'metric').heightCm).toBe('211');
+    // Only a field that cannot be read falls back to 5 ft 10 in; 0 ft is not a height.
+    expect(switchWizardUnits({ ...imperial, heightFeet: '', heightInches: '' }, 'metric').heightCm).toBe('178');
+    expect(switchWizardUnits({ ...imperial, heightFeet: '0', heightInches: '4' }, 'metric').heightCm).toBe('163');
+    // Blank inches beside typed feet are 0, as Save reads them.
+    expect(switchWizardUnits({ ...imperial, heightFeet: '6', heightInches: '' }, 'metric').heightCm).toBe('183');
   });
 
   it('keeps the rate inside the goal and resets it with a new goal', () => {

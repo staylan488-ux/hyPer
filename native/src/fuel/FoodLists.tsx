@@ -4,8 +4,9 @@ import { ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-nati
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
-import { foodMacroLine, formatMeasurementAmount } from '@/lib/foodUnits';
+import { formatMeasurementAmount } from '@/lib/foodUnits';
 import { createMealIngredient, decodeMealComposition } from '@/lib/mealComposition';
+import { servingLabel } from '@/lib/nutritionLedger';
 import { createPendingEntryId, type PendingEntryId } from '@/lib/pendingEntryId';
 import { chosenFoodLogSource } from '@/lib/saveNutritionEntry';
 import { filterSavedMeals, retireSavedMeal } from '@/lib/savedMeals';
@@ -15,12 +16,15 @@ import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { HoldMenu, hasHoldMenu, menuAccessibility, showActionSheet, type MenuAction } from '~/components/HoldMenu';
+import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { closeOpenSwipeRow, SwipeRow, useSwipeActions } from '~/components/SwipeRow';
+import { formatWhole } from '~/lib/format';
 import { saveFoodEntry } from '~/lib/foodLogger';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useFuelStore } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
@@ -81,21 +85,36 @@ async function saveQuickAdd(food: Food, entry: Omit<Parameters<typeof saveFoodEn
   }
 }
 
+/**
+ * Macros as VoiceOver should say them: "250 calories, protein 20 grams,
+ * carbs 30 grams, fat 8 grams" for the "250 kcal · P 20 · C 30 · F 8" on screen.
+ */
+export function spokenMacros(
+  totals: { calories: number; protein: number; carbs: number; fat: number },
+  round: (value: number) => number | string = Math.round,
+): string {
+  return speak(`${round(totals.calories)} kcal · protein ${round(totals.protein)} g · carbs ${round(totals.carbs)} g · fat ${round(totals.fat)} g`);
+}
+
 /** A search or filter field in the quiet fill capsule. */
-export function SearchField({ value, onChange, placeholder, onSubmit }: {
+export function SearchField({ value, onChange, placeholder, onSubmit, autoFocus }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   onSubmit?: () => void;
+  /** Picking the tab means typing next. */
+  autoFocus?: boolean;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        height: 44,
+        // The field's text grows at the accessibility sizes; the capsule grows with it.
+        ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
         marginHorizontal: 16,
         marginTop: 12,
         paddingHorizontal: 14,
@@ -108,6 +127,7 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
         value={value}
         onChangeText={onChange}
         onSubmitEditing={onSubmit}
+        autoFocus={autoFocus}
         placeholder={placeholder}
         placeholderTextColor={c.graphite}
         returnKeyType="search"
@@ -121,13 +141,26 @@ export function SearchField({ value, onChange, placeholder, onSubmit }: {
   );
 }
 
+/**
+ * "150 g · 31 g protein": the amount (left out when it is only "1 serving")
+ * and its protein, as Fuel's entries write a food. Kcal sits on the right.
+ * `composed` says whether it is a built meal when the caller has decoded it.
+ */
+export function foodLine(food: Food, servings = 1, amount?: string | null, composed?: boolean): string {
+  const unit = food.serving_unit?.trim().toLowerCase();
+  const measured = Boolean(unit && unit !== 'serving');
+  const shown = amount ?? ((composed ?? Boolean(decodeMealComposition(food.description))) ? 'Meal' : measured || servings !== 1 ? servingLabel({ servings, food }) : null);
+  const protein = Math.round(food.protein * servings);
+  return [shown, protein > 0 ? `${protein} g protein` : null].filter(Boolean).join(' · ');
+}
+
 /** One food: tap to review it; the round button logs it at once (one serving unless `servings` says). */
 export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
   food: Food;
   state?: AddState;
   /** A built meal, when the list has already decoded it. */
   composed?: boolean;
-  /** The quiet line in place of the food's macros. */
+  /** The quiet line in place of the food's amount and protein. */
   detail?: string;
   /** What + logs, in servings of the food, for the line once it is added. */
   servings?: number;
@@ -145,6 +178,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
   onLongPress?: () => void;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   // VoiceOver offers the hold menu's items (or the long-press action) and
   // the swipe actions the menu does not cover as the row's own.
   const held = menu && menu.length > 0 && !editing ? menuAccessibility(menu) : null;
@@ -155,20 +189,23 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
     ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
   ];
   const longPress = held ? (hasHoldMenu ? undefined : () => showActionSheet(food.name, menu ?? [])) : editing ? undefined : onLongPress;
+  const kcal = formatWhole(food.calories * servings);
+  // The highlight takes the whole row, the round button's end too, as an iOS cell's does.
+  const [pressed, setPressed] = useState(false);
   const line = state === 'error'
     ? 'Not saved. Tap + to try again.'
     : state === 'done'
-      ? `Added · ${Math.round(food.calories * servings)} kcal`
+      ? 'Added'
       : detail
         ? detail
-        : showBasis
-          ? `${Math.round(food.calories)} kcal / ${food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}`}`
-          : `${(composed ?? Boolean(decodeMealComposition(food.description))) ? 'Meal · ' : ''}${foodMacroLine(food)}`;
+        : foodLine(food, servings, showBasis ? food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}` : null, composed);
+  // The same line in words: "150 g · 31 g protein" as "150 grams, 31 grams protein", "+" as Add.
+  const spokenLine = state === 'error' ? 'Not saved. Add it again to retry.' : speak(line);
   const row = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 14, backgroundColor: c.ground }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 16, backgroundColor: pressed ? c.pressed : c.label }}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${food.name}, ${line}`}
+        accessibilityLabel={[food.name, spokenLine, speak(`${kcal} kcal`)].filter(Boolean).join(', ')}
         accessibilityActions={actions.length > 0 ? actions : undefined}
         onAccessibilityAction={(event) => {
           const name = event.nativeEvent.actionName;
@@ -176,6 +213,8 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           if (name === 'longpress') onLongPress?.();
           else swipe.find((action) => `swipe:${action.label}` === name)?.onPress();
         }}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
         onPress={() => {
           // a tap while another row stands open only closes that row, as in Mail
           if (closeOpenSwipeRow()) return;
@@ -191,29 +230,46 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
               }
             : undefined
         }
-        style={({ pressed }) => ({
+        style={{
           flex: 1,
           minWidth: 0,
-          justifyContent: 'center',
-          minHeight: 62,
-          paddingLeft: 20,
-          paddingRight: 12,
-          backgroundColor: pressed ? c.pressed : 'transparent',
-        })}>
-        <BlancText variant="body" numberOfLines={1}>
-          {food.name}
-        </BlancText>
-        <BlancText variant="meta" tone={state === 'error' ? 'live' : 'graphite'} style={{ marginTop: 2 }} numberOfLines={1}>
-          {line}
-        </BlancText>
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          minHeight: 60,
+          paddingVertical: 10,
+          paddingLeft: 18,
+          // with no round button the row keeps its 32 points, so kcal stays in its column
+          paddingRight: editing || onAdd || opening ? 12 : 44,
+        }}>
+        {/* At the accessibility sizes the lines wrap and the kcal goes under them instead of squeezing them. */}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
+            {food.name}
+          </BlancText>
+          {line ? (
+            <BlancText variant="secondary" tone={state === 'error' ? 'live' : 'graphite'} style={{ marginTop: 1 }} numberOfLines={large ? undefined : 1}>
+              {line}
+            </BlancText>
+          ) : null}
+          {large ? (
+            <BlancText variant="secondary" tone="graphite" style={{ marginTop: 1, fontVariant: ['tabular-nums'] }}>
+              {`${kcal} kcal`}
+            </BlancText>
+          ) : null}
+        </View>
+        {large ? null : (
+          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            {kcal}
+          </BlancText>
+        )}
       </Pressable>
       {editing ? (
-        <RoundButton symbol="trash" label={`Delete ${food.name}`} quiet onPress={() => onDelete?.()} />
+        <RoundButton symbol="trash" label={`Delete ${food.name}`} onPress={() => onDelete?.()} />
       ) : onAdd || opening ? (
         <RoundButton
           symbol={state === 'done' ? 'checkmark' : 'plus'}
           label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added` : `Add ${food.name}`}
-          quiet={state === 'done'}
           busy={state === 'saving' || opening}
           done={state === 'done'}
           onPress={() => onAdd?.()}
@@ -222,7 +278,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
     </View>
   );
   return held && hasHoldMenu ? (
-    <HoldMenu actions={menu ?? []} backdrop={c.ground}>
+    <HoldMenu actions={menu ?? []} backdrop={c.label}>
       {row}
     </HoldMenu>
   ) : (
@@ -230,10 +286,10 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
   );
 }
 
-function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
+/** A quiet disc with an ink mark; the food just logged gets the ink disc and its tick. */
+function RoundButton({ symbol, label, busy, done, onPress }: {
   symbol: 'plus' | 'checkmark' | 'trash';
   label: string;
-  quiet?: boolean;
   busy?: boolean;
   /** Already logged: the tick stays put so a second tap can't log it twice. */
   done?: boolean;
@@ -245,8 +301,9 @@ function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={busy || done}
-      accessibilityState={{ disabled: Boolean(busy || done) }}
-      hitSlop={8}
+      accessibilityState={{ disabled: Boolean(busy || done), busy: Boolean(busy) }}
+      // a 32-point disc, 44 points to touch
+      hitSlop={6}
       onPress={() => {
         haptics.tap();
         onPress();
@@ -257,14 +314,14 @@ function RoundButton({ symbol, label, quiet, busy, done, onPress }: {
         borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: quiet ? c.fill : c.capsule,
+        backgroundColor: done ? c.capsule : c.fill,
         opacity: pressed ? 0.6 : 1,
         transform: [{ scale: pressed ? 0.92 : 1 }],
       })}>
       {busy ? (
-        <ActivityIndicator size="small" color={c.onCapsule} />
+        <ActivityIndicator size="small" color={c.ink} />
       ) : (
-        <SymbolView name={symbol} size={14} weight="bold" tintColor={quiet ? c.ink : c.onCapsule} />
+        <SymbolView name={symbol} size={14} weight="bold" tintColor={done ? c.onCapsule : c.ink} />
       )}
     </Pressable>
   );
@@ -291,7 +348,13 @@ export function useQuickAdd() {
     if (current === 'saving' || current === 'done') return;
     const servings = options.servings ?? 1;
     if (sheet.purpose === 'ingredients') {
-      sheet.addIngredients([createMealIngredient(food, servings)]);
+      try {
+        sheet.addIngredients([createMealIngredient(food, servings)]);
+      } catch (cause) {
+        // No FormNote on this path: the sheet's error line is all a sighted person gets.
+        announce(cause instanceof Error ? cause.message : 'Could not add ingredient.');
+        throw cause;
+      }
       return;
     }
     const pending = pendingIds.current.get(key) ?? createPendingEntryId();
@@ -307,11 +370,14 @@ export function useQuickAdd() {
     if (!saved) {
       haptics.error();
       setAdded((state) => ({ ...state, [key]: 'error' }));
+      announce(`${food.name} not saved`);
       return;
     }
     pendingIds.current.delete(key);
     haptics.success();
     setAdded((state) => ({ ...state, [key]: 'done' }));
+    // The row says so too, but VoiceOver stays on the + it pressed.
+    announce(`${food.name} added`);
     // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
     void useFuelStore.getState().refresh();
   }, []);
@@ -324,6 +390,7 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   onEditSavedMeal: (meal: Food) => void;
 }) {
   const logger = useLogger();
+  const large = useLargeText();
   const [filter, setFilter] = useState('');
   const [managing, setManaging] = useState(false);
   const { added, add: quickAdd, enabled } = useQuickAdd();
@@ -367,7 +434,8 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   };
 
   const visible = filterSavedMeals(meals ?? [], filter).filter((meal) => !hidden.has(meal.id));
-  const savedCount = (meals ?? []).filter((meal) => !hidden.has(meal.id)).length;
+  const canManage = Boolean(meals && meals.length > 0) && logger.purpose === 'log';
+  const canCreate = logger.purpose === 'log' && !logger.editing;
   const rows = visible.map((meal, index) => (
     <SavedRow
       key={meal.id}
@@ -390,21 +458,31 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     <LayoutAnimationConfig skipEntering skipExiting>
       <View>
         <SearchField value={filter} onChange={setFilter} placeholder="Filter saved meals" />
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 10, minHeight: 44 }}>
-          <BlancText variant="footnote" tone="graphite">
-            {meals === null ? 'Loading' : `${savedCount} saved`}
-          </BlancText>
-          <View style={{ flexDirection: 'row', gap: 20 }}>
-            {meals && meals.length > 0 && logger.purpose === 'log' ? (
-              <TextAction title={managing ? 'Done' : 'Edit'} onPress={() => setManaging(!managing)} />
-            ) : null}
-            {logger.purpose === 'log' && !logger.editing ? <TextAction title="New" onPress={onNewSavedMeal} /> : null}
+        {canManage || canCreate ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              gap: 20,
+              paddingHorizontal: 20,
+              marginTop: 4,
+              minHeight: 44,
+              // the two words wrap rather than squeeze at the accessibility sizes
+              ...(large ? { flexWrap: 'wrap' } : null),
+            }}>
+            {canManage ? <TextAction title={managing ? 'Done' : 'Edit'} onPress={() => setManaging(!managing)} /> : null}
+            {canCreate ? <TextAction title="New" onPress={onNewSavedMeal} /> : null}
           </View>
-        </View>
+        ) : null}
         {/* A new filter swaps the rows without motion; a deleted meal slides away. */}
         <LayoutAnimationConfig key={filter} skipEntering skipExiting>
           <View>
-            {rows}
+            {visible.length > 0 ? (
+              <Label style={{ marginTop: canManage || canCreate ? 4 : 14, overflow: 'hidden' }} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
+                {rows}
+              </Label>
+            ) : null}
             {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
             {meals !== null && visible.length === 0 ? (
               <Animated.View entering={rowEnter} layout={rowLayout}>
@@ -462,7 +540,7 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, o
   );
   return (
     <Animated.View entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-      {divided ? <Hairline inset={20} /> : null}
+      {divided ? <Hairline /> : null}
       {purpose === 'log' && !managing ? (
         <SwipeRow
           name={meal.name}
@@ -506,6 +584,16 @@ export function SearchTab() {
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const trimmed = query.trim();
+  // Results land a moment after typing stops: VoiceOver says how many.
+  useAnnounce(
+    state === 'error'
+      ? 'The search failed.'
+      : state === 'idle' && results !== null
+        ? results.length === 0
+          ? 'No USDA matches.'
+          : `${results.length} result${results.length === 1 ? '' : 's'}`
+        : null,
+  );
 
   useEffect(() => {
     if (trimmed.length < 2) {
@@ -545,27 +633,30 @@ export function SearchTab() {
 
   return (
     <View>
-      <SearchField value={query} onChange={setQuery} placeholder="Search USDA foods" />
-      <View style={{ height: 10 }} />
-      {(results ?? []).map((food, index) => {
-        const key = food.fdc_id || food.id;
-        return (
-          <SearchRow
-            key={key}
-            food={food}
-            rowKey={key}
-            divided={index > 0}
-            state={added[key]}
-            opening={opening === key}
-            dimmed={Boolean(opening) && opening !== key}
-            quickAdd={enabled}
-            onOpen={open}
-            onAdd={add}
-          />
-        );
-      })}
+      <SearchField value={query} onChange={setQuery} placeholder="Search USDA foods" autoFocus />
+      {results && results.length > 0 ? (
+        <Label style={{ marginTop: 14, overflow: 'hidden' }}>
+          {results.map((food, index) => {
+            const key = food.fdc_id || food.id;
+            return (
+              <SearchRow
+                key={key}
+                food={food}
+                rowKey={key}
+                divided={index > 0}
+                state={added[key]}
+                opening={opening === key}
+                dimmed={Boolean(opening) && opening !== key}
+                quickAdd={enabled}
+                onOpen={open}
+                onAdd={add}
+              />
+            );
+          })}
+        </Label>
+      ) : null}
       {state === 'searching' ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
-      {state === 'idle' && trimmed.length < 2 ? <Empty text={trimmed.length === 1 ? 'Type at least 2 characters.' : 'Search the USDA food database.'} /> : null}
+      {state === 'idle' && trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
       {state === 'idle' && results !== null && results.length === 0 ? <Empty text="No USDA matches." /> : null}
       {state === 'error' ? (
         <View style={{ alignItems: 'center', gap: 14, marginTop: 32 }}>
@@ -594,7 +685,7 @@ function SearchRow({ food, rowKey, divided, state, opening, dimmed, quickAdd, on
 }) {
   return (
     <View style={{ opacity: dimmed ? 0.5 : 1 }}>
-      {divided ? <Hairline inset={20} /> : null}
+      {divided ? <Hairline /> : null}
       <FoodRow
         food={food}
         state={state}

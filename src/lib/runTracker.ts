@@ -427,9 +427,11 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     speedMps: sample.speedMps,
   };
 
-  // accuracy gate; poor fixes also reset the warm-up requirement
+  // accuracy gate; before lock a poor fix also restarts the warm-up. After
+  // lock the next good fix bridges from the last good one through the gates
+  // below, so one poor fix costs no distance and does not read as acquiring.
   if (sample.accuracyM > config.accuracyMaxM) {
-    next.warmupCount = 0;
+    if (!next.hasGpsLock) next.warmupCount = 0;
     return trace(next, 'poor_accuracy');
   }
 
@@ -1188,7 +1190,8 @@ export function finishedRunToActivity(
       ended_at: new Date(lap.endedAtMs).toISOString(),
       duration_seconds: Math.max(1, lapActiveSeconds(lap)),
       distance_m: Math.round(lap.distanceM),
-      raw: { trigger: lap.trigger },
+      // kind keeps a rest a rest in History (raw is JSONB, no schema change)
+      raw: { trigger: lap.trigger, kind: lap.kind },
     }));
   } else {
     segments = [

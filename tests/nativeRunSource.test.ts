@@ -797,3 +797,12 @@ it('recovers controls and samples in time order even when newer live events arri
   await settle();
   expect(order).toEqual(['s1', 's2', 'c1', 's3', 's4', 'c2', 's5']);
 });
+
+it('passes the recorder’s error code on, so a storage failure can stay in view', async () => {
+  const source = createNativeRunSource('run-a', false);
+  const errors: Array<[string, string | undefined]> = [];
+  source.start(() => undefined, (message, code) => errors.push([message, code]));
+  await settle();
+  fake.emit('locationError', { code: 'PERSISTENCE_FAILED', message: 'Run recovery storage failed.' });
+  expect(errors).toEqual([['Run recovery storage failed.', 'PERSISTENCE_FAILED']]);
+});

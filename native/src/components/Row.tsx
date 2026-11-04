@@ -2,6 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { speak, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
@@ -12,6 +13,8 @@ import { closeOpenSwipeRow, useSwipeActions } from './SwipeRow';
 type RowProps = {
   title: string;
   detail?: string;
+  /** A small mark before the detail line, such as the live dot. */
+  detailMark?: ReactNode;
   value?: string;
   leading?: ReactNode;
   trailing?: ReactNode;
@@ -20,6 +23,8 @@ type RowProps = {
   quiet?: boolean;
   /** A row that removes something (Sign out, Disconnect) reads in red. */
   destructive?: boolean;
+  /** A row among form fields (Unit, Add to): 52 pt, title and value in body like a FieldRow's. */
+  form?: boolean;
   onPress?: () => void;
   /**
    * What a hold offers: iOS's context menu, lifting the row. Each item is
@@ -35,11 +40,18 @@ type RowProps = {
   accessibilityLabel?: string;
 };
 
-/** A list row that highlights under the finger, like an iOS table cell. */
-export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
+/**
+ * A list row that highlights under the finger, like an iOS table cell. At
+ * the accessibility text sizes its words wrap and the value moves under the
+ * title, as in iOS's own lists, instead of being cut short.
+ */
+export function Row({ title, detail, detailMark, value, leading, trailing, chevron, quiet, destructive, form, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
   const c = useBlanc();
-  // Spoken as its words only: icons such as the chevron add nothing.
-  const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
+  const large = useLargeText();
+  // Spoken as its words only: icons such as the chevron add nothing, and
+  // shorthand reads as words ("3 × 8–12 · last 135 lb" as "3 × 8 to 12,
+  // last 135 pounds").
+  const label = speak(accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', '));
   // VoiceOver offers the menu's items (or the long-press action) and any
   // swipe actions around the row. A swipe action the menu covers (Delete in
   // both, or More, which opens the same items) is left out.
@@ -68,17 +80,29 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
     <>
       {leading}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <BlancText variant={quiet ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={1}>
+        <BlancText variant={quiet || form ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={large ? undefined : 1}>
           {title}
         </BlancText>
-        {detail ? (
-          <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
+        {detail && detailMark ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
+            {detailMark}
+            <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ flexShrink: 1 }}>
+              {detail}
+            </BlancText>
+          </View>
+        ) : detail ? (
+          <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
             {detail}
           </BlancText>
         ) : null}
+        {value && large ? (
+          <BlancText variant={form ? 'body' : 'secondary'} tone="graphite" style={{ marginTop: 1, fontVariant: ['tabular-nums'] }}>
+            {value}
+          </BlancText>
+        ) : null}
       </View>
-      {value ? (
-        <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+      {value && !large ? (
+        <BlancText variant={form ? 'body' : 'secondary'} tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
           {value}
         </BlancText>
       ) : null}
@@ -93,7 +117,7 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 12,
-    minHeight: 60,
+    minHeight: form ? 52 : 60,
     paddingVertical: 10,
     paddingLeft: 18,
     paddingRight: 16,

@@ -12,9 +12,9 @@ const volume = (muscle_group: string, weekly_sets: number, status: MuscleVolume[
 
 describe('coaching calls', () => {
   it('asks for the missing sets below MEV, at least one', () => {
-    expect(buildCoachingCall(volume('chest', 5, 'below_mev')).headline).toBe('Add ~3 sets this week');
-    expect(buildCoachingCall(volume('chest', 7.5, 'below_mev')).headline).toBe('Add ~1 set this week');
-    expect(buildCoachingCall(volume('chest', 0, 'below_mev', false)).headline).toBe('Add ~1 set this week');
+    expect(buildCoachingCall(volume('chest', 5, 'below_mev')).headline).toBe('Add about 3 sets this week');
+    expect(buildCoachingCall(volume('chest', 7.5, 'below_mev')).headline).toBe('Add about 1 set this week');
+    expect(buildCoachingCall(volume('chest', 0, 'below_mev', false)).headline).toBe('Add about 1 set this week');
   });
 
   it('orders under, over, near, zone, building, then by sets', () => {
@@ -27,6 +27,14 @@ describe('coaching calls', () => {
       volume('f', 6, 'below_mev'),
     ]).map(({ mv }) => mv.muscle_group);
     expect(order).toEqual(['f', 'd', 'c', 'e', 'a', 'b']);
+  });
+
+  it('does not grade a muscle with no landmark, and lists it last', () => {
+    const call = buildCoachingCall(volume('traps', 4, null, false));
+    expect(call).toMatchObject({ chip: 'Not graded', tone: 'stone' });
+    expect(call.headline).not.toMatch(/add/i);
+    const order = coachMuscles([volume('traps', 9, null, false), volume('b', 10, 'mev_mav')]).map(({ mv }) => mv.muscle_group);
+    expect(order).toEqual(['b', 'traps']);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { movementBlocks, movementScrollSpeed, moveMovementBlock, type ReorderMovement } from '@/lib/movementOrder';
+import { heldMovement, movementBlocks, movementScrollSpeed, moveMovementBlock, type ReorderMovement } from '@/lib/movementOrder';
 
 const movement = (id: string, supersetGroupId?: string): ReorderMovement => ({ id, name: id, supersetGroupId });
 
@@ -44,5 +44,20 @@ describe('dragging near scroll edges', () => {
     expect(movementScrollSpeed(900, 50, 750)).toBe(18);
     expect(movementScrollSpeed(400, 400, 400)).toBe(0);
     expect(movementScrollSpeed(400, 450, 400)).toBe(0);
+  });
+});
+
+describe('holding a movement', () => {
+  const blocks = movementBlocks([movement('a', 'pair1'), movement('b', 'pair1'), movement('c')]);
+
+  it('opens the movement of a pair the finger is on, though the pair lifts as one', () => {
+    expect(heldMovement(blocks, 'a', 'b')).toBe('b');
+    expect(heldMovement(blocks, 'a', 'a')).toBe('a');
+    expect(heldMovement(blocks, 'c', 'c')).toBe('c');
+  });
+
+  it('falls back to the held block\'s first movement when the touch belongs elsewhere', () => {
+    expect(heldMovement(blocks, 'c', 'b')).toBe('c');
+    expect(heldMovement(blocks, 'a', null)).toBe('a');
   });
 });

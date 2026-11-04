@@ -174,6 +174,30 @@ function writeWorkoutModeFallback(mode: WorkoutMode): void {
   }
 }
 
+// An account's mode switch whose cloud save has not landed yet. It wins over
+// what the cloud reads back, and the next read sends it again.
+function pendingWorkoutModeKey(userId: string): string {
+  return `${WORKOUT_MODE_STORAGE_KEY}:pending:${userId}`;
+}
+
+function readPendingWorkoutMode(userId: string): WorkoutMode | null {
+  try {
+    const stored = globalThis.localStorage?.getItem(pendingWorkoutModeKey(userId));
+    return stored === 'flexible' || stored === 'split' ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingWorkoutMode(userId: string, mode: WorkoutMode | null): void {
+  try {
+    if (mode) globalThis.localStorage?.setItem(pendingWorkoutModeKey(userId), mode);
+    else globalThis.localStorage?.removeItem(pendingWorkoutModeKey(userId));
+  } catch {
+    // no-op
+  }
+}
+
 function normalizeFlexiblePlanItems(raw: unknown): FlexiblePlanItem[] {
   if (!Array.isArray(raw)) return [];
 
@@ -522,6 +546,10 @@ let workoutMutationSeq = 0;
 // before it.
 const splitsFlight = createReadFlight();
 const workoutModeFlight = createReadFlight();
+// Mode saves run one at a time, so an older one never lands after a newer one.
+let workoutModeSave: Promise<void> = Promise.resolve();
+// Moves with every mode switch; a save queued before the latest switch is dropped.
+let workoutModeSwitches = 0;
 const flexTemplatesFlight = createReadFlight();
 const currentWorkoutFlight = createKeyedSingleFlight<void>();
 const workoutDayPlanFlight = createKeyedSingleFlight<void>();
@@ -556,6 +584,24 @@ function writesWorkout<Args extends unknown[], Result>(action: (...args: Args) =
   };
 }
 
+/**
+ * Only the latest call may write: `isLatest` tells a call whether a newer one
+ * has started since. A call that was overtaken then waits for the newer one,
+ * so whoever awaited it still sees fresh data.
+ */
+function latestWins(action: (isLatest: () => boolean) => Promise<void>): () => Promise<void> {
+  let request = 0;
+  let latest: Promise<void> = Promise.resolve();
+  return () => {
+    const mine = ++request;
+    const run = action(() => mine === request).then(async () => {
+      if (mine !== request) await latest.catch(() => {});
+    });
+    latest = run;
+    return run;
+  };
+}
+
 function startsWorkout<Args extends unknown[]>(action: (...args: Args) => Promise<Workout | null>, flexible = false) {
   const write = writesWorkout(action);
   return async (...args: Args): Promise<Workout | null> => {
@@ -566,6 +612,32 @@ function startsWorkout<Args extends unknown[]>(action: (...args: Args) => Promis
     // first. Preserve that result when it joins a program Start in flight.
     return flexible && workout?.split_day_id != null ? null : workout;
   };
+}
+
+/** Saves the mode to the account; it stays pending on this device until a save lands. */
+function saveWorkoutMode(userId: string, mode: WorkoutMode, isAccountCurrent: () => boolean): Promise<void> {
+  const switchedAt = workoutModeSwitches;
+  const send = workoutModeSave.then(async () => {
+    if (switchedAt !== workoutModeSwitches || !isAccountCurrent()) return;
+    const { error } = await supabase
+      .from('program_preferences')
+      .upsert({
+        user_id: userId,
+        workout_mode: mode,
+      }, {
+        onConflict: 'user_id',
+      });
+    // Reads that ran meanwhile may hold the old mode.
+    if (isAccountCurrent()) workoutModeFlight.invalidate();
+    if (error) {
+      console.error('Error saving workout mode remotely, kept local mode:', error);
+      return;
+    }
+    // A switch made while this save ran is still to send.
+    if (switchedAt === workoutModeSwitches) writePendingWorkoutMode(userId, null);
+  });
+  workoutModeSave = send.catch(() => undefined);
+  return send;
 }
 
 function tracksSetSave(action: AppState['logSet']): AppState['logSet'] {
@@ -764,7 +836,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // A mode switch made while this read ran wins over what it read.
       if (!isCurrent() || !isAccountCurrent()) return;
-      const fallbackMode = readWorkoutModeFallback();
+      // So does one made earlier whose save has not landed.
+      const pendingMode = readPendingWorkoutMode(userId);
+      const fallbackMode = pendingMode ?? readWorkoutModeFallback();
 
       if (error) {
         console.error('Error fetching workout mode, using local fallback:', error);
@@ -772,10 +846,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         return;
       }
 
-      const mode = (data?.workout_mode as WorkoutMode) || fallbackMode;
+      const mode = pendingMode ?? ((data?.workout_mode as WorkoutMode) || fallbackMode);
       set({ workoutMode: mode });
       writeWorkoutModeFallback(mode);
       markHydrated(userId, 'mode');
+      if (pendingMode) void saveWorkoutMode(userId, pendingMode, isAccountCurrent).catch(() => undefined);
     });
   },
 
@@ -789,27 +864,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Reads running now, or until the save lands, may still see the old mode.
     workoutModeFlight.invalidate();
+    const switchedAt = ++workoutModeSwitches;
     set({ workoutMode: mode });
     writeWorkoutModeFallback(mode);
 
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return { ok: true };
+    if (!userId || !isAccountCurrent() || switchedAt !== workoutModeSwitches) return { ok: true };
 
-    const { error } = await supabase
-      .from('program_preferences')
-      .upsert({
-        user_id: userId,
-        workout_mode: mode,
-      }, {
-        onConflict: 'user_id',
-      });
-    if (isAccountCurrent()) workoutModeFlight.invalidate();
-
-    if (error) {
-      console.error('Error saving workout mode remotely, kept local mode:', error);
-      return { ok: true };
-    }
-
+    // Pending before the request, so a failed save (or a closed app) is sent again.
+    writePendingWorkoutMode(userId, mode);
+    await saveWorkoutMode(userId, mode, isAccountCurrent);
     return { ok: true };
   },
 
@@ -934,6 +998,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
+    // Gone even if the read after it fails; no read from before can bring it back.
+    flexTemplatesFlight.invalidate();
+    set({ flexTemplates: get().flexTemplates.filter((template) => template.id !== templateId) });
     await get().fetchFlexTemplates({ force: true });
   },
 
@@ -1488,21 +1555,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { currentWorkout, currentWorkoutDayPlan } = get();
     if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
 
-    const baseIndex = currentWorkoutDayPlan.items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
+    if (currentWorkoutDayPlan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
+    // A removed copy of the partner gives way; left in, it would hide the new one.
+    const items = currentWorkoutDayPlan.items.filter((item) => item.exercise_id !== partner.id);
+
+    const baseIndex = items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
     if (baseIndex < 0) return;
 
-    if (currentWorkoutDayPlan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
-
-    const baseItem = currentWorkoutDayPlan.items[baseIndex];
+    const baseItem = items[baseIndex];
 
     if (baseItem.superset_group_id) {
-      const members = currentWorkoutDayPlan.items.filter((item) => item.superset_group_id === baseItem.superset_group_id && !item.hidden);
+      const members = items.filter((item) => item.superset_group_id === baseItem.superset_group_id && !item.hidden);
       if (members.length >= 2) return;
     }
 
     const groupId = baseItem.superset_group_id || globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-    const nextItems = [...currentWorkoutDayPlan.items].map((item) => {
+    const nextItems = items.map((item) => {
       if (item.exercise_id === baseExerciseId) {
         return { ...item, superset_group_id: groupId };
       }
@@ -1672,6 +1741,19 @@ export const useAppStore = create<AppState>((set, get) => ({
           .select('id');
         if (deleteError) throw new Error('Could not remove the workout sets. Try again.');
         else deletedIds = (deletedRows ?? []).map((row) => row.id);
+        // A set not deleted was logged meanwhile, or an earlier attempt whose
+        // answer was lost already deleted it. Only a set that is gone leaves.
+        const missing = removedIds.filter((id) => !deletedIds.includes(id));
+        if (missing.length > 0) {
+          const { data: still, error: readError } = await supabase
+            .from('sets')
+            .select('id, completed')
+            .in('id', missing);
+          if (!readError && still) {
+            const present = new Set(still.map((row) => row.id));
+            deletedIds.push(...missing.filter((id) => !present.has(id)));
+          }
+        }
       }
 
       // Merge instead of refetching so a set logged meanwhile stays logged.
@@ -1795,14 +1877,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (!removableSet) return;
 
-    const { error } = await supabase
+    // Only while it is still unlogged on the server: a set whose Log set is
+    // still saving must survive.
+    const { data: deleted, error } = await supabase
       .from('sets')
       .delete()
-      .eq('id', removableSet.id);
+      .eq('id', removableSet.id)
+      .eq('completed', false)
+      .select('id');
 
     if (error) {
       console.error('Error removing workout set:', error);
       return;
+    }
+    if (!deleted?.some((row) => row.id === removableSet.id)) {
+      // Nothing deleted: it was logged meanwhile, or an earlier attempt whose
+      // answer was lost already deleted it. Only a set that is gone leaves.
+      const { data: still, error: readError } = await supabase
+        .from('sets')
+        .select('id, completed')
+        .eq('id', removableSet.id)
+        .maybeSingle();
+      if (readError || still) return;
     }
 
     const latestWorkout = get().currentWorkout;
@@ -1946,7 +2042,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const isAccountCurrent = captureAccountScope();
     // One statement: sets and the day plan go with it via ON DELETE CASCADE,
     // so a failure part-way can no longer leave a workout with its sets wiped.
-    let { error } = await supabase.from('workouts').delete().eq('id', workoutId);
+    // The deleted row says whether WHOOP stats were attached.
+    const removeWorkout = () => supabase.from('workouts').delete().eq('id', workoutId).select('whoop_session_id, user_id');
+    let { data: deleted, error } = await removeWorkout();
 
     // Foreign-key violation means a database without the cascade. Nothing was
     // deleted, so fall back to removing the sets first, stopping if that fails.
@@ -1956,7 +2054,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.error('Error deleting workout sets:', setsError);
         throw setsError;
       }
-      ({ error } = await supabase.from('workouts').delete().eq('id', workoutId));
+      ({ data: deleted, error } = await removeWorkout());
     }
 
     if (error) {
@@ -1967,6 +2065,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A deleted in-progress workout must not stay on the Workout tab.
     if (isAccountCurrent() && get().currentWorkout?.id === workoutId) {
       set({ currentWorkout: null, currentWorkoutDayPlan: null });
+    }
+
+    // Attaching WHOOP stats hid their activity; it returns to its day, as when
+    // the stats are removed. The workout is gone either way, so this only logs.
+    const row = (deleted ?? [])[0] as { whoop_session_id: string | null; user_id: string } | undefined;
+    if (row?.whoop_session_id) {
+      const { error: restoreError } = await supabase
+        .from('activity_sessions')
+        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
+        .eq('id', row.whoop_session_id)
+        .eq('user_id', row.user_id);
+      if (restoreError) console.error('Error restoring the WHOOP session:', restoreError);
     }
   }),
 
@@ -2196,7 +2306,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   connectWhoop: async (returnTo) => {
     const userId = await getSessionUserId();
-    if (!userId) return null;
+    // Returning quietly read as connected.
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
     if (isPreviewActive()) {
       // sandbox: connecting just plants a mock metadata row
@@ -2221,7 +2332,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   disconnectWhoop: async () => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return;
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
+    if (!isAccountCurrent()) return;
 
     if (isPreviewActive()) {
       await supabase.from('whoop_connections').delete().eq('user_id', userId);
@@ -2369,6 +2481,29 @@ export const useAppStore = create<AppState>((set, get) => ({
                 }
                 return sessions;
               },
+              fetchWhoopSegmentsBySessionIds: async (ids) => {
+                const rows: ActivitySegment[] = [];
+                for (let offset = 0; offset < ids.length; offset += 100) {
+                  for (let page = 0; ; page++) {
+                    if (page >= 100) throw new Error('WHOOP history is too large to reconcile safely in one sync.');
+                    requireCurrentAccount();
+                    const { data, error } = await supabase
+                      .from('activity_segments')
+                      .select('*')
+                      .eq('user_id', userId)
+                      .eq('source', 'whoop')
+                      .in('session_id', ids.slice(offset, offset + 100))
+                      .order('started_at', { ascending: true })
+                      .order('id', { ascending: true })
+                      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+                    if (error) throw error;
+                    requireCurrentAccount();
+                    rows.push(...((data ?? []) as ActivitySegment[]));
+                    if (!data || data.length < PAGE_SIZE) break;
+                  }
+                }
+                return rows;
+              },
               // create/update/delete mirror createActivitySession,
               // updateActivitySession and deleteActivitySession but reuse the
               // user resolved above instead of a user lookup per item
@@ -2476,12 +2611,29 @@ export const useAppStore = create<AppState>((set, get) => ({
       .update({ dismissed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq('id', session.id)
       .eq('user_id', userId);
-    if (dismissError) console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
 
     const updated = data as Workout;
-    set((state) => ({
-      currentWorkout: state.currentWorkout?.id === updated.id ? updated : state.currentWorkout,
+    const showLive = (row: Workout) => set((state) => ({
+      currentWorkout: state.currentWorkout?.id === row.id ? row : state.currentWorkout,
     }));
+    showLive(updated);
+    // Not hidden, the activity would show beside the stats it gave the
+    // workout. The stats come off again where possible, so the workout offers
+    // Add once more; either way a retry finishes the job.
+    if (dismissError) {
+      console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
+      const { data: cleared, error: clearError } = await supabase
+        .from('workouts')
+        .update(CLEARED_WHOOP_STATS)
+        .eq('id', workout.id)
+        .eq('user_id', userId)
+        .eq('whoop_session_id', session.id)
+        .select(WORKOUT_WITH_SETS_SELECT)
+        .maybeSingle();
+      if (clearError) console.error('Error taking the WHOOP stats back off the workout:', clearError);
+      else if (cleared) showLive(cleared as Workout);
+      throw new Error('Could not finish attaching the WHOOP stats. Try again.');
+    }
     return updated;
   }),
 
@@ -2489,7 +2641,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const userId = await getSessionUserId();
     if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
+    // The activity comes back before the stats go: a failure between the two
+    // then shows it twice until a retry, instead of losing the WHOOP session.
     const sessionId = workout.whoop_session_id ?? null;
+    if (sessionId) {
+      const { error: restoreError } = await supabase
+        .from('activity_sessions')
+        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+        .eq('user_id', userId);
+      if (restoreError) {
+        console.error('Error restoring the WHOOP session:', restoreError);
+        throw new Error(`Could not remove the WHOOP stats: ${restoreError.message}`);
+      }
+    }
+
     const { data, error } = await supabase
       .from('workouts')
       .update(CLEARED_WHOOP_STATS)
@@ -2501,15 +2667,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (error || !data) {
       console.error('Error detaching WHOOP stats from workout:', error);
       throw new Error(`Could not remove the WHOOP stats: ${error?.message ?? 'unknown error'}`);
-    }
-
-    if (sessionId) {
-      const { error: restoreError } = await supabase
-        .from('activity_sessions')
-        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
-        .eq('id', sessionId)
-        .eq('user_id', userId);
-      if (restoreError) console.error('Error restoring the WHOOP session:', restoreError);
     }
 
     const updated = data as Workout;
@@ -3073,8 +3230,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const nextPlan = toDayPlan(updatedPlan);
 
+    // The live workout takes the plan too when it had none yet (one History
+    // just made for a program session), as a skip or reorder does.
     const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (isCurrentAccount() && currentWorkout?.id === workoutId && currentWorkoutDayPlan?.id === existingPlan.id) {
+    if (
+      isCurrentAccount()
+      && currentWorkout?.id === workoutId
+      && (currentWorkoutDayPlan?.workout_id !== workoutId || currentWorkoutDayPlan.id === existingPlan.id)
+    ) {
       set({ currentWorkoutDayPlan: nextPlan });
     }
 
@@ -3086,18 +3249,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const plan = await get().ensureWorkoutDayPlan(workoutId);
     if (!plan) return;
 
-    const baseIndex = plan.items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
-    if (baseIndex < 0) return;
     if (plan.items.some((item) => !item.hidden && item.exercise_id === partner.id)) return;
+    // A removed copy of the partner gives way; left in, it would hide the new one.
+    const items = plan.items.filter((item) => item.exercise_id !== partner.id);
+    const baseIndex = items.findIndex((item) => !item.hidden && item.exercise_id === baseExerciseId);
+    if (baseIndex < 0) return;
 
-    const baseItem = plan.items[baseIndex];
+    const baseItem = items[baseIndex];
     if (baseItem.superset_group_id) {
-      const members = plan.items.filter((item) => !item.hidden && item.superset_group_id === baseItem.superset_group_id);
+      const members = items.filter((item) => !item.hidden && item.superset_group_id === baseItem.superset_group_id);
       if (members.length >= 2) return;
     }
 
     const groupId = baseItem.superset_group_id || randomSupersetGroupId();
-    const nextItems = [...plan.items].map((item) => (
+    const nextItems = items.map((item) => (
       item.exercise_id === baseExerciseId
         ? { ...item, superset_group_id: groupId }
         : item
@@ -3401,7 +3566,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateMacroTarget: async (target) => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return;
+    // Returning quietly read as saved.
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
+    if (!isAccountCurrent()) return;
 
     const { data, error } = await supabase
       .from('macro_targets')
@@ -3442,7 +3609,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateNutritionProfile: async (input) => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return;
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
+    if (!isAccountCurrent()) return;
 
     // Changing goal or rate starts a new phase; the expenditure estimator uses
     // that date to skip the glycogen/water transient that follows.
@@ -3582,7 +3750,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  calculateWeeklyVolume: async () => {
+  // An earlier read (started before an edit) that answers late would show the
+  // volume from before it, so only the latest read sets it.
+  calculateWeeklyVolume: latestWins(async (isLatest) => {
     const isAccountCurrent = captureAccountScope();
     const userId = await getSessionUserId();
     if (!userId || !isAccountCurrent()) return;
@@ -3615,7 +3785,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ).catch(() => ({ data: null })),
     ]);
 
-    if (!workouts || !isAccountCurrent()) return;
+    if (!workouts || !isAccountCurrent() || !isLatest()) return;
 
     // If the landmarks query failed, keep grading against the stored list.
     const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
@@ -3624,9 +3794,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const stored = get();
     const changed: Partial<Pick<AppState, 'volumeLandmarks' | 'weeklyVolume'>> = {};
     if (!sameData(stored.volumeLandmarks, volumeLandmarks)) changed.volumeLandmarks = volumeLandmarks;
-    if (!sameData(stored.weeklyVolume, weeklyVolume)) changed.weeklyVolume = weeklyVolume;
+    // The first read always lands, even an empty week: Progress tells "not read
+    // yet" from "nothing trained" by the initial list.
+    if (stored.weeklyVolume === initialAppData.weeklyVolume || !sameData(stored.weeklyVolume, weeklyVolume)) {
+      changed.weeklyVolume = weeklyVolume;
+    }
     if (changed.volumeLandmarks || changed.weeklyVolume) set(changed);
-  },
+  }),
 }));
 
 // Clears the in-memory copy of the previous account's data; every set is

@@ -44,7 +44,8 @@ export interface PositionSource {
   getNowMs: () => number;
   start: (
     onSample: (sample: GpsSample) => void,
-    onError: (message: string) => void,
+    // code: the native recorder's error code, when it gives one
+    onError: (message: string, code?: string) => void,
     onControl?: (control: NativeRunControl) => void,
   ) => void;
   stop: (discard?: boolean) => void;
@@ -188,6 +189,10 @@ export function createSimulatedSource(samples: GpsSample[], timeScale = 10): Pos
 }
 
 const SNAPSHOT_THROTTLE_MS = 5000;
+// A lap or sprint cue marks what is happening now. Events replayed from the
+// native file after a resume (laps run while the screen was closed) still
+// count, without a burst of old tones and haptics.
+const CUE_MAX_AGE_MS = 10_000;
 const TRACE_SNAPSHOT_THROTTLE_MS = 30_000;
 const MAX_IN_MEMORY_TRACE_POINTS = 18_000;
 
@@ -244,8 +249,13 @@ export function useRunTracker(): UseRunTracker {
   // Native resume from a snapshot without cursors: samples at or before this
   // time were already counted, so the full re-drain must skip them.
   const replayCutoffMsRef = useRef<number | null>(null);
+  // The error on screen. A signal error ends with the next fix after it; a
+  // storage failure (the recorder's PERSISTENCE_FAILED) stays for the run.
+  const gpsErrorRef = useRef<{ atMs: number; stays: boolean } | null>(null);
 
-  const applyEvents = useCallback((events: TrackerEvent[]) => {
+  const applyEvents = useCallback((events: TrackerEvent[], atMs?: number) => {
+    const now = sourceRef.current?.getNowMs() ?? Date.now();
+    if (atMs != null && now - atMs > CUE_MAX_AGE_MS) return;
     for (const event of events) {
       if (event.type === 'lap_completed') playLapCue();
       else if (event.type === 'sprint_started') playSprintStartCue();
@@ -308,6 +318,7 @@ export function useRunTracker(): UseRunTracker {
   const attachSource = useCallback(
     (source: PositionSource) => {
       sourceRef.current = source;
+      gpsErrorRef.current = null;
       setGpsError(null);
       source.start(
         (sample) => {
@@ -325,9 +336,20 @@ export function useRunTracker(): UseRunTracker {
             }
           }
           commit(next, sample.t);
-          applyEvents(events);
+          applyEvents(events, sample.t);
+          const error = gpsErrorRef.current;
+          if (error && !error.stays && sample.t > error.atMs) {
+            gpsErrorRef.current = null;
+            setGpsError(null);
+          }
         },
-        (message) => setGpsError(message),
+        (message, code) => {
+          const stays = code === 'PERSISTENCE_FAILED';
+          // a signal error does not hide a storage failure
+          if (!stays && gpsErrorRef.current?.stays) return;
+          gpsErrorRef.current = { atMs: source.getNowMs(), stays };
+          setGpsError(message);
+        },
         (control) => {
           const current = stateRef.current;
           if (!current || current.status !== 'running') return;
@@ -347,7 +369,7 @@ export function useRunTracker(): UseRunTracker {
                 }
               : toggleRest(current, control.timestampMs);
           commit(withNativeControlSeq(result.state, control.sequence), control.timestampMs);
-          applyEvents(result.events);
+          applyEvents(result.events, control.timestampMs);
         },
       );
     },
@@ -466,6 +488,7 @@ export function useRunTracker(): UseRunTracker {
     traceRef.current = [];
     setState(null);
     setFinishedRun(null);
+    gpsErrorRef.current = null;
     setGpsError(null);
     setResumable(false);
     try {
