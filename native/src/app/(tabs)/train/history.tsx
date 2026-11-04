@@ -415,7 +415,7 @@ function AddActivityButton({ day }: { day: string }) {
 
 /**
  * A workout: tap to open; swipe to delete (asks first); hold for the menu.
- * The one running now reads "Now" by a live dot and opens Train, with no Delete.
+ * The one running now reads "In progress" by a live dot and opens Train, with no Delete.
  */
 function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionModel | null }) {
   const c = useBlanc();
@@ -425,8 +425,9 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
     return (
       <Row
         title={title}
-        detail={`Now · ${live.doneCount} of ${live.sets.length} sets`}
-        leading={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />}
+        detail={`In progress · ${live.doneCount} of ${live.sets.length} sets`}
+        // On the detail line, as Today writes live, so the title keeps the card's text edge.
+        detailMark={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />}
         chevron
         onPress={train}
         menu={[{ title: 'Open', symbol: 'arrow.up.right.square', run: train }]}

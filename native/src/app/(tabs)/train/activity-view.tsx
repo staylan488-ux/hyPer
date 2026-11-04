@@ -1,3 +1,4 @@
+import { format, isValid, parseISO } from 'date-fns';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -10,7 +11,7 @@ import {
   formatSegmentDistance,
   paceSecondsPerMile,
 } from '@/lib/activityMetrics';
-import { formatActivityStartTime, resolveActivityTitle } from '@/lib/activitySessions';
+import { formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle } from '@/lib/activitySessions';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySegment } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -76,10 +77,11 @@ export default function ActivityViewScreen() {
   const typeLabel = activityTypeLabel(activity);
   const duration = activity.duration_seconds && activity.duration_seconds > 0 ? formatMinutes(Math.max(1, Math.round(activity.duration_seconds / 60))) : null;
   const pace = activity.activity_type === 'run' ? formatPace(paceSecondsPerMile(activity.distance_m, activity.duration_seconds)) : null;
+  // The head the past workout has: the day, when it started and how long it ran.
+  const day = parseISO(getActivitySessionDateKey(activity));
+  const meta = [isValid(day) ? format(day, 'EEE · MMM d') : null, formatActivityStartTime(activity.started_at), duration].filter(Boolean).join(' · ');
   const rows: [string, string][] = [
     ...(typeLabel !== title ? [['Activity', typeLabel] as [string, string]] : []),
-    ...(activity.started_at ? [['Started', formatActivityStartTime(activity.started_at)] as [string, string]] : []),
-    ...(duration ? [['Duration', duration] as [string, string]] : []),
     ...(formatDistanceMi(activity.distance_m) ? [['Distance', formatDistanceMi(activity.distance_m) as string] as [string, string]] : []),
     ...(pace ? [['Pace', pace] as [string, string]] : []),
     ...(activity.strain != null ? [['Strain', activity.strain.toFixed(1)] as [string, string]] : []),
@@ -111,16 +113,17 @@ export default function ActivityViewScreen() {
         }}
       />
       <TabScroll>
-        <Section title="Summary">
-          <Label>
-            {rows.map(([label, value], index) => (
-              <View key={label}>
-                {index > 0 ? <Hairline inset={18} /> : null}
-                <ValueRow label={label} value={value} />
-              </View>
-            ))}
-          </Label>
-        </Section>
+        <BlancText variant="meta" size={13} tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+          {meta}
+        </BlancText>
+        <Label style={{ marginTop: 18 }}>
+          {rows.map(([label, value], index) => (
+            <View key={label}>
+              {index > 0 ? <Hairline inset={18} /> : null}
+              <ValueRow label={label} value={value} />
+            </View>
+          ))}
+        </Label>
 
         {activity.notes?.trim() ? (
           <Section title="Notes">

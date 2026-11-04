@@ -131,6 +131,7 @@ export default function PastWorkoutScreen() {
           <Tally
             marks={marks}
             current={null}
+            height={20}
             accessibilityLabel={`${marks.filter(Boolean).length} of ${marks.length} sets logged`}
             style={{ marginHorizontal: space.gutter, marginTop: 14 }}
           />

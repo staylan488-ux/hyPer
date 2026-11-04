@@ -12,6 +12,8 @@ import { closeOpenSwipeRow, useSwipeActions } from './SwipeRow';
 type RowProps = {
   title: string;
   detail?: string;
+  /** A small mark before the detail line, such as the live dot. */
+  detailMark?: ReactNode;
   value?: string;
   leading?: ReactNode;
   trailing?: ReactNode;
@@ -38,7 +40,7 @@ type RowProps = {
 };
 
 /** A list row that highlights under the finger, like an iOS table cell. */
-export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, form, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
+export function Row({ title, detail, detailMark, value, leading, trailing, chevron, quiet, destructive, form, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
   const c = useBlanc();
   // Spoken as its words only: icons such as the chevron add nothing.
   const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
@@ -73,7 +75,14 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
         <BlancText variant={quiet || form ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={1}>
           {title}
         </BlancText>
-        {detail ? (
+        {detail && detailMark ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
+            {detailMark}
+            <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ flexShrink: 1 }}>
+              {detail}
+            </BlancText>
+          </View>
+        ) : detail ? (
           <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
             {detail}
           </BlancText>
