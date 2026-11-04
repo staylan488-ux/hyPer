@@ -131,6 +131,15 @@ describe('buildSessionModel', () => {
     expect(model?.movements.map((movement) => movement.exerciseId)).toEqual(['row', 'lateral', 'curl']);
   });
 
+  it('keeps the day of a session whose program is no longer the active one', () => {
+    // Another program was set active (or created) during the session.
+    const other: Split = { ...split, id: 'split-2', name: 'Full body', is_active: true, days: [{ ...split.days[0], id: 'day-9', day_name: 'Full A' }] };
+    const model = buildSessionModel(midSession(), { split: other, splits: [other, { ...split, is_active: false }] }, null);
+    expect(model?.dayName).toBe('Upper A');
+    expect(model?.movements.map((movement) => movement.exerciseId)).toEqual(['bench', 'row', 'incline']);
+    expect(model?.movements[1].plan).toMatchObject({ target_sets: 3, target_reps_min: 8, target_reps_max: 10 });
+  });
+
   it('names an unplanned session "Workout"', () => {
     const model = buildSessionModel(workout([set(row, 1, false)], { split_day_id: null }), { split }, null);
     expect(model?.dayName).toBe('Workout');

@@ -221,6 +221,8 @@ export interface TodayHeroInput {
   heroLoading: boolean;
   currentWorkout: Workout | null;
   currentWorkoutDayPlan: WorkoutDayPlan | null;
+  /** Every loaded program: a live session keeps its day after another program is set active. */
+  splits?: readonly Split[];
   /** undefined: not known yet; null: no session completed today. */
   todayDone: { title: string } | null | undefined;
   workoutMode: WorkoutMode;
@@ -244,6 +246,7 @@ export function todayHero(input: TodayHeroInput): HeroState {
     heroLoading,
     currentWorkout,
     currentWorkoutDayPlan,
+    splits = [],
     todayDone,
     workoutMode,
     activeSplit,
@@ -260,7 +263,8 @@ export function todayHero(input: TodayHeroInput): HeroState {
   if (heroLoading) return { kind: 'loading' };
 
   if (currentWorkout && !currentWorkout.completed) {
-    const workoutDay = activeSplit?.days.find((day) => day.id === currentWorkout.split_day_id);
+    const isWorkoutDay = (day: SplitDay) => day.id === currentWorkout.split_day_id;
+    const workoutDay = activeSplit?.days.find(isWorkoutDay) ?? splits.flatMap((split) => split.days).find(isWorkoutDay);
     const upcomingSet = getWorkoutResumeSet(currentWorkout, workoutDay, currentWorkoutDayPlan);
     const upcomingName = upcomingSet ? upcomingSet.exercise?.name
       ?? workoutDay?.exercises.find((exercise) => exercise.exercise_id === upcomingSet.exercise_id)?.exercise?.name
@@ -271,7 +275,7 @@ export function todayHero(input: TodayHeroInput): HeroState {
     const dayName =
       currentWorkout.split_day_id === null
         ? 'Flexible'
-        : activeSplit?.days.find((d) => d.id === currentWorkout.split_day_id)?.day_name ?? 'Session';
+        : workoutDay?.day_name ?? 'Session';
     return {
       kind: 'resume',
       completedSets: done,

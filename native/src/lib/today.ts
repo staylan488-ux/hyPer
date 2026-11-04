@@ -29,6 +29,7 @@ export function useTodayPlan() {
   const activeSplit = useAppStore((state) => state.activeSplit);
   const currentWorkout = useAppStore((state) => state.currentWorkout);
   const currentWorkoutDayPlan = useAppStore((state) => state.currentWorkoutDayPlan);
+  const splits = useAppStore((state) => state.splits);
   const workoutMode = useAppStore((state) => state.workoutMode);
   const hydratedForUserId = useAppStore((state) => state.hydratedForUserId);
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
@@ -52,6 +53,7 @@ export function useTodayPlan() {
         heroLoading: loading && !storeReady,
         currentWorkout,
         currentWorkoutDayPlan,
+        splits,
         todayDone,
         workoutMode,
         activeSplit,
@@ -70,6 +72,7 @@ export function useTodayPlan() {
       storeReady,
       currentWorkout,
       currentWorkoutDayPlan,
+      splits,
       todayDone,
       workoutMode,
       activeSplit,

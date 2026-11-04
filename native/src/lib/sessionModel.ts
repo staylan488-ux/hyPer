@@ -83,6 +83,8 @@ export const MAX_SETS = 12;
 
 export type SessionSources = {
   split: Split | null;
+  /** Every loaded program: a session keeps its day after another program is set active. */
+  splits?: readonly Split[];
   /** The workout's own session plan, when it has one (swaps, reorders, flexible sessions, skips). */
   plan?: WorkoutDayPlan | null;
   /** Skips still saving, by exercise id (true skipped, false brought back); they win over the plan. */
@@ -97,12 +99,13 @@ export type SessionSources = {
  */
 export function buildSessionModel(
   workout: Workout | null,
-  { split, plan = null, skips = {} }: SessionSources,
+  { split, splits = [], plan = null, skips = {} }: SessionSources,
   focusedExerciseId: string | null,
   now = Date.now(),
 ): SessionModel | null {
   if (!workout || workout.completed) return null;
-  const day = split?.days.find((candidate) => candidate.id === workout.split_day_id) ?? null;
+  const isSessionDay = (candidate: { id: string }) => candidate.id === workout.split_day_id;
+  const day = split?.days.find(isSessionDay) ?? splits.flatMap((program) => program.days).find(isSessionDay) ?? null;
   const items = sessionPlanItems(plan, workout.id);
   const flexible = workout.split_day_id === null && items !== undefined;
   const planned = sessionExercises(items, day?.exercises);

@@ -45,19 +45,20 @@ const NO_SKIPS: Record<string, boolean> = {};
 export function useSessionModel(): SessionModel | null {
   const workout = useAppStore((state) => state.currentWorkout);
   const split = useAppStore((state) => state.activeSplit);
+  const splits = useAppStore((state) => state.splits);
   const plan = useAppStore((state) => state.currentWorkoutDayPlan);
   const focused = useFocusStore((state) => state.exerciseId);
   const skips = usePendingSkips((state) => (workout && state.workoutId === workout.id ? state.skips : NO_SKIPS));
-  return useMemo(() => buildSessionModel(workout, { split, plan, skips }, focused), [workout, split, plan, skips, focused]);
+  return useMemo(() => buildSessionModel(workout, { split, splits, plan, skips }, focused), [workout, split, splits, plan, skips, focused]);
 }
 
 /** The same, outside a component. */
 export function liveSessionModel(): SessionModel | null {
-  const { currentWorkout, activeSplit, currentWorkoutDayPlan } = useAppStore.getState();
+  const { currentWorkout, activeSplit, splits, currentWorkoutDayPlan } = useAppStore.getState();
   const pending = usePendingSkips.getState();
   return buildSessionModel(
     currentWorkout,
-    { split: activeSplit, plan: currentWorkoutDayPlan, skips: currentWorkout && pending.workoutId === currentWorkout.id ? pending.skips : NO_SKIPS },
+    { split: activeSplit, splits, plan: currentWorkoutDayPlan, skips: currentWorkout && pending.workoutId === currentWorkout.id ? pending.skips : NO_SKIPS },
     useFocusStore.getState().exerciseId,
   );
 }

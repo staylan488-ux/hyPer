@@ -58,6 +58,11 @@ describe('Today hero', () => {
     } as unknown as Workout;
     const hero = todayHero(input({ currentWorkout: workout, todayDone: undefined }));
     expect(hero).toMatchObject({ kind: 'resume', dayName: 'Upper', completedSets: 1, totalSets: 2, nextSet: 2 });
+
+    // Another program was set active during the session.
+    const other = { ...split, id: 'split-2', days: [] } as unknown as Split;
+    const moved = todayHero(input({ currentWorkout: workout, todayDone: undefined, activeSplit: other, splits: [other, split] }));
+    expect(moved).toMatchObject({ kind: 'resume', dayName: 'Upper' });
   });
 
   it('shows a finished day, and waits while that is unknown', () => {
