@@ -41,8 +41,9 @@ export function useWidgetSnapshot() {
     && state.todayLoadedKey === fuelDay
     && fuelDay === dayKey);
 
+  // A plan shown from the phone's copy never reaches the widgets.
   const days = useMemo(
-    () => widgetPlan({
+    () => (plan.seeded ? null : widgetPlan({
       hero: plan.hero,
       dayKey,
       workoutMode,
@@ -50,8 +51,8 @@ export function useWidgetSnapshot() {
       schedule: plan.schedule,
       scheduleWorkouts: plan.scheduleWorkouts,
       adaptiveSchedulingEnabled: plan.adaptiveSchedulingEnabled,
-    }),
-    [plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled],
+    })),
+    [plan.seeded, plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled],
   );
 
   const json = useMemo(() => {

@@ -27,6 +27,8 @@ const fuel = create(() => ({
   todayLoadedKey: null as string | null,
   todayTotals: { calories: 0, protein: 0 },
 }));
+// Only the launch-copy case sets it; the other cases' plan has no seeded field.
+const seededPlan = create<{ seeded?: boolean }>(() => ({}));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -53,13 +55,16 @@ describe('home-screen widget snapshot readiness', () => {
       macroTarget: { calories: 2000, protein: 150 },
     });
     fuel.setState({ todayKey: DAY, todayLoadedForUserId: null, todayLoadedKey: null, todayTotals: { calories: 0, protein: 0 } });
+    seededPlan.setState({ seeded: undefined });
     ({ useWidgetSnapshot } = loadNativeModule<{ useWidgetSnapshot: () => void }>('lib/widgets.ts', {
       '@/stores/appStore': { useAppStore: app },
       '@/stores/authStore': { useAuthStore: auth },
       '../../modules/hyper-widget-data': { setSnapshot, clear },
       './accountData': { useAccountDay: () => ({ dayKey: DAY, loading: false }) },
       './fuel': { useFuelStore: fuel },
-      './today': { useTodayPlan: () => ({ hero: { kind: 'flexible' }, schedule: null, scheduleWorkouts: [], adaptiveSchedulingEnabled: false }) },
+      './today': {
+        useTodayPlan: () => ({ hero: { kind: 'flexible' }, schedule: null, scheduleWorkouts: [], adaptiveSchedulingEnabled: false, ...seededPlan() }),
+      },
       './widgetPlan': widgetRules,
     }));
     host = document.createElement('div');
@@ -113,6 +118,18 @@ describe('home-screen widget snapshot readiness', () => {
     expect(setSnapshot).not.toHaveBeenCalled();
     await act(async () => { root.render(null); });
     expect(clear).toHaveBeenCalledTimes(1);
+  });
+
+  it('never writes a plan shown from the phone’s copy', async () => {
+    fuel.setState({ todayLoadedForUserId: 'user-1', todayLoadedKey: DAY });
+    seededPlan.setState({ seeded: true });
+    await render();
+    await settle();
+    expect(setSnapshot).not.toHaveBeenCalled();
+
+    await act(async () => { seededPlan.setState({ seeded: false }); });
+    await settle();
+    expect(setSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('cancels a pending write when the account signs out', async () => {

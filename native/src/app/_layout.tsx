@@ -1,7 +1,8 @@
+import Constants from 'expo-constants';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
+import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -12,6 +13,8 @@ import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
+import { installLaunchCache } from '~/lib/launchCache';
+import { backendOf } from '~/lib/launchSnapshot';
 import { restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -22,6 +25,19 @@ restoreAppearance();
 // Preview mode: fill the shared stores with the sample account before the
 // first screen renders (no-op when preview is off).
 maybeSeedPreview();
+// The phone's copy of the last program, targets and today's food fills the
+// screens the moment sign-in is restored; the account load then refreshes it. Never in preview.
+installLaunchCache({
+  preview: isPreviewActive(),
+  backend: backendOf(process.env.EXPO_PUBLIC_SUPABASE_URL),
+  build: `${Constants.expoConfig?.version ?? ''}+${Constants.expoConfig?.ios?.buildNumber ?? ''}`,
+  // Saved as the app leaves the screen, the app switcher (where it can be closed) included.
+  onLeave: (save) => {
+    AppState.addEventListener('change', (state) => {
+      if (state !== 'active') save();
+    });
+  },
+});
 // Otherwise restore the saved session (Keychain) and follow auth changes, as
 // the web app does on launch.
 if (!isPreviewActive()) void useAuthStore.getState().initialize();

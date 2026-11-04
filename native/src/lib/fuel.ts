@@ -88,6 +88,8 @@ const defaultsFailed = new Set<string>();
 const defaultsInFlight = new Map<string, Promise<void>>();
 // A copy's row ids until it is confirmed, so a retry after a lost answer rewrites the same rows.
 const copyIds = new Map<string, string[]>();
+// Today's month as the phone's copy (launchCache.ts), until a real read replaces it.
+let monthFromCopy = false;
 
 export const useFuelStore = create<FuelState>((set, get) => {
   const loadMonth = async (month: string) => {
@@ -120,6 +122,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
     }
     const logs = logsResult.data as FoodLog[];
     const { todayKey } = get();
+    monthFromCopy = false;
     set({
       loadedMonth: month,
       logs,
@@ -139,6 +142,18 @@ export const useFuelStore = create<FuelState>((set, get) => {
   const syncTodayTotals = () => {
     const { todayKey, loadedMonth, logs } = get();
     if (loadedMonth === monthOf(todayKey)) set({ todayTotals: sumMacros(logs.filter((log) => log.date === todayKey)) });
+  };
+  // An edit while the month on screen is the phone's copy: the account load's
+  // first read may have left before it and would bring the old rows back, so
+  // that read is dropped and the month is read again once the edit settles.
+  const editsCopy = <A extends unknown[], R>(edit: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
+    if (!monthFromCopy) return edit(...args);
+    monthRequest += 1;
+    try {
+      return await edit(...args);
+    } finally {
+      void loadMonth(monthOf(get().selected));
+    }
   };
 
   return {
@@ -190,7 +205,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
     },
 
     ensureDayGroups: (key) => {
-      if (get().loadedMonth !== monthOf(key) || defaultsFailed.has(key)) return Promise.resolve();
+      if (monthFromCopy || get().loadedMonth !== monthOf(key) || defaultsFailed.has(key)) return Promise.resolve();
       const running = defaultsInFlight.get(key);
       if (running) return running;
       const groups = dayGroups(key);
@@ -212,7 +227,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
       return task;
     },
 
-    deleteEntry: async (id) => {
+    deleteEntry: editsCopy(async (id: string) => {
       const removed = get().logs.find((log) => log.id === id);
       // gone at once, back if the delete fails (no confirm, as on the web);
       // Today and the widgets follow at once too
@@ -224,15 +239,15 @@ export const useFuelStore = create<FuelState>((set, get) => {
         syncTodayTotals();
       }
       return ok;
-    },
+    }),
 
-    moveEntry: async (id, groupId) => {
+    moveEntry: editsCopy(async (id: string, groupId: string | null) => {
       // a dropped connection reports a failure instead of nothing at all
       const patch = await moveEntryToGroup(id, groupId, dayGroups(), dayLogs()).catch(() => null);
       if (!patch) return false;
       set({ logs: get().logs.map((log) => (log.id === id ? { ...log, ...patch } : log)) });
       return true;
-    },
+    }),
 
     moveEntryToYesterday: async (id) => {
       const log = get().logs.find((candidate) => candidate.id === id);
@@ -249,7 +264,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
       // Today's meals, with Breakfast, Lunch and Dinner made if missing (also
       // when Fuel shows another month, so a copy never falls to Unassigned for that).
       let targetGroups = await loadDayGroups(key);
-      if (get().loadedMonth !== monthOf(key)) {
+      if (get().loadedMonth !== monthOf(key) || monthFromCopy) {
         const made = await ensureDefaultGroups(userId, key, targetGroups).catch(() => null);
         if (made?.ok) targetGroups = sortNutritionGroups(made.groups);
       }
@@ -270,7 +285,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
       return true;
     },
 
-    addGroup: async (kind) => {
+    addGroup: editsCopy(async (kind: 'meal' | 'snack') => {
       const userId = await getSessionUserId();
       if (!userId) return false;
       const result = await createNutritionGroup(userId, get().selected, kind, dayGroups());
@@ -280,9 +295,9 @@ export const useFuelStore = create<FuelState>((set, get) => {
       }
       set({ groups: mergeGroups(get().groups, result.groups) });
       return true;
-    },
+    }),
 
-    reorderGroup: async (groupId, direction) => {
+    reorderGroup: editsCopy(async (groupId: string, direction: -1 | 1) => {
       const result = await reorderNutritionGroup(dayGroups(), groupId, direction).catch(() => null);
       if (!result) return false;
       if (!result.ok) {
@@ -291,16 +306,16 @@ export const useFuelStore = create<FuelState>((set, get) => {
       }
       set({ groups: mergeGroups(get().groups, result.groups) });
       return true;
-    },
+    }),
 
-    deleteGroup: async (group) => {
+    deleteGroup: editsCopy(async (group: NutritionGroup) => {
       if (!(await deleteNutritionGroup(group).catch(() => false))) return false;
       set({
         groups: get().groups.filter((candidate) => candidate.id !== group.id),
         logs: get().logs.map((log) => (log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log)),
       });
       return true;
-    },
+    }),
   };
 });
 
@@ -328,7 +343,7 @@ export function useFuelDay() {
 export function todayLogsInMatchingMeal(group: NutritionGroup | null): FoodLog[] | null {
   const { loadedMonth, logs } = useFuelStore.getState();
   const key = today();
-  if (loadedMonth !== monthOf(key)) return null;
+  if (loadedMonth !== monthOf(key) || monthFromCopy) return null;
   const todayGroups = groupsForDay(key);
   const target = matchingGroup(group, group ? groupsForDay(group.date) : [], todayGroups);
   return entriesInMeal(logs.filter((log) => log.date === key), todayGroups, target);
@@ -345,7 +360,7 @@ export function groupsForDay(key: string): NutritionGroup[] {
  */
 export async function loadDayGroups(key: string): Promise<NutritionGroup[]> {
   const store = useFuelStore.getState();
-  if (store.loadedMonth === monthOf(key)) {
+  if (store.loadedMonth === monthOf(key) && !monthFromCopy) {
     await store.ensureDayGroups(key);
     return groupsForDay(key);
   }
@@ -361,8 +376,33 @@ export function suggestedGroup(groups: NutritionGroup[], at = new Date()): Nutri
   return groups.find((group) => group.label === meal) ?? null;
 }
 
+export const isFuelMonthFromCopy = () => monthFromCopy;
+
+/**
+ * Launch: today's figures (and its month, when known) from the phone's copy.
+ * No markers: widgets and the copy's own writer still wait for a real read.
+ */
+export function restoreFuelCopy(copy: {
+  todayKey: string;
+  totals: MacroTotals;
+  month: { month: string; logs: FoodLog[]; groups: NutritionGroup[] } | null;
+}): boolean {
+  const state = useFuelStore.getState();
+  if (state.loadedMonth !== null || state.status !== 'idle' || state.todayLoadedForUserId !== null || copy.todayKey !== today()) return false;
+  const month = copy.month?.month === monthOf(copy.todayKey) ? copy.month : null;
+  monthFromCopy = month !== null;
+  useFuelStore.setState({
+    selected: copy.todayKey,
+    todayKey: copy.todayKey,
+    todayTotals: copy.totals,
+    ...(month ? { loadedMonth: month.month, logs: month.logs, groups: month.groups, status: 'ready' as const } : {}),
+  });
+  return true;
+}
+
 /** Sign-out: nothing of this account's food stays on screen or reaches the next account's widget. */
 export function resetFuel() {
+  monthFromCopy = false;
   monthRequest += 1;
   todayRequest += 1;
   defaultsFailed.clear();
