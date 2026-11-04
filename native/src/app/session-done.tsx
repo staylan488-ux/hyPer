@@ -98,7 +98,7 @@ export default function SessionDone() {
               {summary.dayName}
             </BlancText>
             <BlancText variant="meta" size={13} tone="graphite" style={{ marginTop: 4 }}>
-              {format(summary.finishedAt, 'EEE · MMM d · h:mm a')}
+              {format(summary.startedAt, 'EEE · MMM d · h:mm a')}
             </BlancText>
 
             <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 20 }} />

@@ -124,4 +124,13 @@ describe('beat last time on the finish summary', () => {
     expect(summarize(session, lastTime, new Date('2026-10-30T16:30:00.000Z')).beat).toBe(3);
     expect(summarize(session, {}, new Date('2026-10-30T16:30:00.000Z')).beat).toBe(0);
   });
+
+  it('times the session from its start to the last logged set, as it is saved', () => {
+    const session = buildSessionModel(workout(sets), { split }, null);
+    if (!session) throw new Error('no session');
+    // Started 15:30, last set logged 16:00, Finish tapped 16:30.
+    const summary = summarize(session, {}, new Date('2026-10-30T16:30:00.000Z'));
+    expect(summary.minutes).toBe(30);
+    expect(summary.startedAt.toISOString()).toBe('2026-10-30T15:30:00.000Z');
+  });
 });
