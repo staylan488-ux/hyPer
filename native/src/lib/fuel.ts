@@ -34,6 +34,15 @@ const FOOD_COLUMNS = 'id, user_id, name, description, calories, protein, carbs, 
 
 export const dayKey = (date: Date) => format(date, 'yyyy-MM-dd');
 export const today = () => dayKey(new Date());
+
+/**
+ * Today's key, read from the clock on every render. A hook by name, so the
+ * React Compiler runs it each time instead of keeping the first render's day
+ * on a screen that stays open past midnight.
+ */
+export function useTodayKey(): string {
+  return today();
+}
 const monthOf = (key: string) => key.slice(0, 7);
 
 export { mealForTime } from './meals';
@@ -86,12 +95,15 @@ export const useFuelStore = create<FuelState>((set, get) => {
     const request = ++monthRequest;
     const userId = await getSessionUserId();
     if (!userId || request !== monthRequest || !isCurrent()) return;
-    if (get().loadedMonth !== month) set({ status: 'loading' });
+    const { loadedMonth, logs: shown } = get();
+    // A reload of the month on screen reads its foods alongside its logs.
+    const expectedFoodIds = loadedMonth === month ? shown.map((log) => log.food_id) : undefined;
+    if (loadedMonth !== month) set({ status: 'loading' });
     const start = parseISO(`${month}-01`);
     const from = dayKey(startOfMonth(start));
     const to = dayKey(endOfMonth(start));
     const [logsResult, groupsResult] = await Promise.all([
-      fetchNutritionLogsWithFoods<NutritionLog, Food>(userId, { from, to }, '*', FOOD_COLUMNS),
+      fetchNutritionLogsWithFoods<NutritionLog, Food>(userId, { from, to }, '*', FOOD_COLUMNS, expectedFoodIds),
       supabase
         .from('nutrition_groups')
         .select('*')

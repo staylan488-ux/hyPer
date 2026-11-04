@@ -12,7 +12,7 @@ import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { addMovement, addSupersetPartner, errorMessage, swapMovement } from '~/lib/movement';
-import { useSessionModel } from '~/lib/session';
+import { useSessionModel, type Movement, type SessionModel } from '~/lib/session';
 
 type PickMode = 'swap' | 'add' | 'superset';
 
@@ -21,6 +21,22 @@ const COPY: Record<PickMode, { title: string; verb: string; failed: string; fall
   add: { title: 'Add a movement', verb: 'Add', failed: 'Not added', fallback: 'Could not add the exercise. Try again.' },
   superset: { title: 'Add a superset', verb: 'Pair with', failed: 'Not added', fallback: 'Could not add the superset. Try again.' },
 };
+
+/**
+ * Adds the pick to the live workout, pairs it with the movement as a
+ * superset, or swaps the movement for it; throws when the save fails. Out
+ * here because the React Compiler can't yet compile a component whose own
+ * code branches inside a try.
+ */
+async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Movement | null, exercise: Exercise) {
+  if (mode === 'add') {
+    await addMovement(session.workoutId, exercise);
+  } else if (movement && mode === 'superset') {
+    await addSupersetPartner(session.workoutId, movement.exerciseId, exercise);
+  } else if (movement) {
+    await swapMovement(session.workoutId, movement.exerciseId, exercise, session.current?.movement.exerciseId === movement.exerciseId);
+  }
+}
 
 /**
  * Picks an exercise to swap a movement for this workout only, to add to a
@@ -91,23 +107,13 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     if (pastId) return choosePast(exercise);
     if (!session || swapping || (mode !== 'add' && !movement)) return;
     setSwapping(exercise.id);
+    // Back to the workout, past the movement sheet a swap or superset opened
+    // from (a swipe on Train's row opens this sheet straight from Train).
+    const exitTo = mode === 'add' || params.from === 'train' ? 'back' : 'dismiss';
     try {
-      if (mode === 'add') {
-        await addMovement(session.workoutId, exercise);
-      } else if (movement && mode === 'superset') {
-        await addSupersetPartner(session.workoutId, movement.exerciseId, exercise);
-      } else if (movement) {
-        await swapMovement(
-          session.workoutId,
-          movement.exerciseId,
-          exercise,
-          session.current?.movement.exerciseId === movement.exerciseId,
-        );
-      }
+      await pickInWorkout(session, mode, movement, exercise);
       haptics.success();
-      // Back to the workout, past the movement sheet a swap or superset opened
-      // from (a swipe on Train's row opens this sheet straight from Train).
-      setExit(mode === 'add' || params.from === 'train' ? 'back' : 'dismiss');
+      setExit(exitTo);
     } catch (error) {
       haptics.error();
       setSwapping(null);

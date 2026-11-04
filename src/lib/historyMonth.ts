@@ -169,7 +169,8 @@ export function buildPastSetUpdate(
 /**
  * Loads a History month: its workouts with their program-day or session
  * names, and its activities. The store fetchers return [] when nobody is
- * signed in, and throw when a read fails.
+ * signed in, and throw when a read fails. Program days the store already
+ * holds are named from it, so only days it does not know are read.
  */
 export async function fetchHistoryMonth(month: Date): Promise<{ workouts: HistoryWorkout[]; activities: ActivitySession[] }> {
   const store = useAppStore.getState();
@@ -179,11 +180,16 @@ export async function fetchHistoryMonth(month: Date): Promise<{ workouts: Histor
   ]);
   const splitDayIds = [...new Set(workouts.filter((workout) => workout.split_day_id).map((workout) => workout.split_day_id as string))];
   const flexibleIds = workouts.filter((workout) => workout.split_day_id === null).map((workout) => workout.id);
+  // Every program's days, as read after the month (the programs may have loaded meanwhile).
+  const knownDays = new Map(
+    useAppStore.getState().splits.flatMap((split) => (split.days ?? []).map((day) => [day.id, day.day_name] as const)),
+  );
+  const unknownDayIds = splitDayIds.filter((id) => !knownDays.has(id));
 
   // The two name lookups are independent; an empty id list makes no request.
   const [splitDayResult, planResult] = await Promise.all([
-    splitDayIds.length > 0
-      ? supabase.from('split_days').select('id, day_name').in('id', splitDayIds)
+    unknownDayIds.length > 0
+      ? supabase.from('split_days').select('id, day_name').in('id', unknownDayIds)
       : Promise.resolve({ data: null, error: null }),
     flexibleIds.length > 0
       ? supabase.from('workout_day_plans').select('workout_id, day_label').in('workout_id', flexibleIds)
@@ -193,7 +199,10 @@ export async function fetchHistoryMonth(month: Date): Promise<{ workouts: Histor
   // complete month and offer Retry instead of replacing names with Unknown.
   if (splitDayResult.error) throw splitDayResult.error;
   if (planResult.error) throw planResult.error;
-  const splitDays = new Map(((splitDayResult.data || []) as { id: string; day_name: string }[]).map((row) => [row.id, row.day_name]));
+  const splitDays = new Map([
+    ...knownDays,
+    ...((splitDayResult.data || []) as { id: string; day_name: string }[]).map((row) => [row.id, row.day_name] as const),
+  ]);
   const labels = new Map(((planResult.data || []) as { workout_id: string; day_label: string }[]).map((row) => [row.workout_id, row.day_label]));
 
   return {

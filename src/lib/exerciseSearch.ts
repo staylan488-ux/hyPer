@@ -98,34 +98,74 @@ function queryForms(word: string): string[] {
 }
 
 interface SearchFields {
+  name: string;
   nameWords: string[];
   nameCompact: string;
   otherWords: string[];
 }
 
+/**
+ * Each row's fields, worked out once per row object: the picker searches the
+ * same library rows on every keystroke.
+ */
+const fieldsCache = new WeakMap<Exercise, SearchFields>();
+
 function searchFields(exercise: Exercise): SearchFields {
+  const cached = fieldsCache.get(exercise);
+  if (cached) return cached;
+
   const name = normalize(exercise.name);
   const aliases = NAME_ALIASES.filter(([pattern]) => pattern.test(name)).map(([, extra]) => extra);
   const muscles = [exercise.muscle_group, exercise.muscle_group_secondary]
     .filter((group): group is NonNullable<typeof group> => Boolean(group))
     .map((group) => `${group} ${MUSCLE_GROUP_LABELS[group] ?? ''}`);
 
-  return {
+  const fields: SearchFields = {
+    name,
     nameWords: name ? name.split(' ') : [],
     nameCompact: name.replace(/ /g, ''),
     otherWords: words([...aliases, ...muscles, exercise.equipment ?? ''].join(' ')),
   };
+  fieldsCache.set(exercise, fields);
+  return fields;
+}
+
+/** A query's words and their forms, normalised once for a whole search. */
+interface SearchQuery {
+  wordForms: string[][];
+  text: string;
+}
+
+function searchQuery(query: string): SearchQuery | null {
+  const queryWords = words(query);
+  if (queryWords.length === 0) return null;
+  return { wordForms: queryWords.map((word) => queryForms(word)), text: queryWords.join(' ') };
 }
 
 /** How well one query word fits: 3 starts a name word, 2 is inside the name, 1 matches other details, 0 none. */
-function wordScore(word: string, fields: SearchFields): number {
+function wordScore(forms: string[], fields: SearchFields): number {
   let best = 0;
-  for (const form of queryForms(word)) {
+  for (const form of forms) {
     if (fields.nameWords.some((nameWord) => nameWord.startsWith(form))) return 3;
     if (fields.nameCompact.includes(form)) best = Math.max(best, 2);
     else if (fields.otherWords.some((other) => other.startsWith(form))) best = Math.max(best, 1);
   }
   return best;
+}
+
+function queryScore(exercise: Exercise, query: SearchQuery): number {
+  const fields = searchFields(exercise);
+  let total = 0;
+  for (const forms of query.wordForms) {
+    const score = wordScore(forms, fields);
+    if (score === 0) return 0;
+    total += score;
+  }
+
+  if (fields.name === query.text) total += 20;
+  else if (fields.name.startsWith(query.text)) total += 10;
+  else if (fields.name.includes(query.text)) total += 5;
+  return total;
 }
 
 /**
@@ -134,30 +174,16 @@ function wordScore(word: string, fields: SearchFields): number {
  * "incline press" finds "Incline Dumbbell Bench Press".
  */
 export function exerciseSearchScore(exercise: Exercise, query: string): number {
-  const queryWords = words(query);
-  if (queryWords.length === 0) return 1;
-
-  const fields = searchFields(exercise);
-  let total = 0;
-  for (const word of queryWords) {
-    const score = wordScore(word, fields);
-    if (score === 0) return 0;
-    total += score;
-  }
-
-  const normalizedQuery = queryWords.join(' ');
-  const name = fields.nameWords.join(' ');
-  if (name === normalizedQuery) total += 20;
-  else if (name.startsWith(normalizedQuery)) total += 10;
-  else if (name.includes(normalizedQuery)) total += 5;
-  return total;
+  const prepared = searchQuery(query);
+  return prepared ? queryScore(exercise, prepared) : 1;
 }
 
 /** Exercises matching the query, best match first (ties keep name order). */
 export function searchExercises<T extends Exercise>(exercises: T[], query: string): T[] {
-  if (words(query).length === 0) return exercises;
+  const prepared = searchQuery(query);
+  if (!prepared) return exercises;
   return exercises
-    .map((exercise, index) => ({ exercise, index, score: exerciseSearchScore(exercise, query) }))
+    .map((exercise, index) => ({ exercise, index, score: queryScore(exercise, prepared) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .map((entry) => entry.exercise);

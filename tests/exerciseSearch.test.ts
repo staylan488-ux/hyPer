@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
+import { exerciseCategory, exerciseSearchScore, searchExercises } from '@/lib/exerciseSearch';
 import type { Exercise, MuscleGroup } from '@/types';
 
 function exercise(name: string, muscle: MuscleGroup = 'chest', equipment: string | null = null): Exercise {
@@ -85,5 +85,49 @@ describe('searchExercises', () => {
 
   it('returns the list unchanged for an empty query', () => {
     expect(searchExercises(library, '  ')).toBe(library);
+  });
+
+  // The picker searches the same rows on every keystroke, so each row's
+  // fields are kept; a repeat search must rank exactly as a fresh one.
+  it('ranks the same on a repeat search as on fresh rows', () => {
+    const queries = ['incline press', 'inc db pr', 'chest press', 'pull ups', 'back extension', 'hyperextension', 'press', 'db', 'x'];
+    for (const query of queries) {
+      const first = searchExercises(library, query);
+      expect(searchExercises(library, query)).toEqual(first);
+      first.forEach((entry) => expect(library).toContain(entry));
+      const fresh = searchExercises(library.map((entry) => ({ ...entry })), query);
+      expect(fresh.map((entry) => entry.name)).toEqual(first.map((entry) => entry.name));
+    }
+  });
+
+  it('keeps ties in the order given', () => {
+    const rows = [exercise('Cable Row B', 'back', 'cable'), exercise('Cable Row A', 'back', 'cable')];
+    expect(searchExercises(rows, 'cable row').map((entry) => entry.name)).toEqual(['Cable Row B', 'Cable Row A']);
+  });
+
+  it('reads each row object for itself, not by id', () => {
+    const cable = { ...exercise('Row', 'back', 'cable'), id: 'row' };
+    const bare = { ...exercise('Row', 'back', null), id: 'row' };
+    expect(searchExercises([cable, bare], 'cable')).toEqual([cable]);
+    expect(searchExercises([bare, cable], 'cable')).toEqual([cable]);
+  });
+});
+
+describe('exerciseSearchScore', () => {
+  it.each([
+    ['Machine Chest Press', 'chest', 'machine', 'chest press', 11],
+    ['Incline Dumbbell Bench Press', 'chest', 'dumbbells', 'chest press', 4],
+    ['Incline Dumbbell Bench Press', 'chest', 'dumbbells', 'Incline Dumbbell Bench-Press', 32],
+    ['Incline Dumbbell Bench Press', 'chest', 'dumbbells', 'Incline', 13],
+    ['Tricep Pushdown', 'triceps', 'cable', 'pushd', 8],
+    ['Overhead Dumbbell Press', 'shoulders', 'dumbbells', 'ohp', 1],
+    ['Pull-Up', 'back', 'bodyweight', 'pull ups', 6],
+    ['Pull-Up', 'back', 'bodyweight', 'squat', 0],
+    ['Pull-Up', 'back', 'bodyweight', '  ', 1],
+  ] as const)('%s (%s, %s) scores %j as %i', (name, muscle, equipment, query, expected) => {
+    const row = exercise(name, muscle, equipment);
+    expect(exerciseSearchScore(row, query)).toBe(expected);
+    // Again, from the kept fields.
+    expect(exerciseSearchScore(row, query)).toBe(expected);
   });
 });

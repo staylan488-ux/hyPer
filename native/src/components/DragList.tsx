@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -97,21 +97,32 @@ export function DragList({ items, enabled, onMove, onHold, onDragging, revision 
     [roundTop, roundBottom, order, heights, active, startTop, dragY, lift],
   );
 
-  // Follow the items' own order whenever it changes (not mid-drag).
+  // Follow the items' own order whenever it changes (not mid-drag). The shared
+  // values never change, so this runs as the signature or revision does.
   useEffect(() => {
-    if (active.value === null) order.value = signature ? signature.split('|') : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, revision]);
+    if (active.get() === null) order.set(signature ? signature.split('|') : []);
+  }, [signature, revision, active, order]);
+
+  // The rows call the latest handlers through these stable ones, so a parent
+  // that passes new handlers on every render (Train does, on every logged set)
+  // does not rebuild each row's drag gesture.
+  const handlers = useRef({ onMove, onHold, onDragging });
+  useLayoutEffect(() => {
+    handlers.current = { onMove, onHold, onDragging };
+  }, [onMove, onHold, onDragging]);
+  const move = (key: string, index: number) => handlers.current.onMove(key, index);
+  const hold = (key: string) => handlers.current.onHold?.(key);
+  const dragging = (lifted: boolean) => handlers.current.onDragging?.(lifted);
 
   // The list's height follows its rows, gliding when one comes or goes.
   const height = useSharedValue<number | null>(null);
   useAnimatedReaction(
-    () => totalOf(order.value, heights.value),
+    () => totalOf(order.get(), heights.get()),
     (next) => {
-      height.value = height.value === null ? next : withTiming(next, SETTLE);
+      height.set(height.get() === null ? next : withTiming(next, SETTLE));
     },
   );
-  const box = useAnimatedStyle(() => ({ height: height.value ?? totalOf(order.value, heights.value) }));
+  const box = useAnimatedStyle(() => ({ height: height.get() ?? totalOf(order.get(), heights.get()) }));
 
   return (
     <Animated.View style={box}>
@@ -121,9 +132,9 @@ export function DragList({ items, enabled, onMove, onHold, onDragging, revision 
           id={item.key}
           shared={shared}
           enabled={enabled && items.length > 1}
-          onMove={onMove}
-          onHold={onHold}
-          onDragging={onDragging}>
+          onMove={move}
+          onHold={hold}
+          onDragging={dragging}>
           {item.node}
         </DragRow>
       ))}
@@ -147,90 +158,98 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
   const startIndex = useSharedValue(-1);
 
   useAnimatedReaction(
-    () => topOf(id, order.value, heights.value),
+    () => topOf(id, order.get(), heights.get()),
     (next, previous) => {
-      if (top.value === null || previous === null) top.value = next;
-      else if (next !== previous) top.value = withTiming(next, SETTLE);
+      if (top.get() === null || previous === null) top.set(next);
+      else if (next !== previous) top.set(withTiming(next, SETTLE));
     },
   );
 
-  const lifted = () => {
-    holdRowPresses();
-    dismissOpenSwipeRow();
-    haptics.lift();
-    onDragging?.(true);
-  };
-  const setDown = (moved: boolean, index: number, held: boolean) => {
-    releaseRowPresses();
-    onDragging?.(false);
-    if (moved) {
-      haptics.land();
-      onMove(id, index);
-    } else if (held) {
-      onHold?.(id);
-    }
-  };
+  // Built once per row, and again only when the row can or can't lift, so a
+  // parent's re-render doesn't re-send the gesture and its worklets. (Left to
+  // the React Compiler it would be rebuilt every render, because the row's own
+  // startIndex counts as mutable to it.) DragList's handlers are stable.
+  const pan = useMemo(() => {
+    const lifted = () => {
+      holdRowPresses();
+      dismissOpenSwipeRow();
+      haptics.lift();
+      onDragging?.(true);
+    };
+    const setDown = (moved: boolean, index: number, held: boolean) => {
+      releaseRowPresses();
+      onDragging?.(false);
+      if (moved) {
+        haptics.land();
+        onMove(id, index);
+      } else if (held) {
+        onHold?.(id);
+      }
+    };
 
-  const pan = Gesture.Pan()
-    .enabled(enabled)
-    .activateAfterLongPress(LIFT_MS)
-    .onStart(() => {
-      active.value = id;
-      startTop.value = topOf(id, order.value, heights.value);
-      startIndex.value = order.value.indexOf(id);
-      dragY.value = 0;
-      lift.value = withSpring(1, { damping: 18, stiffness: 320 });
-      runOnJS(lifted)();
-    })
-    .onUpdate((event) => {
-      const list = order.value;
-      const own = heights.value[id] ?? FALLBACK_HEIGHT;
-      const total = totalOf(list, heights.value);
-      // Kept within the list, as iOS keeps a dragged row in its table.
-      const y = Math.min(Math.max(event.translationY, -startTop.value), total - own - startTop.value);
-      dragY.value = y;
-      // The place whose middle the row's middle has passed.
-      const middle = startTop.value + y + own / 2;
-      const others = list.filter((key) => key !== id);
-      let index = 0;
-      let edge = 0;
-      for (const key of others) {
-        const height = heights.value[key] ?? FALLBACK_HEIGHT;
-        if (middle > edge + height / 2) index += 1;
-        edge += height;
-      }
-      if (list.indexOf(id) !== index) {
-        others.splice(index, 0, id);
-        order.value = others;
-        runOnJS(haptics.select)();
-      }
-    })
-    .onEnd((event) => {
-      const index = order.value.indexOf(id);
-      const moved = index !== startIndex.value;
-      const held = Math.abs(event.translationY) < HOLD_SLOP && Math.abs(event.translationX) < HOLD_SLOP;
-      runOnJS(setDown)(moved, index, held);
-    })
-    .onFinalize(() => {
-      if (active.value !== id) return;
-      // Glide into the place it was dropped, then rest there.
-      const final = topOf(id, order.value, heights.value);
-      lift.value = withTiming(0, SETTLE);
-      dragY.value = withTiming(final - startTop.value, SETTLE, (done) => {
-        if (done && active.value === id) active.value = null;
+    return Gesture.Pan()
+      .enabled(enabled)
+      .activateAfterLongPress(LIFT_MS)
+      .onStart(() => {
+        active.set(id);
+        startTop.set(topOf(id, order.get(), heights.get()));
+        startIndex.set(order.get().indexOf(id));
+        dragY.set(0);
+        lift.set(withSpring(1, { damping: 18, stiffness: 320 }));
+        runOnJS(lifted)();
+      })
+      .onUpdate((event) => {
+        const list = order.get();
+        const own = heights.get()[id] ?? FALLBACK_HEIGHT;
+        const total = totalOf(list, heights.get());
+        // Kept within the list, as iOS keeps a dragged row in its table.
+        const y = Math.min(Math.max(event.translationY, -startTop.get()), total - own - startTop.get());
+        dragY.set(y);
+        // The place whose middle the row's middle has passed.
+        const middle = startTop.get() + y + own / 2;
+        const others = list.filter((key) => key !== id);
+        let index = 0;
+        let edge = 0;
+        for (const key of others) {
+          const height = heights.get()[key] ?? FALLBACK_HEIGHT;
+          if (middle > edge + height / 2) index += 1;
+          edge += height;
+        }
+        if (list.indexOf(id) !== index) {
+          others.splice(index, 0, id);
+          order.set(others);
+          runOnJS(haptics.select)();
+        }
+      })
+      .onEnd((event) => {
+        const index = order.get().indexOf(id);
+        const moved = index !== startIndex.get();
+        const held = Math.abs(event.translationY) < HOLD_SLOP && Math.abs(event.translationX) < HOLD_SLOP;
+        runOnJS(setDown)(moved, index, held);
+      })
+      .onFinalize(() => {
+        if (active.get() !== id) return;
+        // Glide into the place it was dropped, then rest there.
+        const final = topOf(id, order.get(), heights.get());
+        lift.set(withTiming(0, SETTLE));
+        dragY.set(
+          withTiming(final - startTop.get(), SETTLE, (done) => {
+            if (done && active.get() === id) active.set(null);
+          }),
+        );
       });
-    });
+  }, [enabled, id, onDragging, onMove, onHold, active, startTop, startIndex, order, heights, dragY, lift]);
 
   const { roundTop, roundBottom } = shared;
   const place = useAnimatedStyle(() => {
-    const isActive = active.value === id;
-    const y = isActive ? startTop.value + dragY.value : (top.value ?? 0);
-    const raised = isActive ? lift.value : 0;
+    const isActive = active.get() === id;
+    const y = isActive ? startTop.get() + dragY.get() : (top.get() ?? 0);
+    const raised = isActive ? lift.get() : 0;
     // The card's corners belong to whichever rows sit first and last; a
     // lifted row is a card of its own.
-    const index = order.value.indexOf(id);
+    const index = order.get().indexOf(id);
     const first = roundTop && index === 0 ? radius.label : 0;
-    const last = roundBottom && index === order.value.length - 1 ? radius.label : 0;
+    const last = roundBottom && index === order.get().length - 1 ? radius.label : 0;
     const lifted = radius.label * raised;
     return {
       transform: [{ translateY: y }, { scale: 1 + 0.025 * raised }],
@@ -244,7 +263,7 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
   });
   // The rule above a row shows only where a row sits above it, and never on a lifted one.
   const rule = useAnimatedStyle(() => ({
-    opacity: order.value.indexOf(id) > 0 && active.value !== id ? 1 : 0,
+    opacity: order.get().indexOf(id) > 0 && active.get() !== id ? 1 : 0,
   }));
 
   return (
@@ -254,7 +273,7 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
         exiting={blockExit}
         onLayout={(event) => {
           const height = event.nativeEvent.layout.height;
-          if (heights.value[id] !== height) heights.value = { ...heights.value, [id]: height };
+          if (heights.get()[id] !== height) heights.set({ ...heights.get(), [id]: height });
         }}
         style={[{ position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: c.label, overflow: 'hidden', borderCurve: 'continuous' }, place]}>
         <Animated.View style={[{ height: StyleSheet.hairlineWidth, marginLeft: 18, backgroundColor: c.hairline }, rule]} />

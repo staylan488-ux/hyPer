@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { createContext, useCallback, useContext, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from 'react-native-reanimated';
@@ -91,7 +91,7 @@ const FULL_SWIPE_MIN = 160;
  */
 export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; name: string; children: ReactNode }) {
   const swipeable = useRef<SwipeableMethods>(null);
-  const self = useRef<OpenRow>({ close: () => swipeable.current?.close() }).current;
+  const [self] = useState<OpenRow>(() => ({ close: () => swipeable.current?.close() }));
   const armed = useRef(false);
   const mounted = useRef(true);
   // A swipe by the finger, as against a close from code (a tap, a scroll).
@@ -110,7 +110,7 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
   // 0 while swiping; 1 once a full swipe has committed: the row's face fades
   // and the red fills the row, as in Mail.
   const committed = useSharedValue(0);
-  const face = useAnimatedStyle(() => ({ opacity: 1 - committed.value }));
+  const face = useAnimatedStyle(() => ({ opacity: 1 - committed.get() }));
   const destructive = actions.find((action) => action.destructive);
 
   useEffect(
@@ -140,15 +140,21 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
   // the row (it slides away); one that asks first (or fails) comes back.
   const runFull = (action: SwipeAction) => {
     if (openRow === self) openRow = null;
-    committed.value = withTiming(1, { duration: FILL_MS });
+    committed.set(withTiming(1, { duration: FILL_MS }));
     setTimeout(() => {
       action.onPress();
       setTimeout(() => {
         if (!mounted.current) return;
-        committed.value = withTiming(0, { duration: FILL_MS });
+        committed.set(withTiming(0, { duration: FILL_MS }));
         swipeable.current?.close();
       }, 450);
     }, FILL_MS);
+  };
+  // One firm tick as the red takes over, none as it lets go. Made once, so
+  // the actions' reaction to the swipe keeps running across renders.
+  const onArm = (next: boolean) => {
+    if (next && !armed.current) haptics.tap();
+    armed.current = next;
   };
 
   return (
@@ -160,8 +166,8 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
         if (action) run(action);
       }}
       onLayout={(event) => {
-        rowWidth.value = event.nativeEvent.layout.width;
-        fullSwipe.value = Math.max(FULL_SWIPE_MIN, event.nativeEvent.layout.width * FULL_SWIPE_SHARE);
+        rowWidth.set(event.nativeEvent.layout.width);
+        fullSwipe.set(Math.max(FULL_SWIPE_MIN, event.nativeEvent.layout.width * FULL_SWIPE_SHARE));
       }}>
       <ReanimatedSwipeable
         ref={swipeable}
@@ -199,11 +205,7 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
             fullSwipe={fullSwipe}
             rowWidth={rowWidth}
             committed={committed}
-            onArm={(next) => {
-              // One firm tick as the red takes over, none as it lets go.
-              if (next && !armed.current) haptics.tap();
-              armed.current = next;
-            }}
+            onArm={onArm}
             onRun={run}
           />
         )}>
@@ -228,16 +230,18 @@ function Actions({ actions, name, translation, fullSwipe, rowWidth, committed, o
   const c = useBlanc();
   const hasDestructive = actions.some((action) => action.destructive);
   useAnimatedReaction(
-    () => hasDestructive && translation.value < -fullSwipe.value,
+    () => hasDestructive && translation.get() < -fullSwipe.get(),
     (now, before) => {
       if (now !== before) runOnJS(onArm)(now);
     },
   );
   // On a long swipe the red action grows to fill the row, like iOS, and takes
-  // all of it once the swipe commits.
+  // all of it once the swipe commits. The other actions' width is worked out
+  // here, so the style captures a number rather than the actions themselves.
+  const othersWidth = (actions.length - 1) * ACTION_WIDTH;
   const grow = useAnimatedStyle(() => {
-    const swiped = Math.max(ACTION_WIDTH, -translation.value - (actions.length - 1) * ACTION_WIDTH);
-    return { width: swiped + (Math.max(swiped, rowWidth.value) - swiped) * committed.value };
+    const swiped = Math.max(ACTION_WIDTH, -translation.get() - othersWidth);
+    return { width: swiped + (Math.max(swiped, rowWidth.get()) - swiped) * committed.get() };
   });
 
   return (
