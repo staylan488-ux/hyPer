@@ -228,7 +228,12 @@ function save(part: Part) {
   } catch {
     return;
   }
-  if (body === undefined) return; // nothing this launch has read or written: the saved copy stays as it is
+  if (body === undefined) {
+    // Fuel moved to another month: the saved month would no longer follow
+    // today's edits (one moved into another day of it, say), so it goes.
+    if (part === 'month' && leftTodaysMonth()) persist(part, null);
+    return; // otherwise nothing this launch has read or written: the saved copy stays as it is
+  }
   const stamp = { v: LAUNCH_SNAPSHOT_VERSION, part, userId, ...stampBase, savedAt: clock().getTime() };
   let out: ReturnType<typeof serializeEnvelope>;
   try {
@@ -237,6 +242,12 @@ function save(part: Part) {
     out = null;
   }
   persist(part, out);
+}
+
+/** Fuel shows another month than today's, from a read of its own (not the copy). */
+function leftTodaysMonth(): boolean {
+  const f = useFuelStore.getState();
+  return f.loadedMonth !== null && f.loadedMonth !== f.todayKey.slice(0, 7) && !isFuelMonthFromCopy();
 }
 
 /** A part's body from this launch's own reads or edits, or undefined when nothing of it is fresh. */

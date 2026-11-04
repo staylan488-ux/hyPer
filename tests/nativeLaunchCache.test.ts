@@ -206,15 +206,19 @@ describe('restoring the copy at launch', () => {
       todayKey: '2026-11-05', todayTotals: { calories: 0 }, loadedMonth: '2026-11', logs: [{ id: 'a' }],
     });
 
-    // Later on day one Fuel goes to October and food is logged from Today:
-    // today's figures are saved again, but the month (still this month's older copy) can't be.
+    // Later on day one Fuel goes to October: this month's copy would no longer
+    // follow edits (an entry moved to another day of it), so it is removed.
+    // Food logged from Today still saves today's figures.
     const { modules, storage } = await dayOne();
+    expect(saved(storage, 'month')?.body).toMatchObject({ dayKey: DAY, logs: [{ id: 'a' }] });
     modules.fuel.setState({ loadedMonth: '2026-10', logs: [], groups: [] });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(storage.values.has('hyper-launch:month')).toBe(false);
     modules.fuel.setState({ todayTotals: { calories: 860, protein: 52, carbs: 10, fat: 4 } });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(saved(storage, 'today')?.body).toEqual({ dayKey: DAY, totals: { calories: 860, protein: 52, carbs: 10, fat: 4 } });
-    expect(saved(storage, 'month')?.body).toMatchObject({ dayKey: DAY, logs: [{ id: 'a' }] });
-    // The next day that month no longer matches the figures it was left beside: Fuel reads it instead.
+    expect(storage.values.has('hyper-launch:month')).toBe(false);
+    // The next day Fuel reads the month instead.
     expect(await nextDay(storage)).toMatchObject({
       todayKey: '2026-11-05', todayTotals: { calories: 0 }, loadedMonth: null, status: 'idle', logs: [],
     });

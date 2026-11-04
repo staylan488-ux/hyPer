@@ -64,8 +64,8 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     screen, Action button), App Shortcuts (Snap a meal, Log food, Open Train)
     and quick actions (Snap a meal, Log food, Train). The menu's "Start
     workout" became Train, which only opens the tab (the owner chose it).
-    A press waits out a Search result's portion read; closing Log food then
-    still closes, as before. Device checks: the Xcode 26.6 build (App Intents
+    Snap a meal during a Search result's portion read is refused (error
+    haptic); closing Log food then still closes, as before. Device checks: the Xcode 26.6 build (App Intents
     metadata, phrase validation, any openAppWhenRun warning); the control
     pressed warm, cold and locked (if it doesn't open the app, use the
     OpenIntent fallback in the design); Shortcuts listing Snap a meal once;

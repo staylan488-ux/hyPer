@@ -30,7 +30,7 @@ export type LoggerContextValue = {
   complete: () => void;
   /** Claims the sheet for a lookup; the returned cleanup releases only that claim, once. Closing asks first meanwhile. */
   beginBusy: () => () => void;
-  /** Claims the sheet for a read that opens a food (Search's portion read): Snap a meal waits it out, closing doesn't ask. */
+  /** Claims the sheet for a read that opens a food (Search's portion read): Snap a meal is refused meanwhile, and closing doesn't ask. */
   beginRead: () => () => void;
 };
 

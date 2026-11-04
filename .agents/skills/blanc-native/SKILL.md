@@ -50,7 +50,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   the person's edits, and never runs in preview. Today's plan-card seed is
   drawn only while its `planBasis` (program days, saved schedule, adaptive
   scheduling) matches the live one, and Fuel's month only beside the today
-  figures it was saved with (its `dayKey`). Sign-out, another account, a
+  figures it was saved with (its `dayKey`; Fuel moving to another month
+  removes it). Sign-out, another account, a
   launch with no saved sign-in and each new build drop it. While Fuel shows
   the copied month it makes no default meals, and an edit re-reads the month
   (`editsCopy` in `native/src/lib/fuel.ts`). Bump `LAUNCH_SNAPSHOT_VERSION`
