@@ -18,6 +18,8 @@ import { useBlanc } from '~/theme/blanc';
 // at the top of Train before a session starts. A finished day stays as its
 // record: the session's name, sets and time, and its tally, opening the workout.
 const PLAN_CARD_HEIGHT = 78;
+// A finished day's record: padding 14 + headline 22 + 2 + line 20 + 8 + tally 24 + 14.
+const RECORD_HEIGHT = 104;
 
 export function PlanCard({ hero, next, place }: { hero: HeroState; next: string | null; place: 'today' | 'train' }) {
   const c = useBlanc();
@@ -56,8 +58,8 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
       detail = next ? `Next: ${next}` : null;
       break;
     case 'done': {
-      // Holds the card's place while History is read for the workout.
-      if (finished === undefined) return <View style={{ height: PLAN_CARD_HEIGHT, marginTop: 18 }} />;
+      // Holds the record's place while History is read for the workout.
+      if (finished === undefined) return <View style={{ height: RECORD_HEIGHT, marginTop: 18 }} />;
       if (!finished) {
         title = 'Trained today';
         detail = next ? `Next: ${next}` : null;
@@ -69,7 +71,12 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
       title = finished.title;
       detail = [
         'Trained today',
-        finished.sets > 0 ? `${finished.sets} ${finished.sets === 1 ? 'set' : 'sets'}` : null,
+        // "3 of 9 sets" only when some sets were not logged, as session done and History write it.
+        finished.sets > 0
+          ? finished.sets < finished.marks.length
+            ? `${finished.sets} of ${finished.marks.length} sets`
+            : `${finished.sets} ${finished.sets === 1 ? 'set' : 'sets'}`
+          : null,
         finished.minutes ? formatMinutes(finished.minutes) : null,
         nextName ? `Next: ${nextName}` : null,
       ]
