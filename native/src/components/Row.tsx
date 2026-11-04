@@ -2,6 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { speak, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
@@ -35,11 +36,18 @@ type RowProps = {
   accessibilityLabel?: string;
 };
 
-/** A list row that highlights under the finger, like an iOS table cell. */
+/**
+ * A list row that highlights under the finger, like an iOS table cell. At
+ * the accessibility text sizes its words wrap and the value moves under the
+ * title, as in iOS's own lists, instead of being cut short.
+ */
 export function Row({ title, detail, value, leading, trailing, chevron, quiet, destructive, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
   const c = useBlanc();
-  // Spoken as its words only: icons such as the chevron add nothing.
-  const label = accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', ');
+  const large = useLargeText();
+  // Spoken as its words only: icons such as the chevron add nothing, and
+  // shorthand reads as words ("3 × 8–12 · last 135 lb" as "3 × 8 to 12,
+  // last 135 pounds").
+  const label = speak(accessibilityLabel ?? [title, detail, value].filter(Boolean).join(', '));
   // VoiceOver offers the menu's items (or the long-press action) and any
   // swipe actions around the row. A swipe action the menu covers (Delete in
   // both, or More, which opens the same items) is left out.
@@ -68,16 +76,21 @@ export function Row({ title, detail, value, leading, trailing, chevron, quiet, d
     <>
       {leading}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <BlancText variant={quiet ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={1}>
+        <BlancText variant={quiet ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={large ? undefined : 1}>
           {title}
         </BlancText>
         {detail ? (
-          <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
+          <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
             {detail}
           </BlancText>
         ) : null}
+        {value && large ? (
+          <BlancText variant="secondary" tone="graphite" style={{ marginTop: 1, fontVariant: ['tabular-nums'] }}>
+            {value}
+          </BlancText>
+        ) : null}
       </View>
-      {value ? (
+      {value && !large ? (
         <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
           {value}
         </BlancText>

@@ -1,8 +1,9 @@
 import { DatePicker, Host } from '@expo/ui/swift-ui';
-import { datePickerStyle, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
-import { useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import { datePickerStyle, disabled as swiftDisabled, labelsHidden, tint } from '@expo/ui/swift-ui/modifiers';
+import { Children, useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
 
+import { fieldLabel, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -16,6 +17,21 @@ const rowStyle = {
   paddingLeft: 18,
   paddingRight: 16,
 };
+
+/**
+ * At the accessibility text sizes a form row stacks its label over its
+ * control, as iOS's Settings does, so neither is squeezed or cut short.
+ */
+const stackedRowStyle = {
+  gap: 4,
+  minHeight: 52,
+  paddingLeft: 18,
+  paddingRight: 16,
+  paddingVertical: 12,
+};
+
+/** Text that VoiceOver skips: what it says is part of the control beside it. */
+const spokenByControl = { accessibilityElementsHidden: true, importantForAccessibility: 'no' as const };
 
 /** The instance a TextInput's ref holds. */
 export type TextField = ComponentRef<typeof TextInput>;
@@ -48,29 +64,24 @@ type FieldRowProps = Omit<TextInputProps, 'style'> & {
 /**
  * A labelled field inside a Label, like an iOS settings form row: a tap
  * anywhere on the row puts the cursor in its field. A field that cannot be
- * edited reads in graphite.
+ * edited reads in graphite. VoiceOver finds one element, the field, named
+ * with its label and unit ("Protein, grams"); at the accessibility text
+ * sizes the label sits over the field.
  */
 export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType, returnKeyType, ...input }: FieldRowProps) {
   const c = useBlanc();
+  const large = useLargeText();
   const field = useRef<TextField>(null);
   useImperativeHandle(ref, () => field.current as TextField);
   const locked = input.editable === false;
   const wraps = Boolean(wide && grows);
   const { onChangeText } = input;
-  return (
-    <Pressable
-      accessible={false}
-      onPress={() => field.current?.focus()}
-      disabled={locked}
-      // a wrapped value starts on the label's line
-      style={wraps ? [rowStyle, { alignItems: 'flex-start', paddingVertical: 15 }] : rowStyle}>
-      <BlancText variant="body" tone={invalid ? 'live' : 'ink'} style={wide ? undefined : { flex: 1 }}>
-        {label}
-      </BlancText>
+  const textInput = (
       <TextInput
         ref={field}
         placeholderTextColor={c.upcoming}
-        accessibilityLabel={label}
+        accessibilityLabel={fieldLabel(label, unit)}
+        accessibilityHint={invalid ? 'Check this value' : undefined}
         keyboardType={keyboardType}
         returnKeyType={wraps ? returnKeyType ?? 'done' : numberPadReturnKey(keyboardType, returnKeyType)}
         {...(wraps ? { multiline: true, scrollEnabled: false, submitBehavior: 'blurAndSubmit' as const } : null)}
@@ -84,13 +95,37 @@ export function FieldRow({ ref, label, unit, wide, grows, invalid, keyboardType,
           { color: locked ? c.graphite : c.ink, padding: 0, minHeight: wraps ? 22 : 44, textAlign: wide ? 'left' : 'right' },
           wraps ? { paddingTop: 0 } : null,
           wide ? { flex: 1 } : { minWidth: 72, fontVariant: ['tabular-nums'] },
+          // Stacked under its label, a number starts at the left like a name.
+          large ? { flex: 1, textAlign: 'left' } : null,
         ]}
       />
-      {unit ? (
-        <BlancText variant="body" tone="graphite" style={{ minWidth: 30 }}>
-          {unit}
-        </BlancText>
-      ) : null}
+  );
+  const unitText = unit ? (
+    <BlancText variant="body" tone="graphite" style={{ minWidth: 30 }} {...spokenByControl}>
+      {unit}
+    </BlancText>
+  ) : null;
+  return (
+    <Pressable
+      accessible={false}
+      onPress={() => field.current?.focus()}
+      disabled={locked}
+      // a wrapped value starts on the label's line
+      style={large ? stackedRowStyle : wraps ? [rowStyle, { alignItems: 'flex-start', paddingVertical: 15 }] : rowStyle}>
+      <BlancText variant="body" tone={invalid ? 'live' : 'ink'} style={wide || large ? undefined : { flex: 1 }} {...spokenByControl}>
+        {label}
+      </BlancText>
+      {large ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {textInput}
+          {unitText}
+        </View>
+      ) : (
+        <>
+          {textInput}
+          {unitText}
+        </>
+      )}
     </Pressable>
   );
 }
@@ -131,6 +166,8 @@ export function NumberFieldRow({ value, onChangeValue, ...props }: Omit<FieldRow
  * A labelled switch row, with an optional quiet line under the label. The
  * switch stays where it was flipped while the change saves (the caller sets
  * `disabled` meanwhile) and goes back only if the saved value differs.
+ * VoiceOver finds one element, the switch, with the label as its name and
+ * the quiet line as its hint.
  */
 export function ToggleRow({ label, detail, value, onChange, disabled }: {
   label: string;
@@ -145,7 +182,7 @@ export function ToggleRow({ label, detail, value, onChange, disabled }: {
   }, [disabled, value]);
   return (
     <View style={[rowStyle, { paddingVertical: 10 }]}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1 }} {...spokenByControl}>
         <BlancText variant="body">{label}</BlancText>
         {detail ? (
           <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2 }}>
@@ -155,6 +192,7 @@ export function ToggleRow({ label, detail, value, onChange, disabled }: {
       </View>
       <Switch
         accessibilityLabel={label}
+        accessibilityHint={detail}
         value={pending ?? value}
         disabled={disabled}
         onValueChange={(next) => {
@@ -167,7 +205,11 @@ export function ToggleRow({ label, detail, value, onChange, disabled }: {
   );
 }
 
-/** A row holding iOS's compact date or time picker. */
+/**
+ * A row holding iOS's compact date or time picker. The picker carries the
+ * label for VoiceOver (SwiftUI keeps a hidden label for it); at the
+ * accessibility text sizes the label sits over the picker.
+ */
 export function PickerRow({ label, value, mode, max, onChange, disabled }: {
   label: string;
   value: Date;
@@ -177,13 +219,15 @@ export function PickerRow({ label, value, mode, max, onChange, disabled }: {
   disabled?: boolean;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   return (
-    <View style={[rowStyle, { opacity: disabled ? 0.5 : 1 }]} pointerEvents={disabled ? 'none' : 'auto'}>
-      <BlancText variant="body" style={{ flex: 1 }}>
+    <View style={large ? [stackedRowStyle, { alignItems: 'flex-start' as const }] : rowStyle} pointerEvents={disabled ? 'none' : 'auto'}>
+      <BlancText variant="body" style={[large ? null : { flex: 1 }, { opacity: disabled ? 0.5 : 1 }]} {...spokenByControl}>
         {label}
       </BlancText>
       <Host matchContents>
         <DatePicker
+          title={label}
           selection={value}
           displayedComponents={[mode === 'date' ? 'date' : 'hourAndMinute']}
           range={max ? { end: max } : undefined}
@@ -191,15 +235,31 @@ export function PickerRow({ label, value, mode, max, onChange, disabled }: {
             haptics.select();
             onChange(next);
           }}
-          modifiers={[datePickerStyle('compact'), labelsHidden(), tint(c.ink)]}
+          // SwiftUI's own disabled state dims the picker and holds it for
+          // VoiceOver too, which acts without touches.
+          modifiers={[datePickerStyle('compact'), labelsHidden(), tint(c.ink), swiftDisabled(Boolean(disabled))]}
         />
       </Host>
     </View>
   );
 }
 
-/** Text under a form block: a hint, or an error in red. */
+/** Plain text children as one string (null when they hold anything else). */
+function plainText(children: ReactNode): string | null {
+  let text = '';
+  for (const child of Children.toArray(children)) {
+    if (typeof child === 'string' || typeof child === 'number') text += String(child);
+    else return null;
+  }
+  return text;
+}
+
+/**
+ * Text under a form block: a hint, or an error in red. VoiceOver announces
+ * an error when it appears or changes (iOS has no live regions).
+ */
 export function FormNote({ children, alert }: { children: ReactNode; alert?: boolean }) {
+  useAnnounce(alert ? plainText(children) : null);
   return (
     <BlancText
       variant="footnote"

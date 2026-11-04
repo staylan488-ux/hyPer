@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, View, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
@@ -25,7 +26,10 @@ type CapsuleProps = {
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const pressSpring = { damping: 20, stiffness: 420, mass: 0.6 };
 
-/** Blanc's button: a capsule that gives under the finger. */
+/**
+ * Blanc's button: a capsule that gives under the finger. At the accessibility
+ * text sizes it grows taller and its title wraps instead of being cut short.
+ */
 export function Capsule({
   title,
   onPress,
@@ -39,6 +43,7 @@ export function Capsule({
   style,
 }: CapsuleProps) {
   const c = useBlanc();
+  const large = useLargeText();
   const scale = useSharedValue(1);
   const height = size === 'large' ? 54 : 44;
   const primary = variant === 'primary';
@@ -64,7 +69,9 @@ export function Capsule({
       }}
       style={[
         {
-          height,
+          // The drawn height below the accessibility text sizes; at them, at
+          // least that and as tall as the title needs.
+          ...(large ? { minHeight: height, paddingVertical: 10 } : { height }),
           // A capsule that fills its space only needs room for its round ends,
           // so short titles fit when several share a row.
           paddingHorizontal: fill ? 12 : size === 'large' ? 26 : 20,
@@ -82,14 +89,14 @@ export function Capsule({
       {busy ? (
         <ActivityIndicator color={primary ? c.onCapsule : c.ink} />
       ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 8 }, large ? { flexShrink: 1 } : null]}>
           {icon}
           <BlancText
             variant="headline"
             tone={primary ? 'onCapsule' : 'ink'}
             size={size === 'large' ? 17 : 16}
-            numberOfLines={1}
-            style={{ lineHeight: size === 'large' ? 22 : 20 }}>
+            numberOfLines={large ? 3 : 1}
+            style={[{ lineHeight: size === 'large' ? 22 : 20 }, large ? { flexShrink: 1, textAlign: 'center' } : null]}>
             {title}
           </BlancText>
         </View>

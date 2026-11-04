@@ -14,10 +14,11 @@ import {
 } from '@expo/ui/swift-ui/modifiers';
 import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
 
+import { useReduceMotion } from '~/lib/accessibility';
 import { figureFrame, ROLL_SECONDS, rollsDown } from '~/lib/rollingFigure';
 import { useBlanc } from '~/theme/blanc';
+import { roleScale } from '~/theme/textSize';
 
 import { BlancText, blancTextStyle, type BlancTextProps } from './BlancText';
 
@@ -71,7 +72,8 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
 }) {
   const c = useBlanc();
   const { fontScale, width: room } = useWindowDimensions();
-  const reducedMotion = useReducedMotion();
+  // Followed live: turning Reduce Motion on stops the next roll.
+  const reducedMotion = useReduceMotion();
   const text = children;
 
   // Each change is one step of the animation, with its own direction.
@@ -86,7 +88,10 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
   for (const [key, value] of Object.entries(flat)) (PLACEMENT.has(key) ? placement : drawing)[key] = value;
   const textStyle = drawing as TextStyle;
 
-  const fontSize = (textStyle.fontSize ?? 17) * fontScale;
+  // The size React Native draws the hidden copy at: the role grows like its
+  // iOS text style (and a figure no further than its cap), so the two agree
+  // at every text size.
+  const fontSize = (textStyle.fontSize ?? 17) * roleScale(variant, fontScale);
   const placed = figureFrame(textStyle.textAlign, textStyle.fontSize ?? 17, textStyle.lineHeight);
   const tabular = Array.isArray(textStyle.fontVariant) && textStyle.fontVariant.includes('tabular-nums');
   const color = typeof textStyle.color === 'string' ? textStyle.color : c[tone];
@@ -98,7 +103,8 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
       ...(textStyle.fontFamily ? { family: textStyle.fontFamily } : {}),
     }),
     ...(tabular ? [monospacedDigit()] : []),
-    ...(textStyle.letterSpacing ? [kerning(textStyle.letterSpacing * fontScale)] : []),
+    // React Native keeps letter spacing in points at every text size.
+    ...(textStyle.letterSpacing ? [kerning(textStyle.letterSpacing)] : []),
     foregroundStyle(color),
     lineLimit(1),
     fixedSize(),
@@ -114,7 +120,8 @@ export function RollingText({ children, countsDown, style, variant = 'body', ton
 
   return (
     <View style={placement as StyleProp<ViewStyle>}>
-      <BlancText {...rest} numberOfLines={1} style={[textStyle, { color: 'transparent' }]}>
+      {/* The role's own text sizing (a figure's cap), not body's. */}
+      <BlancText {...rest} variant={variant} numberOfLines={1} style={[textStyle, { color: 'transparent' }]}>
         {text}
       </BlancText>
       <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>

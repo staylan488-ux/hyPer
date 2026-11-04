@@ -25,6 +25,7 @@ import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { TabScroll, tabBarCover } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
+import { screenReaderRunning } from '~/lib/accessibility';
 import { useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
@@ -49,6 +50,8 @@ type Draft = { setId: string; weight: string; reps: string; rpe: number | null; 
 const BEAT_MOMENT_MS = 4000;
 /** How long Undo stays after a skip, as in the program editor. */
 const UNDO_MS = 5000;
+/** With VoiceOver, which takes a few swipes to reach the bar at the foot. */
+const UNDO_MS_SCREEN_READER = 20000;
 
 /**
  * The web's autofill rule: set 1 starts from last workout's set 1, later sets
@@ -144,7 +147,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [undo, setUndo] = useState<{ key: number; exerciseId: string; name: string; wasCurrent: boolean } | null>(null);
   useEffect(() => {
     if (!undo) return;
-    const timer = setTimeout(() => setUndo((latest) => (latest?.key === undo.key ? null : latest)), UNDO_MS);
+    const timer = setTimeout(
+      () => setUndo((latest) => (latest?.key === undo.key ? null : latest)),
+      screenReaderRunning() ? UNDO_MS_SCREEN_READER : UNDO_MS,
+    );
     return () => clearTimeout(timer);
   }, [undo]);
   const weightField = useRef<TextField>(null);
@@ -235,8 +241,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     Keyboard.dismiss();
     const wasCurrent = movement.exerciseId === current?.movement.exerciseId;
     const key = Date.now();
+    // The Undo bar announces "<name> skipped" as it appears.
     setUndo({ key, exerciseId: movement.exerciseId, name: movement.name, wasCurrent });
-    AccessibilityInfo.announceForAccessibility(`${movement.name} skipped`);
     void setSkipped(session.workoutId, movement, true).then((saved) => {
       if (saved) return;
       setUndo((latest) => (latest?.key === key ? null : latest));

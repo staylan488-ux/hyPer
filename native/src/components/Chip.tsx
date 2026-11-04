@@ -1,5 +1,6 @@
 import { Pressable } from 'react-native';
 
+import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
@@ -16,6 +17,8 @@ export function Chip({ label, selected, onPress, onLongPress }: {
   onLongPress?: { label: string; run: () => void };
 }) {
   const c = useBlanc();
+  // At the accessibility text sizes the chip grows with its label.
+  const large = useLargeText();
   return (
     <Pressable
       accessibilityRole="button"
@@ -39,7 +42,7 @@ export function Chip({ label, selected, onPress, onLongPress }: {
           : undefined
       }
       style={({ pressed }) => ({
-        height: 34,
+        ...(large ? { minHeight: 34, paddingVertical: 6 } : { height: 34 }),
         paddingHorizontal: 14,
         borderRadius: 17,
         justifyContent: 'center',

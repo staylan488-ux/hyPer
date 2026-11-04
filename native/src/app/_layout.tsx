@@ -4,18 +4,19 @@ import { useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { useReducedMotion } from 'react-native-reanimated';
+import { ReducedMotionConfig, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 
 import { maybeSeedPreview } from '@/preview/previewSeed';
 import { useAuthStore } from '@/stores/authStore';
 import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
+import { useReduceMotionOverride } from '~/lib/accessibility';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
 import { restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
-import { palettes } from '~/theme/blanc';
+import { useBlanc } from '~/theme/blanc';
 
 // Light or Dark chosen in You applies before anything draws.
 restoreAppearance();
@@ -31,7 +32,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const dark = useColorScheme() === 'dark';
-  const p = dark ? palettes.dark : palettes.light;
+  const p = useBlanc();
   const base = dark ? DarkTheme : DefaultTheme;
   const theme = {
     ...base,
@@ -211,9 +212,21 @@ export default function RootLayout() {
           </Stack.Protected>
         </Stack>
         {introDone ? null : <BrandIntro ready={screen !== 'boot'} onDone={() => setIntroDone(true)} />}
+        <ReduceMotionSync />
         {__DEV__ ? <DevLaunchRunner /> : null}
       </ThemeProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
+}
+
+/**
+ * Reanimated reads Reduce Motion once, at launch, and every animation that
+ * does not say otherwise follows it. Once the setting changes while the app
+ * runs, this holds Reanimated to the new value, so a change applies at once
+ * instead of at the next launch.
+ */
+function ReduceMotionSync() {
+  const override = useReduceMotionOverride();
+  return override === null ? null : <ReducedMotionConfig mode={override ? ReduceMotion.Always : ReduceMotion.Never} />;
 }

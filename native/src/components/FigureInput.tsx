@@ -2,6 +2,7 @@ import { useState, type Ref } from 'react';
 import { Text, TextInput, View, type TextInputProps, type TextStyle } from 'react-native';
 
 import { type as typeScale, useBlanc } from '~/theme/blanc';
+import { FIGURE_MAX_SCALE } from '~/theme/textSize';
 
 import { numberPadReturnKey, type TextField } from './Form';
 
@@ -12,7 +13,8 @@ type FigureInputProps = Omit<TextInputProps, 'style'> & { ref?: Ref<TextField>; 
  * first given, so an invisible copy of the text measures the width the
  * number needs and the field hugs it as the value changes (never narrower
  * than a fingertip). Number pads get iOS's Done bar unless the screen brings
- * its own keys.
+ * its own keys. It grows with the text size like the figures it sits among,
+ * up to their cap.
  */
 export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboardType, returnKeyType, ...rest }: FigureInputProps) {
   const c = useBlanc();
@@ -25,6 +27,7 @@ export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboar
   return (
     <View>
       <Text
+        maxFontSizeMultiplier={FIGURE_MAX_SCALE}
         style={[...style, { position: 'absolute', opacity: 0 }]}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
         accessibilityElementsHidden
@@ -36,6 +39,7 @@ export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboar
         {...rest}
         keyboardType={keyboardType}
         returnKeyType={numberPadReturnKey(keyboardType, returnKeyType)}
+        maxFontSizeMultiplier={FIGURE_MAX_SCALE}
         value={value}
         placeholder={placeholder}
         placeholderTextColor={c.upcoming}
