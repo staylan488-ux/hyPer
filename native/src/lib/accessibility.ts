@@ -106,8 +106,9 @@ export function announce(message: string | null | undefined) {
 }
 
 /**
- * Announces a status line when it appears or changes, as React Native's
- * `accessibilityLiveRegion` does on Android only. Nothing when it clears.
+ * Announces a status line when it appears or changes. React Native's live
+ * region prop does this on Android only; iOS needs an announcement. Nothing
+ * when it clears.
  */
 export function useAnnounce(message: string | null | undefined | false) {
   const last = useRef<string | null>(null);

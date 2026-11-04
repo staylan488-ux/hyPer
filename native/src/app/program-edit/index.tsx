@@ -40,6 +40,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { UndoBar } from '~/components/UndoBar';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { afterProgramSaved, confirmAlert } from '~/lib/program';
@@ -68,6 +69,7 @@ const cancel = () => {
 
 function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const [stored, setStored] = useState(() => (userId ? readSplitDraft(userId, NEW_SPLIT_DRAFT_ID) : null));
   const [answers, setAnswers] = useState<ProgramDesignAnswers>(DEFAULT_PROGRAM_ANSWERS);
@@ -75,6 +77,10 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const guided = useMemo(() => guidedTemplate(answers), [answers]);
+  const guidedLine = `${plural(guided.days.length, 'day')} a week · ${plural(templateExerciseCount(guided), 'exercise')}`;
+  // The plan follows the answers: VoiceOver hears it change once one is chosen.
+  const [answered, setAnswered] = useState(false);
+  useAnnounce(answered && `${guided.name} · ${guidedLine}`);
 
   const startGuided = async () => {
     setLoading(true);
@@ -94,6 +100,7 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
 
   const answer = <K extends keyof ProgramDesignAnswers>(key: K, value: ProgramDesignAnswers[K]) => {
     haptics.select();
+    setAnswered(true);
     setAnswers((current) => ({ ...current, [key]: value }));
   };
 
@@ -113,8 +120,8 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
               Unsaved program{stored.draft.name.trim() ? ` “${stored.draft.name.trim()}”` : ''} · {plural(stored.draft.days.length, 'day')}, from{' '}
               {formatDistanceToNowStrict(stored.savedAt, { addSuffix: true })}.
             </BlancText>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: large ? 'column' : 'row', gap: 10 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Discard it"
                   variant="quiet"
@@ -134,7 +141,7 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
                   }}
                 />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Resume"
                   fill
@@ -161,10 +168,10 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
             <Choice question={EXPERIENCE_QUESTION} value={answers.experience} onChange={(value) => answer('experience', value)} />
           </View>
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
-            <View accessibilityLiveRegion="polite">
+            <View accessible accessibilityLabel={speak(`${guided.name} · ${guidedLine}`)}>
               <BlancText variant="headline">{guided.name}</BlancText>
               <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
-                {plural(guided.days.length, 'day')} a week · {plural(templateExerciseCount(guided), 'exercise')}
+                {guidedLine}
               </BlancText>
             </View>
             <Capsule title="Start from this plan" size="large" fill busy={loading} onPress={() => void startGuided()} />
@@ -232,6 +239,7 @@ function Choice<K extends keyof ProgramDesignAnswers, T extends string>({
 
 function Editor({ notice }: { notice: string | null }) {
   const c = useBlanc();
+  const large = useLargeText();
   const draft = useSplitEditStore((state) => state.draft);
   const isDirty = useSplitEditStore((state) => state.isDirty);
   const saving = useSplitEditStore((state) => state.saving);
@@ -251,6 +259,7 @@ function Editor({ notice }: { notice: string | null }) {
       createSplit: useAppStore.getState().createSplit,
       onSaved: (saved) => {
         haptics.success();
+        announce(saved.created ? `${saved.name} created` : `${saved.name} saved`);
         afterProgramSaved(saved);
       },
       onClose: () => router.back(),
@@ -313,8 +322,8 @@ function Editor({ notice }: { notice: string | null }) {
                 The program has changed since. Restoring replaces those changes when you save.
               </BlancText>
             ) : null}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: large ? 'column' : 'row', gap: 10 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Discard them"
                   variant="quiet"
@@ -333,7 +342,7 @@ function Editor({ notice }: { notice: string | null }) {
                   }}
                 />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Restore"
                   fill
@@ -397,9 +406,17 @@ function TextField({ label, initial, placeholder, maxLength, onChange }: {
   onChange: (text: string) => void;
 }) {
   const c = useBlanc();
+  // At the accessibility text sizes the label sits over the field, as FieldRow's does.
+  const large = useLargeText();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16, paddingVertical: 15 }}>
-      <BlancText variant="body" style={{ width: 104 }}>
+    <View
+      style={
+        large
+          ? { gap: 4, minHeight: 52, paddingLeft: 18, paddingRight: 16, paddingVertical: 12 }
+          : { flexDirection: 'row', alignItems: 'flex-start', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16, paddingVertical: 15 }
+      }>
+      {/* The field carries the label for VoiceOver. */}
+      <BlancText variant="body" style={large ? undefined : { width: 104 }} accessibilityElementsHidden importantForAccessibility="no">
         {label}
       </BlancText>
       {/* Grows to fit a long name; Return finishes instead of adding a line. */}
@@ -416,7 +433,7 @@ function TextField({ label, initial, placeholder, maxLength, onChange }: {
         returnKeyType="done"
         selectionColor={c.ink}
         accessibilityLabel={label}
-        style={[typeScale.fieldLines, { flex: 1, color: c.ink, padding: 0, paddingTop: 0 }]}
+        style={[typeScale.fieldLines, { color: c.ink, padding: 0, paddingTop: 0 }, large ? null : { flex: 1 }]}
       />
     </View>
   );
@@ -453,6 +470,8 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
   const move = (direction: -1 | 1) => {
     haptics.select();
     store().reorderDays(day.id, direction);
+    // The row moves by sight only; VoiceOver stays on it.
+    announce(`${label} moved ${direction < 0 ? 'earlier' : 'later'}`);
   };
   const menu: MenuAction[] = [
     { title: 'Rename', symbol: 'pencil', run: rename },

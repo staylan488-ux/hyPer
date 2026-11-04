@@ -19,6 +19,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { announce, spokenClock } from '~/lib/accessibility';
 import { formatLoad } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
@@ -63,8 +64,10 @@ export default function PastWorkoutScreen() {
   }
 
   const title = historyWorkoutTitle(workout, plan);
-  const duration = formatWorkoutDuration(getWorkoutDurationMs(workout));
+  const durationMs = getWorkoutDurationMs(workout);
+  const duration = formatWorkoutDuration(durationMs);
   const day = historyDayKey(workout);
+  const dayName = format(parseISO(day), 'EEEE, MMMM d');
   const orderedIds = movements.map((movement) => movement.exerciseId);
   const remove = () =>
     void confirmDeleteWorkout(title, workout.id, {
@@ -112,8 +115,13 @@ export default function PastWorkoutScreen() {
         }}
       />
       <TabScroll>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {[format(parseISO(day), 'EEEE, MMMM d'), duration === '—' ? null : duration].filter(Boolean).join(' · ')}
+        <BlancText
+          variant="secondary"
+          tone="graphite"
+          // "1h 5m" in words: VoiceOver reads "5m" as meters.
+          accessibilityLabel={[dayName, durationMs ? spokenClock(Math.max(1, Math.round(durationMs / 60000)) * 60) : null].filter(Boolean).join(', ')}
+          style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+          {[dayName, duration === '—' ? null : duration].filter(Boolean).join(' · ')}
         </BlancText>
 
         <Stats workout={workout} activities={activities.filter((activity) => getActivitySessionDateKey(activity) === day)} />
@@ -167,11 +175,13 @@ function Plus() {
   return <SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />;
 }
 
-/** Saves an edit, saying so when it did not save. */
-function runEdit(workoutId: string, mutate: () => Promise<void>, failed = 'Not saved'): Promise<boolean> {
+/** Saves an edit, saying so when it did not save; VoiceOver also hears `done` when it did. */
+function runEdit(workoutId: string, mutate: () => Promise<void>, failed = 'Not saved', done?: string): Promise<boolean> {
   return editPastWorkout(workoutId, mutate).then((saved) => {
-    if (saved) haptics.success();
-    else {
+    if (saved) {
+      haptics.success();
+      announce(done);
+    } else {
       haptics.error();
       Alert.alert(failed, 'Check your connection and try again.');
     }
@@ -203,8 +213,10 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
           text: 'Save',
           onPress: (text?: string) => {
             void savePastNote(workout.id, movement.exerciseId, text ?? '').then((saved) => {
-              if (saved) haptics.success();
-              else {
+              if (saved) {
+                haptics.success();
+                announce('Note saved');
+              } else {
                 haptics.error();
                 Alert.alert('Note not saved', 'Check your connection and try again.');
               }
@@ -222,7 +234,8 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: () => void runEdit(workout.id, () => store().removeExerciseFromWorkout(workout.id, movement.exerciseId), 'Not removed'),
+        onPress: () =>
+          void runEdit(workout.id, () => store().removeExerciseFromWorkout(workout.id, movement.exerciseId), 'Not removed', `${movement.name} removed`),
       },
     ]);
 
@@ -233,10 +246,15 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
     ];
     const up = moveHistoryMovement(orderedIds, movement.exerciseId, -1);
     const down = moveHistoryMovement(orderedIds, movement.exerciseId, 1);
-    if (up) actions.push({ label: 'Move up', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, up)) });
-    if (down) actions.push({ label: 'Move down', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, down)) });
+    if (up) actions.push({ label: 'Move up', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, up), undefined, 'Moved up') });
+    if (down) {
+      actions.push({ label: 'Move down', run: () => void runEdit(workout.id, () => store().reorderWorkoutExercises(workout.id, down), undefined, 'Moved down') });
+    }
     if (movement.supersetGroupId) {
-      actions.push({ label: 'Unlink superset', run: () => void runEdit(workout.id, () => store().clearWorkoutSuperset(workout.id, movement.exerciseId)) });
+      actions.push({
+        label: 'Unlink superset',
+        run: () => void runEdit(workout.id, () => store().clearWorkoutSuperset(workout.id, movement.exerciseId), undefined, 'Superset unlinked'),
+      });
     } else {
       actions.push({
         label: 'Superset with…',
@@ -268,6 +286,7 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
         if (!created) throw new Error('Could not add that set.');
       },
       'Set not added',
+      'Set added',
     ).then(() => {
       adding.current = false;
       setAddingShown(false);
@@ -303,7 +322,10 @@ function MovementBlock({ workout, movement, note, orderedIds }: { workout: Histo
               accessibilityRole="button"
               accessibilityLabel={`Note: ${note}`}
               accessibilityHint="Edit note"
-              hitSlop={{ top: 6, bottom: 6 }}
+              // A line drawn 20 points tall, 44 to touch: over the quiet line
+              // above it when there is one (without it, ⋯ sits just above), and
+              // down to the sets.
+              hitSlop={{ top: line ? 16 : 6, bottom: 8 }}
               onPress={() => {
                 haptics.tap();
                 editNote();
@@ -343,8 +365,10 @@ function SetRow({ workoutId, movement, set, number }: { workoutId: string; movem
   // The row leaves at once; a delete that fails brings it back.
   const remove = () =>
     void removePastSet(workoutId, movement.exerciseId, set.id).then((deleted) => {
-      if (deleted) haptics.success();
-      else {
+      if (deleted) {
+        haptics.success();
+        announce(`Set ${number} deleted`);
+      } else {
         haptics.error();
         Alert.alert('Set not deleted', 'Check your connection and try again.');
       }
@@ -363,7 +387,8 @@ function SetRow({ workoutId, movement, set, number }: { workoutId: string; movem
           value={set.rpe ? `${numbers}   RPE ${set.rpe}` : numbers}
           onPress={edit}
           menu={menu}
-          accessibilityLabel={`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}`}
+          // Graphite numbers on an unfinished set say "not done" by sight only.
+          accessibilityLabel={`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}${logged && !set.completed ? ', not done' : ''}`}
         />
       </View>
     </SwipeRow>
@@ -385,10 +410,20 @@ function Stats({ workout, activities }: { workout: HistoryWorkout; activities: P
     ]
       .filter(Boolean)
       .join(' · ');
+    const spoken = [
+      workout.strain != null ? `Strain ${workout.strain.toFixed(1)}` : 'WHOOP stats',
+      workout.avg_hr != null ? `average heart rate ${workout.avg_hr}` : null,
+      workout.max_hr != null ? `max ${workout.max_hr}` : null,
+      workout.energy_kcal != null ? `${Math.round(workout.energy_kcal)} kcal` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
     const removeStats = () =>
       void detachStats(workout).then((ok) => {
-        if (ok) haptics.success();
-        else {
+        if (ok) {
+          haptics.success();
+          announce('Stats removed');
+        } else {
           haptics.error();
           Alert.alert('Not removed', 'Check your connection and try again.');
         }
@@ -408,6 +443,7 @@ function Stats({ workout, activities }: { workout: HistoryWorkout; activities: P
               <Row
                 title={workout.strain != null ? `Strain ${workout.strain.toFixed(1)}` : 'WHOOP stats'}
                 detail={detail || undefined}
+                accessibilityLabel={spoken}
                 onPress={menu}
                 menu={[{ title: 'Remove stats', subtitle: 'The activity returns to its day', symbol: 'minus.circle', destructive: true, run: removeStats }]}
               />
@@ -437,8 +473,10 @@ function Stats({ workout, activities }: { workout: HistoryWorkout; activities: P
       (index) => {
         if (index >= ordered.length) return;
         void attachStats(workout, ordered[index]).then((ok) => {
-          if (ok) haptics.success();
-          else {
+          if (ok) {
+            haptics.success();
+            announce('Stats added');
+          } else {
             haptics.error();
             Alert.alert('Not added', 'Check your connection and try again.');
           }

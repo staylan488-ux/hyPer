@@ -18,11 +18,23 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { spokenClock, useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useHistoryStore } from '~/lib/history';
 import { space } from '~/theme/blanc';
 
 const SOURCE_LABELS: Record<string, string> = { whoop: 'WHOOP', gps: 'Recorded in hyPer', manual: 'Added by hand' };
+
+/** A pace ("7:32 /mi") in words: "7 minutes 32 seconds per mile". */
+function spokenPace(secondsPerMile: number | null): string | null {
+  return secondsPerMile !== null && formatPace(secondsPerMile) ? `${spokenClock(Math.round(secondsPerMile))} per mile` : null;
+}
+
+/** A split's distance with metres in words ("400 meters"); Row speaks miles itself. */
+function spokenSegmentDistance(distanceM: number | null): string | null {
+  const shown = formatSegmentDistance(distanceM);
+  return shown?.endsWith(' m') ? `${shown.slice(0, -2)} meters` : shown;
+}
 
 /**
  * One activity as History keeps it: what WHOOP or the run recorder measured,
@@ -44,6 +56,7 @@ export default function ActivityViewScreen() {
     }, [gone]),
   );
   const [segments, setSegments] = useState<ActivitySegment[] | null | undefined>(undefined);
+  useAnnounce(segments === null && 'Splits could not load');
 
   useEffect(() => {
     if (!id) return;
@@ -73,7 +86,15 @@ export default function ActivityViewScreen() {
   const title = resolveActivityTitle(activity);
   const typeLabel = activityTypeLabel(activity);
   const duration = formatActivityDuration(activity.duration_seconds);
-  const pace = activity.activity_type === 'run' ? formatPace(paceSecondsPerMile(activity.distance_m, activity.duration_seconds)) : null;
+  const paceSeconds = activity.activity_type === 'run' ? paceSecondsPerMile(activity.distance_m, activity.duration_seconds) : null;
+  const pace = activity.activity_type === 'run' ? formatPace(paceSeconds) : null;
+  // What VoiceOver says for a row whose value is shorthand ("45m", "7:32 /mi", "bpm").
+  const spokenValues: Record<string, string | null> = {
+    Duration: activity.duration_seconds ? spokenClock(Math.max(1, Math.round(activity.duration_seconds / 60)) * 60) : null,
+    Pace: spokenPace(paceSeconds),
+    'Average heart rate': activity.avg_hr != null ? `${activity.avg_hr} beats per minute` : null,
+    'Max heart rate': activity.max_hr != null ? `${activity.max_hr} beats per minute` : null,
+  };
   const rows: [string, string][] = [
     ...(typeLabel !== title ? [['Activity', typeLabel] as [string, string]] : []),
     ...(activity.started_at ? [['Started', formatActivityStartTime(activity.started_at)] as [string, string]] : []),
@@ -113,7 +134,7 @@ export default function ActivityViewScreen() {
             {rows.map(([label, value], index) => (
               <View key={label}>
                 {index > 0 ? <Hairline inset={18} /> : null}
-                <Row title={label} quiet value={value} />
+                <Row title={label} quiet value={value} accessibilityLabel={spokenValues[label] ? `${label}, ${spokenValues[label]}` : undefined} />
               </View>
             ))}
           </Label>
@@ -146,9 +167,9 @@ export default function ActivityViewScreen() {
                       .filter(Boolean)
                       .join('  ·  ')}
                     accessibilityLabel={`Split ${index + 1}, ${[
-                      formatSegmentDistance(segment.distance_m),
-                      formatClockDuration(segment.duration_seconds),
-                      formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
+                      spokenSegmentDistance(segment.distance_m),
+                      segment.duration_seconds != null && segment.duration_seconds >= 0 ? spokenClock(Math.round(segment.duration_seconds)) : null,
+                      spokenPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
                     ]
                       .filter(Boolean)
                       .join(', ')}`}

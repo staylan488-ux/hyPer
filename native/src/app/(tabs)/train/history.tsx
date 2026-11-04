@@ -18,6 +18,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { announce, spokenClock, useAnnounce, useIncreaseContrast } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import {
   confirmDeleteActivity,
@@ -34,6 +35,9 @@ import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc } from '~/theme/blanc';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+/** A length the rows show as "1h 5m", in words: VoiceOver reads "5m" as meters. */
+const spokenMinutes = (seconds: number) => spokenClock(Math.max(1, Math.round(seconds / 60)) * 60);
 
 /** History: a month of training at a glance, and each day's workouts and activities. */
 export default function HistoryScreen() {
@@ -61,17 +65,22 @@ export default function HistoryScreen() {
   );
   const date = parseISO(day);
   const onToday = isToday(date);
+  useAnnounce(failed && !loading ? "Couldn't load this month" : null);
 
   const sync = async () => {
     if (syncing) return;
     setSyncing(true);
     const message = await syncActivities();
     setSyncing(false);
-    // A sync that worked shows itself in the rows; only a failure needs words.
+    // A sync that worked shows itself in the rows; only a failure needs words
+    // (VoiceOver hears the result, "Up to date" or "2 new · 1 updated").
     if (message === 'Sync failed' || message === 'Sync unavailable') {
       haptics.error();
       Alert.alert(message);
-    } else haptics.success();
+    } else {
+      haptics.success();
+      announce(message);
+    }
   };
 
   const refresh = async () => {
@@ -167,12 +176,27 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
   // An arrow ticks as it is pressed, so the page turn it starts stays quiet.
   const arrowTurn = useRef(false);
   const [width, setWidth] = useState(0);
+  // Each day's workouts (how many) and activities (their names, for VoiceOver).
   const marks = useMemo(() => {
-    const lifts = new Set(workouts.map(historyDayKey));
-    const other = new Set(activities.map(getActivitySessionDateKey));
+    const lifts = new Map<string, number>();
+    workouts.forEach((workout) => lifts.set(historyDayKey(workout), (lifts.get(historyDayKey(workout)) ?? 0) + 1));
+    const other = new Map<string, string[]>();
+    sortActivitySessionsByStart(activities).forEach((activity) => {
+      const key = getActivitySessionDateKey(activity);
+      other.set(key, [...(other.get(key) ?? []), resolveActivityTitle(activity)]);
+    });
     return { lifts, other };
   }, [workouts, activities]);
   const pages = useMemo(() => [addMonths(month, -1), month, addMonths(month, 1)], [month]);
+
+  // VoiceOver hears the new month however it turned (an arrow, a swipe, a
+  // day of the next month, Today), since focus stays where it was.
+  const monthName = format(month, 'MMMM yyyy');
+  const shownMonth = useRef(monthName);
+  useEffect(() => {
+    if (shownMonth.current !== monthName) announce(monthName);
+    shownMonth.current = monthName;
+  }, [monthName]);
 
   // A new month sits on the middle page; jump there without animation, in the
   // same frame as the new grids, so the turn looks seamless.
@@ -192,7 +216,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
     <Label style={{ marginTop: 6, paddingTop: 6, paddingBottom: 10, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 6 }}>
         <BlancText variant="headline" style={{ flex: 1 }} accessibilityRole="header">
-          {format(month, 'MMMM yyyy')}
+          {monthName}
         </BlancText>
         <MonthArrow
           symbol="chevron.left"
@@ -211,7 +235,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
           }}
         />
       </View>
-      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 4 }} importantForAccessibility="no-hide-descendants">
+      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 4 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         {WEEKDAYS.map((weekday, index) => (
           <BlancText key={index} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {weekday}
@@ -246,8 +270,14 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
   );
 }
 
-function MonthGrid({ month, day, marks, interactive }: { month: Date; day: string; marks: { lifts: Set<string>; other: Set<string> }; interactive: boolean }) {
+function MonthGrid({ month, day, marks, interactive }: {
+  month: Date;
+  day: string;
+  marks: { lifts: Map<string, number>; other: Map<string, string[]> };
+  interactive: boolean;
+}) {
   const c = useBlanc();
+  const contrast = useIncreaseContrast();
   const days = useMemo(() => buildCalendarDays(month), [month]);
   return (
     <View
@@ -261,12 +291,20 @@ function MonthGrid({ month, day, marks, interactive }: { month: Date; day: strin
         const lift = marks.lifts.has(key);
         const other = marks.other.has(key);
         const today = isToday(date);
+        // The date, then what the dots show: "Tuesday, November 4, today, workout, Running".
+        const lifts = marks.lifts.get(key) ?? 0;
+        const spoken = [
+          format(date, 'EEEE, MMMM d'),
+          today ? 'today' : null,
+          lift && inMonth ? (lifts > 1 ? `${lifts} workouts` : 'workout') : null,
+          ...(other && inMonth ? (marks.other.get(key) ?? []) : []),
+        ];
         return (
           <Pressable
             key={key}
             accessibilityRole="button"
             accessibilityState={{ selected }}
-            accessibilityLabel={`${format(date, 'EEEE, MMMM d')}${lift ? ', workout' : ''}${other ? ', activity' : ''}`}
+            accessibilityLabel={spoken.filter(Boolean).join(', ')}
             onPress={() => {
               haptics.select();
               selectHistoryDay(date);
@@ -284,10 +322,14 @@ function MonthGrid({ month, day, marks, interactive }: { month: Date; day: strin
               <BlancText
                 variant="body"
                 weight={today || (selected && inMonth) ? '600' : undefined}
+                // The grid's 34-point circles hold the number; the day's title
+                // below carries the date at the full text size.
+                maxFontSizeMultiplier={1.3}
                 style={{
                   fontVariant: ['tabular-nums'],
                   color: selected && inMonth ? c.label : inMonth ? c.ink : c.upcoming,
-                  opacity: inMonth ? 1 : 0.55,
+                  // Increase Contrast keeps the neighbouring months' days legible.
+                  opacity: inMonth || contrast ? 1 : 0.55,
                 }}>
                 {format(date, 'd')}
               </BlancText>
@@ -342,9 +384,13 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
   const c = useBlanc();
   const title = historyWorkoutTitle(workout);
   const progress = progressFromSets(workout.sets);
-  const duration = formatWorkoutDuration(getWorkoutDurationMs(workout));
+  const durationMs = getWorkoutDurationMs(workout);
+  const duration = formatWorkoutDuration(durationMs);
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
   const detail = [duration === '—' ? null : duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
+  const spoken = [title, durationMs ? spokenMinutes(durationMs / 1000) : null, progress.totalSets > 0 ? sets : 'No sets']
+    .filter(Boolean)
+    .join(', ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
   const remove = () => void confirmDeleteWorkout(title, workout.id);
   const menu: MenuAction[] = [
@@ -355,17 +401,18 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
   return (
     <SwipeRow name={title} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={title} detail={detail} chevron onPress={open} menu={menu} />
+        <Row title={title} detail={detail} chevron onPress={open} menu={menu} accessibilityLabel={spoken} />
       </View>
     </SwipeRow>
   );
 }
 
-function activityDetail(activity: ActivitySession): string {
+/** "7:05 AM · 45m · 3.10 mi · Strain 12.3"; `spoken` gives the length in words for VoiceOver. */
+function activityDetail(activity: ActivitySession, spoken = false): string {
   const duration = formatActivityDuration(activity.duration_seconds);
   return [
     formatActivityStartTime(activity.started_at),
-    duration === '-' ? null : duration,
+    duration === '-' ? null : spoken ? spokenMinutes(activity.duration_seconds ?? 0) : duration,
     formatDistanceMi(activity.distance_m),
     activity.strain != null ? `Strain ${activity.strain.toFixed(1)}` : null,
   ]
@@ -413,7 +460,14 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
       name={title}
       actions={[...(others.length > 0 ? [{ label: 'Merge', onPress: merge }] : []), { label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={title} detail={detail || undefined} chevron onPress={open} menu={menu} />
+        <Row
+          title={title}
+          detail={detail || undefined}
+          chevron
+          onPress={open}
+          menu={menu}
+          accessibilityLabel={[title, activityDetail(activity, true)].filter(Boolean).join(', ')}
+        />
       </View>
     </SwipeRow>
   );

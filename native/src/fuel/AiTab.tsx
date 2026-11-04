@@ -26,6 +26,7 @@ import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/compo
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
+import { announce, speak, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
@@ -76,6 +77,7 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
  */
 export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   const logger = useLogger();
   const [busy, setBusyState] = useState<'analysis' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +152,16 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
       haptics.success();
       setOpen(null);
       setDraft((current) => ({ ...current, answer: '', result: response, items: response.items.map((item) => ({ ...item, key: crypto.randomUUID() })) }));
+      // The answer replaces the button VoiceOver was on: say what came back,
+      // the follow-up question or the estimate (as the screen titles it).
+      const kcal = response.items.reduce((sum, item) => sum + trialFoodTotals(item).calories, 0);
+      announce(
+        response.clarification || response.items.length === 0
+          ? clarify
+            ? 'We couldn’t estimate this meal yet.'
+            : response.clarification || 'What is the main food in this meal?'
+          : `Estimate ready · ${response.items.length} food${response.items.length === 1 ? '' : 's'} · ${formatWhole(kcal)} kcal`,
+      );
     } catch (cause) {
       if (!live.current) return;
       haptics.error();
@@ -256,7 +268,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
 
   const photoControls = (
     <Section title="Photos" note={`${draft.photos.length} of ${MAX_PHOTOS}`}>
-      <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: space.inset }}>
+      <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: space.inset, ...(large ? { flexWrap: 'wrap' } : null) }}>
         {draft.photos.map((photo, index) => (
           // A hold lifts the photo with Remove beside it, as in Photos.
           <HoldMenu
@@ -265,9 +277,14 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
             actions={[{ title: 'Remove photo', symbol: 'trash', destructive: true, removes: true, run: () => removePhoto(photo) }]}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Photo ${index + 1}`}
+            accessibilityLabel={`Meal photo ${index + 1}`}
             accessibilityHint="Offers to remove it"
             accessibilityState={busy !== null ? { disabled: true } : undefined}
+            // the hold's Remove photo, straight away
+            accessibilityActions={busy === null ? [{ name: 'remove', label: 'Remove photo' }] : undefined}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'remove') removePhoto(photo);
+            }}
             disabled={busy !== null}
             onPress={() => {
               haptics.tap();
@@ -282,7 +299,9 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               backgroundColor: c.fill,
               opacity: busy !== null ? 0.4 : pressed ? 0.7 : 1,
             })}>
-            <Image source={{ uri: photo.uri }} style={{ width: 96, height: 96 }} contentFit="cover" />
+            {/* Named by the button around it. */}
+            <Image source={{ uri: photo.uri }} accessible={false} style={{ width: 96, height: 96 }} contentFit="cover" />
+            {/* The whole photo is the button (96 pt); the cross only marks it as removable. */}
             <View style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}>
               <SymbolView name="xmark" size={10} weight="bold" tintColor="#FFFFFF" />
             </View>
@@ -293,14 +312,15 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add photo"
+            accessibilityState={busy !== null ? { disabled: true } : undefined}
             disabled={busy !== null}
             onPress={() => {
               haptics.tap();
               addPhoto();
             }}
             style={({ pressed }) => ({
-              width: 96,
-              height: 96,
+              // At the accessibility sizes the tile grows to fit its words.
+              ...(large ? { minWidth: 96, minHeight: 96, padding: 8 } : { width: 96, height: 96 }),
               borderRadius: 10,
               borderCurve: 'continuous',
               alignItems: 'center',
@@ -310,7 +330,9 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               boxShadow: `0 0 0 0.5px ${c.labelEdge}`,
             })}>
             <SymbolView name="camera" size={20} tintColor={c.ink} />
-            <BlancText variant="footnote">Add photo</BlancText>
+            <BlancText variant="footnote" style={large ? { textAlign: 'center' } : undefined}>
+              Add photo
+            </BlancText>
           </Pressable>
         ) : null}
       </View>
@@ -363,7 +385,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           <BlancText variant="footnote" tone="graphite">
             {draft.clarificationUsed ? 'Your meal' : 'One quick detail'}
           </BlancText>
-          <BlancText variant="title" style={{ marginTop: 4 }}>
+          <BlancText variant="title" accessibilityRole="header" style={{ marginTop: 4 }}>
             {draft.clarificationUsed
               ? busy === 'analysis'
                 ? 'Making your estimate…'
@@ -390,13 +412,14 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
         {photoControls}
         <FormNote>Add a meal or nutrition label photo. Up to two photos. Remove a photo to replace it.</FormNote>
         {error ? <FormNote alert>{error}</FormNote> : null}
-        <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-          <Capsule title="Change meal" variant="quiet" disabled={busy !== null} onPress={changeMeal} />
+        {/* At the accessibility sizes the two capsules stack, full width, instead of squeezing. */}
+        <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
+          <Capsule title="Change meal" variant="quiet" disabled={busy !== null} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
           <Capsule
             title={draft.clarificationUsed ? 'Retry estimate' : draft.answer.trim() || draft.photos.length ? 'Update estimate' : 'Use an estimate'}
             busy={busy === 'analysis'}
             onPress={() => void analyze(true)}
-            style={{ flex: 1, alignSelf: 'stretch' }}
+            style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
           />
         </View>
       </View>
@@ -417,17 +440,24 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     <LayoutAnimationConfig skipExiting>
       <View>
         <View style={{ paddingHorizontal: space.gutter, marginTop: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-            <BlancText variant="figure" size={56}>
-              {formatWhole(totals.calories)}
-            </BlancText>
+          {/* The estimate's totals read as one fact. */}
+          <View
+            accessible
+            accessibilityLabel={speak(
+              `${formatWhole(totals.calories)} kcal · protein ${round1(totals.protein)} g · carbs ${round1(totals.carbs)} g · fat ${round1(totals.fat)} g`,
+            )}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <BlancText variant="figure" size={56}>
+                {formatWhole(totals.calories)}
+              </BlancText>
+              <BlancText variant="secondary" tone="graphite">
+                kcal
+              </BlancText>
+            </View>
             <BlancText variant="secondary" tone="graphite">
-              kcal
+              P {round1(totals.protein)} g · C {round1(totals.carbs)} g · F {round1(totals.fat)} g
             </BlancText>
           </View>
-          <BlancText variant="secondary" tone="graphite">
-            P {round1(totals.protein)} g · C {round1(totals.carbs)} g · F {round1(totals.fat)} g
-          </BlancText>
           {result.summary ? (
             <BlancText variant="footnote" tone="graphite" style={{ marginTop: 8 }}>
               {result.summary}
@@ -445,7 +475,11 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
               const face = (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${item.name}, ${round1(each.calories)} kcal. ${expanded ? 'Close' : 'Adjust'}`}
+                  accessibilityLabel={speak(
+                    `${item.name} · ${item.quantity} ${item.unit} · ${item.evidence === 'label' ? 'Label-based' : 'Estimated'} · protein ${round1(each.protein)} g · ${formatWhole(each.calories)} kcal`,
+                  )}
+                  accessibilityHint={expanded ? undefined : 'Opens it to adjust'}
+                  accessibilityState={{ expanded }}
                   accessibilityActions={frozen ? undefined : [{ name: 'remove', label: 'Remove' }]}
                   onAccessibilityAction={(event) => {
                     if (event.nativeEvent.actionName === 'remove') removeItem(item.key);
@@ -467,10 +501,10 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                   }
                   style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: pressed ? c.pressed : c.label })}>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <BlancText variant="bodyStrong" numberOfLines={1}>
+                    <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
                       {item.name}
                     </BlancText>
-                    <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
+                    <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
                       {item.quantity} {item.unit} · {item.evidence === 'label' ? 'Label-based' : 'Estimated'} · P {round1(each.protein)} g
                     </BlancText>
                   </View>
@@ -554,7 +588,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                         void Linking.openURL(source.url);
                       }}
                       style={({ pressed }) => ({ paddingVertical: 12, paddingHorizontal: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-                      <BlancText variant="secondary" numberOfLines={2}>
+                      <BlancText variant="secondary" numberOfLines={large ? undefined : 2}>
                         {source.title}
                       </BlancText>
                     </Pressable>
@@ -581,14 +615,14 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           ) : null}
 
           {error ? <FormNote alert>{error}</FormNote> : null}
-          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-            <Capsule title="Change meal" variant="quiet" disabled={frozen} onPress={changeMeal} />
+          <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
+            <Capsule title="Change meal" variant="quiet" disabled={frozen} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
             <Capsule
               title={logger.purpose === 'ingredients' ? 'Add ingredients' : editing ? 'Save changes' : 'Log meal'}
               busy={busy === 'save'}
               disabled={!valid || busy !== null}
               onPress={() => void save()}
-              style={{ flex: 1, alignSelf: 'stretch' }}
+              style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
             />
           </View>
         </Animated.View>

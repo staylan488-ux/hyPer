@@ -257,12 +257,13 @@ function plainText(children: ReactNode): string | null {
  * Text under a form block: a hint, or an error in red. VoiceOver announces
  * an error when it appears or changes (iOS has no live regions).
  */
-export function FormNote({ children, alert }: { children: ReactNode; alert?: boolean }) {
-  useAnnounce(alert ? plainText(children) : null);
+export function FormNote({ children, alert, accessibilityLabel }: { children: ReactNode; alert?: boolean; accessibilityLabel?: string }) {
+  useAnnounce(alert ? (accessibilityLabel ?? plainText(children)) : null);
   return (
     <BlancText
       variant="footnote"
       tone={alert ? 'live' : 'graphite'}
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole={alert ? 'alert' : undefined}
       style={{ marginHorizontal: 32, marginTop: 8 }}>
       {children}

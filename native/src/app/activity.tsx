@@ -12,6 +12,7 @@ import { FieldRow, FormNote, PickerRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
+import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { confirmDeleteActivity, saveActivity, useHistoryStore } from '~/lib/history';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -86,6 +87,7 @@ export default function ActivitySheet() {
     const saved = await saveActivity(editing, input).catch(() => false);
     if (saved) {
       haptics.success();
+      announce(editing ? 'Activity saved' : 'Activity added');
       setDone(true);
     } else {
       haptics.error();
@@ -99,7 +101,10 @@ export default function ActivitySheet() {
     if (!editing || busy) return;
     void confirmDeleteActivity(editing, {
       onConfirmed: () => setBusy('delete'),
-      onDeleted: () => setDone(true),
+      onDeleted: () => {
+        announce('Activity deleted');
+        setDone(true);
+      },
     }).then((deleted) => {
       if (!deleted) setBusy(null);
     });

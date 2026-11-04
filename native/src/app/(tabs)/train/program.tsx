@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { disabled as swiftDisabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Alert, RefreshControl, View } from 'react-native';
@@ -16,6 +16,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { announce, useScreenReader } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteProgram, editProgram, newProgram, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
@@ -32,6 +33,7 @@ export default function ProgramScreen() {
   const setWorkoutMode = useAppStore((state) => state.setWorkoutMode);
   const flexible = mode === 'flexible';
   const active = shownActiveProgram(splits, mode);
+  const screenReader = useScreenReader();
   // Only while the person's own pull runs.
   const [refreshing, setRefreshing] = useState(false);
 
@@ -88,7 +90,12 @@ export default function ProgramScreen() {
         </BlancText>
 
         <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18, opacity: live ? 0.5 : 1 }} pointerEvents={live ? 'none' : 'auto'}>
-          <Picker selection={mode} onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')} modifiers={[pickerStyle('segmented')]}>
+          <Picker
+            selection={mode}
+            onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
+            // VoiceOver acts without touches, so pointerEvents alone would let it
+            // switch during a workout; SwiftUI's disabled holds it (and says dimmed).
+            modifiers={[pickerStyle('segmented'), ...(live && screenReader ? [swiftDisabled(true)] : [])]}>
             <SwiftText modifiers={[tag('split')]}>Program days</SwiftText>
             <SwiftText modifiers={[tag('flexible')]}>Flexible</SwiftText>
           </Picker>
@@ -127,9 +134,14 @@ function Programs({ splits }: { splits: Split[] }) {
   }
 
   const remove = (split: Split) => void deleteProgram(split);
+  // The row's "Active" changes by sight only; VoiceOver stays on the row.
+  const activate = (split: Split) =>
+    setActiveProgram(split).then(() => {
+      if (useAppStore.getState().splits.some((entry) => entry.id === split.id && entry.is_active)) announce(`${split.name} is active`);
+    });
 
   const menu = (split: Split): MenuAction[] => [
-    ...(split.is_active ? [] : [{ title: 'Set active', symbol: 'checkmark.circle', run: () => void setActiveProgram(split) }]),
+    ...(split.is_active ? [] : [{ title: 'Set active', symbol: 'checkmark.circle', run: () => void activate(split) }]),
     { title: 'Edit', symbol: 'pencil', run: () => editProgram(split) },
     { title: 'Delete', symbol: 'trash', destructive: true, run: () => remove(split) },
   ];
@@ -202,7 +214,10 @@ function QuickStarts() {
         if (still) {
           haptics.error();
           Alert.alert('Not deleted', 'Check your connection and try again.');
-        } else haptics.success();
+        } else {
+          haptics.success();
+          announce(`${template.label} deleted`);
+        }
         setLeaving((current) => {
           const next = new Set(current);
           next.delete(template.id);

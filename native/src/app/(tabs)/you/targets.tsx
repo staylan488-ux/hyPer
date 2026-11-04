@@ -13,6 +13,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';
+import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore } from '~/lib/you';
@@ -27,6 +28,11 @@ export default function TargetsScreen() {
   const profile = useAppStore((state) => state.nutritionProfile);
   const status = useTargetsStore((state) => state.status);
   const message = useTargetsStore((state) => state.message);
+  // A save's result (here or from the edit sheet over this screen), not one
+  // left from an earlier visit; errors announce themselves (FormNote).
+  const [earlier] = useState(message);
+  useAnnounce(message && message !== earlier && !message.alert ? message.text : null);
+  const large = useLargeText();
   const [resuming, setResuming] = useState(false);
   const base = baseTargets(target);
   const ready = status === 'ready' || target !== null;
@@ -101,7 +107,7 @@ export default function TargetsScreen() {
             <View style={{ paddingHorizontal: space.gutter, paddingTop: 12 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={ready ? `${formatWhole(base.calories)} kcal a day, ${target ? mode : 'starting defaults, not saved'}` : 'Calories'}
+                accessibilityLabel={ready ? speak(`${formatWhole(base.calories)} kcal a day, ${target ? mode : 'starting defaults, not saved'}`) : 'Calories'}
                 accessibilityHint={ready ? 'Edits your targets' : undefined}
                 accessibilityState={ready ? undefined : { disabled: true }}
                 disabled={!ready}
@@ -110,7 +116,8 @@ export default function TargetsScreen() {
                   edit('calories');
                 }}
                 style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                {/* At the accessibility text sizes the words wrap below the capped figure. */}
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
                   <BlancText variant="figure" size={64}>
                     {ready ? formatWhole(base.calories) : ' '}
                   </BlancText>

@@ -7,6 +7,7 @@ import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
 import { MUSCLE_GROUP_LABELS, type Exercise, type MuscleGroup } from '@/types';
+import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -46,6 +47,7 @@ type PickerProps = {
  */
 export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action }: PickerProps) {
   const c = useBlanc();
+  const large = useLargeText();
   const [library, setLibrary] = useState<Exercise[] | null>(() => peekExerciseLibrary());
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -92,6 +94,17 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   // Everyday gym movements first; bodyweight skills on request, or whenever a search finds them.
   const skillsOpen = showSkills || searching || gym.length === 0;
 
+  // A muscle chosen changes the list below the chips without a word: say
+  // how many it shows. None is the empty line's to say.
+  const shown = gym.length + (skillsOpen ? skills.length : 0);
+  const announcedMuscle = useRef(muscle);
+  useEffect(() => {
+    if (announcedMuscle.current === muscle) return;
+    announcedMuscle.current = muscle;
+    if (library !== null && shown > 0) announce(`${shown} ${shown === 1 ? 'exercise' : 'exercises'}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [muscle]);
+
   // "Create …" only when nothing in the library (or this edit) has that name.
   const typed = query.trim().replace(/\s+/g, ' ');
   const canCreate =
@@ -99,6 +112,9 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
     typed.length > 0 &&
     library !== null &&
     ![...extras, ...library].some((exercise) => normalizeExerciseName(exercise.name) === normalizeExerciseName(typed));
+  const empty = library !== null && gym.length === 0 && skills.length === 0 && !canCreate;
+  const emptyLine = searching ? 'Nothing matches.' : 'No other exercises for this muscle.';
+  useAnnounce(loadFailed && library === null ? 'Couldn’t load exercises.' : empty ? emptyLine : null);
 
   const create = () => {
     if (!library) return;
@@ -121,8 +137,8 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
         {index > 0 ? <Hairline inset={20} /> : null}
         <Pressable
           accessibilityRole="button"
-          accessibilityState={selected ? { selected: ticked } : undefined}
-          accessibilityLabel={exercise.name}
+          accessibilityState={{ ...(selected ? { selected: ticked } : null), ...(busyId === exercise.id ? { busy: true } : null) }}
+          accessibilityLabel={searching || muscle === 'all' ? `${exercise.name}, ${MUSCLE_GROUP_LABELS[exercise.muscle_group]}` : exercise.name}
           disabled={busyId !== null}
           onPress={() => {
             if (selected) haptics.select();
@@ -140,11 +156,11 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             opacity: busyId !== null && busyId !== exercise.id ? 0.4 : 1,
           })}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <BlancText variant="body" numberOfLines={1}>
+            <BlancText variant="body" numberOfLines={large ? undefined : 1}>
               {exercise.name}
             </BlancText>
             {searching || muscle === 'all' ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1}>
                 {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
               </BlancText>
             ) : null}
@@ -173,7 +189,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
                 {title}
               </BlancText>
               {subtitle ? (
-                <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+                <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1}>
                   {subtitle}
                 </BlancText>
               ) : null}
@@ -189,7 +205,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
                 }}
                 style={({ pressed }) => ({
                   minWidth: 44,
-                  height: 44,
+                  ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
                   paddingHorizontal: 16,
                   borderRadius: 22,
                   alignItems: 'center',
@@ -214,7 +230,8 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
               flexDirection: 'row',
               alignItems: 'center',
               gap: 8,
-              height: 44,
+              // At the accessibility text sizes the field grows with its text.
+              ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
               marginHorizontal: 16,
               marginTop: 14,
               paddingHorizontal: 14,
@@ -275,6 +292,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Create ${typed}`}
+            accessibilityHint="Then choose its main muscle"
             onPress={() => {
               haptics.tap();
               create();
@@ -284,11 +302,12 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
               alignItems: 'center',
               gap: 12,
               minHeight: 56,
+              ...(large ? { paddingVertical: 10 } : null),
               paddingHorizontal: 20,
               backgroundColor: pressed ? c.pressed : 'transparent',
             })}>
             <SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />
-            <BlancText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
+            <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1} style={{ flex: 1 }}>
               Create “{typed}”
             </BlancText>
           </Pressable>
@@ -311,16 +330,16 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
         ) : null}
         {skills.length > 0 && skillsOpen ? (
           <>
-            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 18, marginBottom: 4, marginHorizontal: 20 }}>
+            <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 18, marginBottom: 4, marginHorizontal: 20 }}>
               Bodyweight skills
             </BlancText>
             {skills.map(row)}
           </>
         ) : null}
 
-        {library !== null && gym.length === 0 && skills.length === 0 && !canCreate ? (
+        {empty ? (
           <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center', marginTop: 32 }}>
-            {searching ? 'Nothing matches.' : 'No other exercises for this muscle.'}
+            {emptyLine}
           </BlancText>
         ) : null}
       </ScrollView>

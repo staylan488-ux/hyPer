@@ -10,6 +10,7 @@ import { Capsule } from '~/components/Capsule';
 import type { MenuAction } from '~/components/HoldMenu';
 import { Hairline } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
+import { useAnnounce } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { today } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
@@ -42,6 +43,7 @@ export function RecentTab({ userId }: { userId: string }) {
   const { logs, failed, version, settle, retry } = useRecentLogs(userId);
   const { hidden, hide } = useHiddenRecentFoods(userId);
   const foods = useMemo(() => (logs ? rankRecentFoods(logs, today(), { hidden }) : null), [logs, hidden]);
+  useAnnounce(!foods && failed ? 'Recent foods could not load.' : null);
 
   const composed = (recent: RecentFood) => Boolean(decodeMealComposition(recent.food.description));
   // A built meal logs again whole; as an ingredient it goes through the review, as on Saved.

@@ -1,5 +1,14 @@
 import { Host, List, Text as SwiftText, VStack } from '@expo/ui/swift-ui';
-import { environment, font, foregroundStyle, listRowBackground, listStyle, scrollContentBackground } from '@expo/ui/swift-ui/modifiers';
+import {
+  accessibilityElement,
+  accessibilityLabel,
+  environment,
+  font,
+  foregroundStyle,
+  listRowBackground,
+  listStyle,
+  scrollContentBackground,
+} from '@expo/ui/swift-ui/modifiers';
 import { router, useLocalSearchParams } from 'expo-router';
 import { View } from 'react-native';
 
@@ -7,11 +16,17 @@ import { dayLabel, daySummary, exerciseBlocks } from '@/lib/splitDraft';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { BlancText } from '~/components/BlancText';
 import { GlassButton } from '~/components/GlassButton';
+import { speak, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { targetsLine } from '~/lib/program';
 import { useBlanc } from '~/theme/blanc';
 
-type Item = { id: string; title: string; line: string };
+type Item = { id: string; title: string; line: string; spoken: string };
+
+/** "3 × 8–12" or "3–4 sets × 8–12" as VoiceOver should say it: "3 sets of 8 to 12 reps". */
+function spokenTargets(line: string): string {
+  return speak(`${line.replace(/^(\S+)(?: sets)? × /, (_match, sets: string) => `${sets} ${sets === '1' ? 'set' : 'sets'} of `)} reps`);
+}
 
 /**
  * The program's days, or one day's exercises, dragged by iOS's own list
@@ -20,17 +35,27 @@ type Item = { id: string; title: string; line: string };
  */
 export default function ProgramReorderSheet() {
   const c = useBlanc();
+  const large = useLargeText();
   const { day: dayId } = useLocalSearchParams<{ day?: string }>();
   const draft = useSplitEditStore((state) => state.draft);
   const day = dayId ? draft?.days.find((entry) => entry.id === dayId) ?? null : null;
 
   const items: Item[] = day
-    ? exerciseBlocks(day.exercises).map((block) => ({
-        id: block[0].id,
-        title: block.map((exercise) => exercise.exercise.name).join(' + '),
-        line: block.length > 1 ? 'Superset' : targetsLine(block[0]),
-      }))
-    : (draft?.days ?? []).map((entry, index) => ({ id: entry.id, title: dayLabel(entry, index), line: daySummary(entry) }));
+    ? exerciseBlocks(day.exercises).map((block) => {
+        const title = block.map((exercise) => exercise.exercise.name).join(' + ');
+        return {
+          id: block[0].id,
+          title,
+          line: block.length > 1 ? 'Superset' : targetsLine(block[0]),
+          spoken: block.length > 1 ? `Superset, ${block.map((exercise) => exercise.exercise.name).join(' and ')}` : `${title}, ${spokenTargets(targetsLine(block[0]))}`,
+        };
+      })
+    : (draft?.days ?? []).map((entry, index) => ({
+        id: entry.id,
+        title: dayLabel(entry, index),
+        line: daySummary(entry),
+        spoken: speak(`${dayLabel(entry, index)} · ${daySummary(entry)}`),
+      }));
 
   const move = (sources: number[], destination: number) => {
     const source = sources[0];
@@ -53,7 +78,7 @@ export default function ProgramReorderSheet() {
           <BlancText variant="headline" accessibilityRole="header">
             {day ? 'Reorder exercises' : 'Reorder days'}
           </BlancText>
-          <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+          <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
             {day ? dayLabel(day, draft?.days.indexOf(day) ?? 0) : draft?.name.trim() || 'New program'}
           </BlancText>
         </View>
@@ -64,9 +89,15 @@ export default function ProgramReorderSheet() {
         <List modifiers={[listStyle('insetGrouped'), scrollContentBackground('hidden'), environment('editMode', 'active')]}>
           <List.ForEach data={items} keyExtractor={(item) => item.id} onMove={move}>
             {({ item }) => (
-              <VStack alignment="leading" spacing={2} modifiers={[listRowBackground(c.label)]}>
-                <SwiftText modifiers={[font({ size: 17, weight: 'medium' }), foregroundStyle(c.ink)]}>{item.title}</SwiftText>
-                <SwiftText modifiers={[font({ size: 15 }), foregroundStyle(c.graphite)]}>{item.line}</SwiftText>
+              // One VoiceOver element per row, in words. The text styles are
+              // the same 17 and 15 points at the standard size and grow with
+              // iOS's text size.
+              <VStack
+                alignment="leading"
+                spacing={2}
+                modifiers={[listRowBackground(c.label), accessibilityElement('ignore'), accessibilityLabel(item.spoken)]}>
+                <SwiftText modifiers={[font({ textStyle: 'body', weight: 'medium' }), foregroundStyle(c.ink)]}>{item.title}</SwiftText>
+                <SwiftText modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(c.graphite)]}>{item.line}</SwiftText>
               </VStack>
             )}
           </List.ForEach>

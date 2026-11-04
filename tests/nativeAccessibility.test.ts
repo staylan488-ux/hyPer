@@ -69,6 +69,13 @@ describe('VoiceOver words for Blanc shorthand', () => {
     expect(speak('+30 s')).toBe('+30 seconds');
     expect(speak('Peak 4.2 m/s')).toBe('Peak 4.2 meters per second');
     expect(speak('3 sets · 12 min')).toBe('3 sets, 12 minutes');
+    expect(speak('+0.42 lb/wk')).toBe('+0.42 pounds a week');
+    expect(speak('7:59 /mi')).toBe('7:59 per mile');
+    expect(speak('2,400 kcal/day')).toBe('2,400 calories a day');
+    expect(speak('under · add ~2 sets this week')).toBe('under, add about 2 sets this week');
+    expect(speak('180 cm · 5 ft · 34 yrs')).toBe('180 centimeters, 5 feet, 34 years');
+    // "in" is never a unit: "10 in range" stays as it is.
+    expect(speak('8 of 10 in range')).toBe('8 of 10 in range');
   });
 
   it('leaves words, dates and plain numbers alone', () => {

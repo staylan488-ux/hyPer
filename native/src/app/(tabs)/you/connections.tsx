@@ -11,6 +11,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { confirmAlert } from '~/lib/program';
 import { connectOrSyncHealth, connectWhoop, stopHealthSync, useHealthStore } from '~/lib/you';
@@ -34,6 +35,8 @@ function Whoop() {
   const connection = useAppStore((state) => state.whoopConnection);
   const [action, setAction] = useState<'connect' | 'sync' | 'disconnect' | null>(null);
   const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
+  // How a connect, sync or disconnect ended; errors announce themselves (FormNote).
+  useAnnounce(message && !message.alert ? message.text : null);
 
   useEffect(() => {
     void useAppStore.getState().fetchWhoopConnection();
@@ -165,6 +168,9 @@ function Health() {
   const enabled = useHealthStore((state) => state.enabled);
   const busy = useHealthStore((state) => state.busy);
   const message = useHealthStore((state) => state.message);
+  // How a sync ended, not one left from an earlier visit; errors announce themselves (FormNote).
+  const [earlier] = useState(message);
+  useAnnounce(message && message !== earlier && !message.alert ? message.text : null);
 
   const toggle = (next: boolean) => {
     if (next) {

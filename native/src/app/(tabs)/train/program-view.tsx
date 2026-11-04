@@ -1,5 +1,5 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useMemo, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { View } from 'react-native';
 
 import { exerciseTotal, plural, setRepLabel } from '@/lib/programSummary';
@@ -12,9 +12,15 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { deleteProgram, editProgram, setActiveProgram } from '~/lib/program';
 import { space } from '~/theme/blanc';
+
+/** "3×8–12" or "3–4×8–12" as VoiceOver should say it: "3 sets of 8 to 12 reps" (Row speaks the range). */
+function spokenSetReps(label: string): string {
+  return `${label.replace(/^(\S+?)×/, (_match, sets: string) => `${sets} ${sets === '1' ? 'set' : 'sets'} of `)} reps`;
+}
 
 /** One program: its days and what each holds, with Edit, Set active and Delete. */
 export default function ProgramViewScreen() {
@@ -58,6 +64,12 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
   };
   // Goes back as soon as Delete is chosen; the list brings it back if the delete fails.
   const remove = () => void deleteProgram(split, onLeave);
+  // Make active goes away once it worked, taking VoiceOver's focus with it: say so.
+  const wasActive = useRef(split.is_active);
+  useEffect(() => {
+    if (split.is_active && !wasActive.current) announce(`${split.name} is active`);
+    wasActive.current = split.is_active;
+  }, [split.is_active, split.name]);
 
   const options = useMemo(
     () => ({
@@ -155,7 +167,7 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
                             title={name}
                             detail={partner ? `Superset with ${partner}` : undefined}
                             value={setRepLabel(exercise)}
-                            accessibilityLabel={[name, `${setRepLabel(exercise).replace('×', ' sets of ')} reps`, partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
+                            accessibilityLabel={[name, spokenSetReps(setRepLabel(exercise)), partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
                           />
                         </View>
                       );

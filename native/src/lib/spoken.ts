@@ -24,6 +24,9 @@ const UNITS: Unit[] = [
   { written: 'min', one: 'minute', many: 'minutes' },
   { written: 'sec', one: 'second', many: 'seconds' },
   { written: 'h', one: 'hour', many: 'hours' },
+  { written: 'cm', one: 'centimeter', many: 'centimeters' },
+  { written: 'ft', one: 'foot', many: 'feet' },
+  { written: 'yrs?', one: 'year', many: 'years' },
   { written: 's', one: 'second', many: 'seconds', space: 'spaced' },
   { written: 'm', one: 'minute', many: 'minutes', space: 'attached' },
   { written: 'm', one: 'meter', many: 'meters', space: 'spaced' },
@@ -34,8 +37,8 @@ const GAP = { attached: '', spaced: ' ', either: ' ?' } as const;
 /**
  * What VoiceOver should say for a line written in Blanc's shorthand: the
  * middle dot is a pause, a dash between numbers is "to", "x / y" is "x of
- * y", units after a number are words, and the beat-last-time arrow is left
- * out. "Set 2 of 3 · 8–10 reps" → "Set 2 of 3, 8 to 10 reps"; "135 lb × 8"
+ * y", "~2" is "about 2", rates and units after a number are words, and the
+ * beat-last-time arrow is left out. "Set 2 of 3 · 8–10 reps" → "Set 2 of 3, 8 to 10 reps"; "135 lb × 8"
  * → "135 pounds × 8" (VoiceOver says "times").
  */
 export function speak(text: string): string {
@@ -43,6 +46,13 @@ export function speak(text: string): string {
     .replace(/\s*·\s*/g, ', ')
     .replace(/(\d)\s*[–—]\s*(\d)/g, '$1 to $2')
     .replace(/(\d) \/ (\d)/g, '$1 of $2')
+    // Rates: "+0.42 lb/wk", "7:59 /mi".
+    .replace(/ ?\/(wk|week)\b/g, ' a week')
+    .replace(/ ?\/day\b/g, ' a day')
+    .replace(/ ?\/mi\b/g, ' per mile')
+    .replace(/ ?\/km\b/g, ' per kilometer')
+    // "add ~2 sets"
+    .replace(/~(\d)/g, 'about $1')
     .replace(/↑\s*/g, '');
   for (const { written, one, many, space } of UNITS) {
     spoken = spoken.replace(

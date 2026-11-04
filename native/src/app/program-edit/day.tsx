@@ -14,10 +14,16 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { UndoBar } from '~/components/UndoBar';
+import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { targetsLine } from '~/lib/program';
 import { space, useBlanc } from '~/theme/blanc';
+
+/** "3 × 8–12" or "3–4 sets × 8–12" as VoiceOver should say it: "3 sets of 8 to 12 reps" (Row speaks the range). */
+function spokenTargets(line: string): string {
+  return `${line.replace(/^(\S+)(?: sets)? × /, (_match, sets: string) => `${sets} ${sets === '1' ? 'set' : 'sets'} of `)} reps`;
+}
 
 /** One training day of the draft: its exercises, in order, to change, pair, swap or remove. */
 export default function ProgramDayScreen() {
@@ -138,6 +144,8 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
   const move = (direction: -1 | 1) => {
     haptics.select();
     store().reorderExercise(dayId, exercise.id, direction);
+    // The row moves by sight only; VoiceOver stays on it.
+    announce(`${partner ? 'Superset' : name} moved ${direction < 0 ? 'earlier' : 'later'}`);
   };
   // Grouped as iOS menus are: what to change, where it sits, then remove.
   const menu: MenuAction[] = [
@@ -167,13 +175,11 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
       : []),
     { title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
-  const detail = [
-    targetsLine(exercise),
+  const notes = [
     partner ? `superset with ${partner.exercise.name}` : null,
     isPendingExerciseId(exercise.exercise_id) ? 'custom, added on save' : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  ];
+  const detail = [targetsLine(exercise), ...notes].filter(Boolean).join(' · ');
 
   return (
     <SwipeRow
@@ -183,7 +189,14 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
         { label: 'Remove', destructive: true, onPress: remove },
       ]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={name} detail={detail} chevron onPress={open} menu={menu} />
+        <Row
+          title={name}
+          detail={detail}
+          chevron
+          onPress={open}
+          menu={menu}
+          accessibilityLabel={[name, spokenTargets(targetsLine(exercise)), ...notes].filter(Boolean).join(', ')}
+        />
       </View>
     </SwipeRow>
   );

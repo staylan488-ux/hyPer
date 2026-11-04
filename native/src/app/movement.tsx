@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { format, parseISO } from 'date-fns';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
@@ -15,6 +15,7 @@ import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { formatLoad, formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
@@ -32,6 +33,7 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
  */
 export default function MovementSheet() {
   const c = useBlanc();
+  const large = useLargeText();
   const { id } = useLocalSearchParams<{ id: string }>();
   const session = useSessionModel();
   const live = session?.movements.find((entry) => entry.exerciseId === id) ?? null;
@@ -56,11 +58,11 @@ export default function MovementSheet() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
           <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <BlancText variant="headline" numberOfLines={1} accessibilityRole="header">
+            <BlancText variant="headline" numberOfLines={large ? undefined : 1} accessibilityRole="header">
               {movement?.name ?? 'Movement'}
             </BlancText>
             {movement ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1}>
                 {movementLine(movement)}
               </BlancText>
             ) : null}
@@ -117,6 +119,7 @@ function MovementDetail({
   flexible: boolean;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   const [editing, setEditing] = useState<string | null>(null);
   const [changing, setChanging] = useState<'add' | 'remove' | null>(null);
   const [switching, setSwitching] = useState(false);
@@ -140,10 +143,14 @@ function MovementDetail({
   const changeSets = async (change: 'add' | 'remove') => {
     if (changing) return;
     setChanging(change);
+    const count = movement.sets.length + (change === 'add' ? 1 : -1);
     const changed = await changeSetCount(movement.exerciseId, change).catch(() => false);
     setChanging(null);
-    if (changed) haptics.success();
-    else {
+    if (changed) {
+      haptics.success();
+      // VoiceOver read the count before the change saved.
+      announce(`${count} ${count === 1 ? 'set' : 'sets'}`);
+    } else {
       haptics.error();
       Alert.alert(change === 'add' ? 'Set not added' : 'Set not removed', 'Check your connection and try again.');
     }
@@ -178,6 +185,10 @@ function MovementDetail({
     }
   };
 
+  const setCount = `${movement.sets.length} ${movement.sets.length === 1 ? 'set' : 'sets'}`;
+  // "2 logged · Plan: 3–4 sets" under the count.
+  const countLine = movement.done || movement.range ? [movement.done ? `${movement.done} logged` : null, rangeLine(movement)].filter(Boolean).join(' · ') : null;
+
   const confirmRemove = () =>
     confirmRemoveMovement(workoutId, movement, {
       onStart: () => setEditingPlan('remove'),
@@ -207,12 +218,25 @@ function MovementDetail({
               </View>
             ) : null,
           )}
-          <View style={styles.row}>
+          {/* One adjustable stop for VoiceOver: swipe up or down for a set more or less. */}
+          <View
+            style={styles.row}
+            accessible
+            accessibilityRole="adjustable"
+            accessibilityLabel="Number of sets"
+            accessibilityValue={{ text: speak([setCount, countLine].filter(Boolean).join(', ')) }}
+            accessibilityState={changing ? { busy: true } : undefined}
+            accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+            onAccessibilityAction={(event) => {
+              const name = event.nativeEvent.actionName;
+              if (name === 'increment' && movement.canAddSet) void changeSets('add');
+              if (name === 'decrement' && movement.canRemoveSet) void changeSets('remove');
+            }}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <RollingText variant="bodyStrong">{`${movement.sets.length} ${movement.sets.length === 1 ? 'set' : 'sets'}`}</RollingText>
-              {movement.done || movement.range ? (
-                <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-                  {[movement.done ? `${movement.done} logged` : null, rangeLine(movement)].filter(Boolean).join(' · ')}
+              <RollingText variant="bodyStrong">{setCount}</RollingText>
+              {countLine ? (
+                <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+                  {countLine}
                 </BlancText>
               ) : null}
             </View>
@@ -274,7 +298,11 @@ function MovementDetail({
             <Row
               title={movement.skipped ? 'Bring back' : 'Skip'}
               accessibilityLabel={movement.skipped ? `Bring back ${movement.name}` : `Skip ${movement.name} for this workout`}
-              onPress={() => void setSkipped(workoutId, movement, !movement.skipped)}
+              onPress={() => {
+                void setSkipped(workoutId, movement, !movement.skipped);
+                // The row's words change under VoiceOver's focus.
+                announce(movement.skipped ? `${movement.name} brought back` : `${movement.name} skipped for this workout`);
+              }}
             />
           </Label>
           <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
@@ -318,23 +346,25 @@ function MovementDetail({
 /** A logged set; tap to correct it. One that beat the same set last time is marked ↑. */
 function SetRow({ set, number, gain, onEdit }: { set: WorkoutSet; number: number; gain: string | null; onEdit?: () => void }) {
   const c = useBlanc();
+  // At the accessibility text sizes the numbers wrap under "Set 1".
+  const large = useLargeText();
   const numbers = `${formatLoad(set.weight)} lb × ${set.reps ?? '–'}`;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}${gain ? `, beat last time, ${gain}` : ''}. Edit`}
+      accessibilityLabel={speak(`Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}${gain ? `, beat last time, ${gain}` : ''}. Edit`)}
       disabled={!onEdit}
       onPress={() => {
         haptics.tap();
         onEdit?.();
       }}
-      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
-      <BlancText variant="bodyStrong" style={{ flex: 1 }}>
+      style={({ pressed }) => [styles.row, large ? { flexWrap: 'wrap', rowGap: 2 } : null, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
+      <BlancText variant="bodyStrong" style={large ? { flexBasis: '100%' } : { flex: 1 }}>
         Set {number}
       </BlancText>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, ...(large ? { flexShrink: 1 } : null) }}>
         {gain ? <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} /> : null}
-        <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
+        <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'], ...(large ? { flexShrink: 1 } : null) }}>
           {numbers}
         </BlancText>
       </View>
@@ -351,6 +381,7 @@ function SetRow({ set, number, gain, onEdit }: { set: WorkoutSet; number: number
 /** Corrects a logged set. Saving never starts rest, as on the web. */
 function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; onClose: () => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   const logSet = useAppStore((state) => state.logSet);
   const [weight, setWeight] = useState(set.weight === null ? '' : String(set.weight));
   const [reps, setReps] = useState(set.reps === null ? '' : String(set.reps));
@@ -373,11 +404,14 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
     try {
       await logSet(set.id, weightValue, Math.round(repsValue), rpe ?? undefined);
       haptics.success();
+      // The editor closes under VoiceOver's focus.
+      announce(`Set ${number} saved`);
       onClose();
     } catch {
       haptics.error();
       setFailed(true);
       setSaving(false);
+      announce('Not saved. Your numbers are kept; try again.');
     }
   };
 
@@ -392,7 +426,7 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
           // 32 points drawn, 44 to touch.
           hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
           style={({ pressed }) => ({
-            height: 32,
+            ...(large ? { minHeight: 32, paddingVertical: 6 } : { height: 32 }),
             paddingHorizontal: 12,
             borderRadius: 16,
             justifyContent: 'center',
@@ -404,39 +438,41 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
         </Pressable>
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 6 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-          <FigureInput
-            value={weight}
-            fontSize={48}
-            onChangeText={setWeight}
-            keyboardType="decimal-pad"
-            selectTextOnFocus
-            maxLength={6}
-            accessibilityLabel={`Set ${number} weight in pounds`}
-          />
-          <BlancText variant="secondary" tone="graphite">
-            lb
-          </BlancText>
-        </View>
-        <BlancText variant="figure" size={24} tone="graphite" style={{ marginBottom: 8 }}>
-          ×
-        </BlancText>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
-          <FigureInput
-            value={reps}
-            fontSize={48}
-            onChangeText={setReps}
-            keyboardType="number-pad"
-            selectTextOnFocus
-            maxLength={4}
-            accessibilityLabel={`Set ${number} reps`}
-          />
-          <BlancText variant="secondary" tone="graphite">
-            reps
-          </BlancText>
-        </View>
-      </View>
+      {/* The fields name themselves and their units; "×" and the units are only drawn. */}
+      <SetFigures
+        weight={
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+            <FigureInput
+              value={weight}
+              fontSize={48}
+              onChangeText={setWeight}
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+              maxLength={6}
+              accessibilityLabel={`Set ${number} weight in pounds`}
+            />
+            <BlancText variant="secondary" tone="graphite" accessibilityElementsHidden importantForAccessibility="no">
+              lb
+            </BlancText>
+          </View>
+        }
+        reps={
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
+            <FigureInput
+              value={reps}
+              fontSize={48}
+              onChangeText={setReps}
+              keyboardType="number-pad"
+              selectTextOnFocus
+              maxLength={4}
+              accessibilityLabel={`Set ${number} reps`}
+            />
+            <BlancText variant="secondary" tone="graphite" accessibilityElementsHidden importantForAccessibility="no">
+              reps
+            </BlancText>
+          </View>
+        }
+      />
 
       {failed ? (
         <BlancText variant="footnote" tone="live" style={{ marginTop: 10 }}>
@@ -452,6 +488,34 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
           <Capsule title={failed ? 'Retry' : 'Save'} fill busy={saving} disabled={!ready} onPress={() => void save()} />
         </View>
       </View>
+    </View>
+  );
+}
+
+/**
+ * A corrected set's weight × reps. At the accessibility text sizes they no
+ * longer fit side by side, so "× reps" wraps under the weight when it must.
+ */
+function SetFigures({ weight, reps }: { weight: ReactNode; reps: ReactNode }) {
+  const large = useLargeText();
+  const times = (
+    <BlancText variant="figure" size={24} tone="graphite" accessibilityElementsHidden importantForAccessibility="no" style={{ marginBottom: 8 }}>
+      ×
+    </BlancText>
+  );
+  return large ? (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', columnGap: 10, rowGap: 4, marginTop: 6 }}>
+      {weight}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10 }}>
+        {times}
+        {reps}
+      </View>
+    </View>
+  ) : (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 6 }}>
+      {weight}
+      {times}
+      {reps}
     </View>
   );
 }
@@ -512,12 +576,14 @@ function NoteFooter({ status, length }: { status: 'saving' | 'saved' | 'failed' 
           : length >= 160
             ? `${length} of ${NOTE_LIMIT}`
             : null;
+  // Only a failed save is announced: the note saves on every pause in
+  // typing, and "Saving…", "Saved" or the count each time would talk over it.
+  useAnnounce(status === 'failed' ? text : null);
   if (!text) return null;
   return (
     <BlancText
       variant="footnote"
       tone={status === 'failed' ? 'live' : 'graphite'}
-      accessibilityLiveRegion="polite"
       style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
       {text}
     </BlancText>

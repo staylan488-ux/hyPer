@@ -126,7 +126,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
   const imports: Record<string, unknown> = {
     'date-fns': dates,
     '@expo/ui/swift-ui': { Host: Wrap, Picker: (props: NonNullable<typeof captured.picker> & PropsWithChildren) => { captured.picker = props; return Wrap(props); }, Text: Wrap },
-    '@expo/ui/swift-ui/modifiers': { pickerStyle: noop, tag: noop },
+    '@expo/ui/swift-ui/modifiers': { accessibilityLabel: noop, pickerStyle: noop, tag: noop },
     'expo-router': {
       router: { back, push },
       useLocalSearchParams: () => editing ? { entry: loggedMilk.id } : savedMeal ? { savedMeal: recipe.id } : {},
@@ -176,6 +176,8 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: Wrap },
     '~/lib/format': { formatWhole: String },
+    // VoiceOver and the text size are device services: silent, standard size.
+    '~/lib/accessibility': { announce: noop, useAnnounce: noop, useLargeText: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
     '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood },
     '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
@@ -186,6 +188,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false } = 
     '~/fuel/context': { LoggerContext: ContextProvider },
     './context': { useLogger },
     './WhenBlock': { WhenBlock: Empty },
+    './FoodLists': { spokenMacros: () => '' },
     '~/fuel/FoodLists': { Empty, SearchTab: Empty, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
     '~/fuel/FoodReview': { FoodReview: (props: { food: Food }) => { captured.foodReview = props; return null; } },
     '~/fuel/RecentTab': { RecentTab: Empty },

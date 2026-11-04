@@ -22,12 +22,14 @@ import { Capsule } from '~/components/Capsule';
 import { FieldRow, FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
+import { speak, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { SAVE_FAILED, saveFoodEntry } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { space } from '~/theme/blanc';
 
 import { useLogger, type ChosenMeta } from './context';
+import { spokenMacros } from './FoodLists';
 import { ServingHelper } from './ServingHelper';
 import { WhenBlock } from './WhenBlock';
 
@@ -38,6 +40,7 @@ import { WhenBlock } from './WhenBlock';
  */
 export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food; meta: ChosenMeta; servings?: number; onBack: () => void }) {
   const logger = useLogger();
+  const large = useLargeText();
   const units = getCompatibleMeasurementUnits(food.serving_unit);
   const [initial] = useState(() => (usual ? usualAmountInput(food, usual) : { amount: '1', unit: 'serving' as MeasurementUnit }));
   const [amount, setAmount] = useState(initial.amount);
@@ -103,13 +106,15 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
   return (
     <View>
       <View style={{ paddingHorizontal: space.gutter, marginTop: 8 }}>
-        <BlancText variant="title">{food.name}</BlancText>
+        <BlancText variant="title" accessibilityRole="header">
+          {food.name}
+        </BlancText>
         {meta?.source === 'barcode' ? (
           <BlancText variant="footnote" tone="graphite" style={{ marginTop: 4 }}>
             Barcode {meta.barcode} · {barcodeProviderLabel(meta.provider)}
           </BlancText>
         ) : null}
-        <BlancText variant="secondary" tone="graphite" style={{ marginTop: 6 }}>
+        <BlancText variant="secondary" tone="graphite" style={{ marginTop: 6 }} accessibilityLabel={`${spokenMacros(food)}, ${speak(foodBasisLabel(food))}`}>
           {foodMacroLine(food)} {foodBasisLabel(food)}
         </BlancText>
       </View>
@@ -145,15 +150,20 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
 
       <WhenBlock disabled={saving} />
 
-      <View style={{ paddingHorizontal: space.gutter, marginTop: 28 }}>
+      {/* One fact for VoiceOver: what this entry adds. */}
+      <View
+        accessible
+        accessibilityLabel={speak(`This entry · ${formatWhole(kcal)} kcal · ${formatWhole(protein)} g protein`)}
+        style={{ paddingHorizontal: space.gutter, marginTop: 28 }}>
         <BlancText variant="secondary" tone="graphite">
           This entry
         </BlancText>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2 }}>
+        {/* At the accessibility sizes the words go under the figure when they don't fit beside it. */}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
           <BlancText variant="figure" size={44}>
             {formatWhole(kcal)}
           </BlancText>
-          <BlancText variant="secondary" tone="graphite">
+          <BlancText variant="secondary" tone="graphite" style={large ? { flexShrink: 1 } : undefined}>
             kcal · {formatWhole(protein)} g protein
           </BlancText>
         </View>
@@ -161,14 +171,15 @@ export function FoodReview({ food, meta, servings: usual, onBack }: { food: Food
 
       {error ? <FormNote alert>{error}</FormNote> : null}
 
-      <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
-        <Capsule title="Change food" variant="quiet" onPress={onBack} disabled={saving} />
+      {/* At the accessibility sizes the two capsules stack, full width, instead of squeezing. */}
+      <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.gutter, marginTop: 20 }}>
+        <Capsule title="Change food" variant="quiet" onPress={onBack} disabled={saving} style={large ? { alignSelf: 'stretch' } : undefined} />
         <Capsule
           title={logger.purpose === 'ingredients' ? 'Add ingredient' : logger.editing ? 'Save changes' : 'Log entry'}
           onPress={() => void save()}
           busy={saving}
           disabled={servings === null || helperOpen}
-          style={{ flex: 1, alignSelf: 'stretch' }}
+          style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
         />
       </View>
     </View>

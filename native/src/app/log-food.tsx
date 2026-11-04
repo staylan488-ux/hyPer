@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { accessibilityLabel, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -33,6 +33,7 @@ import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { dismissOpenSwipeRow } from '~/components/SwipeRow';
+import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, type FoodLog } from '~/lib/fuel';
@@ -104,6 +105,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   groupParam: string | null;
 }) {
   const c = useBlanc();
+  const large = useLargeText();
   const [groups, setGroups] = useState<NutritionGroup[]>(() => useFuelStore.getState().groups.filter((group) => group.date === selectedKey));
   // A new entry today goes to the meal that fits the clock; on another day the
   // clock says nothing about the meal, so it starts Unassigned, as on the web.
@@ -242,6 +244,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [storageFailed, setStorageFailed] = useState(false);
   const [captureKey, setCaptureKey] = useState(0);
   const [mealError, setMealError] = useState('');
+  useAnnounce(mealError);
   const settledMealIds = useRef(new Set<string>());
 
   const updateMeal = useCallback(
@@ -297,8 +300,10 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
   const complete = useCallback(() => {
     void useFuelStore.getState().refresh();
+    // The sheet closes on a save: VoiceOver says it went through.
+    announce(savedTarget ? 'Saved meal updated' : editing ? 'Changes saved' : 'Logged');
     setClosing(true);
-  }, []);
+  }, [savedTarget, editing]);
 
   const addIngredients = useCallback(
     (ingredients: MealIngredient[]) => {
@@ -312,6 +317,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       }
       haptics.success();
       updateMeal({ ingredients: [...meal.ingredients, ...next] });
+      // The capture starts over below, so VoiceOver loses its place: say what was added.
+      announce(next.length === 1 ? `${next[0].food.name} added to the meal` : `${next.length} ingredients added to the meal`);
       // the capture starts fresh for the next ingredient, as the web logger remounts
       setChosen(null);
       loadManual(emptyManual);
@@ -437,7 +444,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
               <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
             )}
             <View style={{ alignItems: 'center', flex: 1 }}>
-              <BlancText variant="headline" accessibilityRole="header" numberOfLines={1}>
+              <BlancText variant="headline" accessibilityRole="header" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
                 {title}
               </BlancText>
               {subtitle ? (
@@ -486,14 +493,20 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 <SwiftText modifiers={[tag('search')]}>Search</SwiftText>
                 <SwiftText modifiers={[tag('scan')]}>Scan</SwiftText>
                 <SwiftText modifiers={[tag('manual')]}>Manual</SwiftText>
-                <SwiftText modifiers={[tag('photo')]}>{gemini ? 'AI' : photoWaiting ? 'Photo •' : 'Photo'}</SwiftText>
+                <SwiftText modifiers={[tag('photo'), ...(!gemini && photoWaiting ? [accessibilityLabel('Photo, estimate waiting')] : [])]}>
+                  {gemini ? 'AI' : photoWaiting ? 'Photo •' : 'Photo'}
+                </SwiftText>
               </Picker>
             </Host>
           ) : null}
 
           {capturing && meal && mealTotals && !chosen ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }}>
-              <BlancText variant="secondary" tone="graphite" style={{ flex: 1 }}>
+            <View
+              style={
+                // At the accessibility sizes Review meal goes under the count instead of squeezing it.
+                large ? { alignItems: 'flex-start', gap: 8, marginHorizontal: 20, marginTop: 12 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }
+              }>
+              <BlancText variant="secondary" tone="graphite" style={large ? undefined : { flex: 1 }}>
                 {meal.ingredients.length} ingredient{meal.ingredients.length === 1 ? '' : 's'} · {formatWhole(mealTotals.calories)} kcal
               </BlancText>
               <Capsule title="Review meal" disabled={meal.ingredients.length === 0 || busy} onPress={() => setMealReview(true)} />
@@ -525,8 +538,10 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 void loadYouMeals();
               }
               // a meal saved for later leaves the day's log as it was
-              if (saveFrom && !savedTarget) setClosing(true);
-              else complete();
+              if (saveFrom && !savedTarget) {
+                announce('Meal saved');
+                setClosing(true);
+              } else complete();
             }}
           />
         ) : chosen ? (
