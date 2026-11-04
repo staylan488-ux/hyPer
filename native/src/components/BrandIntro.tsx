@@ -23,6 +23,7 @@ import {
   BLOOM,
   drawnMark,
   FOLD,
+  introWaits,
   landing,
   P_DRAWN,
   P_SIZE,
@@ -67,12 +68,8 @@ const ms = {
   handOver: 180,
   veil: 520,
   reveal: 700,
-  /** The first screen is known but has no resting mark yet: start without one after this long. */
-  firstScreen: 600,
   /** Frames never came smoothly: start anyway. */
   startFallback: 900,
-  /** Signed in, but no resting mark on screen after this long: fade out in place. */
-  noAnchor: 1200,
 };
 
 /**
@@ -112,9 +109,15 @@ type BrandIntroProps = {
   hurry?: boolean;
   /** The intro has handed over; unmount it. */
   onDone: () => void;
+  /**
+   * The first screen has no resting mark to land on (a widget or card opened
+   * Fuel, Train or Targets), so the intro fades out in place without waiting
+   * for one.
+   */
+  markless?: boolean;
 };
 
-export function BrandIntro({ ready, hurry, onDone }: BrandIntroProps) {
+export function BrandIntro({ ready, hurry, onDone, markless = false }: BrandIntroProps) {
   const c = useBlanc();
   const { width, height } = useWindowDimensions();
   const origin = { x: width / 2, y: height * ORIGIN_Y };
@@ -179,9 +182,9 @@ export function BrandIntro({ ready, hurry, onDone }: BrandIntroProps) {
       setFirstScreen(true);
       return;
     }
-    const timer = setTimeout(() => setFirstScreen(true), ms.firstScreen);
+    const timer = setTimeout(() => setFirstScreen(true), introWaits(markless).firstScreen);
     return () => clearTimeout(timer);
-  }, [ready, measure, firstScreen]);
+  }, [ready, measure, firstScreen, markless]);
 
   const frames = useFrameCallback((frame) => {
     const gap = frame.timeSincePreviousFrame;
@@ -287,12 +290,12 @@ export function BrandIntro({ ready, hurry, onDone }: BrandIntroProps) {
   useEffect(() => {
     if (!started || leaving || !(spelled || skipped) || !ready) return;
     if (!measure) {
-      const timer = setTimeout(() => setNoAnchor(true), ms.noAnchor);
+      const timer = setTimeout(() => setNoAnchor(true), introWaits(markless).noAnchor);
       return () => clearTimeout(timer);
     }
     setLeaving(true);
     void land(measure, skipped);
-  }, [started, leaving, spelled, skipped, ready, measure]);
+  }, [started, leaving, spelled, skipped, ready, measure, markless]);
 
   useEffect(() => {
     if (!noAnchor || leaving) return;

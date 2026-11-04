@@ -14,7 +14,7 @@ import { loadNativeModule } from './helpers/loadNativeModule';
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
 
-type Toggle = { label: string; value: boolean; disabled?: boolean; onChange: (value: boolean) => void };
+type Toggle = { label: string; value: boolean; disabled?: boolean; list?: boolean; onChange: (value: boolean) => void };
 type Picker = { label: string; mode: string; value: Date; min?: Date; max?: Date; onChange: (value: Date) => void };
 type Note = { alert?: boolean; children: ReactNode };
 type Button = { title: string; variant?: string; onPress: () => void };
@@ -68,7 +68,7 @@ beforeEach(() => {
     '~/lib/fuelReminder': { setFuelReminderEnabled, setFuelReminderTime, useFuelReminderStore: reminder },
     '~/lib/fuelReminderPlan': plan,
     '~/lib/motion': { blockExit: 'blockExit', rowEnter: 'rowEnter', rowLayout: 'rowLayout' },
-    '~/theme/blanc': { space: { section: 30 } },
+    '~/theme/blanc': { space: { section: 30, inset: 16 } },
     './Capsule': {
       Capsule: ({ title, variant, onPress }: Button) => createElement('button', { 'data-variant': variant, onClick: onPress }, title),
     },
@@ -100,7 +100,7 @@ const DENIED = 'Notifications are off for hyPer. Allow them in Settings to get t
 describe('the Fuel reminder card', () => {
   it('starts with the switch alone and the quiet note', async () => {
     await render();
-    expect(toggle).toMatchObject({ label: 'Fuel reminder', value: false, disabled: false });
+    expect(toggle).toMatchObject({ label: 'Fuel reminder', value: false, disabled: false, list: true });
     expect(picker).toBeNull();
     expect(timeRow()).toBeNull();
     expect(notes()).toEqual([{ alert: false, text: GAINING }]);

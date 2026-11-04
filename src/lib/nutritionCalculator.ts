@@ -257,11 +257,11 @@ export function calculateMacroTargets(input: MacroTargetInput): MacroTargetResul
           ? {
               code: 'deficit_capped_fat_mass',
               message:
-                'Eased the deficit — at your body fat there is not enough fat mass to fuel a loss that fast without giving up muscle.',
+                'Eased the deficit. At your body fat there is not enough fat mass to fuel a loss that fast without giving up muscle.',
             }
           : {
               code: 'deficit_capped_percent',
-              message: 'Eased the deficit — a cut steeper than 25% below maintenance is not sustainable.',
+              message: 'Eased the deficit. A cut steeper than 25% below maintenance is not sustainable.',
             }
       );
     }
@@ -271,7 +271,7 @@ export function calculateMacroTargets(input: MacroTargetInput): MacroTargetResul
       dailyDelta = maxSurplus;
       notes.push({
         code: 'surplus_capped_percent',
-        message: 'Trimmed the surplus — past 20% above maintenance the extra weight is mostly fat.',
+        message: 'Trimmed the surplus. Past 20% above maintenance the extra weight is mostly fat.',
       });
     }
   }
@@ -283,7 +283,7 @@ export function calculateMacroTargets(input: MacroTargetInput): MacroTargetResul
     targetCalories = calorieFloor;
     notes.push({
       code: 'calorie_floor',
-      message: 'Raised to your resting metabolic rate — eating below it is where muscle loss starts.',
+      message: 'Raised to your resting metabolic rate. Eating below it is where muscle loss starts.',
     });
   }
 
@@ -402,8 +402,7 @@ export function feetInchesToCm(feet: number, inches: number): number {
 }
 
 export function cmToFeetInches(cm: number): { feet: number; inches: number } {
-  const totalInches = cm / 2.54;
-  const feet = Math.floor(totalInches / 12);
-  const inches = Math.round(totalInches % 12);
-  return { feet, inches };
+  // Rounded before the split: 71.6 in is 6 ft 0 in, not 5 ft 12 in.
+  const totalInches = Math.round(cm / 2.54);
+  return { feet: Math.floor(totalInches / 12), inches: totalInches % 12 };
 }

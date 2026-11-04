@@ -99,7 +99,7 @@ export const BARCODE_SCAN_TIMEOUT_MS = 300_000;
 
 export const BARCODE_MESSAGES = {
   invalid: 'That barcode is incomplete or failed its checksum. Try again or enter the digits below.',
-  found: 'Product found — review the details below.',
+  found: 'Product found. Review the details below.',
   miss: 'Barcode read, but USDA and Open Food Facts had no product record. Use Describe with AI or add it manually.',
   timeout: 'The lookup took too long. Check your connection and scan again.',
   failed: 'Food lookup failed. Try again.',

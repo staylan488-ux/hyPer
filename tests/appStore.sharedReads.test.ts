@@ -238,6 +238,33 @@ describe('shared store reads', () => {
     expect(callsTo('flex_day_templates')).toBe(3);
     expect(useAppStore.getState().flexTemplates).toEqual([]);
   });
+
+  it('drops a deleted quick start even when the read after the delete fails', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const kept = { id: 'template-2', user_id: 'user-1', label: 'Legs', items: [] };
+    useAppStore.setState({ flexTemplates: [{ id: 'template-1', user_id: 'user-1', label: 'Arms', items: [] }, kept] });
+
+    answer('flex_day_templates', { data: null, error: null }); // the delete
+    answer('flex_day_templates', { data: null, error: { message: 'offline' } });
+    await useAppStore.getState().deleteFlexTemplate('template-1');
+
+    // Program's swipe reads success from the list: no "Not deleted" for a delete that worked.
+    expect(useAppStore.getState().flexTemplates).toEqual([kept]);
+    quiet.mockRestore();
+  });
+
+  it('keeps a quick start whose delete failed', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const template = { id: 'template-1', user_id: 'user-1', label: 'Arms', items: [] };
+    useAppStore.setState({ flexTemplates: [template] });
+
+    answer('flex_day_templates', { data: null, error: { message: 'offline' } });
+    await useAppStore.getState().deleteFlexTemplate('template-1');
+
+    expect(useAppStore.getState().flexTemplates).toEqual([template]);
+    expect(callsTo('flex_day_templates')).toBe(1);
+    quiet.mockRestore();
+  });
 });
 
 describe('hydratedForUserId', () => {

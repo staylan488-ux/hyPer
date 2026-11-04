@@ -59,7 +59,9 @@ const addLaunchActionListener = vi.fn((callback: () => void) => {
 
 const launch = loadNativeModule<Launch>('lib/launch.ts', {
   'expo-router': { router: { push, navigate }, useNavigationContainerRef: () => nav },
-  'react-native': { AppState, AccessibilityInfo: { announceForAccessibilityWithOptions: announce } },
+  'react-native': { AppState },
+  // VoiceOver hears a refused press through the app's one announcer.
+  './accessibility': { announce },
   '../../modules/hyper-launch': { takePendingAction, addLaunchActionListener },
   './haptics': { haptics: { error } },
   './launchActions': launchActions,
@@ -202,7 +204,7 @@ describe('useLaunchActionRunner', () => {
     await render();
     expect(navigate).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledOnce();
-    expect(announce).toHaveBeenCalledWith(launchActions.PRESS_REFUSED, { queue: true });
+    expect(announce).toHaveBeenCalledWith(launchActions.PRESS_REFUSED);
     expect(store().press).toBeNull();
   });
 

@@ -1,18 +1,19 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { SymbolView, type SFSymbol } from 'expo-symbols';
-import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useRef } from 'react';
+import { ScrollView, View } from 'react-native';
 
 import { normalizeSetRange } from '@/lib/setRangeNotes';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import { BlancText } from '~/components/BlancText';
+import { ToggleRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
-import { Section } from '~/components/Section';
+import { Stepper } from '~/components/Stepper';
+import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { space, useBlanc } from '~/theme/blanc';
+import { useBlanc } from '~/theme/blanc';
 
 const SET_LIMIT = 10;
 const REP_LIMIT = 100;
@@ -25,6 +26,7 @@ const REP_LIMIT = 100;
  */
 export default function ProgramExerciseSheet() {
   const c = useBlanc();
+  const large = useLargeText();
   const params = useLocalSearchParams<{ day: string; exercise: string }>();
   const day = useSplitEditStore((state) => state.draft?.days.find((entry) => entry.id === params.day) ?? null);
   const exercise = day?.exercises.find((entry) => entry.id === params.exercise) ?? null;
@@ -54,17 +56,31 @@ export default function ProgramExerciseSheet() {
     const range = normalizeSetRange(min, exercise.target_sets, max);
     update(day.id, exercise.id, { target_sets_min: range.minSets, target_sets: range.targetSets, target_sets_max: range.maxSets });
   };
+  // On, a session may run a set shorter or longer; off, the count is the range.
+  const toggleRange = (on: boolean) => {
+    const sets = exercise.target_sets;
+    if (on) setRange(Math.max(1, sets - 1), Math.min(SET_LIMIT, sets + 1));
+    else update(day.id, exercise.id, { target_sets_min: sets, target_sets_max: sets });
+  };
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} scrollEnabled={false}>
+    <ScrollView
+      style={{ backgroundColor: c.ground }}
+      contentContainerStyle={{ paddingBottom: 28 }}
+      // The sheet fits its content; at the accessibility text sizes that can pass the screen's height.
+      scrollEnabled={large}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         {/* Changes apply as they are made: Done only, trailing as in iOS 26 sheets. */}
         <View style={{ width: 44 }} />
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <BlancText variant="headline" numberOfLines={1} accessibilityRole="header">
+        <View
+          style={{ flex: 1, alignItems: 'center' }}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${exercise.exercise.name}, ${partner ? `superset with ${partner.exercise.name}` : 'sets and reps'}`}>
+          <BlancText variant="headline" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
             {exercise.exercise.name}
           </BlancText>
-          <BlancText variant="footnote" tone="graphite" numberOfLines={1}>
+          <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? { textAlign: 'center' } : undefined}>
             {partner ? `Superset with ${partner.exercise.name}` : 'Sets and reps'}
           </BlancText>
         </View>
@@ -91,16 +107,32 @@ export default function ProgramExerciseSheet() {
         />
       </Label>
 
-      <Section title="Set range" note={ranged ? undefined : 'Off'} style={{ marginTop: 22 }}>
-        <Label>
-          <StepperRow label="Fewest" value={exercise.target_sets_min} min={1} max={SET_LIMIT} onChange={(value) => setRange(value, Math.max(value, exercise.target_sets_max))} />
-          <Hairline />
-          <StepperRow label="Most" value={exercise.target_sets_max} min={1} max={SET_LIMIT} onChange={(value) => setRange(Math.min(value, exercise.target_sets_min), value)} />
-        </Label>
-        <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-          Sessions can add or drop sets within this range.
-        </BlancText>
-      </Section>
+      <Label style={{ marginTop: 22 }}>
+        <ToggleRow label="Set range" value={ranged} onChange={toggleRange} />
+        {ranged ? (
+          <>
+            {/* Fewest stays under Most, so the range never closes up and folds away under the finger. */}
+            <Hairline />
+            <StepperRow
+              label="Fewest"
+              spoken="Fewest sets"
+              value={exercise.target_sets_min}
+              min={1}
+              max={exercise.target_sets_max - 1}
+              onChange={(value) => setRange(value, Math.max(value, exercise.target_sets_max))}
+            />
+            <Hairline />
+            <StepperRow
+              label="Most"
+              spoken="Most sets"
+              value={exercise.target_sets_max}
+              min={exercise.target_sets_min + 1}
+              max={SET_LIMIT}
+              onChange={(value) => setRange(Math.min(value, exercise.target_sets_min), value)}
+            />
+          </>
+        ) : null}
+      </Label>
 
       <Label style={{ marginTop: 22 }}>
         <Row
@@ -113,100 +145,62 @@ export default function ProgramExerciseSheet() {
   );
 }
 
-/** A number with − and +; holding a button keeps stepping, like iOS's stepper. */
-function StepperRow({ label, value, min, max, onChange }: {
+/**
+ * A number with − and +; holding a button keeps stepping, like iOS's stepper.
+ * VoiceOver finds one adjustable element (swipe up or down to step) named
+ * `spoken`, or the label; at the accessibility text sizes the label sits
+ * over the number and its buttons.
+ */
+function StepperRow({ label, spoken, value, min, max, onChange }: {
   label: string;
+  spoken?: string;
   value: number;
   min: number;
   max: number;
   onChange: (value: number) => void;
 }) {
+  const large = useLargeText();
   const latest = useRef({ value, onChange });
   latest.current = { value, onChange };
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => () => {
-    if (timer.current) clearInterval(timer.current);
-  }, []);
 
+  // The Stepper ticks for its own presses; VoiceOver's steps tick here.
   const step = (delta: number) => {
     const next = Math.max(min, Math.min(max, latest.current.value + delta));
     if (next === latest.current.value) return false;
-    haptics.select();
     latest.current.onChange(next);
     latest.current.value = next;
     return true;
   };
-  const stop = () => {
-    if (timer.current) clearInterval(timer.current);
-    timer.current = null;
-  };
-
-  const button = (symbol: SFSymbol, delta: number, disabled: boolean, name: string) => (
-    <StepButton
-      symbol={symbol}
-      disabled={disabled}
-      accessibilityLabel={`${name} ${label}`}
-      onPress={() => step(delta)}
-      onHold={() => {
-        stop();
-        timer.current = setInterval(() => {
-          if (!step(delta)) stop();
-        }, 110);
-      }}
-      onRelease={stop}
-    />
-  );
 
   return (
     <View
       accessible
       accessibilityRole="adjustable"
-      accessibilityLabel={label}
+      accessibilityLabel={spoken ?? label}
       accessibilityValue={{ text: String(value) }}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
-      onAccessibilityAction={(event) => step(event.nativeEvent.actionName === 'increment' ? 1 : -1)}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 56, paddingLeft: 18, paddingRight: 12 }}>
-      <BlancText variant="body" style={{ flex: 1 }}>
+      onAccessibilityAction={(event) => {
+        if (step(event.nativeEvent.actionName === 'increment' ? 1 : -1)) haptics.select();
+      }}
+      style={[
+        { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingLeft: 18, paddingRight: 16 },
+        large ? { flexWrap: 'wrap', rowGap: 6, paddingVertical: 10 } : null,
+      ]}>
+      <BlancText variant="body" style={large ? { width: '100%' } : { flex: 1 }}>
         {label}
       </BlancText>
-      <RollingText variant="figure" size={24} style={{ minWidth: 40, textAlign: 'center' }}>
+      <RollingText variant="figure" size={24} style={{ minWidth: 40, textAlign: 'right' }}>
         {String(value)}
       </RollingText>
-      {button('minus', -1, value <= min, 'Fewer')}
-      {button('plus', 1, value >= max, 'More')}
+      <Stepper
+        repeat
+        canMinus={value > min}
+        canPlus={value < max}
+        minusLabel={`Fewer ${label}`}
+        plusLabel={`More ${label}`}
+        onMinus={() => step(-1)}
+        onPlus={() => step(1)}
+      />
     </View>
-  );
-}
-
-function StepButton({ symbol, disabled, accessibilityLabel, onPress, onHold, onRelease }: {
-  symbol: SFSymbol;
-  disabled: boolean;
-  accessibilityLabel: string;
-  onPress: () => void;
-  onHold: () => void;
-  onRelease: () => void;
-}) {
-  const c = useBlanc();
-  return (
-    <Pressable
-      accessibilityLabel={accessibilityLabel}
-      disabled={disabled}
-      onPress={onPress}
-      onLongPress={onHold}
-      delayLongPress={350}
-      onPressOut={onRelease}
-      // 36 points drawn, 44 to touch.
-      hitSlop={{ top: 4, bottom: 4 }}
-      style={({ pressed }) => ({
-        width: 44,
-        height: 36,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: pressed ? c.pressed : c.fill,
-        opacity: disabled ? 0.35 : 1,
-      })}>
-      <SymbolView name={symbol} size={15} weight="semibold" tintColor={c.ink} />
-    </Pressable>
   );
 }

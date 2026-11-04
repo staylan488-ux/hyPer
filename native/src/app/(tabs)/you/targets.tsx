@@ -1,6 +1,7 @@
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { baseTargets, expenditureSummary, resumeAdaptiveMessage, targetModeLabel } from '@/lib/settingsUx';
@@ -10,11 +11,14 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { formatWhole } from '~/lib/format';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
+import { figureLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
@@ -26,6 +30,8 @@ function readThisLaunch() {
   return Boolean(userId) && app.macroTargetLoadedForUserId === userId && app.nutritionProfileLoadedForUserId === userId;
 }
 
+const REFRESH_FAILED = 'Couldn’t refresh your targets. These are the last ones loaded.';
+
 /**
  * Nutrition targets: the daily calories and macros, how they are kept (by
  * hand or adapting), and the two ways to get new ones.
@@ -35,9 +41,21 @@ export default function TargetsScreen() {
   const profile = useAppStore((state) => state.nutritionProfile);
   const status = useTargetsStore((state) => state.status);
   const message = useTargetsStore((state) => state.message);
+  // A save's result (here or from the edit sheet over this screen), not one
+  // left from an earlier visit; errors announce themselves (FormNote).
+  const [earlier] = useState(message);
+  // Keyed on the object, not its text: a second save with the same words is
+  // a new message and is announced again.
+  useEffect(() => {
+    if (message && message !== earlier && !message.alert) announce(message.text);
+  }, [message, earlier]);
+  const large = useLargeText();
   const [resuming, setResuming] = useState(false);
   const base = baseTargets(target);
   const ready = status === 'ready' || target !== null;
+  // A refresh that failed keeps the last targets and says so under them.
+  const refreshFailed = status === 'error' && target !== null;
+  useAnnounce(refreshFailed ? REFRESH_FAILED : null);
   const mode = targetModeLabel(target ? base.source : undefined, profile?.adaptive_enabled);
   const burn = expenditureSummary(profile);
   // The coach is the AI chosen in Food analysis: Gemini needs nothing set
@@ -118,7 +136,7 @@ export default function TargetsScreen() {
             <View style={{ paddingHorizontal: space.gutter, paddingTop: 12 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={ready ? `${formatWhole(base.calories)} kcal a day, ${target ? mode : 'starting defaults, not saved'}` : 'Calories'}
+                accessibilityLabel={ready ? speak(`${formatWhole(base.calories)} kcal a day, ${target ? mode : 'starting defaults, not saved'}`) : 'Calories'}
                 accessibilityHint={ready ? 'Edits your targets' : undefined}
                 accessibilityState={ready ? undefined : { disabled: true }}
                 disabled={!ready}
@@ -127,18 +145,27 @@ export default function TargetsScreen() {
                   edit('calories');
                 }}
                 style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                  <BlancText variant="figure" size={64}>
+                {/* At the accessibility text sizes the words wrap below the capped figure. */}
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
+                  <RollingText variant="figure" size={64}>
                     {ready ? formatWhole(base.calories) : ' '}
-                  </BlancText>
-                  <BlancText variant="secondary" tone="graphite">
-                    kcal a day
-                  </BlancText>
+                  </RollingText>
+                  <Animated.View layout={figureLayout}>
+                    <BlancText variant="secondary" tone="graphite">
+                      kcal a day
+                    </BlancText>
+                  </Animated.View>
                 </View>
                 <BlancText variant="secondary" tone="graphite">
                   {!ready ? ' ' : target ? mode : 'Starting defaults, not saved'}
                 </BlancText>
               </Pressable>
+              {/* A refresh that failed says so under the numbers it left in place. */}
+              {refreshFailed ? (
+                <BlancText variant="footnote" tone="live" style={{ marginTop: 4 }} accessibilityRole="alert">
+                  {REFRESH_FAILED}
+                </BlancText>
+              ) : null}
             </View>
             <Label style={{ marginTop: 24 }}>
               <Row
@@ -165,7 +192,7 @@ export default function TargetsScreen() {
         </Label>
 
         {profile ? (
-          <Section title="Automatic adjustments">
+          <Section title="Adaptive targets">
             <Label>
               <Row
                 title="Daily burn"
@@ -176,17 +203,20 @@ export default function TargetsScreen() {
               />
             </Label>
             {base.source === 'manual' ? (
-              <>
-                <View style={{ marginHorizontal: space.inset, marginTop: 14 }}>
-                  <Capsule title="Resume adaptive targets" variant="quiet" fill busy={resuming} onPress={() => void resume()} />
-                </View>
-                <FormNote>Your targets are set by hand, so they stay fixed until you resume.</FormNote>
-              </>
+              <View style={{ marginHorizontal: space.inset, marginTop: 14 }}>
+                <Capsule title="Resume adaptive targets" variant="quiet" fill busy={resuming} onPress={() => void resume()} />
+              </View>
             ) : null}
           </Section>
         ) : null}
 
-        {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}
+        {/* What Resume did, under the button that did it. A message left from an
+            earlier visit shows until the mount effect clears it, but is not announced. */}
+        {message ? (
+          <FormNote alert={message.alert} announcement={message === earlier ? '' : undefined}>
+            {message.text}
+          </FormNote>
+        ) : null}
       </TabScroll>
     </>
   );

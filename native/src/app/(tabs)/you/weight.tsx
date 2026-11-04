@@ -1,30 +1,34 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { format, isToday } from 'date-fns';
+import { accessibilityLabel, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Alert, Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
+import { WEIGHT_TREND_WINDOW_DAYS, bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
 import type { BodyWeightMeasurement } from '@/lib/healthWeights';
 import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { useCurrentDayKey } from '~/lib/accountData';
+import { dayKey, today } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
-import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteWeighIn, loadWeights, setWeightUnit, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
 const RECENT = 6;
 
-/** Body weight: the latest weigh-in, the smoothed trend, 90 days and the recent log. */
+/** Body weight: the latest weigh-in, 90 days of the smoothed trend and the recent log. */
 export default function WeightScreen() {
   const history = useWeightStore((state) => state.history);
   const loading = useWeightStore((state) => state.loading);
@@ -34,8 +38,19 @@ export default function WeightScreen() {
   const { trend, rate } = useMemo(() => bodyWeightTrends(history), [history]);
   const latest = history[0] ?? null;
   const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
-  const showTrend = trend.latestEwmaKg !== null && trend.fittedDayCount >= 2;
+  // The chart's resting line: "Trend 173.4 lb · −0.43 lb/wk".
+  const trendLine =
+    trend.latestEwmaKg === null ? undefined : [`Trend ${formatWeight(trend.latestEwmaKg, unit)} ${unit}`, rateLabel].filter(Boolean).join(' · ');
   const { refreshing, refresh } = usePullRefresh(loadWeights);
+  // Handed to the rows, so "Today" moves on at midnight.
+  const todayKey = useCurrentDayKey();
+  const large = useLargeText();
+  const refreshFailed = failed && latest ? 'Couldn’t refresh your weigh-ins. Earlier ones are kept.' : null;
+  // The failure arrives after the screen does (a load, a pull to refresh).
+  useAnnounce(refreshFailed);
+  // Only the first read shows a spinner; a pull to refresh keeps the page as it is.
+  const [settled, setSettled] = useState(!loading);
+  if (!settled && !loading) setSettled(true);
 
   useEffect(() => {
     void loadWeights();
@@ -65,63 +80,63 @@ export default function WeightScreen() {
             {/* The figure is where a weigh-in starts: a tap logs the next one. */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}, ${measuredLabel(latest)}`}
+              accessibilityLabel={speak(`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}, ${measuredLabel(latest, todayKey)}`)}
               accessibilityHint="Logs a weigh-in"
               onPress={() => {
                 haptics.tap();
                 router.push('/log-weight');
               }}
               style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                <BlancText variant="figure" size={64}>
+              {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
+                <RollingText variant="figure" size={64}>
                   {formatWeight(Number(latest.kilograms), unit)}
-                </BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  {unit}
-                </BlancText>
+                </RollingText>
+                <Animated.View layout={figureLayout}>
+                  <BlancText variant="secondary" tone="graphite">
+                    {unit}
+                  </BlancText>
+                </Animated.View>
               </View>
               <BlancText variant="secondary" tone="graphite">
-                {measuredLabel(latest)}
+                {measuredLabel(latest, todayKey)}
               </BlancText>
             </Pressable>
+            {refreshFailed ? (
+              <BlancText variant="footnote" tone="live" style={{ marginTop: 4 }} accessibilityRole="alert">
+                {refreshFailed}
+              </BlancText>
+            ) : null}
           </View>
+        ) : !settled ? (
+          <ActivityIndicator style={{ marginTop: 40 }} />
         ) : (
           <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
             <View style={{ gap: 2 }}>
-              <BlancText variant="headline">{loading ? 'Loading' : failed ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
+              <BlancText variant="headline">{failed ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
               <BlancText variant="secondary" tone="graphite">
                 {failed
                   ? 'Your earlier weigh-ins are kept.'
                   : 'Regular weigh-ins show your trend and help adaptive targets.'}
               </BlancText>
             </View>
-            {loading ? null : failed ? (
-              <Capsule title="Try again" fill onPress={() => void loadWeights()} />
+            {failed ? (
+              <Capsule title="Try again" fill busy={loading} onPress={() => void loadWeights()} />
             ) : (
               <Capsule title="Log weight" size="large" fill onPress={() => router.push('/log-weight')} />
             )}
           </Label>
         )}
 
-        {showTrend || rateLabel ? (
-          <Label style={{ marginTop: 24 }}>
-            {showTrend ? (
-              <Row title="Trend" value={`${formatWeight(trend.latestEwmaKg!, unit)} ${unit}`} detail={`Smoothed over ${trend.observedDayCount} weigh-in${trend.observedDayCount === 1 ? '' : 's'}`} />
-            ) : null}
-            {showTrend && rateLabel ? <Hairline /> : null}
-            {rateLabel ? <Row title="3-week rate" value={rateLabel} /> : null}
-          </Label>
-        ) : null}
-
         {trend.fittedDayCount >= 2 ? (
-          <Label style={{ marginTop: space.section, padding: 18 }}>
-            <WeightChart points={trend.points} days={90} unit={unit} height={168} summary="Tap or hold to read a day" />
+          <Label style={{ marginTop: 24, padding: 18 }}>
+            <WeightChart points={trend.points} days={WEIGHT_TREND_WINDOW_DAYS} unit={unit} height={168} summary={trendLine} />
           </Label>
         ) : null}
 
         {history.length > 0 ? (
           <Animated.View layout={rowLayout}>
-            <Recent entries={history.slice(0, RECENT)} unit={unit} />
+            <Recent entries={history.slice(0, RECENT)} unit={unit} todayKey={todayKey} />
           </Animated.View>
         ) : null}
 
@@ -132,25 +147,20 @@ export default function WeightScreen() {
             <Hairline />
             <Row title="Apple Health" value={health ? 'On' : 'Off'} chevron onPress={() => router.push('/you/connections')} />
           </Label>
-          {failed && latest ? (
-            <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 8 }} accessibilityRole="alert">
-              Couldn’t refresh your weigh-ins. Earlier ones are kept.
-            </BlancText>
-          ) : null}
         </Animated.View>
       </TabScroll>
     </>
   );
 }
 
-function measuredLabel(entry: BodyWeightMeasurement): string {
+function measuredLabel(entry: BodyWeightMeasurement, todayKey = today()): string {
   const date = new Date(entry.measured_at);
-  const when = `${isToday(date) ? 'Today' : format(date, 'MMM d')}, ${format(date, 'h:mm a')}`;
+  const when = `${dayKey(date) === todayKey ? 'Today' : format(date, 'MMM d')}, ${format(date, 'h:mm a')}`;
   return entry.source === 'manual' ? when : `${when} · ${entry.source_name}`;
 }
 
 /** The latest weigh-ins. A typed one swipes to delete; Health's stay in Health. */
-function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: WeightUnit }) {
+function Recent({ entries, unit, todayKey }: { entries: BodyWeightMeasurement[]; unit: WeightUnit; todayKey: string }) {
   const c = useBlanc();
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
 
@@ -159,6 +169,8 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
     void deleteWeighIn(entry).then((deleted) => {
       if (deleted) {
         haptics.success();
+        // The row folds away from under VoiceOver's focus.
+        announce('Weigh-in deleted');
       } else {
         haptics.error();
         Alert.alert('Not deleted', 'Check your connection and try again.');
@@ -196,7 +208,7 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
             <View style={{ backgroundColor: c.label }}>
               <Row
                 title={title}
-                detail={measuredLabel(entry)}
+                detail={measuredLabel(entry, todayKey)}
                 menu={entry.source === 'manual' ? [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, removes: true, run: () => remove(entry) }] : undefined}
                 onPress={entry.source === 'manual' ? () => menu(entry) : undefined}
               />
@@ -221,9 +233,16 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
 }
 
 function UnitRow({ unit }: { unit: WeightUnit }) {
+  // At the accessibility text sizes the switch sits under its label.
+  const large = useLargeText();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingLeft: 18, paddingRight: 16, gap: 12 }}>
-      <BlancText variant="bodyStrong" style={{ flex: 1 }}>
+    <View
+      style={
+        large
+          ? { alignItems: 'flex-start', minHeight: 60, paddingVertical: 12, paddingLeft: 18, paddingRight: 16, gap: 8 }
+          : { flexDirection: 'row', alignItems: 'center', minHeight: 60, paddingLeft: 18, paddingRight: 16, gap: 12 }
+      }>
+      <BlancText variant="bodyStrong" style={large ? undefined : { flex: 1 }}>
         Units
       </BlancText>
       <Host matchContents style={{ width: 120 }}>
@@ -235,8 +254,8 @@ function UnitRow({ unit }: { unit: WeightUnit }) {
             setWeightUnit(next as WeightUnit);
           }}
           modifiers={[pickerStyle('segmented')]}>
-          <SwiftText modifiers={[tag('lb')]}>lb</SwiftText>
-          <SwiftText modifiers={[tag('kg')]}>kg</SwiftText>
+          <SwiftText modifiers={[tag('lb'), accessibilityLabel('Pounds')]}>lb</SwiftText>
+          <SwiftText modifiers={[tag('kg'), accessibilityLabel('Kilograms')]}>kg</SwiftText>
         </Picker>
       </Host>
     </View>

@@ -11,27 +11,29 @@ export interface CoachingCall {
   priority: number;
 }
 
-/** What to do about a muscle this week; a missing landmark counts as MEV 0. */
+/** What to do about a muscle this week; a muscle with no landmark is not graded. */
 export function buildCoachingCall(mv: MuscleVolume): CoachingCall {
   const mev = mv.landmark?.mev ?? 0;
   switch (mv.status) {
+    case null:
+      return { chip: 'Not graded', tone: 'stone', headline: 'No landmarks to grade against', priority: 5 };
     case 'below_mev': {
       const gap = Math.max(1, Math.ceil(mev - mv.weekly_sets));
-      return { chip: 'Under-stimulated', tone: 'amber', headline: `Add ~${gap} ${gap === 1 ? 'set' : 'sets'} this week`, priority: 0 };
+      return { chip: 'Under-stimulated', tone: 'amber', headline: `Add about ${gap} ${gap === 1 ? 'set' : 'sets'} this week`, priority: 0 };
     }
     case 'above_mrv':
-      return { chip: 'Over ceiling', tone: 'berry', headline: 'Pull back — beyond recoverable volume', priority: 1 };
+      return { chip: 'Over ceiling', tone: 'berry', headline: 'Over its ceiling · pull back', priority: 1 };
     case 'approaching_mrv':
-      return { chip: 'Near ceiling', tone: 'berry', headline: 'Hold here — fatigue is compounding', priority: 2 };
+      return { chip: 'Near ceiling', tone: 'berry', headline: 'Near its ceiling · hold here', priority: 2 };
     case 'mav':
-      return { chip: 'Adaptive zone', tone: 'sage', headline: 'Hold volume — growth is compounding', priority: 3 };
+      return { chip: 'Adaptive zone', tone: 'sage', headline: 'Hold volume · growth is compounding', priority: 3 };
     case 'mev_mav':
     default:
-      return { chip: 'Effective', tone: 'sage', headline: 'Building — room to add when ready', priority: 4 };
+      return { chip: 'Effective', tone: 'sage', headline: 'Building · room to add when ready', priority: 4 };
   }
 }
 
-/** Muscles by coaching priority (under, over, near, in zone, building), then by sets. */
+/** Muscles by coaching priority (under, over, near, in zone, building, not graded), then by sets. */
 export function coachMuscles(volume: MuscleVolume[]): Array<{ mv: MuscleVolume; call: CoachingCall }> {
   return volume
     .map((mv) => ({ mv, call: buildCoachingCall(mv) }))

@@ -47,6 +47,7 @@ import {
 
 import { addRestControlListener, markRestControlsApplied, pendingRestControls } from '../../modules/hyper-activity';
 
+import { announce } from './accessibility';
 import { haptics } from './haptics';
 import { applyRestControls } from './restControls';
 import { liveSessionModel } from './session';
@@ -249,7 +250,10 @@ export function useRestLifecycle() {
   }, []);
 }
 
-/** Mounted once (tab layout): when a running rest runs out, a haptic in the app, then it reads as done. */
+/**
+ * Mounted once (tab layout): when a running rest runs out, a haptic in the
+ * app (and "Rest over" for VoiceOver, once, with it), then it reads as done.
+ */
 export function useRestFinish() {
   const endsAt = useRestStore((state) => (state.session?.status === 'running' ? state.session.endsAt : null));
   useEffect(() => {
@@ -262,7 +266,10 @@ export function useRestFinish() {
       const { session } = useRestStore.getState();
       if (session?.status !== 'running' || session.endsAt !== endsAt) return;
       // Late means the app was away, and the notification already said so.
-      if (AppState.currentState === 'active' && Date.now() - end < 1500) haptics.success();
+      if (AppState.currentState === 'active' && Date.now() - end < 1500) {
+        haptics.success();
+        announce('Rest over');
+      }
       const finished = syncRestTimerSession(session);
       commit(
         finished.status === 'completed'

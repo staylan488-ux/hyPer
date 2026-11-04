@@ -2,11 +2,12 @@
 // life cycle and the router.
 import { router, useNavigationContainerRef } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, AppState } from 'react-native';
+import { AppState } from 'react-native';
 
 import type { AuthScreen } from '@/lib/authScreen';
 
 import { addLaunchActionListener, takePendingAction } from '../../modules/hyper-launch';
+import { announce } from './accessibility';
 import { haptics } from './haptics';
 import {
   askLoggerCamera,
@@ -30,7 +31,7 @@ export const launchWaiting = (): boolean => useLaunchStore.getState().press !== 
 /** A press that can't open what it names: one error haptic, and a line for VoiceOver. Nothing on screen changes. */
 export function refusePress(): void {
   haptics.error();
-  AccessibilityInfo.announceForAccessibilityWithOptions(PRESS_REFUSED, { queue: true });
+  announce(PRESS_REFUSED);
 }
 
 /**

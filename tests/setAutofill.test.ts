@@ -65,6 +65,43 @@ describe('setAutofill helpers', () => {
     });
   });
 
+  it('keeps a load to the hundredth, as it is saved', () => {
+    const logged = { ...exerciseSets[0], weight: 46.25, reps: 10, rpe: 7.5 };
+    expect(getSetAutofillValues({
+      exerciseId: 'exercise-1',
+      setNumber: 2,
+      currentExerciseSets: [logged, exerciseSets[1]],
+      previousWorkoutSetsByExercise: {},
+    })).toEqual({ weight: '46.25', reps: '10', rpe: '7.5', source: 'current_workout' });
+    expect(getSetAutofillValues({
+      exerciseId: 'exercise-1',
+      setNumber: 1,
+      currentExerciseSets: [],
+      previousWorkoutSetsByExercise: { 'exercise-1': { 1: { weight: 12.7, reps: 8, rpe: null } } },
+    })).toEqual({ weight: '12.7', reps: '8', rpe: '', source: 'previous_workout' });
+  });
+
+  it('fills a movement\'s first set from last time when its sets start past 1 (a superset swap)', () => {
+    const replacement = [
+      { ...exerciseSets[1], id: 'set-2', set_number: 2 },
+      { ...exerciseSets[1], id: 'set-3', set_number: 3 },
+    ];
+    const previous = { 'exercise-1': { 1: { weight: 100, reps: 10, rpe: null }, 2: { weight: 95, reps: 9, rpe: null } } };
+    expect(getSetAutofillValues({
+      exerciseId: 'exercise-1',
+      setNumber: 2,
+      currentExerciseSets: replacement,
+      previousWorkoutSetsByExercise: previous,
+    })).toEqual({ weight: '95', reps: '9', rpe: '', source: 'previous_workout' });
+    // A later set still waits for an earlier one this workout.
+    expect(getSetAutofillValues({
+      exerciseId: 'exercise-1',
+      setNumber: 3,
+      currentExerciseSets: replacement,
+      previousWorkoutSetsByExercise: previous,
+    })).toBeNull();
+  });
+
   it('returns null when there is no source set to copy', () => {
     expect(getSetAutofillValues({
       exerciseId: 'exercise-1',

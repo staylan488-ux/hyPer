@@ -14,6 +14,7 @@ import { useSplitEditStore } from '@/stores/splitEditStore';
 import { maybeSeedPreview } from '@/preview/previewSeed';
 import { serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { blankSplitDraft } from '@/lib/splitDraftSeed';
+import { buildSessionModel } from '../native/src/lib/sessionModel';
 
 let client = createMockClient();
 const fixture = structuredClone(previewTables);
@@ -201,6 +202,64 @@ describe('preview uses real program and workout store paths', () => {
     expect(useAppStore.getState().currentWorkoutDayPlan?.items[0].exercise_id).toBe('ex_row');
   });
 
+  it('shows a movement removed from a flexible session again when it comes back as a superset partner', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    await useAppStore.getState().completeWorkout();
+    await useAppStore.getState().setWorkoutMode('flexible');
+    const started = await useAppStore.getState().startFlexibleWorkout('Pull');
+    const row = (await client.from('exercises').select('*').eq('id', 'ex_row').single()).data;
+    const curl = (await client.from('exercises').select('*').eq('id', 'ex_curl').single()).data;
+    await useAppStore.getState().addFlexibleExercise(row);
+    await useAppStore.getState().addFlexibleExercise(curl);
+    await useAppStore.getState().removeFlexibleExerciseFromPlan('ex_curl');
+    await useAppStore.getState().addFlexibleSuperset('ex_row', curl);
+
+    const plan = useAppStore.getState().currentWorkoutDayPlan!;
+    expect(plan.items.map((item) => [item.exercise_id, item.order, item.hidden])).toEqual([['ex_row', 0, false], ['ex_curl', 1, false]]);
+    expect(plan.items[1].superset_group_id).toBe(plan.items[0].superset_group_id);
+    const model = buildSessionModel(useAppStore.getState().currentWorkout, { split: null, plan }, null);
+    expect(model?.movements.map((movement) => [movement.exerciseId, movement.superset?.role])).toEqual([['ex_row', 'A'], ['ex_curl', 'B']]);
+    expect(started?.id).toBe(plan.workout_id);
+  });
+
+  it('keeps one plan item for a movement removed in History and added back as a superset partner', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    const plan = await useAppStore.getState().ensureWorkoutDayPlan(workout.id);
+    const [base, partner] = plan!.items.filter((item) => !item.superset_group_id).map((item) => item.exercise_id);
+    const partnerRow = (await client.from('exercises').select('*').eq('id', partner).single()).data;
+    await useAppStore.getState().removeExerciseFromWorkout(workout.id, partner);
+    await useAppStore.getState().addSupersetToWorkout(workout.id, base, partnerRow);
+
+    const stored = await useAppStore.getState().fetchWorkoutDayPlanByWorkoutId(workout.id);
+    const copies = stored!.items.filter((item) => item.exercise_id === partner);
+    expect(copies).toHaveLength(1);
+    expect(copies[0].hidden).toBe(false);
+    const baseItem = stored!.items.find((item) => item.exercise_id === base)!;
+    expect(copies[0].superset_group_id).toBe(baseItem.superset_group_id);
+    expect(copies[0].order).toBe(baseItem.order + 1);
+    expect(stored!.items.map((item) => item.order)).toEqual(stored!.items.map((_, index) => index));
+  });
+
+  it('pairs a superset added in History to the live program workout on Train at once', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    await useAppStore.getState().fetchSplits();
+    const workout = useAppStore.getState().currentWorkout!;
+    // A plain program session: no swap, skip or reorder yet, so no plan.
+    expect(useAppStore.getState().currentWorkoutDayPlan).toBeNull();
+    const base = workout.sets.at(-1)!.exercise_id;
+    const partner = (await client.from('exercises').select('*').eq('id', 'ex_pullup').single()).data;
+
+    await useAppStore.getState().addSupersetToWorkout(workout.id, base, partner);
+
+    const plan = useAppStore.getState().currentWorkoutDayPlan;
+    expect(plan?.workout_id).toBe(workout.id);
+    const model = buildSessionModel(useAppStore.getState().currentWorkout, { split: useAppStore.getState().activeSplit, plan }, null);
+    const paired = model?.movements.filter((movement) => movement.superset).map((movement) => [movement.exerciseId, movement.superset?.role]);
+    expect(paired).toContainEqual([base, 'A']);
+    expect(paired).toContainEqual(['ex_pullup', 'B']);
+  });
+
   it('persists movement order without changing sets, targets or the source program', async () => {
     await useAppStore.getState().fetchCurrentWorkout();
     const workout = useAppStore.getState().currentWorkout!;
@@ -272,6 +331,61 @@ describe('preview uses real program and workout store paths', () => {
     const template = useAppStore.getState().flexTemplates.find((entry) => entry.label === 'Pull');
     expect(template?.items.map((item) => item.exercise_id)).toEqual(['ex_row']);
     expect(template?.items[0].skipped).toBeUndefined();
+  });
+
+  it('takes an unlogged set off a program movement in the store and the sample database', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    expect(workout.split_day_id).toBe('d1');
+    const exerciseId = workout.sets.find((set) => !set.completed)!.exercise_id;
+    const removed = workout.sets
+      .filter((set) => set.exercise_id === exerciseId && !set.completed)
+      .sort((a, b) => b.set_number - a.set_number)[0];
+
+    await useAppStore.getState().removeLastUncompletedSet(exerciseId);
+
+    expect(previewTables.sets.some((set) => set.id === removed.id)).toBe(false);
+    const sets = useAppStore.getState().currentWorkout!.sets;
+    expect(sets.some((set) => set.id === removed.id)).toBe(false);
+    expect(sets).toHaveLength(workout.sets.length - 1);
+  });
+
+  it('drops the sets a lower set count removed from the live workout', async () => {
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    const exerciseId = workout.sets.find((set) => !set.completed)!.exercise_id;
+
+    await useAppStore.getState().updateWorkoutExerciseTargetSets(workout.id, exerciseId, 1);
+
+    const left = (rows: Array<{ workout_id?: unknown; exercise_id?: unknown }>) =>
+      rows.filter((set) => set.workout_id === workout.id && set.exercise_id === exerciseId).length;
+    expect(left(previewTables.sets)).toBe(1);
+    expect(left(useAppStore.getState().currentWorkout!.sets)).toBe(1);
+  });
+
+  it('gives back the WHOOP activity when a workout with its stats is deleted', async () => {
+    const activity = (await client.from('activity_sessions').select('*').eq('id', 'act_intervals').single()).data;
+    const workout = (await useAppStore.getState().fetchWorkoutById('wh1'))!;
+    expect(workout.date).toBe(activity.date);
+    const month = new Date(`${activity.date}T12:00:00`);
+    const listed = async () => (await useAppStore.getState().fetchActivitySessionsByMonth(month)).some((entry) => entry.id === 'act_intervals');
+
+    await useAppStore.getState().attachWhoopToWorkout(workout, activity);
+    expect(await listed()).toBe(false);
+    await useAppStore.getState().deleteWorkout('wh1');
+
+    expect(previewTables.workouts.some((row) => row.id === 'wh1')).toBe(false);
+    expect(await listed()).toBe(true);
+  });
+
+  it('answers a delete with its rows only when asked to return them', async () => {
+    const plain = await client.from('sets').delete().eq('id', 'cs9');
+    expect(plain).toMatchObject({ data: null, error: null, count: 1 });
+    const returned = await client.from('sets').delete().eq('id', 'cs8').select('id');
+    expect(returned.data).toEqual([expect.objectContaining({ id: 'cs8' })]);
+    const one = await client.from('workouts').delete().eq('id', 'wh2').select('id, user_id').single();
+    expect(one.data).toMatchObject({ id: 'wh2', user_id: expect.any(String) });
+    expect((await client.from('sets').delete().eq('id', 'missing').select('id')).data).toEqual([]);
   });
 
   it('deleting a program cascades its days and preserves workouts with an unlinked day', async () => {

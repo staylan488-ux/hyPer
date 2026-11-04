@@ -4,14 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
-import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
+import { summarizeWeekVolume } from '@/lib/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
 import { warnsOverTarget } from '@/lib/fuelSummary';
 import { fetchTrainingHours } from '@/lib/trainingHours';
 import { coachMuscles, type CoachingCall } from '@/lib/volumeCoaching';
-import { getVolumeRecommendation } from '@/lib/volumeStatus';
 import { TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
-import { useAppStore } from '@/stores/appStore';
+import { initialAppData, useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -20,7 +19,9 @@ import { MuscleFigure } from '~/components/MuscleFigure';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
-import { formatWhole } from '~/lib/format';
+import { useAccountDay, useCurrentDayKey } from '~/lib/accountData';
+import { speak, spokenClock, useAnnounce, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
+import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -29,23 +30,25 @@ const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 /** Progress: this week's volume by muscle, training time over eight weeks, and the last week's eating. */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
-  const [volumeRead, setVolumeRead] = useState(false);
+  // The account's day, whose week the volume below was read for.
+  const dayKey = useAccountDay((state) => state.dayKey);
+  // The first read that works always stores a new list (a failed one leaves it
+  // as it was), and sign-out puts back initialAppData's, so a different list
+  // means this account's week was read, by this screen or any other.
+  const volumeRead = useAppStore((state) => state.weeklyVolume !== initialAppData.weeklyVolume);
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
   const [open, setOpen] = useState<MuscleGroup | null>(null);
   // Pull to refresh reads everything again; the nutrition block remounts to refetch.
   const [round, setRound] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const active = useRef(true);
+  const large = useLargeText();
 
   const load = useCallback(async () => {
     await Promise.all([
-      Promise.resolve(useAppStore.getState().calculateWeeklyVolume())
-        .catch(() => {})
-        .finally(() => {
-          if (active.current) setVolumeRead(true);
-        }),
+      Promise.resolve(useAppStore.getState().calculateWeeklyVolume()).catch(() => {}),
       fetchTrainingHours().then((points) => {
-        if (active.current) setHours(points);
+        if (active.current && points) setHours(points);
       }),
       useAppStore.getState().fetchMacroTarget(),
     ]);
@@ -68,7 +71,6 @@ export default function ProgressScreen() {
 
   const coached = useMemo(() => coachMuscles(volume), [volume]);
   const week = summarizeWeekVolume(volume);
-  const insight = pickInsight(volume);
   const rows = useMemo(() => new Set(volume.map((entry) => entry.muscle_group)), [volume]);
 
   // A tapped delt with no row of its own opens the general shoulders row.
@@ -78,13 +80,16 @@ export default function ProgressScreen() {
     setOpen(rows.has(muscle) ? muscle : DELTS.includes(muscle) && rows.has('shoulders') ? 'shoulders' : muscle);
   };
   const chosen = open ? volume.find((entry) => entry.muscle_group === open) ?? null : null;
+  const caption = chosen
+    ? `${MUSCLE_GROUP_LABELS[chosen.muscle_group]} · ${formatSets(chosen.weekly_sets)}`
+    : `${week.inRange} of ${week.trained} muscles in range`;
 
   return (
     <>
       <Stack.Screen options={{ title: 'Progress' }} />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          Week of {format(startOfWeek(new Date(), TRAINING_WEEK), 'MMMM d')}
+          Week of {format(startOfWeek(parseISO(dayKey), TRAINING_WEEK), 'MMMM d')}
         </BlancText>
 
         {volume.length === 0 ? (
@@ -102,10 +107,19 @@ export default function ProgressScreen() {
         ) : (
           <>
             <Label style={{ marginTop: 18, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 }}>
-              <BlancText variant="secondary" tone="graphite" style={{ paddingHorizontal: 6, minHeight: 20 }} accessibilityLiveRegion="polite">
-                {chosen
-                  ? `${MUSCLE_GROUP_LABELS[chosen.muscle_group]} · ${formatSets(chosen.weekly_sets)}`
-                  : `${week.inRange} of ${week.trained} muscles in range${insight && insight.tone !== 'zone' ? ` · ${insight.muscle} ${insight.flag}` : ''}`}
+              {/*
+                One line either way, so a tap on a muscle never moves the figure
+                (at the accessibility text sizes it wraps). No announcement when
+                the choice changes: VoiceOver chooses on the figure (which speaks
+                its new value) or on a muscle's row.
+              */}
+              <BlancText
+                variant="secondary"
+                tone="graphite"
+                numberOfLines={large ? undefined : 1}
+                style={{ paddingHorizontal: 6, minHeight: 20 }}
+                accessibilityLabel={inWords(caption)}>
+                {caption}
               </BlancText>
               <MuscleFigure volume={volume} selected={open} onPick={pick} />
             </Label>
@@ -123,7 +137,7 @@ export default function ProgressScreen() {
           </>
         )}
 
-        <Section title="Training time" note="8 weeks">
+        <Section title="Training time" note="Last 8 weeks">
           <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>{hours ? <HoursChart points={hours} /> : <View style={{ height: 150 }} />}</Label>
         </Section>
 
@@ -137,36 +151,51 @@ const formatSets = (sets: number) => `${formatWhole(sets) === String(sets) ? set
 
 function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: CoachingCall; open: boolean; onToggle: () => void }) {
   const c = useBlanc();
-  const hot = call.tone === 'berry';
+  const large = useLargeText();
+  // Red only past the ceiling, as on the figure.
+  const hot = mv.status === 'above_mrv';
+  // Words only when something needs doing: under, over or near the ceiling.
+  const words = call.priority <= 2;
   const name = MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group.replace('_', ' ');
-  const recommendation = mv.landmark ? getVolumeRecommendation(mv.weekly_sets, mv.landmark) : null;
+  const landmarks = mv.landmark
+    ? `Maintain ${mv.landmark.mv} · grow from ${mv.landmark.mev} · best ${mv.landmark.mav_low}–${mv.landmark.mav_high} · ceiling ${mv.landmark.mrv}`
+    : 'No landmarks set for this muscle.';
+  // One fact for VoiceOver, the rail's best range included, with the words the
+  // row shows; an open row adds what it shows.
+  const spoken = [
+    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, best ${mv.landmark.mav_low}–${mv.landmark.mav_high}` : ''}, ${call.chip}`,
+    words ? call.headline : null,
+    open ? landmarks : null,
+  ]
+    .filter(Boolean)
+    .join('. ');
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ expanded: open }}
-      accessibilityLabel={`${name}, ${formatSets(mv.weekly_sets)}, ${call.chip}. ${call.headline}`}
+      accessibilityLabel={inWords(spoken)}
       onPress={onToggle}
       style={({ pressed }) => ({ paddingLeft: 18, paddingRight: 16, paddingVertical: 12, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
-        <BlancText variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>
+      {/* At the accessibility text sizes the sets wrap under a long name. */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
+        <BlancText variant="bodyStrong" style={large ? { flexShrink: 1 } : { flex: 1 }} numberOfLines={large ? undefined : 1}>
           {name}
         </BlancText>
         <BlancText variant="secondary" weight="500" tone={hot ? 'live' : 'ink'} style={{ fontVariant: ['tabular-nums'] }}>
           {formatSets(mv.weekly_sets)}
         </BlancText>
       </View>
-      <BlancText variant="secondary" tone={hot ? 'live' : 'graphite'} numberOfLines={1} style={{ marginTop: 1 }}>
-        {call.headline}
-      </BlancText>
+      {words ? (
+        <BlancText variant="secondary" tone={hot ? 'live' : 'graphite'} numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+          {call.headline}
+        </BlancText>
+      ) : null}
       {mv.landmark ? <Rail sets={mv.weekly_sets} landmark={mv.landmark} hot={hot} /> : null}
       {open ? (
-        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 10, gap: 6 }}>
+        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 10 }}>
           <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {mv.landmark
-              ? `Maintain ${mv.landmark.mv} · grow from ${mv.landmark.mev} · best ${mv.landmark.mav_low}–${mv.landmark.mav_high} · ceiling ${mv.landmark.mrv}`
-              : 'No landmarks set for this muscle.'}
+            {landmarks}
           </BlancText>
-          {recommendation ? <BlancText variant="secondary">{recommendation.message}</BlancText> : null}
         </Animated.View>
       ) : null}
     </Pressable>
@@ -176,6 +205,8 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
 /** Weekly sets on a line from zero past the ceiling, with the best range drawn in. */
 function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean }) {
   const c = useBlanc();
+  // Increase Contrast draws the quiet marks at full strength.
+  const contrast = useIncreaseContrast();
   const max = Math.max(landmark.mrv * 1.1, sets, 1);
   const at = (value: number) => `${Math.min(100, (value / max) * 100)}%` as const;
   return (
@@ -189,10 +220,10 @@ function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<Mus
           height: 3,
           borderRadius: 1.5,
           backgroundColor: c.graphite,
-          opacity: 0.55,
+          opacity: contrast ? 1 : 0.55,
         }}
       />
-      <View style={{ position: 'absolute', left: at(landmark.mrv), width: 1.5, height: 9, backgroundColor: c.graphite, opacity: 0.6 }} />
+      <View style={{ position: 'absolute', left: at(landmark.mrv), width: 1.5, height: 9, backgroundColor: c.graphite, opacity: contrast ? 1 : 0.6 }} />
       <View
         style={{
           position: 'absolute',
@@ -210,29 +241,39 @@ function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<Mus
   );
 }
 
-function formatMinutes(minutes: number): string {
-  if (minutes <= 0) return '0 min';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h === 0 ? `${m} min` : m === 0 ? `${h} h` : `${h} h ${m} min`;
+/**
+ * Shorthand in words for VoiceOver, with the coaching lines' "~2 sets" as
+ * "about 2 sets" and "5/8 sets" as "5 of 8 sets".
+ */
+function inWords(text: string): string {
+  return speak(text.replace(/~(?=\d)/g, 'about ').replace(/(\d)\/(\d)/g, '$1 of $2'));
 }
+
+/** Training time as VoiceOver says it: "1 hour 20 minutes", or "none". */
+const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'none');
 
 /** Eight weeks of training time; this week in ink. */
 function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   const c = useBlanc();
+  const large = useLargeText();
+  // Increase Contrast draws past weeks at full strength, still graphite against this week's ink.
+  const contrast = useIncreaseContrast();
   const peak = Math.max(60, ...points.map((point) => point.totalMinutes));
   const current = points[points.length - 1];
+  // At the accessibility text sizes a line that no longer fits wraps; the right-hand words stay right.
+  const wrap = large ? ({ flexWrap: 'wrap', columnGap: 12 } as const) : null;
+  const right = large ? ({ flexGrow: 1, textAlign: 'right' } as const) : undefined;
   return (
     <View
       accessible
-      accessibilityLabel={`Training time, last 8 weeks. This week ${formatMinutes(current?.totalMinutes ?? 0)}. ${points
-        .map((point) => `${point.label}: ${formatMinutes(point.totalMinutes)}`)
-        .join(', ')}`}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+      accessibilityLabel={`Training time, last 8 weeks. This week ${spokenMinutes(current?.totalMinutes ?? 0)}. ${points
+        .map((point) => `Week of ${format(parseISO(point.weekStart), 'MMMM d')}, ${spokenMinutes(point.totalMinutes)}`)
+        .join('; ')}`}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', ...wrap }}>
         <BlancText variant="secondary" tone="graphite">
           This week
         </BlancText>
-        <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
+        <BlancText variant="secondary" weight="500" style={[{ fontVariant: ['tabular-nums'] }, right]}>
           {formatMinutes(current?.totalMinutes ?? 0)}
         </BlancText>
       </View>
@@ -245,17 +286,17 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
                 borderRadius: 3,
                 borderCurve: 'continuous',
                 backgroundColor: index === points.length - 1 ? c.ink : point.totalMinutes > 0 ? c.graphite : c.track,
-                opacity: index === points.length - 1 || point.totalMinutes === 0 ? 1 : 0.5,
+                opacity: contrast || index === points.length - 1 || point.totalMinutes === 0 ? 1 : 0.5,
               }}
             />
           </View>
         ))}
       </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, ...wrap }}>
         <BlancText variant="footnote" tone="graphite">
           {points[0]?.label}
         </BlancText>
-        <BlancText variant="footnote" tone="graphite">
+        <BlancText variant="footnote" tone="graphite" style={right}>
           This week
         </BlancText>
       </View>
@@ -267,6 +308,9 @@ function NutritionSection() {
   const { weeklyNutrition, loading, error } = useWeeklyNutrition();
   const target = useAppStore((state) => state.macroTarget);
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
+  const failed = "Couldn't load your nutrition. Pull down to try again.";
+  // The week arrives after the screen does; a failure would pass unheard.
+  useAnnounce(!loading && error ? failed : null);
   return (
     <Section title="Nutrition" note="Last 7 days">
       <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
@@ -274,7 +318,7 @@ function NutritionSection() {
           <View style={{ height: 120 }} />
         ) : error ? (
           <BlancText variant="secondary" tone="live">
-            Couldn&apos;t load your nutrition. Pull down to try again.
+            {failed}
           </BlancText>
         ) : weeklyNutrition.length === 0 ? (
           <BlancText variant="secondary" tone="graphite">
@@ -292,8 +336,9 @@ function NutritionSection() {
 }
 
 /**
- * One macro across the last seven days, against its daily target (dashed). A
- * day well past target is red only where that is a warning for the goal.
+ * One macro across the last seven days, against its daily target (dashed);
+ * today in ink, as in the training chart. A day well past target is red only
+ * where that is a warning for the goal.
  */
 function MacroBars({
   days,
@@ -311,22 +356,37 @@ function MacroBars({
   warnOver: boolean;
 }) {
   const c = useBlanc();
-  const average = averageLoggedDays(days, macro);
+  const large = useLargeText();
+  // Increase Contrast draws the target line and past days at full strength.
+  const contrast = useIncreaseContrast();
+  // The clock's day, so a screen left open past midnight moves today on.
+  const todayKey = useCurrentDayKey();
+  // Today is still being eaten: the average is of the days before it, or
+  // today's own figure while it is the only day logged.
+  const pastAverage = averageLoggedDays(days.filter((day) => day.date !== todayKey), macro);
+  const todayOnly = pastAverage === 0 && averageLoggedDays(days, macro) > 0;
+  const average = todayOnly ? averageLoggedDays(days, macro) : pastAverage;
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const share = target > 0 && average > 0 ? ` · ${Math.round((average / target) * 100)}%` : '';
+  const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
   return (
     <View
       accessible
-      accessibilityLabel={`${label}, daily average ${formatWhole(average)} ${unit}${share}. ${days
-        .map((day) => `${format(parseISO(day.date), 'EEEE')}: ${formatWhole(day[macro])}`)
-        .join(', ')}`}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <BlancText variant="bodyStrong">{label}</BlancText>
+      accessibilityLabel={speak(
+        `${label}, ${todayOnly ? 'today' : 'daily average'} ${formatWhole(average)} ${unit}${share}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
+          .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${formatWhole(day[macro])}${isOver(day) ? ', over' : ''}`)
+          .join('; ')}`,
+      )}>
+      {/* At the accessibility text sizes the average wraps under the name. */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null) }}>
+        <BlancText variant="secondary" tone="graphite">
+          {label}
+        </BlancText>
         <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
           <BlancText variant="secondary" weight="500">
             {formatWhole(average)}
           </BlancText>{' '}
-          {unit} a day{share}
+          {unit} {todayOnly ? 'today' : 'a day'}{share}
         </BlancText>
       </View>
       <View style={{ height: 72, marginTop: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
@@ -340,12 +400,13 @@ function MacroBars({
               borderTopWidth: 1,
               borderStyle: 'dashed',
               borderColor: c.graphite,
-              opacity: 0.6,
+              opacity: contrast ? 1 : 0.6,
             }}
           />
         ) : null}
         {days.map((day) => {
-          const over = warnOver && target > 0 && day[macro] > target * 1.05;
+          const over = isOver(day);
+          const current = day.date === todayKey;
           return (
             <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
               <View
@@ -353,7 +414,8 @@ function MacroBars({
                   height: `${Math.max(day[macro] > 0 ? 3 : 1.5, (day[macro] / max) * 100)}%`,
                   borderRadius: 3,
                   borderCurve: 'continuous',
-                  backgroundColor: day[macro] === 0 ? c.track : over ? c.live : c.ink,
+                  backgroundColor: day[macro] === 0 ? c.track : over ? c.live : current ? c.ink : c.graphite,
+                  opacity: contrast || day[macro] === 0 || over || current ? 1 : 0.5,
                 }}
               />
             </View>

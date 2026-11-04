@@ -4,9 +4,13 @@
 // the web shell's useNativeAuthCallback handles it: exchange the code for a
 // session (PKCE, verifier kept by sign-up on this phone) and land on the app.
 // Google and Apple sign-in never get here; iOS's sign-in sheet catches them.
+//
+// A widget or card link that launches the app is remembered for index, which
+// opens it once the saved session has been read (lib/launchLink.ts).
 import { NATIVE_AUTH_REDIRECT_URL } from '@/lib/nativeBridge';
 import { parseNativeOAuthCallback } from '@/lib/nativeOAuthCallback';
 import { supabase } from '@/lib/supabase';
+import { rememberLaunchLink } from '~/lib/launchLink';
 
 /** The full callback URL, whether iOS hands over the URL or only its path. */
 function callbackUrl(path: string): string | null {
@@ -16,10 +20,13 @@ function callbackUrl(path: string): string | null {
   return `${NATIVE_AUTH_REDIRECT_URL}${query}`;
 }
 
-export function redirectSystemPath({ path }: { path: string; initial: boolean }): string {
+export function redirectSystemPath({ path, initial }: { path: string; initial: boolean }): string {
   try {
     const url = callbackUrl(path);
-    if (!url) return path;
+    if (!url) {
+      if (initial) rememberLaunchLink(path);
+      return path;
+    }
     const { code } = parseNativeOAuthCallback(url);
     // The auth listener opens the app once the session lands; on failure the
     // sign-in screen stays for a clean retry, as on the web.

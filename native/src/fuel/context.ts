@@ -32,6 +32,8 @@ export type LoggerContextValue = {
   beginBusy: () => () => void;
   /** Claims the sheet for a read that opens a food (Search's portion read): Snap a meal is refused meanwhile, and closing doesn't ask. */
   beginRead: () => () => void;
+  /** Holds the sheet open while a save runs; the returned cleanup releases only that claim, once. */
+  beginSave: () => () => void;
 };
 
 export const LoggerContext = createContext<LoggerContextValue | null>(null);

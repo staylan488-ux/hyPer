@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 
+import { speak, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { space } from '~/theme/blanc';
 
@@ -20,6 +21,9 @@ type SectionProps = {
 
 /** A titled block of a screen. Sections are separated by space, never boxes. */
 export function Section({ title, action, note, accessory, children, style }: SectionProps) {
+  // At the accessibility text sizes the title and its action share the line
+  // only while both fit; then the action wraps below.
+  const large = useLargeText();
   return (
     <View style={[{ marginTop: space.section }, style]}>
       <View
@@ -27,10 +31,18 @@ export function Section({ title, action, note, accessory, children, style }: Sec
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: 12,
           minHeight: 44,
           paddingHorizontal: space.gutter,
+          ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null),
         }}>
-        <BlancText variant="section" accessibilityRole="header">
+        {/* A long title wraps rather than pushing the action off the screen. */}
+        <BlancText
+          variant="section"
+          accessibilityRole="header"
+          // The note is a nested text, which VoiceOver reads raw.
+          accessibilityLabel={speak(note ? `${title}, ${note}` : title)}
+          style={{ flexShrink: 1 }}>
           {title}
           {note ? (
             <BlancText variant="secondary" tone="graphite">

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCoachContext, normalizeCoachResult } from '@/lib/nutritionCoach';
+import { buildCoachContext, coachTrendKgPerWeek, normalizeCoachResult } from '@/lib/nutritionCoach';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
+import { buildWeightTrend } from '@/lib/weightTrend';
 
 function profile(overrides: Partial<NutritionProfile> = {}): NutritionProfile {
   return {
@@ -48,6 +49,35 @@ describe('buildCoachContext', () => {
     // basic stats still flow - the user typed nothing secret about their height
     expect(ctx.height_cm).toBe(180);
     expect(ctx.weight_kg).toBe(82);
+  });
+});
+
+describe('coachTrendKgPerWeek', () => {
+  const weighIns = (kilograms: number[], everyDays = 1) => kilograms.map((kg, index) => ({
+    measured_at: new Date(2026, 9, 1 + index * everyDays, 7).toISOString(),
+    kilograms: kg,
+  }));
+
+  it('shares a trend fitted on a couple of weeks of weigh-ins', () => {
+    const trend = buildWeightTrend(weighIns([82, 81.9, 81.8, 81.7, 81.6, 81.5, 81.4, 81.3], 2), { windowDays: 21 });
+    expect(coachTrendKgPerWeek(trend)).toBeCloseTo(-0.35, 5);
+  });
+
+  it('leaves out a "trend" from two weigh-ins a day apart, which the coach would refuse', () => {
+    const trend = buildWeightTrend(weighIns([82, 81]), { windowDays: 21 });
+    expect(trend.kgPerWeek).toBeCloseTo(-7, 5);
+    expect(coachTrendKgPerWeek(trend)).toBeNull();
+  });
+
+  it('leaves out a trend steeper than the coach accepts, however many weigh-ins', () => {
+    expect(coachTrendKgPerWeek({ kgPerWeek: -5.6, fittedDayCount: 10, spanDays: 20 })).toBeNull();
+    expect(coachTrendKgPerWeek({ kgPerWeek: 5, fittedDayCount: 10, spanDays: 20 })).toBe(5);
+  });
+
+  it('leaves out a trend from too few weigh-ins or too short a stretch', () => {
+    expect(coachTrendKgPerWeek({ kgPerWeek: -0.5, fittedDayCount: 3, spanDays: 20 })).toBeNull();
+    expect(coachTrendKgPerWeek({ kgPerWeek: -0.5, fittedDayCount: 6, spanDays: 6 })).toBeNull();
+    expect(coachTrendKgPerWeek({ kgPerWeek: null, fittedDayCount: 0, spanDays: 0 })).toBeNull();
   });
 });
 

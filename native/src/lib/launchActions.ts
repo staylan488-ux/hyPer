@@ -135,7 +135,7 @@ export type SheetState = {
   newEntry: boolean;
   /** The camera, the photo library, the camera prompt or Add photo's choices are already up. */
   pickerUp: boolean;
-  /** Closing, a lookup running, a food under review, a meal being built or reviewed, Scan open, or text in Manual's Describe with AI. */
+  /** Closing, a lookup or a save running, a food under review, a meal being built or reviewed, Scan open, or text in Manual's Describe with AI. */
   occupied: boolean;
   /** Closing would ask first (the leave guard's rule). */
   holdsWork: boolean;

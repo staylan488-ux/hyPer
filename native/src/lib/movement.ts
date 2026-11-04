@@ -18,24 +18,30 @@ const setCount = (exerciseId: string) =>
 /**
  * Adds a set, or removes the last unfinished one. The store gives up quietly
  * on a failed write, so this reports whether the count actually changed.
+ * It waits its turn behind the workout's other changes: a flexible session
+ * rewrites its whole plan, which would undo a skip, reorder or note still saving.
  */
-export async function changeSetCount(exerciseId: string, change: 'add' | 'remove'): Promise<boolean> {
-  const before = setCount(exerciseId);
-  const store = useAppStore.getState();
-  const flexibleItem = store.currentWorkout?.split_day_id === null
-    ? store.currentWorkoutDayPlan?.items.find((item) => item.exercise_id === exerciseId)
-    : undefined;
-  if (flexibleItem) {
-    // A flexible session keeps the count in its plan, as the web's Adjust sets
-    // does, so "save as quick start" keeps it; a superset pair changes together.
-    const target = change === 'add' ? before + 1 : before - 1;
-    if (target < 1 || target > 12) return false;
-    await store.updateFlexibleExerciseMeta(exerciseId, { target_sets: target });
-  } else {
-    await (change === 'add' ? store.addWorkoutSet(exerciseId) : store.removeLastUncompletedSet(exerciseId));
-  }
-  const after = setCount(exerciseId);
-  return change === 'add' ? after > before : after < before;
+export async function changeSetCount(workoutId: string, exerciseId: string, change: 'add' | 'remove'): Promise<boolean> {
+  let changed = false;
+  await changeWorkout(workoutId, async () => {
+    const before = setCount(exerciseId);
+    const store = useAppStore.getState();
+    const flexibleItem = store.currentWorkout?.split_day_id === null
+      ? store.currentWorkoutDayPlan?.items.find((item) => item.exercise_id === exerciseId)
+      : undefined;
+    if (flexibleItem) {
+      // A flexible session keeps the count in its plan, as the web's Adjust sets
+      // does, so "save as quick start" keeps it; a superset pair changes together.
+      const target = change === 'add' ? before + 1 : before - 1;
+      if (target < 1 || target > 12) return;
+      await store.updateFlexibleExerciseMeta(exerciseId, { target_sets: target });
+    } else {
+      await (change === 'add' ? store.addWorkoutSet(exerciseId) : store.removeLastUncompletedSet(exerciseId));
+    }
+    const after = setCount(exerciseId);
+    changed = change === 'add' ? after > before : after < before;
+  });
+  return changed;
 }
 
 /** Runs a change to this workout once earlier notes have saved; refuses once the workout has closed. */

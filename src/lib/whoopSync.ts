@@ -34,6 +34,8 @@ export interface WhoopSyncPorts {
     // fetch specific sessions by id — pulls host sessions that started before
     // the window but own segments inside it (a workout straddling fetchStart)
     fetchSessionsByIds: (ids: string[]) => Promise<ActivitySession[]>;
+    // every whoop segment linked to these sessions, wherever it starts
+    fetchWhoopSegmentsBySessionIds: (sessionIds: string[]) => Promise<ActivitySegment[]>;
     createSession: (input: ActivitySessionInput) => Promise<ActivitySession | null>;
     updateSession: (sessionId: string, patch: Partial<ActivitySessionInput>) => Promise<ActivitySession | null>;
     deleteSession: (sessionId: string) => Promise<void>;
@@ -136,12 +138,23 @@ export async function runWhoopSync(
       .map((segment) => segment.session_id)
       .filter((id): id is string => id != null && !windowSessionIds.has(id)),
   )];
-  const straddlingSessions = straddlingIds.length > 0
-    ? await ports.data.fetchSessionsByIds(straddlingIds)
-    : [];
+  const [straddlingSessions, straddlingSegments] = straddlingIds.length > 0
+    ? await Promise.all([
+      ports.data.fetchSessionsByIds(straddlingIds),
+      // Their earlier segments sit before the window too. Grouping a host from
+      // only its in-window part rewrote it from a cut-off cluster (a 4-lap
+      // interval run patched into a 130 s run), so read all of them.
+      ports.data.fetchWhoopSegmentsBySessionIds(straddlingIds),
+    ])
+    : [[], []];
   const sessions = [...windowSessions, ...straddlingSessions];
+  const windowSegmentIds = new Set(segments.map((segment) => segment.id));
+  const allSegments = [
+    ...segments,
+    ...straddlingSegments.filter((segment) => !windowSegmentIds.has(segment.id)),
+  ];
 
-  const plan = groupSegments(segments, sessions);
+  const plan = groupSegments(allSegments, sessions);
 
   // 4) apply: creates, updates, relinks, deletes. Phases stay strictly in this
   // order (deletes last: segment links are ON DELETE SET NULL); only items

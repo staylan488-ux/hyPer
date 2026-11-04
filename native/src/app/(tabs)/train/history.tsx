@@ -1,14 +1,14 @@
 import { addMonths, format, isSameMonth, isToday, parseISO, startOfMonth } from 'date-fns';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { formatDistanceMi } from '@/lib/activityMetrics';
-import { formatActivityDuration, formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle, sortActivitySessionsByStart } from '@/lib/activitySessions';
+import { formatActivityStartTime, getActivitySessionDateKey, resolveActivityTitle, sortActivitySessionsByStart } from '@/lib/activitySessions';
 import { buildCalendarDays, historyDayKey, historyWorkoutTitle, progressFromSets, type HistoryWorkout } from '@/lib/historyMonth';
-import { formatWorkoutDuration, getWorkoutDurationMs } from '@/lib/workoutSessions';
+import { getWorkoutDurationMs } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySession } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -18,10 +18,13 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { announce, useAnnounce, useIncreaseContrast, useReduceMotion } from '~/lib/accessibility';
+import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
   confirmDeleteActivity,
   confirmDeleteWorkout,
+  followToday,
   loadHistoryMonth,
   mergeActivities,
   selectHistoryDay,
@@ -30,10 +33,17 @@ import {
   workoutsOnDay,
 } from '~/lib/history';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { useSessionModel, type SessionModel } from '~/lib/session';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc, type Palette } from '~/theme/blanc';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+/**
+ * A length the way the rest of the app writes one ("48 min", "1 h 5 min"), or null without one.
+ * Row speaks it in words ("1 hour 5 minutes").
+ */
+const lengthOf = (ms: number | null | undefined) => (ms && ms > 0 ? formatMinutes(Math.max(1, Math.round(ms / 60000))) : null);
 
 /** History: a month of training at a glance, and each day's workouts and activities. */
 export default function HistoryScreen() {
@@ -44,15 +54,24 @@ export default function HistoryScreen() {
   const loading = useHistoryStore((state) => state.loading);
   const failed = useHistoryStore((state) => state.failed);
   const whoop = useAppStore((state) => state.whoopConnection);
+  // The workout running now is not a past one: its row leads back to Train.
+  const live = useSessionModel();
   const [syncing, setSyncing] = useState(false);
   // Only while the person's own pull runs.
   const [refreshing, setRefreshing] = useState(false);
   const syncAvailable = isPreviewActive() || Boolean(whoop);
 
   useEffect(() => {
-    void loadHistoryMonth();
+    // Left on a today that has passed, it opens on the new today (and reads it).
+    if (!followToday()) void loadHistoryMonth();
     void useAppStore.getState().fetchWhoopConnection();
   }, []);
+  // The same when it shows again without opening anew (back from a sheet or a run).
+  useFocusEffect(
+    useCallback(() => {
+      followToday();
+    }, []),
+  );
 
   const dayWorkouts = useMemo(() => workoutsOnDay(workouts, day), [workouts, day]);
   const dayActivities = useMemo(
@@ -61,17 +80,22 @@ export default function HistoryScreen() {
   );
   const date = parseISO(day);
   const onToday = isToday(date);
+  useAnnounce(failed && !loading ? "Couldn't load this month" : null);
 
   const sync = async () => {
     if (syncing) return;
     setSyncing(true);
     const message = await syncActivities();
     setSyncing(false);
-    // A sync that worked shows itself in the rows; only a failure needs words.
+    // A sync that worked shows itself in the rows; only a failure needs words
+    // (VoiceOver hears the result, "Up to date" or "2 new · 1 updated").
     if (message === 'Sync failed' || message === 'Sync unavailable') {
       haptics.error();
       Alert.alert(message);
-    } else haptics.success();
+    } else {
+      haptics.success();
+      announce(message);
+    }
   };
 
   const refresh = async () => {
@@ -102,7 +126,7 @@ export default function HistoryScreen() {
               ? [
                   {
                     type: 'button' as const,
-                    label: syncing ? 'Syncing' : 'Sync WHOOP',
+                    label: syncing ? 'Syncing…' : 'Sync WHOOP',
                     icon: { type: 'sfSymbol' as const, name: 'arrow.triangle.2.circlepath' as const },
                     disabled: syncing,
                     onPress: () => {
@@ -139,7 +163,7 @@ export default function HistoryScreen() {
               dayWorkouts.map((workout, index) => (
                 <Animated.View key={workout.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
                   {index > 0 ? <Hairline /> : null}
-                  <WorkoutRow workout={workout} />
+                  <WorkoutRow workout={workout} live={live?.workoutId === workout.id ? live : null} />
                 </Animated.View>
               ))}
             {!loading &&
@@ -172,16 +196,32 @@ function useTodayKey(): string {
 
 function Calendar({ month, day, workouts, activities }: { month: Date; day: string; workouts: HistoryWorkout[]; activities: ActivitySession[] }) {
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
+  const reduceMotion = useReduceMotion();
   // An arrow ticks as it is pressed, so the page turn it starts stays quiet.
   const arrowTurn = useRef(false);
   const [width, setWidth] = useState(0);
   const todayKey = useTodayKey();
+  // Each day's workouts (how many) and activities (their names, for VoiceOver).
   const marks = useMemo(() => {
-    const lifts = new Set(workouts.map(historyDayKey));
-    const other = new Set(activities.map(getActivitySessionDateKey));
+    const lifts = new Map<string, number>();
+    workouts.forEach((workout) => lifts.set(historyDayKey(workout), (lifts.get(historyDayKey(workout)) ?? 0) + 1));
+    const other = new Map<string, string[]>();
+    sortActivitySessionsByStart(activities).forEach((activity) => {
+      const key = getActivitySessionDateKey(activity);
+      other.set(key, [...(other.get(key) ?? []), resolveActivityTitle(activity)]);
+    });
     return { lifts, other };
   }, [workouts, activities]);
   const pages = useMemo(() => [addMonths(month, -1), month, addMonths(month, 1)], [month]);
+
+  // VoiceOver hears the new month however it turned (an arrow, a swipe, a
+  // day of the next month, Today), since focus stays where it was.
+  const monthName = format(month, 'MMMM yyyy');
+  const shownMonth = useRef(monthName);
+  useEffect(() => {
+    if (shownMonth.current !== monthName) announce(monthName);
+    shownMonth.current = monthName;
+  }, [monthName]);
 
   // A new month sits on the middle page; jump there without animation, in the
   // same frame as the new grids, so the turn looks seamless.
@@ -201,12 +241,18 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
     <Label style={{ marginTop: 6, paddingTop: 6, paddingBottom: 10, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 6 }}>
         <BlancText variant="headline" style={{ flex: 1 }} accessibilityRole="header">
-          {format(month, 'MMMM yyyy')}
+          {monthName}
         </BlancText>
         <MonthArrow
           symbol="chevron.left"
           label="Previous month"
           onPress={() => {
+            // Reduce Motion: change the month in place instead of sliding the grid.
+            if (reduceMotion) {
+              arrowTurn.current = true;
+              turn(-1);
+              return;
+            }
             arrowTurn.current = width > 0;
             scroller.current?.scrollTo({ x: 0, animated: true });
           }}
@@ -215,12 +261,17 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
           symbol="chevron.right"
           label="Next month"
           onPress={() => {
+            if (reduceMotion) {
+              arrowTurn.current = true;
+              turn(1);
+              return;
+            }
             arrowTurn.current = width > 0;
             scroller.current?.scrollTo({ x: width * 2, animated: true });
           }}
         />
       </View>
-      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 4 }} importantForAccessibility="no-hide-descendants">
+      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 4 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         {WEEKDAYS.map((weekday, index) => (
           <BlancText key={index} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {weekday}
@@ -273,10 +324,11 @@ function MonthGrid({
   month: Date;
   day: string | null;
   todayKey: string;
-  marks: { lifts: Set<string>; other: Set<string> };
+  marks: { lifts: Map<string, number>; other: Map<string, string[]> };
   interactive: boolean;
 }) {
   const c = useBlanc();
+  const contrast = useIncreaseContrast();
   // Each cell's date and words, worked out once per month.
   const cells = useMemo(
     () =>
@@ -303,8 +355,9 @@ function MonthGrid({
           inMonth={cell.inMonth}
           selected={cell.key === day}
           today={cell.key === todayKey}
-          lift={marks.lifts.has(cell.key)}
-          other={marks.other.has(cell.key)}
+          lifts={marks.lifts.get(cell.key) ?? 0}
+          activities={marks.other.get(cell.key)?.join(', ') ?? ''}
+          contrast={contrast}
           c={c}
         />
       ))}
@@ -320,8 +373,9 @@ function DayCell({
   inMonth,
   selected,
   today,
-  lift,
-  other,
+  lifts,
+  activities,
+  contrast,
   c,
 }: {
   date: Date;
@@ -330,15 +384,22 @@ function DayCell({
   inMonth: boolean;
   selected: boolean;
   today: boolean;
-  lift: boolean;
-  other: boolean;
+  /** Workouts that day. */
+  lifts: number;
+  /** The day's activities by name ("Running, Cycling"), or empty. */
+  activities: string;
+  contrast: boolean;
   c: Palette;
 }) {
+  const lift = lifts > 0;
+  const other = activities.length > 0;
+  // The date, then what the dots show: "Tuesday, November 4, today, workout, Running".
+  const spoken = [label, today ? 'today' : null, lift && inMonth ? (lifts > 1 ? `${lifts} workouts` : 'workout') : null, other && inMonth ? activities : null];
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
-      accessibilityLabel={`${label}${lift ? ', workout' : ''}${other ? ', activity' : ''}`}
+      accessibilityLabel={spoken.filter(Boolean).join(', ')}
       onPress={() => {
         haptics.select();
         selectHistoryDay(date);
@@ -356,10 +417,14 @@ function DayCell({
         <BlancText
           variant="body"
           weight={today || (selected && inMonth) ? '600' : undefined}
+          // The grid's 34-point circles hold the number; the day's title
+          // below carries the date at the full text size.
+          maxFontSizeMultiplier={1.3}
           style={{
             fontVariant: ['tabular-nums'],
             color: selected && inMonth ? c.label : inMonth ? c.ink : c.upcoming,
-            opacity: inMonth ? 1 : 0.55,
+            // Increase Contrast keeps the neighbouring months' days legible.
+            opacity: inMonth || contrast ? 1 : 0.55,
           }}>
           {number}
         </BlancText>
@@ -406,16 +471,39 @@ function AddActivityButton({ day }: { day: string }) {
 }
 
 
-/** A workout: tap to open; swipe to delete (asks first); hold for the menu. */
-function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
+/**
+ * A workout: tap to open; swipe to delete (asks first); hold for the menu.
+ * The one running now reads "In progress" by a live dot and opens Train, with no Delete.
+ */
+function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionModel | null }) {
   const c = useBlanc();
   const title = historyWorkoutTitle(workout);
+  if (live) {
+    const train = () => router.dismissTo('/train');
+    return (
+      <Row
+        title={title}
+        detail={
+          live.sets.length > 0
+            ? `In progress · ${live.doneCount} of ${live.sets.length} sets`
+            : live.movements.length === 0
+              ? 'In progress · No movements yet'
+              : 'In progress'
+        }
+        // On the detail line, as Today writes live, so the title keeps the card's text edge.
+        detailMark={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />}
+        chevron
+        onPress={train}
+        menu={[{ title: 'Open', symbol: 'arrow.up.right.square', run: train }]}
+      />
+    );
+  }
   const progress = progressFromSets(workout.sets);
-  const duration = formatWorkoutDuration(getWorkoutDurationMs(workout));
+  const duration = lengthOf(getWorkoutDurationMs(workout));
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
-  const detail = [duration === '—' ? null : duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
+  const detail = [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
-  const remove = () => void confirmDeleteWorkout(title, workout.id);
+  const remove = () => void confirmDeleteWorkout(title, workout.id, { onDeleted: () => announce(`${title} deleted`) });
   const menu: MenuAction[] = [
     { title: 'Open', symbol: 'arrow.up.right.square', run: open },
     { title: 'Delete workout', symbol: 'trash', destructive: true, run: remove },
@@ -430,11 +518,11 @@ function WorkoutRow({ workout }: { workout: HistoryWorkout }) {
   );
 }
 
+/** "7:05 AM · 45 min · 3.10 mi · Strain 12.3"; Row speaks it in words. */
 function activityDetail(activity: ActivitySession): string {
-  const duration = formatActivityDuration(activity.duration_seconds);
   return [
     formatActivityStartTime(activity.started_at),
-    duration === '-' ? null : duration,
+    lengthOf((activity.duration_seconds ?? 0) * 1000),
     formatDistanceMi(activity.distance_m),
     activity.strain != null ? `Strain ${activity.strain.toFixed(1)}` : null,
   ]
@@ -449,7 +537,7 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
   const others = sameDay.filter((entry) => entry.id !== activity.id);
   const open = () => router.push({ pathname: '/train/activity-view', params: { id: activity.id } });
   const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
-  const remove = () => void confirmDeleteActivity(activity);
+  const remove = () => void confirmDeleteActivity(activity, { onDeleted: () => announce(`${title} deleted`) });
   // The day's other activities, to merge one WHOOP split into several.
   const mergeChoices: MenuAction[] = others.map((entry) => ({
     title: resolveActivityTitle(entry),

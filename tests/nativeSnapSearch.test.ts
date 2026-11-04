@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Food } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -58,6 +59,7 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType }>('fuel/FoodL
   '@/lib/foodPersistence': { ensureFoodRow: vi.fn() },
   '@/lib/foodUnits': { foodMacroLine: () => '', formatMeasurementAmount: String },
   '@/lib/mealComposition': { createMealIngredient: noop, decodeMealComposition: () => null },
+  '@/lib/nutritionLedger': { servingLabel: () => '' },
   '@/lib/pendingEntryId': { createPendingEntryId: noop },
   '@/lib/saveNutritionEntry': { chosenFoodLogSource: noop },
   '@/lib/savedMeals': { filterSavedMeals: () => [], retireSavedMeal: vi.fn() },
@@ -66,12 +68,15 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType }>('fuel/FoodL
   '~/components/BlancText': { BlancText: Wrap },
   '~/components/Capsule': { Capsule: Empty },
   '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => null, showActionSheet: noop },
+  '~/components/Label': { Label: Wrap },
   '~/components/Row': { Hairline: Empty },
   '~/components/SwipeRow': { closeOpenSwipeRow: () => false, SwipeRow: Wrap, useSwipeActions: () => null },
+  '~/lib/accessibility': silentAccessibility,
   '~/lib/foodLogger': { saveFoodEntry: vi.fn() },
+  '~/lib/format': { formatWhole: (value: number) => String(Math.round(value)) },
   '~/lib/fuel': { useFuelStore: { getState: () => ({ refresh: noop }) } },
   '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
-  '~/lib/motion': { rowEnter: {}, rowExit: {}, rowLayout: {} },
+  '~/lib/motion': { blockExit: {}, rowEnter: {}, rowExit: {}, rowLayout: {} },
   '~/theme/blanc': { type: { field: {} }, useBlanc: () => ({}) },
   './context': { useLogger: () => logger },
 });

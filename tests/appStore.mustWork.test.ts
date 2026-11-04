@@ -714,7 +714,8 @@ describe('must-work store contracts', () => {
 
     useAppStore.setState({ currentWorkout });
 
-    const setsChain = createChain();
+    // The delete answers with the row it removed.
+    const setsChain = Object.assign(createChain(), { data: [{ id: 'set-3' }] });
 
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'sets') return setsChain;
@@ -730,6 +731,7 @@ describe('must-work store contracts', () => {
 
     expect(setsChain.delete).toHaveBeenCalledTimes(1);
     expect(setsChain.eq).toHaveBeenCalledWith('id', 'set-3');
+    expect(setsChain.eq).toHaveBeenCalledWith('completed', false);
   });
 
   it('saves flexible template from current workout and includes movement notes', async () => {
@@ -1894,7 +1896,8 @@ describe('must-work store contracts', () => {
     const workoutsChain = createChain();
     const setsChain = createChain();
     const results = [{ error: { code: '23503', message: 'foreign key violation' } }, { error: null }];
-    workoutsChain.eq.mockImplementation(() => results.shift());
+    // The delete reads back the removed row (its WHOOP link) after the filter.
+    workoutsChain.select.mockImplementation(() => results.shift());
 
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'sets') return setsChain;
@@ -2172,7 +2175,8 @@ describe('must-work store contracts', () => {
       expect(state.volumeLandmarks).toEqual([chestLandmark]);
       expect(state.weeklyVolume).toEqual([
         { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' },
-        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: undefined, status: 'below_mev' },
+        // No stored row for triceps: graded against the schema seed's default.
+        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: expect.objectContaining({ muscle_group: 'triceps', mev: 6 }), status: 'below_mev' },
       ]);
     });
 
@@ -2200,6 +2204,45 @@ describe('must-work store contracts', () => {
       const state = useAppStore.getState();
       expect(state.weeklyVolume).toBe(previous);
       expect(state.volumeLandmarks).toEqual([chestLandmark]);
+    });
+
+    it('lets only the latest read set the volume, and an earlier caller waits for it', async () => {
+      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+      // The first read started before an edit and answers last, with the old sets.
+      let answerOld!: (value: unknown) => void;
+      const before = [{ id: 'workout-1', completed: true, sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }];
+      workoutsChain.lte
+        .mockReturnValueOnce(new Promise((resolve) => { answerOld = resolve; }))
+        .mockResolvedValueOnce({ data: workouts, error: null });
+
+      let firstDone = false;
+      const first = useAppStore.getState().calculateWeeklyVolume().then(() => { firstDone = true; });
+      await useAppStore.getState().calculateWeeklyVolume();
+      expect(useAppStore.getState().weeklyVolume[0]).toMatchObject({ muscle_group: 'chest', weekly_sets: 7 });
+      expect(firstDone).toBe(false);
+
+      answerOld({ data: before, error: null });
+      await first;
+      expect(useAppStore.getState().weeklyVolume[0]).toMatchObject({ muscle_group: 'chest', weekly_sets: 7 });
+    });
+
+    it('has an earlier read that answers first wait for the latest one', async () => {
+      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+      let answerLatest!: (value: unknown) => void;
+      const before = [{ id: 'workout-1', completed: true, sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }];
+      workoutsChain.lte
+        .mockResolvedValueOnce({ data: before, error: null })
+        .mockReturnValueOnce(new Promise((resolve) => { answerLatest = resolve; }));
+
+      let firstDone = false;
+      const first = useAppStore.getState().calculateWeeklyVolume().then(() => { firstDone = true; });
+      const latest = useAppStore.getState().calculateWeeklyVolume();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(firstDone).toBe(false);
+
+      answerLatest({ data: workouts, error: null });
+      await Promise.all([first, latest]);
+      expect(useAppStore.getState().weeklyVolume[0]).toMatchObject({ muscle_group: 'chest', weekly_sets: 7 });
     });
 
     describe('Monday-to-Sunday training week', () => {
@@ -2718,6 +2761,7 @@ describe('set-count edits never delete finished sets and superset partners follo
     let deleting = false;
     let deleteFilters: Record<string, unknown> = {};
     let justDeleted: string[] | null = null;
+    let reading = false;
     let filters: Record<string, unknown> = {};
     const remove = (ids: string[]) => {
       justDeleted = [];
@@ -2750,6 +2794,7 @@ describe('set-count edits never delete finished sets and superset partners follo
       const deleted = justDeleted;
       justDeleted = null;
       if (deleted && columns === 'id') return Promise.resolve({ data: deleted.map((id) => ({ id })), error: null });
+      reading = columns === 'id, completed';
       filters = {};
       return chain;
     });
@@ -2761,6 +2806,10 @@ describe('set-count edits never delete finished sets and superset partners follo
     });
     chain.in.mockImplementation((column: string, values: string[]) => {
       if (deleting && column === 'id') remove(values);
+      if (reading && column === 'id') {
+        reading = false;
+        return Promise.resolve({ data: rows.filter((row) => values.includes(row.id)).map(({ id, completed }) => ({ id, completed })), error: null });
+      }
       return chain;
     });
     chain.order.mockImplementation(async () => ({
@@ -3360,7 +3409,7 @@ function hasFilter(query: RecordedQuery, op: string, column: string): boolean {
   return query.filters.some(([filterOp, filterColumn]) => filterOp === op && filterColumn === column);
 }
 
-type WhoopRead = 'watermark' | 'segmentsWindow' | 'sessionsWindow' | 'sessionsByIds' | 'upsert';
+type WhoopRead = 'watermark' | 'segmentsWindow' | 'sessionsWindow' | 'sessionsByIds' | 'segmentsBySessions' | 'upsert';
 
 function whoopReadKind(query: RecordedQuery): WhoopRead | null {
   if (query.table === 'activity_segments' && query.action === 'upsert') return 'upsert';
@@ -3369,6 +3418,7 @@ function whoopReadKind(query: RecordedQuery): WhoopRead | null {
   if (query.table === 'activity_segments' && hasFilter(query, 'gte', 'started_at')) return 'segmentsWindow';
   if (query.table === 'activity_sessions' && hasFilter(query, 'gte', 'started_at')) return 'sessionsWindow';
   if (query.table === 'activity_sessions' && hasFilter(query, 'in', 'id')) return 'sessionsByIds';
+  if (query.table === 'activity_segments' && hasFilter(query, 'in', 'session_id')) return 'segmentsBySessions';
   return null;
 }
 
@@ -3432,6 +3482,7 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     segments?: ActivitySegment[];
     sessions?: ActivitySession[];
     byIds?: ActivitySession[];
+    sessionSegments?: ActivitySegment[];
   }) {
     const watermark = { started_at: new Date(Date.now() - 24 * HOUR_MS).toISOString() };
     return installRecordingSupabase((query) => {
@@ -3442,6 +3493,7 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
         case 'segmentsWindow': return { data: opts.segments ?? [], error: null };
         case 'sessionsWindow': return { data: opts.sessions ?? [], error: null };
         case 'sessionsByIds': return { data: opts.byIds ?? [], error: null };
+        case 'segmentsBySessions': return { data: opts.sessionSegments ?? [], error: null };
         case 'upsert': {
           const rows = query.payload as Array<Record<string, unknown>>;
           return { data: rows.map((row, i) => ({ id: `upserted-${i}`, session_id: null, ...row })), error: null };
@@ -3547,6 +3599,52 @@ describe('WHOOP sync never treats a failed read as "no data"', () => {
     const db = installWhoopDb({
       fail: 'sessionsByIds',
       segments: [makeWhoopSegment({ id: 'seg-host', session_id: 'host-before-window' })],
+    });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toBeNull();
+    expect(db.writes()).toEqual([]);
+  });
+
+  it('reads every lap of a session that started before the window and leaves it whole', async () => {
+    const firstLapMs = Date.now() - 10 * 24 * HOUR_MS;
+    const laps = [0, 1, 2, 3].map((n) => makeWhoopSegment({
+      id: `lap-${n + 1}`,
+      session_id: 'intervals',
+      started_at: new Date(firstLapMs + n * 215_000).toISOString(),
+      ended_at: new Date(firstLapMs + n * 215_000 + 130_000).toISOString(),
+      duration_seconds: 130,
+    }));
+    const intervals = makeActivitySession({
+      id: 'intervals',
+      activity_type: 'interval_run',
+      date: laps[0].started_at.slice(0, 10),
+      started_at: laps[0].started_at,
+      ended_at: laps[3].ended_at,
+      duration_seconds: 4 * 130,
+      energy_kcal: 4 * 400,
+    });
+    // the window starts between laps 3 and 4
+    const db = installWhoopDb({ segments: [laps[3]], byIds: [intervals], sessionSegments: laps });
+
+    const result = await useAppStore.getState().syncWhoop();
+
+    expect(result).toMatchObject({ created: 0, updated: 0, deleted: 0 });
+    expect(db.writes()).toEqual([]);
+    const read = db.queries.find((q) => whoopReadKind(q) === 'segmentsBySessions')!;
+    expect(read.filters).toEqual(expect.arrayContaining([
+      ['eq', 'user_id', 'user-1'],
+      ['eq', 'source', 'whoop'],
+      ['in', 'session_id', ['intervals']],
+    ]));
+  });
+
+  it('aborts without touching a straddling session when reading its other laps fails', async () => {
+    const db = installWhoopDb({
+      fail: 'segmentsBySessions',
+      segments: [makeWhoopSegment({ id: 'seg-host', session_id: 'host-before-window' })],
+      byIds: [makeActivitySession({ id: 'host-before-window' })],
     });
 
     const result = await useAppStore.getState().syncWhoop();
@@ -3753,5 +3851,38 @@ describe('saveTrackedRun WHOOP absorb failures', () => {
     const deletes = db.writes().filter((q) => q.table === 'activity_sessions' && q.action === 'delete');
     expect(deletes).toHaveLength(1);
     expect(deletes[0].filters).toContainEqual(['eq', 'id', whoopCopy.id]);
+  });
+});
+
+describe('settings writes report a missing sign-in instead of success', () => {
+  const signedOut = 'You are signed out. Sign in and try again.';
+  const saved = { id: 'macro-1', user_id: 'user-1', calories: 2300, protein: 180, carbs: 240, fat: 70 };
+
+  beforeEach(() => {
+    supabaseMock.auth.getSession.mockResolvedValue({ data: { session: null } });
+    supabaseMock.from.mockImplementation((table: string) => {
+      throw new Error(`Unexpected table: ${table}`);
+    });
+    useAppStore.setState({ macroTarget: saved as never, whoopConnection: { user_id: 'user-1' } as never });
+  });
+
+  it('does not report daily targets saved', async () => {
+    await expect(useAppStore.getState().updateMacroTarget({ calories: 2000 })).rejects.toThrow(signedOut);
+    expect(useAppStore.getState().macroTarget).toEqual(saved);
+  });
+
+  it('does not report the nutrition profile saved', async () => {
+    await expect(useAppStore.getState().updateNutritionProfile({
+      sex: 'male', birth_year: 1995, height_cm: 180, body_fat_pct: null, activity: 'moderately_active',
+      goal: 'maintain', rate_pct_per_week: 0, unit_system: 'metric', adaptive_enabled: true,
+      phase_started_on: '2026-11-01', expenditure_kcal: 2600, expenditure_confidence: 'learning',
+      expenditure_updated_at: null,
+    })).rejects.toThrow(signedOut);
+  });
+
+  it('does not report WHOOP connected or disconnected', async () => {
+    await expect(useAppStore.getState().connectWhoop('app.hyper.mobile://settings')).rejects.toThrow(signedOut);
+    await expect(useAppStore.getState().disconnectWhoop()).rejects.toThrow(signedOut);
+    expect(useAppStore.getState().whoopConnection).toEqual({ user_id: 'user-1' });
   });
 });

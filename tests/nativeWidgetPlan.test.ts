@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import type { PlanSchedule } from '@/lib/planSchedule';
@@ -33,6 +36,7 @@ const base = {
   schedule,
   scheduleWorkouts: [],
   adaptiveSchedulingEnabled: false,
+  aheadKnown: true,
 };
 
 describe('widget plan', () => {
@@ -62,6 +66,15 @@ describe('widget plan', () => {
     expect(widgetPlan({ ...base, hero: { kind: 'schedule-error', retry: () => {} } })).toBeNull();
   });
 
+  it('writes nothing for a live or trained day until its completions load, so the last good plan stays', () => {
+    const live = { kind: 'resume', completedSets: 2, totalSets: 18, title: 'Session in progress', dayName: 'Upper A', exerciseCount: 6, elapsed: '12 min', nextExercise: null, nextSet: null } as const;
+    expect(widgetPlan({ ...base, aheadKnown: false, hero: { kind: 'done', title: 'Upper A' } })).toBeNull();
+    expect(widgetPlan({ ...base, aheadKnown: false, hero: live })).toBeNull();
+    // Nothing ahead comes from the completions without a schedule or in flexible mode.
+    expect(widgetPlan({ ...base, aheadKnown: false, schedule: null, hero: { kind: 'done', title: 'Upper A' } })).toHaveLength(1);
+    expect(widgetPlan({ ...base, aheadKnown: false, workoutMode: 'flexible', hero: { kind: 'done', title: 'Upper A' } })).toHaveLength(WIDGET_PLAN_DAYS);
+  });
+
   it('has only today without a schedule, and every day in flexible mode', () => {
     expect(widgetPlan({ ...base, schedule: null, hero: { kind: 'no-schedule' } })).toEqual([
       { day: '2026-10-27', title: 'Choose today’s session', detail: null, kind: 'setup' },
@@ -83,5 +96,18 @@ describe('widget plan', () => {
     // Bulking, the widget shows calories past target as extra, not red.
     expect(buildWidgetSnapshot({ fuelDay: '2026-10-27', target: { calories: 2800, protein: 160 }, totals: { calories: 3000, protein: 170 }, goal: 'bulk', plan }).fuel?.gaining).toBe(true);
     expect(buildWidgetSnapshot({ fuelDay: '2026-10-27', target: null, totals: { calories: 0, protein: 0 }, plan }).fuel).toBeNull();
+  });
+});
+
+describe('round lock-screen Fuel widget', () => {
+  // Swift is not compiled in this suite: check the source says what the other sizes say.
+  it('shows what is over target as a figure with its word, never a negative number', () => {
+    const swift = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../native/targets/widgets/HomeWidgets.swift'), 'utf8');
+    const fuel = swift.slice(swift.indexOf('private struct FuelView'));
+    const circular = fuel.slice(fuel.indexOf('case .accessoryCircular:'), fuel.indexOf('case .accessoryRectangular:'));
+    expect(circular).toContain('leftWord(fuel.left, gaining: fuel.gaining)');
+    expect(circular).toContain('whole(abs(fuel.left))');
+    expect(circular).toContain('abs(fuel.left) / 1_000');
+    expect(circular).not.toMatch(/whole\(fuel\.left\)|[^(]fuel\.left \/ 1_000/);
   });
 });

@@ -53,6 +53,7 @@ import {
   resetFuel,
   restoreFuelCopy,
   todayLogsInMatchingMeal,
+  todayTotalsShown,
   useFuelStore,
 } from '../native/src/lib/fuel';
 import type { NutritionGroup } from '@/types';
@@ -118,6 +119,16 @@ describe('restoring today from the phone’s copy', () => {
     expect(isFuelMonthFromCopy()).toBe(false);
   });
 
+  it('shows the copy’s figures on Today for the copy’s own day only', async () => {
+    restoreFuelCopy({ todayKey: DAY, totals: copyTotals, month: null });
+    expect(todayTotalsShown(useFuelStore.getState())).toEqual(copyTotals);
+    // Past midnight the new day's read fails: the copy's figures are not the new day's.
+    reads.food.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    await useFuelStore.getState().loadToday('2026-11-05');
+    expect(useFuelStore.getState().todayTotals).toEqual(copyTotals);
+    expect(todayTotalsShown(useFuelStore.getState())).toEqual({ calories: 0, protein: 0, carbs: 0, fat: 0 });
+  });
+
   it('is refused for another day, or once anything has loaded', () => {
     expect(restoreFuelCopy({ todayKey: '2026-11-03', totals: copyTotals, month: null })).toBe(false);
     useFuelStore.setState({ todayLoadedForUserId: USER });
@@ -134,14 +145,16 @@ describe('while Fuel shows the copy', () => {
     restoreFuelCopy({ todayKey: DAY, totals: copyTotals, month: copyMonth() });
   });
 
-  it('makes no meals and reads the day’s meals straight from the server', async () => {
+  it('makes no meals from the copy and reads the day’s meals straight from the server', async () => {
     await useFuelStore.getState().ensureDayGroups(DAY);
     expect(reads.ensureDefaultGroups).not.toHaveBeenCalled();
     reads.dayGroups = { data: [group('server-dinner', DAY, 'dinner', 2), todayLunch], error: null };
     const groups = await loadDayGroups(DAY);
     expect(reads.directGroupReads).toBe(1);
     expect(groups.map((entry) => entry.id)).toEqual(['t-lunch', 'server-dinner']);
-    expect(reads.ensureDefaultGroups).not.toHaveBeenCalled();
+    // #178's direct read makes the missing meals, from the server's meals only.
+    expect(reads.ensureDefaultGroups).toHaveBeenCalledTimes(1);
+    expect(reads.ensureDefaultGroups).toHaveBeenCalledWith(USER, DAY, [todayLunch, group('server-dinner', DAY, 'dinner', 2)]);
     expect(todayLogsInMatchingMeal(yesterdayLunch)).toBeNull();
   });
 
@@ -205,7 +218,7 @@ describe('the real read', () => {
     reads.food.mockResolvedValue({ data: fresh, error: null });
     reads.monthGroups = { data: [], error: null };
     await useFuelStore.getState().loadToday(DAY);
-    expect(useFuelStore.getState()).toMatchObject({ logs: fresh, todayLoadedForUserId: USER, todayLoadedKey: DAY, todayTotals: { calories: 500 } });
+    expect(useFuelStore.getState()).toMatchObject({ logs: fresh, todayLoadedForUserId: USER, todayLoadedKey: DAY, todayTotals: { calories: 500 }, todayCopyKey: null });
     expect(isFuelMonthFromCopy()).toBe(false);
     await vi.waitFor(() => expect(reads.ensureDefaultGroups).toHaveBeenCalledWith(USER, DAY, []));
   });
@@ -216,6 +229,7 @@ describe('the real read', () => {
     reads.food.mockResolvedValue({ data: null, error: { message: 'offline' } });
     await useFuelStore.getState().loadToday(DAY);
     expect(useFuelStore.getState()).toMatchObject({ status: 'ready', loadedMonth: '2026-11', todayTotals: copyTotals, todayLoadedForUserId: null });
+    expect(todayTotalsShown(useFuelStore.getState())).toEqual(copyTotals);
     expect(useFuelStore.getState().logs).toBe(month.logs);
     expect(isFuelMonthFromCopy()).toBe(true);
   });

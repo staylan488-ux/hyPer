@@ -62,6 +62,8 @@ type FuelState = {
   /** The account and day whose totals have actually loaded, including an empty day. */
   todayLoadedForUserId: string | null;
   todayLoadedKey: string | null;
+  /** The day whose totals are the phone's copy (launchCache.ts) until a read for it lands; no loaded marker. */
+  todayCopyKey: string | null;
   /** Shows a day, loading its month when needed. */
   select: (key: string) => void;
   /** Reloads the shown month (and today's totals when today is in another month). */
@@ -79,6 +81,15 @@ type FuelState = {
   reorderGroup: (groupId: string, direction: -1 | 1) => Promise<boolean>;
   deleteGroup: (group: NutritionGroup) => Promise<boolean>;
 };
+
+/**
+ * Today's totals as Today shows them: nothing eaten until they have loaded for
+ * the current today, or the phone's copy of the current today stands in
+ * (restoreFuelCopy). A new day whose read failed keeps the old day's totals in
+ * the store (still right for that day); they are never shown as today's.
+ */
+export const todayTotalsShown = (state: Pick<FuelState, 'todayKey' | 'todayLoadedKey' | 'todayTotals'> & { todayCopyKey?: string | null }): MacroTotals =>
+  state.todayLoadedKey === state.todayKey || state.todayCopyKey === state.todayKey ? state.todayTotals : emptyTotals;
 
 // The latest month request wins; an older answer is dropped.
 let monthRequest = 0;
@@ -132,6 +143,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
         todayTotals: sumMacros(logs.filter((log) => log.date === todayKey)),
         todayLoadedForUserId: userId,
         todayLoadedKey: todayKey,
+        todayCopyKey: null,
       } : {}),
     });
     void get().ensureDayGroups(get().selected);
@@ -166,6 +178,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
     todayTotals: emptyTotals,
     todayLoadedForUserId: null,
     todayLoadedKey: null,
+    todayCopyKey: null,
 
     select: (key) => {
       set({ selected: key });
@@ -200,7 +213,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
         FOOD_COLUMNS,
       );
       if (!error && data && get().todayKey === key && isCurrent() && request === todayRequest) {
-        set({ todayTotals: sumMacros(data), todayLoadedForUserId: userId, todayLoadedKey: key });
+        set({ todayTotals: sumMacros(data), todayLoadedForUserId: userId, todayLoadedKey: key, todayCopyKey: null });
       }
     },
 
@@ -261,13 +274,10 @@ export const useFuelStore = create<FuelState>((set, get) => {
       const userId = await getSessionUserId();
       if (!userId || copied.length === 0) return false;
       const key = today();
-      // Today's meals, with Breakfast, Lunch and Dinner made if missing (also
-      // when Fuel shows another month, so a copy never falls to Unassigned for that).
-      let targetGroups = await loadDayGroups(key);
-      if (get().loadedMonth !== monthOf(key) || monthFromCopy) {
-        const made = await ensureDefaultGroups(userId, key, targetGroups).catch(() => null);
-        if (made?.ok) targetGroups = sortNutritionGroups(made.groups);
-      }
+      // Today's meals, with Breakfast, Lunch and Dinner made if missing (read
+      // directly, not from the month, while Fuel shows another month or the
+      // phone's copy of this one).
+      const targetGroups = await loadDayGroups(key);
       const sourceGroups = group ? sortNutritionGroups(get().groups.filter((candidate) => candidate.date === group.date)) : [];
       const target = matchingGroup(group, sourceGroups, targetGroups);
       const retryKey = `${key}:${target?.id ?? ''}:${copied.map((log) => log.id).join(',')}`;
@@ -354,9 +364,15 @@ export function groupsForDay(key: string): NutritionGroup[] {
   return sortNutritionGroups(useFuelStore.getState().groups.filter((group) => group.date === key));
 }
 
+async function readDayGroups(userId: string, key: string): Promise<NutritionGroup[] | null> {
+  const { data, error } = await supabase.from('nutrition_groups').select('*').eq('user_id', userId).eq('date', key);
+  return error ? null : sortNutritionGroups((data ?? []) as NutritionGroup[]);
+}
+
 /**
- * A day's meal groups for the Log food sheet: from the loaded month (making
- * sure the day has its Breakfast, Lunch and Dinner), else read directly.
+ * A day's meal groups for the Log food sheet and Copy to today, with the day's
+ * Breakfast, Lunch and Dinner made if missing: from the loaded month, else
+ * read directly (Log food from Today while Fuel shows another month).
  */
 export async function loadDayGroups(key: string): Promise<NutritionGroup[]> {
   const store = useFuelStore.getState();
@@ -366,8 +382,12 @@ export async function loadDayGroups(key: string): Promise<NutritionGroup[]> {
   }
   const userId = await getSessionUserId();
   if (!userId) return [];
-  const { data, error } = await supabase.from('nutrition_groups').select('*').eq('user_id', userId).eq('date', key);
-  return error ? [] : sortNutritionGroups((data ?? []) as NutritionGroup[]);
+  const groups = await readDayGroups(userId, key);
+  if (!groups) return [];
+  const made = await ensureDefaultGroups(userId, key, groups).catch(() => null);
+  if (made?.ok) return sortNutritionGroups(made.groups);
+  // made by another save meanwhile (one Breakfast a day), or made but not put in order
+  return made ? (await readDayGroups(userId, key)) ?? groups : groups;
 }
 
 /** The day's named meal that fits the time (breakfast, lunch or dinner), if the day has it. */
@@ -395,6 +415,8 @@ export function restoreFuelCopy(copy: {
     selected: copy.todayKey,
     todayKey: copy.todayKey,
     todayTotals: copy.totals,
+    // Today shows these figures (todayTotalsShown), with no loaded marker.
+    todayCopyKey: copy.todayKey,
     ...(month ? { loadedMonth: month.month, logs: month.logs, groups: month.groups, status: 'ready' as const } : {}),
   });
   return true;
@@ -411,6 +433,6 @@ export function resetFuel() {
   const key = today();
   useFuelStore.setState({
     selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key,
-    todayTotals: emptyTotals, todayLoadedForUserId: null, todayLoadedKey: null,
+    todayTotals: emptyTotals, todayLoadedForUserId: null, todayLoadedKey: null, todayCopyKey: null,
   });
 }

@@ -83,6 +83,10 @@ describe('searchExercises', () => {
     expect(names('hyperextension')).toEqual(['Weighted Hyperextension', '45° Back Extension']);
   });
 
+  it('finds core work by "abs"', () => {
+    expect(searchExercises([exercise('Hanging Leg Raise', 'core', 'bodyweight')], 'abs').map((entry) => entry.name)).toEqual(['Hanging Leg Raise']);
+  });
+
   it('returns the list unchanged for an empty query', () => {
     expect(searchExercises(library, '  ')).toBe(library);
   });

@@ -21,6 +21,7 @@ import { patientPost } from '@/lib/patientFetch';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 import { getPhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
+import type { WeightTrend } from '@/lib/weightTrend';
 import type { MacroTarget } from '@/types';
 
 export type TargetNumbers = Pick<MacroTarget, 'calories' | 'protein' | 'carbs' | 'fat'>;
@@ -76,6 +77,26 @@ export function buildCoachContext(
       }
       : null,
   };
+}
+
+/** The hosted coach refuses a weight_trend_kg_per_week outside this (coach.ts). */
+export const COACH_TREND_LIMIT_KG_PER_WEEK = 5;
+const COACH_TREND_MIN_WEIGH_INS = 4;
+const COACH_TREND_MIN_SPAN_DAYS = 7;
+
+/**
+ * The weight trend worth sharing with the coach, or null. Two weigh-ins a day
+ * apart make a "trend" of several kilos a week: it says nothing, and the hosted
+ * coach refused the whole request over it with a misleading "describe your
+ * goal" error. Without a trend the coach reasons from the basic stats.
+ */
+export function coachTrendKgPerWeek(
+  trend: Pick<WeightTrend, 'kgPerWeek' | 'fittedDayCount' | 'spanDays'>,
+): number | null {
+  const { kgPerWeek } = trend;
+  if (kgPerWeek == null || !Number.isFinite(kgPerWeek)) return null;
+  if (trend.fittedDayCount < COACH_TREND_MIN_WEIGH_INS || trend.spanDays < COACH_TREND_MIN_SPAN_DAYS) return null;
+  return Math.abs(kgPerWeek) <= COACH_TREND_LIMIT_KG_PER_WEEK ? kgPerWeek : null;
 }
 
 export interface CoachRecommendation {

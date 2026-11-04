@@ -33,7 +33,8 @@ export function FuelReminderSetting() {
   return (
     <Animated.View layout={rowLayout} style={{ marginTop: space.section }}>
       <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
-        <ToggleRow label="Fuel reminder" value={settings.enabled} disabled={!ready} onChange={setFuelReminderEnabled} />
+        {/* Among You's list rows: a list switch, as Adaptive scheduling's. */}
+        <ToggleRow list label="Fuel reminder" value={settings.enabled} disabled={!ready} onChange={setFuelReminderEnabled} />
         {settings.enabled ? (
           <Animated.View entering={rowEnter} exiting={blockExit}>
             <Hairline />
@@ -56,7 +57,8 @@ export function FuelReminderSetting() {
               title="Open Settings"
               variant="quiet"
               onPress={() => void Linking.openSettings()}
-              style={{ alignSelf: 'flex-start', marginLeft: 32, marginTop: 12 }}
+              // on the note's text edge (FormNote's margin)
+              style={{ alignSelf: 'flex-start', marginLeft: space.inset + 18, marginTop: 12 }}
             />
           </>
         ) : (

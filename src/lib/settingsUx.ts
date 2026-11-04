@@ -31,8 +31,8 @@ export function targetModeLabel(
   enabled: boolean | undefined,
 ): string {
   if (!source) return 'Not set';
-  if (source === 'manual') return 'Manual';
-  if (!enabled) return 'Calculated · automatic updates off';
+  if (source === 'manual') return 'Set by hand';
+  if (!enabled) return 'Calculated · not adapting';
   return source === 'adaptive' ? 'Adaptive' : 'Calculated · can adapt';
 }
 
@@ -113,7 +113,7 @@ export function expenditureSummary(profile: {
       kcal: null,
       source,
       explanation:
-        'Estimated from your profile. Food logs and regular weigh-ins help refine this estimate, often over about three weeks.',
+        'Not learned yet, so targets use an estimate from your profile. Log food and weigh in for about three weeks and your burn shows here.',
     };
   }
   return {
@@ -121,8 +121,8 @@ export function expenditureSummary(profile: {
     source,
     explanation:
       confidence === 'measured'
-        ? 'Inferred from your food logs and weight trend. Updates weekly when enough data is available.'
-        : 'Being learned from your logs and weight trend — it will keep sharpening as more days come in.',
+        ? 'Inferred from your food logs and weight trend. Updates once a week.'
+        : 'Learning from your logs and weight trend. It sharpens as more days come in.',
   };
 }
 
@@ -131,10 +131,10 @@ export function resumeAdaptiveMessage(
   adaptiveEnabled: boolean | undefined,
   refresh: 'updated' | 'unchanged' | 'skipped' | 'failed',
 ): string {
-  if (!adaptiveEnabled) return 'Target source saved. Complete nutrition setup to enable automatic updates.';
+  if (!adaptiveEnabled) return 'Target source saved. Complete nutrition setup to turn on adaptive targets.';
   return refresh === 'failed'
-    ? 'Automatic target management resumed, but recalculation could not run right now. It will retry automatically.'
-    : 'Automatic target management resumed. Recalculation was requested; values may stay the same until enough data is available.';
+    ? 'Adaptive targets are on. They’ll update once the app can recalculate.'
+    : 'Adaptive targets are on. They update as your logs and weigh-ins come in.';
 }
 
 /** The sign-out question, which says what an unsaved edit would lose. */

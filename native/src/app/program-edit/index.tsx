@@ -40,9 +40,10 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { UndoBar } from '~/components/UndoBar';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
-import { afterProgramSaved, confirmAlert } from '~/lib/program';
+import { afterProgramSaved, confirmAlert, liveWorkoutDayId, refuseRemovingLiveDay, refuseSavingWithoutLiveDay } from '~/lib/program';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
@@ -68,6 +69,7 @@ const cancel = () => {
 
 function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
   const c = useBlanc();
+  const large = useLargeText();
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const [stored, setStored] = useState(() => (userId ? readSplitDraft(userId, NEW_SPLIT_DRAFT_ID) : null));
   const [answers, setAnswers] = useState<ProgramDesignAnswers>(DEFAULT_PROGRAM_ANSWERS);
@@ -75,6 +77,12 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const guided = useMemo(() => guidedTemplate(answers), [answers]);
+  // The line under it says the days, so the name, and the program it starts, leave out its "(4 days)".
+  const shownName = guided.name.replace(/ \(\d+ days?\)/, '').replace(/\(\d+ days?, /, '(');
+  const guidedLine = `${plural(guided.days.length, 'day')} a week · ${plural(templateExerciseCount(guided), 'exercise')}`;
+  // The plan follows the answers: VoiceOver hears it change once one is chosen.
+  const [answered, setAnswered] = useState(false);
+  useAnnounce(answered && `${shownName} · ${guidedLine}`);
 
   const startGuided = async () => {
     setLoading(true);
@@ -83,17 +91,17 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
       const { draft, notice } = await seedGuidedDraft(guided);
       haptics.success();
       onNotice(notice);
-      useSplitEditStore.getState().startNew(draft, { userId });
+      useSplitEditStore.getState().startNew({ ...draft, name: shownName }, { userId });
     } catch {
       haptics.error();
       setError(LIBRARY_LOAD_FAILED);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const answer = <K extends keyof ProgramDesignAnswers>(key: K, value: ProgramDesignAnswers[K]) => {
     haptics.select();
+    setAnswered(true);
     setAnswers((current) => ({ ...current, [key]: value }));
   };
 
@@ -113,12 +121,13 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
               Unsaved program{stored.draft.name.trim() ? ` “${stored.draft.name.trim()}”` : ''} · {plural(stored.draft.days.length, 'day')}, from{' '}
               {formatDistanceToNowStrict(stored.savedAt, { addSuffix: true })}.
             </BlancText>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: large ? 'column' : 'row', gap: 10 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Discard it"
                   variant="quiet"
                   fill
+                  disabled={loading}
                   onPress={() => {
                     void confirmAlert({
                       title: 'Discard this program?',
@@ -134,10 +143,12 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
                   }}
                 />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Resume"
                   fill
+                  // A guided plan still loading would replace the resumed program.
+                  disabled={loading}
                   onPress={() => {
                     onNotice(null);
                     useSplitEditStore.getState().restoreDraft(stored, { userId });
@@ -161,10 +172,10 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
             <Choice question={EXPERIENCE_QUESTION} value={answers.experience} onChange={(value) => answer('experience', value)} />
           </View>
           <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
-            <View accessibilityLiveRegion="polite">
-              <BlancText variant="headline">{guided.name}</BlancText>
+            <View accessible accessibilityLabel={speak(`${shownName} · ${guidedLine}`)}>
+              <BlancText variant="headline">{shownName}</BlancText>
               <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
-                {plural(guided.days.length, 'day')} a week · {plural(templateExerciseCount(guided), 'exercise')}
+                {guidedLine}
               </BlancText>
             </View>
             <Capsule title="Start from this plan" size="large" fill busy={loading} onPress={() => void startGuided()} />
@@ -230,14 +241,21 @@ function Choice<K extends keyof ProgramDesignAnswers, T extends string>({
 
 // ── Editor ───────────────────────────────────────────────────────────
 
+/** "2 minutes ago", read on every render: a hook by name, so the React Compiler doesn't keep the first answer. */
+function useSavedAgo(savedAt: number | undefined): string | null {
+  return savedAt === undefined ? null : formatDistanceToNowStrict(savedAt, { addSuffix: true });
+}
+
 function Editor({ notice }: { notice: string | null }) {
   const c = useBlanc();
+  const large = useLargeText();
   const draft = useSplitEditStore((state) => state.draft);
   const isDirty = useSplitEditStore((state) => state.isDirty);
   const saving = useSplitEditStore((state) => state.saving);
   const error = useSplitEditStore((state) => state.error);
   const undo = useSplitEditStore((state) => state.undo);
   const restorable = useSplitEditStore((state) => state.restorable);
+  const restorableAgo = useSavedAgo(restorable?.savedAt);
   const baseSignature = useSplitEditStore((state) => state.baseSignature);
   // Text fields keep their own text while typing; a restored draft refills them.
   const [formKey, setFormKey] = useState(0);
@@ -247,10 +265,13 @@ function Editor({ notice }: { notice: string | null }) {
 
   const save = () => {
     Keyboard.dismiss();
+    const editing = useSplitEditStore.getState().draft;
+    if (editing && refuseSavingWithoutLiveDay(editing)) return;
     void saveSplitEdit({
       createSplit: useAppStore.getState().createSplit,
       onSaved: (saved) => {
         haptics.success();
+        announce(saved.created ? `${saved.name} created` : `${saved.name} saved`);
         afterProgramSaved(saved);
       },
       onClose: () => router.back(),
@@ -270,7 +291,7 @@ function Editor({ notice }: { notice: string | null }) {
         unstable_headerRightItems: () => [
           {
             type: 'button',
-            label: saving ? 'Saving' : isNew ? 'Create' : 'Save',
+            label: saving ? 'Saving…' : isNew ? 'Create' : 'Save',
             variant: 'prominent',
             tintColor: c.ink,
             disabled: saving,
@@ -306,15 +327,15 @@ function Editor({ notice }: { notice: string | null }) {
         {restorable && !isDirty ? (
           <Label style={{ marginTop: 12, padding: 18, gap: 12 }}>
             <BlancText variant="body">
-              Unsaved edits from {formatDistanceToNowStrict(restorable.savedAt, { addSuffix: true })} are on this device.
+              Unsaved edits from {restorableAgo} are on this device.
             </BlancText>
             {restorable.baseSignature && baseSignature && restorable.baseSignature !== baseSignature ? (
               <BlancText variant="secondary" tone="graphite">
                 The program has changed since. Restoring replaces those changes when you save.
               </BlancText>
             ) : null}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: large ? 'column' : 'row', gap: 10 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Discard them"
                   variant="quiet"
@@ -333,7 +354,7 @@ function Editor({ notice }: { notice: string | null }) {
                   }}
                 />
               </View>
-              <View style={{ flex: 1 }}>
+              <View style={large ? undefined : { flex: 1 }}>
                 <Capsule
                   title="Restore"
                   fill
@@ -397,9 +418,17 @@ function TextField({ label, initial, placeholder, maxLength, onChange }: {
   onChange: (text: string) => void;
 }) {
   const c = useBlanc();
+  // At the accessibility text sizes the label sits over the field, as FieldRow's does.
+  const large = useLargeText();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16, paddingVertical: 15 }}>
-      <BlancText variant="body" style={{ width: 104 }}>
+    <View
+      style={
+        large
+          ? { gap: 4, minHeight: 52, paddingLeft: 18, paddingRight: 16, paddingVertical: 12 }
+          : { flexDirection: 'row', alignItems: 'flex-start', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16, paddingVertical: 15 }
+      }>
+      {/* The field carries the label for VoiceOver. */}
+      <BlancText variant="body" style={large ? undefined : { width: 104 }} accessibilityElementsHidden importantForAccessibility="no">
         {label}
       </BlancText>
       {/* Grows to fit a long name; Return finishes instead of adding a line. */}
@@ -416,7 +445,7 @@ function TextField({ label, initial, placeholder, maxLength, onChange }: {
         returnKeyType="done"
         selectionColor={c.ink}
         accessibilityLabel={label}
-        style={[typeScale.fieldLines, { flex: 1, color: c.ink, padding: 0, paddingTop: 0 }]}
+        style={[typeScale.fieldLines, { color: c.ink, padding: 0, paddingTop: 0 }, large ? null : { flex: 1 }]}
       />
     </View>
   );
@@ -427,9 +456,12 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
   const c = useBlanc();
   const label = dayLabel(day, index);
   const store = useSplitEditStore.getState;
+  // The live workout's day stays: removing it would drop that session.
+  const live = useAppStore((state) => liveWorkoutDayId(state.currentWorkout) === day.id);
   const open = () => router.push({ pathname: '/program-edit/day', params: { id: day.id } });
   // A draft change: the Undo bar can bring it back.
   const remove = () => {
+    if (refuseRemovingLiveDay(day.id, label)) return;
     store().removeDay(day.id);
     haptics.success();
   };
@@ -453,6 +485,8 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
   const move = (direction: -1 | 1) => {
     haptics.select();
     store().reorderDays(day.id, direction);
+    // The row moves by sight only; VoiceOver stays on it.
+    announce(`${label} moved ${direction < 0 ? 'earlier' : 'later'}`);
   };
   const menu: MenuAction[] = [
     { title: 'Rename', symbol: 'pencil', run: rename },
@@ -468,7 +502,8 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
           },
         ]
       : []),
-    { title: 'Remove day', symbol: 'trash', destructive: true, removes: true, run: remove },
+    // On the live day it is refused with an alert, which waits for the menu to close.
+    { title: 'Remove day', symbol: 'trash', destructive: true, removes: !live, run: remove },
   ];
 
   return (

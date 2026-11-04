@@ -99,6 +99,30 @@ describe('superset rounds', () => {
     expect(supersetLogBlock({ set_number: 1, completed: false }, flows.get('bench'), sets)).toBeNull();
   });
 
+  it('lets a side carry on when its partner has no set for that round', () => {
+    // B swapped after round 1: the replacement starts at round 2.
+    const flows = supersetFlows(['bench', 'pullup'], new Map([['bench', 'g1'], ['pullup', 'g1']]));
+    const swappedB = [set('bench', 1, true), set('bench', 2), set('pullup', 2), set('pullup', 3)];
+    expect(supersetLogBlock({ set_number: 2, completed: false }, flows.get('bench'), swappedB)).toBeNull();
+    expect(supersetLogBlock({ set_number: 2, completed: false }, flows.get('pullup'), swappedB)).toBe('Complete A2 before logging B2.');
+
+    // A swapped after A1, before B1: B1 has no A1 to wait for, A2 still waits for B1.
+    const aFlows = supersetFlows(['pullup', 'row'], new Map([['pullup', 'g1'], ['row', 'g1']]));
+    const swappedA = [set('pullup', 2), set('pullup', 3), set('row', 1), set('row', 2), set('row', 3)];
+    expect(supersetLogBlock({ set_number: 1, completed: false }, aFlows.get('row'), swappedA)).toBeNull();
+    expect(supersetLogBlock({ set_number: 2, completed: false }, aFlows.get('pullup'), swappedA)).toBe('Complete B1 before starting A2.');
+  });
+
+  it('lets the longer side of an uneven pair finish its extra sets', () => {
+    const flows = supersetFlows(['bench', 'row'], groups);
+    const extraB = [set('bench', 1, true), set('bench', 2, true), set('row', 1, true), set('row', 2, true), set('row', 3)];
+    expect(supersetLogBlock({ set_number: 3, completed: false }, flows.get('row'), extraB)).toBeNull();
+    const extraA = [set('bench', 1, true), set('bench', 2, true), set('bench', 3), set('row', 1, true), set('row', 2)];
+    expect(supersetLogBlock({ set_number: 3, completed: false }, flows.get('bench'), extraA)).toBe('Complete B2 before starting A3.');
+    const extraADone = [set('bench', 1, true), set('bench', 2, true), set('bench', 3), set('row', 1, true), set('row', 2, true)];
+    expect(supersetLogBlock({ set_number: 3, completed: false }, flows.get('bench'), extraADone)).toBeNull();
+  });
+
   it('never blocks correcting a logged set or a movement outside a pair', () => {
     const flows = supersetFlows(['bench', 'row'], groups);
     expect(supersetLogBlock({ set_number: 3, completed: true }, flows.get('row'), [])).toBeNull();

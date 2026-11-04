@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -10,6 +13,7 @@ import {
   WORD_SIZE,
   drawnMark,
   glyphBox,
+  introWaits,
   landing,
   markBox,
   markInkInsets,
@@ -86,5 +90,29 @@ describe('native brand mark geometry', () => {
     // Cap height is 0.7 em: what is left of the box once the insets go.
     expect(box.height - insets.top - insets.bottom).toBeCloseTo(0.7 * size, 6);
     expect(insets.left).toBeGreaterThan(0);
+  });
+});
+
+describe('the cold-launch intro’s waits for a resting mark', () => {
+  const native = (file: string) => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../native', file), 'utf8');
+
+  it('waits a moment for the first screen’s mark, then fades in place without one', () => {
+    expect(introWaits(false)).toEqual({ firstScreen: 600, noAnchor: 1200 });
+  });
+
+  it('waits for no mark on a screen a widget or card opened', () => {
+    expect(introWaits(true)).toEqual({ firstScreen: 0, noAnchor: 0 });
+  });
+
+  it('takes both waits from that rule, told by the root layout whether a launch link opened the app', () => {
+    const intro = native('src/components/BrandIntro.tsx');
+    expect(intro).toContain('setTimeout(() => setFirstScreen(true), introWaits(markless).firstScreen)');
+    expect(intro).toContain('setTimeout(() => setNoAnchor(true), introWaits(markless).noAnchor)');
+
+    const layout = native('src/app/_layout.tsx');
+    const flag = layout.match(/const \[(\w+)\] = useState\(\(\) => pendingLaunchLink\(\) !== null\);/)?.[1];
+    expect(flag).toBeTruthy();
+    const start = layout.indexOf('<BrandIntro ');
+    expect(layout.slice(start, layout.indexOf('/>', start))).toContain(`markless={${flag}}`);
   });
 });

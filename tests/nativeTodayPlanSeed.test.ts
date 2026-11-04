@@ -57,7 +57,7 @@ const reads = create(() => ({
 const readTodayDone = vi.fn<(userId: string, dayKey: string) => Promise<{ title: string } | null>>();
 const noteTodayPlan = vi.fn<(seed: TodaySeed) => void>();
 
-type Plan = { hero: HeroState; next: string | null; weekDone: number | null; seeded: boolean };
+type Plan = { hero: HeroState; next: string | null; upNext?: unknown; weekDone: number | null; seeded: boolean };
 let useTodayPlan: () => Plan;
 let latest: Plan;
 const renders: Plan[] = [];
@@ -111,9 +111,14 @@ beforeEach(() => {
     '@/lib/todayDay': { readTodayDone },
     '@/stores/appStore': { useAppStore: app },
     '@/stores/authStore': { useAuthStore: auth },
-    './accountData': { useAccountDay: accountDay },
+    './accountData': { useAccountDay: accountDay, useWorkoutsRevision: create(() => ({ revision: 0 })) },
     './launchCache': { useLaunchHint: hint, noteTodayPlan },
     './launchSnapshot': launchSnapshot,
+    // useFinishedToday's imports; useTodayPlan reads none of them.
+    'date-fns': {},
+    '@/lib/historyMonth': {},
+    '@/lib/workoutSessions': {},
+    './history': {},
   }));
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -131,6 +136,14 @@ describe('today’s plan from the phone’s copy', () => {
     expect(latest.hero).toEqual({ kind: 'planned', day: ppl.days[0] });
     expect(latest.hero.kind === 'planned' && latest.hero.day).toBe(ppl.days[0]);
     expect(noteTodayPlan).not.toHaveBeenCalled();
+  });
+
+  it('gives the seed’s next session, with the session up next unknown (Schedule waits for the reads)', async () => {
+    hint.setState({ seed: plannedSeed({ hero: { kind: 'rest' }, next: 'Tomorrow · Legs' }) });
+    await render();
+    expect(latest).toMatchObject({ seeded: true, hero: { kind: 'rest' }, next: 'Tomorrow · Legs' });
+    expect('upNext' in latest).toBe(true);
+    expect(latest.upNext).toBeUndefined();
   });
 
   it('gives way to the real plan once the store is ready and the reads land', async () => {

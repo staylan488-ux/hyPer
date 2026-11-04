@@ -5,22 +5,24 @@ import { useEffect, useState } from 'react';
 import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { useReducedMotion } from 'react-native-reanimated';
+import { ReducedMotionConfig, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
 
 import { maybeSeedPreview } from '@/preview/previewSeed';
 import { useAuthStore } from '@/stores/authStore';
 import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
+import { useReduceMotionOverride } from '~/lib/accessibility';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
 import { followReminderTaps } from '~/lib/fuelReminder';
 import { installLaunchCache } from '~/lib/launchCache';
 import { backendOf } from '~/lib/launchSnapshot';
 import { launchWaiting, takeNativeLaunch, useLaunchActions } from '~/lib/launch';
+import { pendingLaunchLink } from '~/lib/launchLink';
 import { restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
-import { palettes } from '~/theme/blanc';
+import { useBlanc } from '~/theme/blanc';
 
 // Light or Dark chosen in You applies before anything draws.
 restoreAppearance();
@@ -54,7 +56,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const dark = useColorScheme() === 'dark';
-  const p = dark ? palettes.dark : palettes.light;
+  const p = useBlanc();
   const base = dark ? DarkTheme : DefaultTheme;
   const theme = {
     ...base,
@@ -66,6 +68,8 @@ export default function RootLayout() {
   const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro) || launchWaiting());
   // A press from outside the app goes straight to its screen; one that arrives during the intro hurries it.
   const hurryIntro = useLaunchActions(screen, introDone);
+  // A widget or card that launched the app opens a screen with no P to land on.
+  const [launchedToScreen] = useState(() => pendingLaunchLink() !== null);
 
   useEffect(() => {
     if (introDone && screen !== 'boot') void SplashScreen.hideAsync().catch(() => {});
@@ -224,7 +228,7 @@ export default function RootLayout() {
                 presentation: 'formSheet',
                 sheetAllowedDetents: [1],
                 sheetGrabberVisible: true,
-                contentStyle: { backgroundColor: p.label },
+                contentStyle: { backgroundColor: p.ground },
               }}
             />
           </Stack.Protected>
@@ -235,10 +239,24 @@ export default function RootLayout() {
             <Stack.Screen name="offline" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>
         </Stack>
-        {introDone ? null : <BrandIntro ready={screen !== 'boot'} hurry={hurryIntro} onDone={() => setIntroDone(true)} />}
+        {introDone ? null : (
+          <BrandIntro ready={screen !== 'boot'} hurry={hurryIntro} markless={launchedToScreen} onDone={() => setIntroDone(true)} />
+        )}
+        <ReduceMotionSync />
         {__DEV__ ? <DevLaunchRunner /> : null}
       </ThemeProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
+}
+
+/**
+ * Reanimated reads Reduce Motion once, at launch, and every animation that
+ * does not say otherwise follows it. Once the setting changes while the app
+ * runs, this holds Reanimated to the new value, so a change applies at once
+ * instead of at the next launch.
+ */
+function ReduceMotionSync() {
+  const override = useReduceMotionOverride();
+  return override === null ? null : <ReducedMotionConfig mode={override ? ReduceMotion.Always : ReduceMotion.Never} />;
 }

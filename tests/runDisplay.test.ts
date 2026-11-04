@@ -9,13 +9,15 @@ import {
   formatRunPace,
   gpsDiagnosticsExport,
   isAutoLapValid,
+  isRestSegment,
   isRunResting,
   livePaceSecPerMile,
+  runLocationBlock,
   runSaveErrorMessage,
   runStatus,
   splitFigure,
 } from '@/lib/runDisplay';
-import { createTracker, defaultTrackerConfig, pauseTracker, type FinishedRun } from '@/lib/runTracker';
+import { createTracker, defaultTrackerConfig, finishedRunToActivity, pauseTracker, type FinishedRun } from '@/lib/runTracker';
 
 // The run tracker's wording and choices, shared by the web page and the native run screen.
 
@@ -97,6 +99,45 @@ describe('run display', () => {
     expect(payload.trace).toHaveLength(1);
     expect(payload.summary.trace).toBeUndefined();
     expect(payload.summary.runId).toBe('run-1');
+  });
+
+  it('saves a rest split as a rest, so History does not pace it', () => {
+    const lap = { startedAtMs: 0, pausedMs: 0, trigger: 'manual' as const };
+    const run: FinishedRun = {
+      runId: 'run-2',
+      mode: 'intervals',
+      startedAtMs: 0,
+      endedAtMs: 240_000,
+      totalDistanceM: 800,
+      elapsedS: 240,
+      laps: [
+        { ...lap, index: 1, endedAtMs: 90_000, distanceM: 400, kind: 'work' },
+        { ...lap, index: 2, startedAtMs: 90_000, endedAtMs: 150_000, distanceM: 67, kind: 'rest' },
+        { ...lap, index: 3, startedAtMs: 150_000, endedAtMs: 240_000, distanceM: 333, trigger: 'finish', kind: 'work' },
+      ],
+      reps: [],
+    };
+
+    const { segments } = finishedRunToActivity(run, run.runId);
+
+    expect(segments.map((segment) => isRestSegment({ raw: segment.raw ?? null }))).toEqual([false, true, false]);
+    expect(segments[1].raw).toEqual({ trigger: 'manual', kind: 'rest' });
+    // Runs saved before the kind was kept stay as they read.
+    expect(isRestSegment({ raw: { trigger: 'manual' } })).toBe(false);
+    expect(isRestSegment({ raw: null })).toBe(false);
+  });
+
+  it('stops Start when location is refused or allowed without Precise Location', () => {
+    expect(runLocationBlock({ location: 'denied', precise: false })).toBe('off');
+    expect(runLocationBlock({ location: 'restricted', precise: false })).toBe('off');
+    // Approximate fixes are a kilometre or more out: the run would never lock.
+    expect(runLocationBlock({ location: 'whenInUse', precise: false })).toBe('approximate');
+    expect(runLocationBlock({ location: 'always', precise: false })).toBe('approximate');
+    expect(runLocationBlock({ location: 'whenInUse', precise: true })).toBeNull();
+    // A device that does not report precision, or a failed ask, still starts.
+    expect(runLocationBlock({ location: 'whenInUse' })).toBeNull();
+    expect(runLocationBlock(null)).toBeNull();
+    expect(runLocationBlock({ location: 'prompt', precise: false })).toBeNull();
   });
 
   it('keeps the run when a save fails, saying why', () => {

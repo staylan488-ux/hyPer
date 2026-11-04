@@ -7,7 +7,7 @@
  * (older databases, exercises users added) are classified by name with the
  * same rules the backfill migration uses.
  */
-import type { Exercise, ExerciseCategory } from '@/types';
+import type { Exercise, ExerciseCategory, MuscleGroup } from '@/types';
 import { MUSCLE_GROUP_LABELS } from '@/types';
 
 /** Equipment that always means a regular gym movement, whatever the name. */
@@ -75,6 +75,9 @@ const NAME_ALIASES: Array<[RegExp, string]> = [
   [/\bpush[- ]?ups?\b/, 'pushup press up'],
 ];
 
+/** Words a muscle answers to beyond its label: "abs" still finds core work. */
+const MUSCLE_ALIASES: Partial<Record<MuscleGroup, string>> = { core: 'abs' };
+
 function normalize(text: string): string {
   return text
     .toLowerCase()
@@ -118,7 +121,7 @@ function searchFields(exercise: Exercise): SearchFields {
   const aliases = NAME_ALIASES.filter(([pattern]) => pattern.test(name)).map(([, extra]) => extra);
   const muscles = [exercise.muscle_group, exercise.muscle_group_secondary]
     .filter((group): group is NonNullable<typeof group> => Boolean(group))
-    .map((group) => `${group} ${MUSCLE_GROUP_LABELS[group] ?? ''}`);
+    .map((group) => `${group} ${MUSCLE_GROUP_LABELS[group] ?? ''} ${MUSCLE_ALIASES[group] ?? ''}`);
 
   const fields: SearchFields = {
     name,

@@ -35,7 +35,7 @@ import { resolveManualFood } from '@/lib/manualFood';
 import { buildCalendarDays, weekDays } from '@/lib/nutritionCalendar';
 import { offersMoveToPreviousDay } from '@/lib/nutritionDay';
 import { servingLabel, sortLedgerEntries, sourceLabel } from '@/lib/nutritionLedger';
-import { buildPhotoHint, groundPhotoItems, logPhotoItems, photoItemStatus, photoItemTotals, type PhotoReviewItem } from '@/lib/photoReview';
+import { buildPhotoHint, groundPhotoItems, logPhotoItems, photoItemStatus, photoItemTotals, photoLogsOneEntry, type PhotoReviewItem } from '@/lib/photoReview';
 import { buildEntryPayload, chosenFoodLogSource } from '@/lib/saveNutritionEntry';
 import { trialIngredientFood, trialItemFood, trialLogSource } from '@/lib/foodTrial';
 import { filterSavedMeals, foodValuesMatch, savedMealSuggestions } from '@/lib/savedMeals';
@@ -130,6 +130,13 @@ describe('food units', () => {
     expect(amountError(food(), '2', 'g')).toBe("Can't convert g to serving for this food.");
   });
 
+  it('reads a comma as the decimal point, as the iOS decimal pad types it in many regions', () => {
+    expect(servingsForAmount(chicken, '1,5', 'serving')).toBe(1.5);
+    expect(servingsForAmount(chicken, '150,5', 'g')).toBeCloseTo(1.505);
+    expect(amountError(chicken, '0,5', 'serving')).toBeNull();
+    expect(amountForUnit(chicken, '1,5', 'serving', 'g')).toBe('150');
+  });
+
   it('converts the amount when the unit changes', () => {
     expect(amountForUnit(chicken, '2', 'serving', 'g')).toBe('200');
     expect(amountForUnit(chicken, '250', 'g', 'serving')).toBe('2.5');
@@ -171,6 +178,17 @@ describe('manual food choice', () => {
 
   it('keeps an edited entry on its original row when the food is unchanged', async () => {
     expect(await resolveManualFood({ ...base, originalEntry: { food_id: 'orig', food: values } })).toMatchObject({ foodId: 'orig' });
+  });
+
+  it('keeps a stored food on its row when an edit changes only the time', async () => {
+    // foods keeps macros to one decimal (DECIMAL(10,1)), and Manual's fields
+    // show one decimal, so the fields always read back as the stored values
+    const misread = Array.from({ length: 20001 }, (_, tenths) => tenths / 10).filter((stored) => Number(formatMacroInput(stored)) !== stored);
+    expect(misread).toEqual([]);
+    const stored = { name: 'Rice, white, cooked', calories: 130, protein: 2.7, carbs: 28.2, fat: 0.3 };
+    const fields = { ...stored, calories: Number(formatMacroInput(stored.calories)), protein: Number(formatMacroInput(stored.protein)), carbs: Number(formatMacroInput(stored.carbs)), fat: Number(formatMacroInput(stored.fat)) };
+    expect(await resolveManualFood({ ...base, values: fields, originalEntry: { food_id: 'rice', food: stored } })).toMatchObject({ foodId: 'rice' });
+    expect(mocks.insertOneServingFood).not.toHaveBeenCalled();
   });
 
   it('reuses the one-off row of a failed attempt, else creates one', async () => {
@@ -307,6 +325,22 @@ describe('photo review', () => {
     ).rejects.toThrow('Could not log Chicken. 1 already logged item was removed from this review. Retry only the remaining items.');
     expect(logged).toEqual(['i1']);
   });
+
+  it('replaces an edited entry with one entry only, never one per item onto the same entry', async () => {
+    const ensureFood = vi.fn(async (row: Food) => `food-${row.name}`);
+    const saveEntry = vi.fn(async () => true);
+    const plate = [item(), item({ id: 'i2', name: 'Chicken' })];
+    await expect(
+      logPhotoItems({ items: plate, combine: false, summary: '', provider: 'openai', replacing: true, ensureFood, saveEntry }),
+    ).rejects.toThrow('Keep one food to replace this entry. Add other foods separately.');
+    expect(saveEntry).not.toHaveBeenCalled();
+    expect(photoLogsOneEntry(plate, false)).toBe(false);
+    expect(photoLogsOneEntry(plate, true)).toBe(true);
+    expect(photoLogsOneEntry([item()], false)).toBe(true);
+
+    await logPhotoItems({ items: plate, combine: true, summary: 'Plate', provider: 'openai', replacing: true, ensureFood, saveEntry });
+    expect(saveEntry).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('day ledger and calendar', () => {
@@ -315,6 +349,24 @@ describe('day ledger and calendar', () => {
     expect(sourceLabel('barcode_saved')).toBe('Manual');
     expect(servingLabel({ servings: 1.5, food: { serving_size: 100, serving_unit: 'g' } })).toBe('150 g');
     expect(servingLabel({ servings: 2, food: { serving_size: 1, serving_unit: 'serving' } })).toBe('2 servings');
+  });
+
+  it('shows a measured amount as it was typed, though servings keep two decimals', () => {
+    // 150 g of a 28 g serving is saved as 5.36 servings, which is 150.08 g
+    expect(servingLabel({ servings: 5.36, food: { serving_size: 28, serving_unit: 'g' } })).toBe('150 g');
+    expect(servingLabel({ servings: 0.37, food: { serving_size: 28, serving_unit: 'g' } })).toBe('10.4 g');
+    expect(servingLabel({ servings: 0.33, food: { serving_size: 6, serving_unit: 'piece' } })).toBe('2 piece');
+    expect(servingLabel({ servings: 0.33, food: { serving_size: 1, serving_unit: 'cup' } })).toBe('0.33 cup');
+    // 45 g of a 40 g serving is 1.125 servings, saved as 1.13
+    expect(servingLabel({ servings: 1.13, food: { serving_size: 40, serving_unit: 'g' } })).toBe('45 g');
+  });
+
+  it('never shows an amount that would save as other servings', () => {
+    // 41 g of a 40 g serving is 1.025 servings, which saves as 1.03, not 1.02
+    expect(servingLabel({ servings: 1.02, food: { serving_size: 40, serving_unit: 'g' } })).toBe('40.8 g');
+    expect(servingLabel({ servings: 0.07, food: { serving_size: 40, serving_unit: 'g' } })).toBe('2.8 g');
+    expect(servingLabel({ servings: 1.03, food: { serving_size: 40, serving_unit: 'g' } })).toBe('41 g');
+    expect(servingLabel({ servings: 0.07, food: { serving_size: 80, serving_unit: 'g' } })).toBe('5.6 g');
   });
 
   it('orders a group by sort order, then time', () => {

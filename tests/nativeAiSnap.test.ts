@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as foodTrialReview from '@/lib/foodTrialReview';
 import * as pendingEntry from '@/lib/pendingEntryId';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { silentAccessibility } from './helpers/silentAccessibility';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -42,13 +43,12 @@ const analyze = vi.fn((request: AnalyzeRequest) => {
 });
 const announce = vi.fn();
 const openSettings = vi.fn();
-const logger = { purpose: 'log', editing: null, beginBusy: () => noop, when: {}, groups: [], reloadSavedMeals: noop, complete: noop, addIngredients: noop };
+const logger = { purpose: 'log', editing: null, beginBusy: () => noop, beginSave: () => noop, when: {}, groups: [], reloadSavedMeals: noop, complete: noop, addIngredients: noop };
 
 const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; emptyAi: (hint?: string) => Draft }>('fuel/AiTab.tsx', {
   'expo-image': { Image: Empty },
   'expo-symbols': { SymbolView: Empty },
   'react-native': {
-    AccessibilityInfo: { announceForAccessibilityWithOptions: announce },
     Alert: { alert: vi.fn() },
     Linking: { openSettings },
     Pressable: (props: PropsWithChildren<{ accessibilityLabel?: string; onPress: () => void }>) => {
@@ -85,13 +85,16 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
   },
   '~/components/Label': { Label: Wrap },
   '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, showActionSheet: noop },
+  '~/components/RollingText': { RollingText: Wrap },
   '~/components/Row': { Hairline: Empty },
   '~/components/Section': { Section: Wrap },
   '~/components/SwipeRow': { closeOpenSwipeRow: () => false, SwipeRow: Wrap },
+  // VoiceOver is off in a test; what the tab announces is recorded.
+  '~/lib/accessibility': { ...silentAccessibility, announce },
   '~/lib/format': { formatWhole: String },
   '~/lib/foodLogger': { saveFoodEntry: vi.fn(), workerAccessToken: async () => 'token' },
   '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
-  '~/lib/motion': { rowEnter: {}, rowExit: {}, rowLayout: {} },
+  '~/lib/motion': { figureLayout: {}, rowEnter: {}, rowExit: {}, rowLayout: {} },
   '~/platform/previewFlag': { isPreviewActive: () => false },
   '~/theme/blanc': { space: { gutter: 20, inset: 16 }, type: { fieldLines: {} }, useBlanc: () => ({}) },
   './context': { useLogger: () => logger },
@@ -151,7 +154,7 @@ describe('AI tab: Snap a meal', () => {
     await settle();
     expect(analyze).toHaveBeenCalledOnce();
     expect(analyze.mock.calls[0][0].images).toHaveLength(1);
-    expect(announce).toHaveBeenCalledWith('Analyzing meal', { queue: true });
+    expect(announce).toHaveBeenCalledWith('Analyzing meal');
     expect(current.photos).toEqual([shot]);
     expect(capsules['Analyzing…'].busy).toBe(true);
   });

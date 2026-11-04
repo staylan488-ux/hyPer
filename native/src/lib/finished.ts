@@ -3,12 +3,14 @@
 import { create } from 'zustand';
 
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import { getWorkoutDurationMs } from '@/lib/workoutSessions';
 
 import { countBeats } from './beatLastTime';
 import type { SessionModel } from './sessionModel';
 
 export type FinishedSummary = {
   dayName: string;
+  startedAt: Date;
   finishedAt: Date;
   /** Logged or not, per set in session order: the tally on the summary label. */
   marks: boolean[];
@@ -29,6 +31,12 @@ function beats(a: { weight: number; reps: number }, b: { weight: number; reps: n
 /** `previous` is last time's numbers for the session (see usePreviousTargetsStore). */
 export function summarize(session: SessionModel, previous: PreviousWorkoutSetMap = {}, finishedAt = new Date()): FinishedSummary {
   const done = session.sets.filter((set) => set.completed);
+  // Start to the last logged set, as the workout is saved, so the receipt agrees with the record and History.
+  const lastLogged = Math.max(...done.map((set) => (set.completed_at ? Date.parse(set.completed_at) : NaN)).filter(Number.isFinite));
+  const end = Number.isFinite(lastLogged) ? new Date(lastLogged) : finishedAt;
+  // A start that cannot be read never stops the finish: the receipt then shows the finish time.
+  const startedAt = Number.isNaN(session.startedAt.getTime()) ? null : session.startedAt;
+  const duration = startedAt ? getWorkoutDurationMs({ created_at: startedAt.toISOString(), completed_at: end.toISOString() }) : null;
   let best: FinishedSummary['best'] = null;
   let volume = 0;
   for (const set of done) {
@@ -43,14 +51,25 @@ export function summarize(session: SessionModel, previous: PreviousWorkoutSetMap
   }
   return {
     dayName: session.dayName,
+    startedAt: startedAt ?? finishedAt,
     finishedAt,
     marks: session.sets.map((set) => set.completed),
     sets: done.length,
     beat: countBeats(session.sets, previous),
     volume,
-    minutes: Math.max(1, Math.round((finishedAt.getTime() - session.startedAt.getTime()) / 60_000)),
+    minutes: Math.max(1, Math.round((duration ?? 0) / 60_000)),
     best,
   };
+}
+
+/**
+ * The label's last line: "session 2 of 4 this week", or "session 5 this week"
+ * once the week's plan is passed. `weekCount` is null until it loads.
+ */
+export function savedLine(weekCount: number | null, planned: number | null): string {
+  if (weekCount === null || Math.max(planned ?? 0, weekCount) <= 0) return 'Saved to History';
+  const of = planned && weekCount <= planned ? ` of ${planned}` : '';
+  return `Saved to History · session ${weekCount}${of} this week`;
 }
 
 export const useFinishedStore = create<{ summary: FinishedSummary | null; set: (summary: FinishedSummary) => void }>((set) => ({
