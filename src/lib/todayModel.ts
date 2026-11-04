@@ -155,7 +155,7 @@ export interface VolumeInsight {
   muscle: string;
   headline: string;
   detail: string;
-  /** The short flag line under the week summary. */
+  /** The short flag line under the week summary, after "Muscle: ". */
   flag: string;
 }
 
@@ -177,7 +177,7 @@ export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null 
       muscle: labeled(below),
       headline: `${labeled(below)} is under-stimulated`,
       detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
-      flag: `under · add ~${gap} ${gap === 1 ? 'set' : 'sets'} this week`,
+      flag: `add about ${gap} ${gap === 1 ? 'set' : 'sets'} this week`,
     };
   }
 
@@ -195,7 +195,7 @@ export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null 
       detail: past
         ? `${over.weekly_sets} sets this week — pull back or plan a deload.`
         : `${over.weekly_sets} sets this week — hold here rather than adding more.`,
-      flag: past ? 'past recoverable volume · pull back' : 'nearing its ceiling · hold here',
+      flag: past ? 'over its ceiling' : 'near its ceiling',
     };
   }
 
@@ -208,7 +208,7 @@ export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null 
       muscle: labeled(inZone),
       headline: `${labeled(inZone)} is in the adaptive zone`,
       detail: `${inZone.weekly_sets} sets this week — right where growth compounds. Hold the line.`,
-      flag: 'in the adaptive zone · hold the line',
+      flag: 'in its best range',
     };
   }
 

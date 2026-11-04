@@ -359,17 +359,17 @@ export interface SplitTemplate {
 export const MUSCLE_GROUP_LABELS: Record<MuscleGroup, string> = {
   chest: 'Chest',
   back: 'Back',
-  shoulders: 'Shoulders (General)',
-  side_delts: 'Side Delts',
-  rear_delts: 'Rear Delts',
-  front_delts: 'Front Delts',
+  shoulders: 'Shoulders',
+  side_delts: 'Side delts',
+  rear_delts: 'Rear delts',
+  front_delts: 'Front delts',
   biceps: 'Biceps',
   triceps: 'Triceps',
   quads: 'Quadriceps',
   hamstrings: 'Hamstrings',
   glutes: 'Glutes',
   calves: 'Calves',
-  core: 'Core/Abs',
+  core: 'Core',
   traps: 'Traps',
 };
 

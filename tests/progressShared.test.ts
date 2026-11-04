@@ -12,9 +12,9 @@ const volume = (muscle_group: string, weekly_sets: number, status: MuscleVolume[
 
 describe('coaching calls', () => {
   it('asks for the missing sets below MEV, at least one', () => {
-    expect(buildCoachingCall(volume('chest', 5, 'below_mev')).headline).toBe('Add ~3 sets this week');
-    expect(buildCoachingCall(volume('chest', 7.5, 'below_mev')).headline).toBe('Add ~1 set this week');
-    expect(buildCoachingCall(volume('chest', 0, 'below_mev', false)).headline).toBe('Add ~1 set this week');
+    expect(buildCoachingCall(volume('chest', 5, 'below_mev')).headline).toBe('Add about 3 sets this week');
+    expect(buildCoachingCall(volume('chest', 7.5, 'below_mev')).headline).toBe('Add about 1 set this week');
+    expect(buildCoachingCall(volume('chest', 0, 'below_mev', false)).headline).toBe('Add about 1 set this week');
   });
 
   it('orders under, over, near, zone, building, then by sets', () => {
