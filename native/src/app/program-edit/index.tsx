@@ -119,6 +119,7 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
                   title="Discard it"
                   variant="quiet"
                   fill
+                  disabled={loading}
                   onPress={() => {
                     void confirmAlert({
                       title: 'Discard this program?',
@@ -138,6 +139,8 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
                 <Capsule
                   title="Resume"
                   fill
+                  // A guided plan still loading would replace the resumed program.
+                  disabled={loading}
                   onPress={() => {
                     onNotice(null);
                     useSplitEditStore.getState().restoreDraft(stored, { userId });
