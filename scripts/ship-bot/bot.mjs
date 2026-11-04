@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 import { createWriteStream, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { errorTail } from './error-tail.mjs';
 
 const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const APP_ID = process.env.DISCORD_APP_ID;
@@ -127,11 +128,6 @@ client.on('interactionCreate', async (interaction) => {
     } catch {}
   }
 });
-
-function errorTail(out) {
-  const lines = out.split('\n').filter((l) => /error|fail|✗|❌|❗/i.test(l));
-  return (lines.slice(-6).join('\n') || out.slice(-1200)).slice(0, 1200);
-}
 
 const stamp = () => new Date().toISOString();
 
