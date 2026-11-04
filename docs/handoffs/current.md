@@ -87,11 +87,11 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   camera/barcodes, HealthKit, device widget/Live Activity failure scenarios and
   real-account behavior remain unverified. No auth flow or schema changes.
 - 2026-11-04: a whole-app bug hunt (branch `claude/project-thread-afhkpw`,
-  one PR) fixed about 75 bugs, each with a test, with no auth flow or schema
+  one PR) fixed about 80 bugs, each with a test, with no auth flow or schema
   change. Two rounds of parallel reviewers found them, a skeptic checked each
-  finding, and two independent reviews of the fixes found 18 more problems
-  (two of them our own regressions), all but one fixed in the same PR. Among
-  them: a widget or card tap that launches the
+  finding, and three independent reviews of the fixes found 24 more problems
+  (several were slips in this PR's own fixes), all but one fixed in the same
+  PR. Among them: a widget or card tap that launches the
   app opens its screen; superset rounds carry on when the partner has no set
   for that round; set count, note and movement order changes stay in step
   while saves run; a failed workout mode save is kept and sent again; History
