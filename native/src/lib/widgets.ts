@@ -50,8 +50,9 @@ export function useWidgetSnapshot() {
       schedule: plan.schedule,
       scheduleWorkouts: plan.scheduleWorkouts,
       adaptiveSchedulingEnabled: plan.adaptiveSchedulingEnabled,
+      aheadKnown: plan.aheadKnown,
     }),
-    [plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled],
+    [plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled, plan.aheadKnown],
   );
 
   const json = useMemo(() => {

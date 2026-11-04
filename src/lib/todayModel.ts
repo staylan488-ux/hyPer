@@ -314,23 +314,30 @@ export function todayHero(input: TodayHeroInput): HeroState {
   return planned ? { kind: 'planned', day: planned } : { kind: 'rest' };
 }
 
-/** On a rest day, the next planned session by the same schedule rules, as "Tomorrow · Lower". */
-export function nextPlannedSession(input: {
+type NextPlannedInput = {
   activeSplit: Split | null;
   schedule: PlanSchedule | null;
   scheduleWorkouts: ScheduleWorkout[];
   adaptiveSchedulingEnabled: boolean;
   dayKey: string;
-}): string | null {
+};
+
+/** The first session planned after dayKey by the schedule rules, with its label ("Tomorrow · Lower"). */
+export function nextPlannedDay(input: NextPlannedInput): { day: SplitDay; label: string } | null {
   const { activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey } = input;
   if (!activeSplit || !schedule) return null;
   const base = parseISO(dayKey);
   for (let offset = 1; offset <= 14; offset += 1) {
     const date = addDays(base, offset);
     const day = plannedDayForDate(date, activeSplit.days, schedule, 0, scheduleWorkouts, adaptiveSchedulingEnabled);
-    if (day) return `${offset === 1 ? 'Tomorrow' : format(date, 'EEE')} · ${day.day_name}`;
+    if (day) return { day, label: `${offset === 1 ? 'Tomorrow' : format(date, 'EEE')} · ${day.day_name}` };
   }
   return null;
+}
+
+/** On a rest day, the next planned session by the same schedule rules, as "Tomorrow · Lower". */
+export function nextPlannedSession(input: NextPlannedInput): string | null {
+  return nextPlannedDay(input)?.label ?? null;
 }
 
 /** Sessions planned this training week; flexible mode has no weekly plan to count against. */

@@ -42,16 +42,21 @@ export type WidgetPlanInput = {
   schedule: PlanSchedule | null;
   scheduleWorkouts: ScheduleWorkout[];
   adaptiveSchedulingEnabled: boolean;
+  /** The schedule and its completions have loaded (useTodayPlan's aheadKnown). */
+  aheadKnown: boolean;
 };
 
 /**
  * Today by the same rule as Today's card (the hero), then each later day by
- * the program's schedule. Null while today is still loading or failed, so a
- * widget keeps its last good plan.
+ * the program's schedule. Null while today, or the completions the days
+ * after it are planned from, are still loading or failed, so a widget keeps
+ * its last good plan.
  */
 export function widgetPlan(input: WidgetPlanInput): WidgetPlanDay[] | null {
-  const { hero, dayKey, workoutMode, activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled } = input;
+  const { hero, dayKey, workoutMode, activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, aheadKnown } = input;
   const base = parseISO(dayKey);
+  // A live or trained day shows before the completions load.
+  if (!aheadKnown && workoutMode !== 'flexible' && activeSplit && schedule) return null;
 
   let today: WidgetPlanDay;
   switch (hero.kind) {

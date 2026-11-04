@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 
-import { nextPlannedSession, todayHero, weekSessionTarget } from '@/lib/todayModel';
+import { nextPlannedDay, todayHero, weekSessionTarget } from '@/lib/todayModel';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -9,6 +9,7 @@ import { useWeekSessions } from '@/hooks/useWeekSessions';
 import { readTodayDone } from '@/lib/todayDay';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
+import type { SplitDay } from '@/types';
 
 import { useAccountDay } from './accountData';
 
@@ -88,15 +89,28 @@ export function useTodayPlan() {
     ],
   );
 
+  // The days after today are planned from the completions. A day already
+  // trained shows before they load, so its next session waits for them.
+  const aheadLoading = scheduleLoading || scheduleWorkoutsLoading;
+  const aheadKnown = !aheadLoading && !scheduleError;
   const next =
-    hero.kind === 'rest' || hero.kind === 'done'
-      ? nextPlannedSession({ activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey })
+    (hero.kind === 'rest' || hero.kind === 'done') && aheadKnown
+      ? nextPlannedDay({ activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey })
       : null;
+  // The session up next: today's, or after a rest day or a day trained, the
+  // next planned one. undefined while loading; null when there is none to go by.
+  let upNext: SplitDay | null | undefined = null;
+  if (hero.kind === 'planned') upNext = hero.day;
+  else if (hero.kind === 'rest' || hero.kind === 'done') upNext = aheadKnown ? next?.day ?? null : aheadLoading ? undefined : null;
+  else if (hero.kind === 'loading') upNext = undefined;
   const week = useWeekSessions(userId, dayKey, refreshKey);
 
   return {
     hero,
-    next,
+    next: next?.label ?? null,
+    upNext,
+    /** The days after today can be planned: the schedule and its completions have loaded. */
+    aheadKnown,
     schedule,
     scheduleWorkouts,
     adaptiveSchedulingEnabled,

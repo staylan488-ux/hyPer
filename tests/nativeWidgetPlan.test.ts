@@ -33,6 +33,7 @@ const base = {
   schedule,
   scheduleWorkouts: [],
   adaptiveSchedulingEnabled: false,
+  aheadKnown: true,
 };
 
 describe('widget plan', () => {
@@ -60,6 +61,15 @@ describe('widget plan', () => {
   it('writes nothing while today is loading, so the widget keeps its last plan', () => {
     expect(widgetPlan({ ...base, hero: { kind: 'loading' } })).toBeNull();
     expect(widgetPlan({ ...base, hero: { kind: 'schedule-error', retry: () => {} } })).toBeNull();
+  });
+
+  it('writes nothing for a live or trained day until its completions load, so the last good plan stays', () => {
+    const live = { kind: 'resume', completedSets: 2, totalSets: 18, title: 'Session in progress', dayName: 'Upper A', exerciseCount: 6, elapsed: '12 min', nextExercise: null, nextSet: null } as const;
+    expect(widgetPlan({ ...base, aheadKnown: false, hero: { kind: 'done', title: 'Upper A' } })).toBeNull();
+    expect(widgetPlan({ ...base, aheadKnown: false, hero: live })).toBeNull();
+    // Nothing ahead comes from the completions without a schedule or in flexible mode.
+    expect(widgetPlan({ ...base, aheadKnown: false, schedule: null, hero: { kind: 'done', title: 'Upper A' } })).toHaveLength(1);
+    expect(widgetPlan({ ...base, aheadKnown: false, workoutMode: 'flexible', hero: { kind: 'done', title: 'Upper A' } })).toHaveLength(WIDGET_PLAN_DAYS);
   });
 
   it('has only today without a schedule, and every day in flexible mode', () => {
