@@ -1,11 +1,25 @@
-import { Redirect } from 'expo-router';
+import { Redirect, router } from 'expo-router';
+import { useEffect, useState } from 'react';
 
 import { useAuthScreen } from '~/lib/auth';
+import { dropLaunchLink, pendingLaunchLink } from '~/lib/launchLink';
 
 /** The way in: the app when signed in, otherwise sign-in or the offline wait. */
 export default function Index() {
   const screen = useAuthScreen();
+  // A widget or card that launched the app opens its screen instead of Today,
+  // once; a sign-in first drops it (lib/launchLink.ts).
+  const [launch] = useState(pendingLaunchLink);
+  const openRun = screen === 'app' && launch === '/run';
+  useEffect(() => {
+    if (screen === 'app' || screen === 'sign-in') dropLaunchLink();
+    // The run is a modal: it opens over Today, so closing it lands there.
+    if (openRun) {
+      router.replace('/today');
+      router.push('/run');
+    }
+  }, [screen, openRun]);
   // The splash screen stays up until the saved session has been read.
-  if (screen === 'boot') return null;
-  return <Redirect href={screen === 'app' ? '/today' : screen === 'offline' ? '/offline' : '/sign-in'} />;
+  if (screen === 'boot' || openRun) return null;
+  return <Redirect href={screen === 'app' ? (launch ?? '/today') : screen === 'offline' ? '/offline' : '/sign-in'} />;
 }
