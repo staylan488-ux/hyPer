@@ -99,6 +99,41 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   light/dark appearance and recorded cold-launch intro. Hardware
   camera/barcodes, HealthKit, device widget/Live Activity failure scenarios and
   real-account behavior remain unverified. No auth flow or schema changes.
+- 2026-11-04: a whole-app bug hunt (branch `claude/project-thread-afhkpw`,
+  one PR) fixed about 80 bugs, each with a test, with no auth flow or schema
+  change. Two rounds of parallel reviewers found them, a skeptic checked each
+  finding, and three independent reviews of the fixes found 24 more problems
+  (several were slips in this PR's own fixes), all but one fixed in the same
+  PR. Among them: a widget or card tap that launches the
+  app opens its screen; superset rounds carry on when the partner has no set
+  for that round; set count, note and movement order changes stay in step
+  while saves run; a failed workout mode save is kept and sent again; History
+  edits no longer undo each other, a set logged later is dated by its
+  workout, and Today and Train follow History changes; weekly volume grades
+  against default landmarks when none are saved (traps are not graded);
+  WHOOP stats attach, detach and workout deletes never leave the activity
+  hidden; activity edits keep times to the second; a saved product keeps its
+  barcode and serving through edits; Log food holds while a save runs;
+  comma decimals are read everywhere; You waits for saved targets; weigh-ins
+  read 90 days, as the chart shows; a bodyweight movement logs an empty
+  weight as 0; the live workout's day can't be removed from the program; the
+  sample backend returns deleted rows like PostgREST; and, after merging the
+  speed pass, screens and sheets left open past midnight move on with the day
+  (Fuel's Copy to today and week strip, Train's program week, Progress's week,
+  weigh-in "Today" labels, Schedule's Day 1, the date pickers). Checked with the
+  web suite, lint, build, test types, native `tsc` and an iOS bundle export;
+  not run in a simulator or on a phone (the intro from a widget, the
+  widgets' Swift, drag and swipe feel, the disabled Log food tabs). Left for
+  the owner: editing a weighed entry (200 g) opens per-serving Manual with no
+  grams; products edited or deleted before this fix may still answer scans
+  with their old numbers (needs a one-time data repair); Recent keeps old
+  numbers after a saved meal is edited; "No program yet" shows when other
+  programs exist but none is active; device surfaces are cleaned only when
+  the tabs unmount (sign-in flow); Health sync and run state are per device,
+  not per account; beat last time compares a swapped superset's first set
+  with last time's set 2; a swap while a set saves can add a set; a pull to
+  refresh still running at midnight can set the account's day back to the
+  day before until the next refresh.
 - `analyze-food-trial` on Hypertrophy-App (version 4) runs the live copy with
   only `serving.ts` replaced; main's `model.ts` (parallel Tavily searches) is
   undeployed. A full deploy of the function ships it, with the owner's approval.

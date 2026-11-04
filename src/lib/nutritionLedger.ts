@@ -1,4 +1,5 @@
 // How the day's food entries read, shared by the web ledger and the native app.
+import { roundestAmount } from '@/lib/foodUnits';
 import { getLogTimestamp } from '@/lib/nutritionLogUtils';
 
 export function sourceLabel(source?: string): string {
@@ -23,7 +24,7 @@ export function servingLabel(log: ServingLike): string {
   const unit = log.food?.serving_unit?.trim();
   const servingSize = Number(log.food?.serving_size) || 1;
   if (unit && unit.toLowerCase() !== 'serving') {
-    const amount = Math.round(servingSize * log.servings * 100) / 100;
+    const amount = roundestAmount(servingSize * log.servings, log.servings, (value) => value / servingSize);
     return `${amount} ${unit}`;
   }
   return `${log.servings} serving${log.servings !== 1 ? 's' : ''}`;

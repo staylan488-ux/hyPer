@@ -14,10 +14,12 @@ import * as WidgetData from '../../modules/hyper-widget-data';
 import { useAccountDay } from './accountData';
 import { useFuelStore } from './fuel';
 import { useTodayPlan } from './today';
-import { buildWidgetSnapshot, widgetPlan } from './widgetPlan';
+import { buildWidgetSnapshot, widgetPlan, widgetPlanFromToday, type WidgetPlanDay, type WidgetSnapshot } from './widgetPlan';
 
 // What was last handed to the widgets, so an unchanged snapshot is not rewritten.
 let written: string | null = null;
+// The plan in it, so Fuel still updates while the days ahead are unknown.
+let writtenPlan: { userId: string; plan: WidgetPlanDay[] } | null = null;
 
 /** Mounted once with the tabs: keeps the widgets' snapshot current and clears it on sign-out. */
 export function useWidgetSnapshot() {
@@ -30,6 +32,7 @@ export function useWidgetSnapshot() {
     && state.macroTargetLoadedForUserId === userId
     && state.nutritionProfileLoadedForUserId === userId);
   const plan = useTodayPlan();
+  const hero = plan.hero;
   const workoutMode = useAppStore((state) => state.workoutMode);
   const activeSplit = useAppStore((state) => state.activeSplit);
   const target = useAppStore((state) => state.macroTarget);
@@ -50,31 +53,41 @@ export function useWidgetSnapshot() {
       schedule: plan.schedule,
       scheduleWorkouts: plan.scheduleWorkouts,
       adaptiveSchedulingEnabled: plan.adaptiveSchedulingEnabled,
+      aheadKnown: plan.aheadKnown,
     }),
-    [plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled],
+    [plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled, plan.aheadKnown],
   );
 
   const json = useMemo(() => {
-    if (loading || !loaded || !targetsLoaded || !fuelLoaded || !days) return null;
-    return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan: days }));
-  }, [loading, loaded, targetsLoaded, fuelLoaded, days, fuelDay, target, totals, goal]);
+    if (loading || !loaded || !targetsLoaded || !fuelLoaded) return null;
+    // While the plan is unknown (a completions read loading or failed), Fuel
+    // still updates beside the plan last written for this account today.
+    // Today still follows a known hero (a session just finished); only the
+    // days after it are reused.
+    const last = userId && writtenPlan?.userId === userId && writtenPlan.plan[0]?.day === dayKey ? writtenPlan.plan : null;
+    const plan = days ?? (last && (widgetPlanFromToday(hero, dayKey, last.slice(1)) ?? last));
+    if (!plan) return null;
+    return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan }));
+  }, [loading, loaded, targetsLoaded, fuelLoaded, days, hero, userId, dayKey, fuelDay, target, totals, goal]);
 
   useEffect(() => {
-    if (!json || json === written) return;
+    if (!json || json === written || !userId) return;
     // Settle first: an account load changes several figures in a row.
     const timer = setTimeout(() => {
       written = json;
+      writtenPlan = { userId, plan: (JSON.parse(json) as WidgetSnapshot).plan };
       void WidgetData.setSnapshot(json).catch(() => {
         written = null;
       });
     }, 600);
     return () => clearTimeout(timer);
-  }, [json]);
+  }, [json, userId]);
 
   // The tabs unmount only on sign-out: the widgets show nothing of the account after it.
   useEffect(
     () => () => {
       written = null;
+      writtenPlan = null;
       void WidgetData.clear().catch(() => {});
     },
     [],

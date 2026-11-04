@@ -44,6 +44,16 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `removeLastUncompletedSet`, `substituteWorkoutExercise`,
   `switchBackWorkoutExercise`); movement notes use the shared `noteAutosave`
   through `native/src/lib/notes.ts`, and a swap waits for pending notes.
+- The React Compiler (app.json) memoizes every component it can compile. A value
+  read during render from outside React (`new Date()`, `today()`, `isToday`) is
+  kept with the component's other values, so a screen or sheet left open past
+  midnight keeps yesterday. Read the day through a hook in
+  `native/src/lib/accountData.ts`: `useCurrentDayKey` (the clock's day, rendering
+  again at midnight) or `useAccountDay` (the day the account data was read
+  for), and derive dates from that key so they stay memoized (a `new Date()`
+  made on every render undoes the memo around it). A ref written inline in JSX
+  drops the memo around it; write it through a stable callback. A test runs a
+  file as compiled with `loadNativeModule(file, imports, { compile: true })`.
 - `native/modules/hyper-view` reads a view's real window frame from UIKit. React
   Native's own measure works from its layout tree, which does not know where iOS
   put an item inside a navigation bar.
@@ -192,7 +202,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   a flexible-session feature, as on the web.
 - Supersets in either mode follow the shared `supersetFlows` and
   `supersetLogBlock`: rounds go A1, B1, A2, rest comes after B only, and a set
-  out of turn shows why instead of logging. The one exercise picker
+  out of turn shows why instead of logging. A round waits only for a partner
+  set that exists and is unfinished, so the longer movement carries on alone. The one exercise picker
   (`native/src/app/swap.tsx`) serves swap, add and superset through its
   `mode` parameter.
 - Reorder in the live workout is in place (the owner's call on 2026-10-28,
@@ -307,9 +318,14 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `native/modules/hyper-widget-data`: `native/src/lib/widgets.ts` builds it
   from Today's rules (`widgetPlan.ts`, two weeks of plan ahead) and clears it
   on sign-out. At midnight they turn to the next day on their own. Tapping
-  one opens Fuel or Train (`hyper-native://fuel`, `://train`).
+  one opens Fuel or Train (`hyper-native://fuel`, `://train`). A tap that
+  launches the app is kept through the intro and the account load
+  ([launchLink](../../../native/src/lib/launchLink.ts)), and the intro then
+  fades without flying the P, since that screen has no mark to land on.
 - A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
-  closing asks first, and after Discard it steps aside before closing. Never
+  closing asks first, and after Discard it steps aside before closing. While
+  a save runs, pass `busy` so a close waits for it (Log food claims it for
+  each tab's save, apart from lookups). Never
   re-dispatch the held action straight from `usePreventRemove`'s callback;
   the guard is still on and asks again forever.
 - A sideways swipe on a pushed screen is iOS 26's swipe-back. Horizontal

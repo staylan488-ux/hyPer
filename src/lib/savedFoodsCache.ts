@@ -7,6 +7,16 @@ import type { Food } from '@/types';
 // always refetches, because Settings, the meal builder and imports change saved
 // foods without telling it. Keyed by user so one account never sees another's.
 let cache: { userId: string; foods: Food[] } | null = null;
+const listeners = new Set<() => void>();
+const changed = () => listeners.forEach((listener) => listener());
+
+/** Calls `listener` whenever the list is written or dropped (for useSyncExternalStore). */
+export function subscribeSavedFoodsCache(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 export function readSavedFoodsCache(userId: string | null | undefined): Food[] | null {
   if (!cache) return null;
@@ -19,13 +29,18 @@ export function readSavedFoodsCache(userId: string | null | undefined): Food[] |
 
 export function writeSavedFoodsCache(userId: string, foods: Food[]) {
   cache = { userId, foods };
+  changed();
 }
 
 export function clearSavedFoodsCache() {
   cache = null;
+  changed();
 }
 
 // drop the list on sign-out or an account switch, not just on the next read
 useAuthStore.subscribe((state) => {
-  if (cache && state.user?.id !== cache.userId) cache = null;
+  if (cache && state.user?.id !== cache.userId) {
+    cache = null;
+    changed();
+  }
 });

@@ -128,7 +128,9 @@ export function supersetFlows(
 /**
  * Why a superset set cannot be logged yet, or null. Rounds go A1, B1, A2, B2:
  * A waits for the partner's previous round, B for the same round of A.
- * Correcting a logged set is never blocked.
+ * A round the partner has no set for (an uneven pair, or a swap that took
+ * over part way through) waits for nothing. Correcting a logged set is never
+ * blocked.
  */
 export function supersetLogBlock(
   candidate: Pick<WorkoutSet, 'completed' | 'set_number'>,
@@ -139,9 +141,9 @@ export function supersetLogBlock(
   const round = candidate.set_number;
   const partner = sets.filter((set) => set.exercise_id === flow.partnerExerciseId);
   if (flow.role === 'A') {
-    const previous = partner.find((set) => set.set_number === round - 1);
-    return round > 1 && !previous?.completed ? `Complete B${round - 1} before starting A${round}.` : null;
+    const previous = round > 1 ? partner.find((set) => set.set_number === round - 1) : undefined;
+    return previous && !previous.completed ? `Complete B${round - 1} before starting A${round}.` : null;
   }
   const matching = partner.find((set) => set.set_number === round);
-  return matching?.completed ? null : `Complete A${round} before logging B${round}.`;
+  return matching && !matching.completed ? `Complete A${round} before logging B${round}.` : null;
 }

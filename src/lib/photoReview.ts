@@ -134,21 +134,32 @@ export function photoItemFood(item: PhotoReviewItem): { food: Food; servings: nu
   };
 }
 
+export const KEEP_ONE_FOOD = 'Keep one food to replace this entry. Add other foods separately.';
+
+/** Whether the plate logs as one entry: one food, or several with "Log as one meal" on. */
+export function photoLogsOneEntry(items: readonly PhotoReviewItem[], combine: boolean): boolean {
+  return items.length === 1 || (combine && items.length > 1);
+}
+
 /**
  * Logs a reviewed plate: one combined entry (several items with "Log as one
  * meal" on), or one entry per item. Each logged item leaves the review through
  * `onItemLogged`; on a failure part-way the error says to retry the rest.
+ * `replacing` (an edited entry) takes one entry only, or every item would
+ * overwrite that same entry.
  */
 export async function logPhotoItems(input: {
   items: PhotoReviewItem[];
   combine: boolean;
   summary: string;
   provider: PhotoAnalysisProvider;
+  replacing?: boolean;
   ensureFood: (food: Food) => Promise<string | null>;
   saveEntry: (foodId: string, servings: number, source: string) => Promise<boolean>;
   onFoodPersisted?: (itemId: string, foodId: string) => void;
   onItemLogged?: (itemId: string) => void;
 }): Promise<void> {
+  if (input.replacing && !photoLogsOneEntry(input.items, input.combine)) throw new Error(KEEP_ONE_FOOD);
   const source = input.provider === 'anthropic' ? 'photo_anthropic' : 'photo_openai';
 
   if (input.combine && input.items.length > 1) {

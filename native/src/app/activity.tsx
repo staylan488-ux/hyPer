@@ -1,10 +1,10 @@
-import { format, parseISO } from 'date-fns';
+import { endOfDay, format, parseISO } from 'date-fns';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActionSheetIOS, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
-import { activityTimeValue, buildActivityInput } from '@/lib/activitySessions';
+import { activityTimeValue, buildActivityInput, keepUntouchedTiming } from '@/lib/activitySessions';
 import { ACTIVITY_TYPE_LABELS, ACTIVITY_TYPES, type ActivityType } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -12,6 +12,7 @@ import { FieldRow, FormNote, PickerRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
+import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { confirmDeleteActivity, saveActivity, useHistoryStore } from '~/lib/history';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -19,9 +20,18 @@ import { space, useBlanc } from '~/theme/blanc';
 
 const NOTES_LIMIT = 280;
 
+/** The day History chose, or today: a future day starts on today, where the date picker ends. */
+function startDay(day?: string): string {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  return day && day < today ? day : today;
+}
+
 /** Adds or edits an activity: type, name, day, start, length and notes, with the web's rules. */
 export default function ActivitySheet() {
   const c = useBlanc();
+  // The date picker ends on today, moving on at midnight while the sheet is open.
+  const currentDay = useCurrentDayKey();
+  const latestDay = endOfDay(parseISO(currentDay));
   const params = useLocalSearchParams<{ id?: string; day?: string }>();
   const stored = useHistoryStore((state) => state.activities.find((activity) => activity.id === params.id) ?? null);
   // A delete takes the activity off History at once; the sheet keeps it
@@ -33,7 +43,7 @@ export default function ActivitySheet() {
     type: editing?.activity_type ?? 'bike_ride',
     customType: editing?.custom_type ?? '',
     title: editing?.title ?? '',
-    date: editing?.date ?? params.day ?? new Date().toISOString().slice(0, 10),
+    date: editing?.date ?? startDay(params.day),
     start: editing?.started_at ? new Date(editing.started_at).getTime() : null,
     minutes: editing?.duration_seconds ? String(Math.round(editing.duration_seconds / 60)) : '',
     notes: editing?.notes ?? '',
@@ -79,10 +89,17 @@ export default function ActivitySheet() {
     if (busy) return;
     setBusy('save');
     setFailed(false);
-    const input = buildActivityInput(
+    const built = buildActivityInput(
       { activityType: type, customType, title, date, startTime: start ? activityTimeValue(start.toISOString()) : '', durationMinutes: minutes, notes },
       editing,
     );
+    // The form shows minutes and HH:mm; untouched times keep their seconds.
+    const input = editing
+      ? keepUntouchedTiming(built, editing, {
+          start: format(date, 'yyyy-MM-dd') === initial.date && (start?.getTime() ?? null) === initial.start,
+          duration: minutes === initial.minutes,
+        })
+      : built;
     const saved = await saveActivity(editing, input).catch(() => false);
     if (saved) {
       haptics.success();
@@ -133,7 +150,7 @@ export default function ActivitySheet() {
       </Label>
 
       <Label style={{ marginTop: 18 }}>
-        <PickerRow label="Date" mode="date" value={date} max={new Date()} onChange={setDate} />
+        <PickerRow label="Date" mode="date" value={date} max={latestDay} onChange={setDate} />
         <Hairline />
         {start ? (
           <PickerRow label="Start" mode="time" value={start} onChange={setStart} />

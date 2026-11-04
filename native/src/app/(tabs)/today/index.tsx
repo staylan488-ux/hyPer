@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
@@ -22,7 +23,7 @@ import { useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatLoad, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { today, useFuelStore } from '~/lib/fuel';
+import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
@@ -33,8 +34,12 @@ export default function TodayScreen() {
   const session = useSessionModel();
   const plan = useTodayPlan();
   const target = useAppStore((state) => state.macroTarget);
+  // Until the saved target is read, no target is not yet "set one in You".
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const targetRead = useAppStore((state) => userId !== null && state.macroTargetLoadedForUserId === userId);
   const weekly = useAppStore((state) => state.weeklyVolume);
-  const totals = useFuelStore((state) => state.todayTotals);
+  // Yesterday's totals never show as today's after a failed new-day read.
+  const totals = useFuelStore(todayTotalsShown);
   const week = summarizeWeekVolume(weekly);
   const insight = pickInsight(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;
@@ -106,6 +111,9 @@ export default function TodayScreen() {
                   <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
                 </View>
               </Pressable>
+            ) : !targetRead ? (
+              // Holds the figures' place (68 pt figure and the meters) until the target is read.
+              <View style={{ height: 118 }} />
             ) : (
               <Pressable
                 accessibilityRole="button"
@@ -157,6 +165,8 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
   const c = useBlanc();
   const minutes = Math.max(0, Math.round((now - session.startedAt.getTime()) / 60_000));
   const current = session.current;
+  // A flexible session starts empty: Train asks for its first movement.
+  const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = () => router.navigate('/train');
 
@@ -197,13 +207,15 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={1}>
-            {current ? current.movement.name : 'All sets done'}
+            {current ? current.movement.name : empty ? 'Add your first movement' : 'All sets done'}
           </BlancText>
-          <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
-            {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}
-          </BlancText>
+          {empty ? null : (
+            <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ marginTop: 1 }}>
+              {current ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps) : 'Finish to save the session'}
+            </BlancText>
+          )}
         </View>
-        {current ? (
+        {current || empty ? (
           <Capsule title="Resume" onPress={openWorkout} />
         ) : (
           // Every set is logged: Finish finishes here, as it does on Train.

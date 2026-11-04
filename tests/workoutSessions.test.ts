@@ -162,6 +162,24 @@ describe('workoutSessions helpers', () => {
     })).toBe('2026-03-11T08:00:00.000Z');
 
     expect(resolveEditedSetCompletedAt({
+      completed: true,
+      existingSetCompletedAt: null,
+      workoutCompletedAt: null,
+      otherSetsCompletedAt: '2026-03-10T12:38:00.000Z',
+      workoutStartedAt: '2026-03-10T11:30:00.000Z',
+      nowIso: '2026-03-11T08:00:00.000Z',
+    })).toBe('2026-03-10T12:38:00.000Z');
+
+    expect(resolveEditedSetCompletedAt({
+      completed: true,
+      existingSetCompletedAt: null,
+      workoutCompletedAt: null,
+      otherSetsCompletedAt: null,
+      workoutStartedAt: '2026-03-10T11:30:00.000Z',
+      nowIso: '2026-03-11T08:00:00.000Z',
+    })).toBe('2026-03-10T11:30:00.000Z');
+
+    expect(resolveEditedSetCompletedAt({
       completed: false,
       existingSetCompletedAt: '2026-03-10T12:35:00.000Z',
       workoutCompletedAt: '2026-03-10T12:40:00.000Z',

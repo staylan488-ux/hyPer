@@ -72,11 +72,16 @@ export function resolveEditedSetCompletedAt(input: {
   completed: boolean;
   existingSetCompletedAt?: string | null;
   workoutCompletedAt?: string | null;
+  /** The latest completion time among the workout's other logged sets. */
+  otherSetsCompletedAt?: string | null;
+  workoutStartedAt?: string | null;
   nowIso?: string;
 }): string | null {
   if (!input.completed) return null;
   if (input.existingSetCompletedAt) return input.existingSetCompletedAt;
   if (input.workoutCompletedAt) return input.workoutCompletedAt;
+  if (input.otherSetsCompletedAt) return input.otherSetsCompletedAt;
+  if (input.workoutStartedAt) return input.workoutStartedAt;
   return input.nowIso || new Date().toISOString();
 }
 

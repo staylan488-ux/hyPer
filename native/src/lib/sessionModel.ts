@@ -83,6 +83,8 @@ export const MAX_SETS = 12;
 
 export type SessionSources = {
   split: Split | null;
+  /** Every loaded program: a session keeps its day after another program is set active. */
+  splits?: readonly Split[];
   /** The workout's own session plan, when it has one (swaps, reorders, flexible sessions, skips). */
   plan?: WorkoutDayPlan | null;
   /** Skips still saving, by exercise id (true skipped, false brought back); they win over the plan. */
@@ -104,24 +106,26 @@ export function sessionModelCache() {
   let last: {
     workout: Workout | null;
     split: Split | null;
+    splits: readonly Split[] | undefined;
     plan: WorkoutDayPlan | null | undefined;
     skips: Readonly<Record<string, boolean>> | undefined;
     focused: string | null;
     model: SessionModel | null;
   } | null = null;
-  return (workout: Workout | null, { split, plan, skips }: SessionSources, focused: string | null): SessionModel | null => {
+  return (workout: Workout | null, { split, splits, plan, skips }: SessionSources, focused: string | null): SessionModel | null => {
     if (
       last &&
       last.workout === workout &&
       last.split === split &&
+      last.splits === splits &&
       last.plan === plan &&
       last.skips === skips &&
       last.focused === focused
     ) {
       return last.model;
     }
-    const model = buildSessionModel(workout, { split, plan, skips }, focused);
-    last = { workout, split, plan, skips, focused, model };
+    const model = buildSessionModel(workout, { split, splits, plan, skips }, focused);
+    last = { workout, split, splits, plan, skips, focused, model };
     return model;
   };
 }
@@ -134,12 +138,13 @@ export function sessionModelCache() {
  */
 export function buildSessionModel(
   workout: Workout | null,
-  { split, plan = null, skips = {} }: SessionSources,
+  { split, splits = [], plan = null, skips = {} }: SessionSources,
   focusedExerciseId: string | null,
   now = Date.now(),
 ): SessionModel | null {
   if (!isLiveWorkout(workout)) return null;
-  const day = split?.days.find((candidate) => candidate.id === workout.split_day_id) ?? null;
+  const isSessionDay = (candidate: { id: string }) => candidate.id === workout.split_day_id;
+  const day = split?.days.find(isSessionDay) ?? splits.flatMap((program) => program.days).find(isSessionDay) ?? null;
   const items = sessionPlanItems(plan, workout.id);
   const flexible = workout.split_day_id === null && items !== undefined;
   const planned = sessionExercises(items, day?.exercises);

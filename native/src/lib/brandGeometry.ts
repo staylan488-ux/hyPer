@@ -1,8 +1,9 @@
 // The hyPer mark: a red italic P (Fraunces Mark Medium Italic). On a cold
 // launch the P spells out "hyPer" (the rest in Fraunces Mark Light), the word
-// folds back into it, and the P flies to its corner. Every number here comes
-// from the two fonts in assets/fonts (font units are 1/2000 em). This file has
-// no React Native imports, so plain tests can check the layout.
+// folds back into it, and the P flies to its corner. Every number here but
+// the intro's waits comes from the two fonts in assets/fonts (font units are
+// 1/2000 em). This file has no React Native imports, so plain tests can check
+// the layout.
 
 const UPM = 2000;
 const em = (units: number) => units / UPM;
@@ -135,4 +136,15 @@ export function plausibleAnchor(anchor: MarkAnchor): boolean {
     Math.abs(anchor.width - box.width) <= box.width * 0.25 &&
     Math.abs(anchor.height - box.height) <= box.height * 0.25
   );
+}
+
+/**
+ * How long the intro waits for the first screen's resting mark, in ms.
+ * firstScreen: the first screen is known but has no mark yet, so start
+ * without one after this long. noAnchor: the word is spelled out and still
+ * no mark is on screen, so fade out in place after this long. A screen that a
+ * widget or card opened (markless) has no mark to wait for.
+ */
+export function introWaits(markless: boolean): { firstScreen: number; noAnchor: number } {
+  return markless ? { firstScreen: 0, noAnchor: 0 } : { firstScreen: 600, noAnchor: 1200 };
 }

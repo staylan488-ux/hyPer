@@ -1,12 +1,12 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { format, isToday } from 'date-fns';
+import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
+import { WEIGHT_TREND_WINDOW_DAYS, bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
 import type { BodyWeightMeasurement } from '@/lib/healthWeights';
 import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
 import { BlancText } from '~/components/BlancText';
@@ -17,6 +17,8 @@ import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { WeightChart } from '~/components/WeightChart';
+import { useCurrentDayKey } from '~/lib/accountData';
+import { dayKey, today } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteWeighIn, loadWeights, setWeightUnit, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
@@ -36,6 +38,8 @@ export default function WeightScreen() {
   const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
   const showTrend = trend.latestEwmaKg !== null && trend.fittedDayCount >= 2;
   const { refreshing, refresh } = usePullRefresh(loadWeights);
+  // Handed to the rows, so "Today" moves on at midnight.
+  const todayKey = useCurrentDayKey();
 
   useEffect(() => {
     void loadWeights();
@@ -65,7 +69,7 @@ export default function WeightScreen() {
             {/* The figure is where a weigh-in starts: a tap logs the next one. */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}, ${measuredLabel(latest)}`}
+              accessibilityLabel={`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}, ${measuredLabel(latest, todayKey)}`}
               accessibilityHint="Logs a weigh-in"
               onPress={() => {
                 haptics.tap();
@@ -81,7 +85,7 @@ export default function WeightScreen() {
                 </BlancText>
               </View>
               <BlancText variant="secondary" tone="graphite">
-                {measuredLabel(latest)}
+                {measuredLabel(latest, todayKey)}
               </BlancText>
             </Pressable>
           </View>
@@ -115,13 +119,13 @@ export default function WeightScreen() {
 
         {trend.fittedDayCount >= 2 ? (
           <Label style={{ marginTop: space.section, padding: 18 }}>
-            <WeightChart points={trend.points} days={90} unit={unit} height={168} summary="Tap or hold to read a day" />
+            <WeightChart points={trend.points} days={WEIGHT_TREND_WINDOW_DAYS} unit={unit} height={168} summary="Tap or hold to read a day" />
           </Label>
         ) : null}
 
         {history.length > 0 ? (
           <Animated.View layout={rowLayout}>
-            <Recent entries={history.slice(0, RECENT)} unit={unit} />
+            <Recent entries={history.slice(0, RECENT)} unit={unit} todayKey={todayKey} />
           </Animated.View>
         ) : null}
 
@@ -143,14 +147,14 @@ export default function WeightScreen() {
   );
 }
 
-function measuredLabel(entry: BodyWeightMeasurement): string {
+function measuredLabel(entry: BodyWeightMeasurement, todayKey = today()): string {
   const date = new Date(entry.measured_at);
-  const when = `${isToday(date) ? 'Today' : format(date, 'MMM d')}, ${format(date, 'h:mm a')}`;
+  const when = `${dayKey(date) === todayKey ? 'Today' : format(date, 'MMM d')}, ${format(date, 'h:mm a')}`;
   return entry.source === 'manual' ? when : `${when} · ${entry.source_name}`;
 }
 
 /** The latest weigh-ins. A typed one swipes to delete; Health's stay in Health. */
-function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: WeightUnit }) {
+function Recent({ entries, unit, todayKey }: { entries: BodyWeightMeasurement[]; unit: WeightUnit; todayKey: string }) {
   const c = useBlanc();
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
 
@@ -196,7 +200,7 @@ function Recent({ entries, unit }: { entries: BodyWeightMeasurement[]; unit: Wei
             <View style={{ backgroundColor: c.label }}>
               <Row
                 title={title}
-                detail={measuredLabel(entry)}
+                detail={measuredLabel(entry, todayKey)}
                 menu={entry.source === 'manual' ? [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, removes: true, run: () => remove(entry) }] : undefined}
                 onPress={entry.source === 'manual' ? () => menu(entry) : undefined}
               />

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { onAppVisible } from '@/lib/appVisibility';
 import {
@@ -11,8 +11,15 @@ import { NativeHealth, hasNativeHealth } from '@/lib/nativeBridge';
  * Keeps Apple Health weights flowing in once the person turned sync on: on
  * mount, each time Health reports new samples, and each return to the app.
  * One sync at a time; errors stay quiet (You has a manual retry).
+ * `onImported` runs after a sync that brought in weigh-ins, so screens that
+ * show them can read them again.
  */
-export function useNativeHealthSync(userId: string | undefined): void {
+export function useNativeHealthSync(userId: string | undefined, onImported?: () => void): void {
+  const imported = useRef(onImported);
+  useEffect(() => {
+    imported.current = onImported;
+  });
+
   useEffect(() => {
     if (!userId || !hasNativeHealth() || !isHealthWeightSyncEnabled()) return;
     const controller = new AbortController();
@@ -23,7 +30,8 @@ export function useNativeHealthSync(userId: string | undefined): void {
       if (controller.signal.aborted || syncing) return;
       syncing = true;
       try {
-        await syncNativeBodyWeights(userId, controller.signal);
+        const result = await syncNativeBodyWeights(userId, controller.signal);
+        if (result.imported > 0 && !controller.signal.aborted) imported.current?.();
       } catch {
         // Settings exposes a manual retry. Background reconciliation is best effort.
       } finally {

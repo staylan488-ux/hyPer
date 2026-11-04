@@ -1,7 +1,7 @@
 import { addMonths, format, isSameMonth, isToday, parseISO, startOfMonth } from 'date-fns';
-import { router, Stack } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -22,6 +22,7 @@ import { haptics } from '~/lib/haptics';
 import {
   confirmDeleteActivity,
   confirmDeleteWorkout,
+  followToday,
   loadHistoryMonth,
   mergeActivities,
   selectHistoryDay,
@@ -50,9 +51,16 @@ export default function HistoryScreen() {
   const syncAvailable = isPreviewActive() || Boolean(whoop);
 
   useEffect(() => {
-    void loadHistoryMonth();
+    // Left on a today that has passed, it opens on the new today (and reads it).
+    if (!followToday()) void loadHistoryMonth();
     void useAppStore.getState().fetchWhoopConnection();
   }, []);
+  // The same when it shows again without opening anew (back from a sheet or a run).
+  useFocusEffect(
+    useCallback(() => {
+      followToday();
+    }, []),
+  );
 
   const dayWorkouts = useMemo(() => workoutsOnDay(workouts, day), [workouts, day]);
   const dayActivities = useMemo(

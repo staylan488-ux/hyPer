@@ -187,6 +187,8 @@ class MockBuilder implements PromiseLike<MockResult> {
   private onConflictCols: string[] = ['id'];
   private updateVals: Row | null = null;
   private del = false;
+  // A delete answers with its rows only when select() follows it, as in PostgREST.
+  private returning = false;
 
   private table: string;
   private scenario: MockScenario;
@@ -201,6 +203,7 @@ class MockBuilder implements PromiseLike<MockResult> {
   select(cols?: string, opts?: { head?: boolean; count?: string }) {
     if (cols) this.selection = cols;
     if (opts?.head) this.headOnly = true;
+    if (this.del) this.returning = true;
     return this;
   }
   insert(values: Row | Row[]) { this.insertVals = Array.isArray(values) ? values : [values]; return this; }
@@ -274,11 +277,14 @@ class MockBuilder implements PromiseLike<MockResult> {
     if (this.del) {
       const targets = new Set(this.matching());
       const count = targets.size;
+      // Copied before the cascade so embedded rows can still be read.
+      const copies = this.returning ? [...targets].map((r) => hydrate(this.table, r, this.selection)) : null;
       cascadeDelete(this.table, targets);
       for (let i = this.live.length - 1; i >= 0; i--) {
         if (targets.has(this.live[i])) this.live.splice(i, 1);
       }
-      return { data: null, error: null, count };
+      if (!copies) return { data: null, error: null, count };
+      return { data: this.wantSingle ? copies[0] ?? null : copies, error: null, count };
     }
     let data = this.matching().map((r) => hydrate(this.table, r, this.selection));
     if (this.orderSpecs.length) {

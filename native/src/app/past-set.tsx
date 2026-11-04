@@ -51,9 +51,11 @@ export default function PastSetSheet() {
     const weightValue = weight.trim() ? parseNumber(weight) : null;
     const repsValue = reps.trim() ? parseNumber(reps) : null;
     const values = { weight: weightValue, reps: repsValue === null ? null : Math.round(repsValue), rpe };
-    const ok = await editPastWorkout(workout.id, () =>
-      useAppStore.getState().updateSet(set.id, buildPastSetUpdate(set, values, workout.completed_at)),
-    );
+    const ok = await editPastWorkout(workout.id, () => {
+      // A logged set takes its time from the workout as it is when the save runs.
+      const latest = useHistoryStore.getState().workouts.find((entry) => entry.id === workout.id) ?? workout;
+      return useAppStore.getState().updateSet(set.id, buildPastSetUpdate(set, values, latest));
+    });
     if (ok) {
       haptics.success();
       setSaved(true);

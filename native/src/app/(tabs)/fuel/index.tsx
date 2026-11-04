@@ -1,7 +1,7 @@
 import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { ActionSheetIOS, Alert, Pressable, RefreshControl, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
@@ -16,7 +16,7 @@ import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
 import { alreadyOnDay } from '@/lib/repeatEntries';
-import { readSavedFoodsCache } from '@/lib/savedFoodsCache';
+import { readSavedFoodsCache, subscribeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { canSaveAsMeal } from '@/lib/savedMealFromLog';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -32,7 +32,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { formatWhole } from '~/lib/format';
-import { dayKey, today, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
+import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useYouMealsStore } from '~/lib/you';
@@ -80,8 +80,15 @@ function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
 /**
  * The saved meals this session last read (Log food's Saved list, else You's),
  * so a built saved meal logged from Saved does not offer Save as meal again.
+ * Watched, not read once: Save as meal closes without refreshing Fuel, and the
+ * offer follows the list it reloads.
  */
-const knownSavedMeals = () => readSavedFoodsCache(useAuthStore.getState().user?.id) ?? useYouMealsStore.getState().meals;
+function useKnownSavedMeals() {
+  const userId = useAuthStore((state) => state.user?.id);
+  const logged = useSyncExternalStore(subscribeSavedFoodsCache, () => readSavedFoodsCache(userId));
+  const you = useYouMealsStore((state) => state.meals);
+  return logged ?? you;
+}
 
 /** Opens the meal builder with these foods at the amounts eaten, to keep as a saved meal; nothing is logged. */
 function saveAsMeal(logs: FoodLog[]) {
@@ -111,7 +118,10 @@ export default function FuelScreen() {
   const { selected, logs, groups, loaded, status } = useFuelDay();
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
-  const live = selected === useTodayKey();
+  // Read on every render and handed down, so the rows' "today" changes at
+  // midnight with the screen's rather than staying memoized with their entries.
+  const todayKey = useTodayKey();
+  const live = selected === todayKey;
   const totals = sumMacros(logs);
   const summary = fuelDaySummary({ totals, target, live, selectedDate, goal });
   const daysWithLogs = useMemo(() => new Set(monthLogs.map((log) => log.date)), [monthLogs]);
@@ -167,7 +177,7 @@ export default function FuelScreen() {
           {fuelDayTitle(selectedDate)}
         </BlancText>
 
-        <WeekStrip selected={selectedDate} daysWithLogs={daysWithLogs} />
+        <WeekStrip selected={selectedDate} daysWithLogs={daysWithLogs} todayKey={todayKey} />
 
         {/* The day's figure and the macros open the targets, the numbers they measure against. */}
         <Pressable
@@ -213,12 +223,12 @@ export default function FuelScreen() {
           <View>
             {unassigned.length > 0 ? (
               <Animated.View key="unassigned" entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} />
+                <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ) : null}
             {sections.map(({ group, logs: entries }) => (
               <Animated.View key={group.id} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} />
+                <MealSection title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ))}
 
@@ -258,10 +268,10 @@ function addMealOrSnack() {
 }
 
 /** Sunday-first week; swipe for the week before or after. Future days are not selectable. */
-function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: Set<string> }) {
+function WeekStrip({ selected, daysWithLogs, todayKey }: { selected: Date; daysWithLogs: Set<string>; todayKey: string }) {
   const c = useBlanc();
   const days = weekDays(selected);
-  const now = startOfDay(new Date());
+  const now = startOfDay(new Date(`${todayKey}T12:00:00`));
   const go = (weeks: number) => {
     const target = addWeeks(selected, weeks);
     const next = isAfter(startOfDay(target), now) ? now : target;
@@ -329,20 +339,22 @@ function WeekStrip({ selected, daysWithLogs }: { selected: Date; daysWithLogs: S
   );
 }
 
-function MealSection({ title, group, logs, groups, lateNight, day }: {
+function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
   title: string;
   group?: NutritionGroup;
   logs: FoodLog[];
   groups: NutritionGroup[];
   lateNight: boolean;
   day: string;
+  todayKey: string;
 }) {
   const c = useBlanc();
   const kcal = logs.reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0);
+  const savedMeals = useKnownSavedMeals();
   // A past day's meal can be logged again today, and any day's kept as a
   // saved meal (Unassigned too).
-  const copyable = day !== today() && logs.some((log) => log.food);
-  const savable = canSaveAsMeal(logs, knownSavedMeals());
+  const copyable = day !== todayKey && logs.some((log) => log.food);
+  const savable = canSaveAsMeal(logs, savedMeals);
 
   const groupMenu = () => {
     const reuse = [
@@ -409,7 +421,7 @@ function MealSection({ title, group, logs, groups, lateNight, day }: {
         {logs.map((log, index) => (
           <Animated.View key={log.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
             {index > 0 ? <Hairline /> : null}
-            <EntryRow log={log} groups={groups} lateNight={lateNight} />
+            <EntryRow log={log} groups={groups} lateNight={lateNight} todayKey={todayKey} />
           </Animated.View>
         ))}
         {logs.length === 0 && group ? (
@@ -434,8 +446,9 @@ function entryDetail(log: FoodLog): string {
 }
 
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */
-function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionGroup[]; lateNight: boolean }) {
+function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: NutritionGroup[]; lateNight: boolean; todayKey: string }) {
   const c = useBlanc();
+  const savedMeals = useKnownSavedMeals();
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
   // The row slides away at once; it comes back if the delete fails.
@@ -462,11 +475,11 @@ function EntryRow({ log, groups, lateNight }: { log: FoodLog; groups: NutritionG
       ? [{ title: 'Move to yesterday', symbol: 'arrow.uturn.backward', removes: true, run: () => report(useFuelStore.getState().moveEntryToYesterday(log.id), 'Not moved') }]
       : []),
     // A past day's entry can be logged again today.
-    ...(log.date !== today() && log.food
+    ...(log.date !== todayKey && log.food
       ? [{ title: 'Copy to today', symbol: 'doc.on.doc', run: () => copyToToday([log], groups.find((group) => group.id === log.group_id) ?? null) }]
       : []),
     // Any entry can be kept as a saved meal, unless it is one already.
-    ...(canSaveAsMeal([log], knownSavedMeals()) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
+    ...(canSaveAsMeal([log], savedMeals) ? [{ title: 'Save as meal', symbol: 'bookmark', run: () => saveAsMeal([log]) }] : []),
     { title: 'Delete', symbol: 'trash', destructive: true, removes: true, run: remove },
   ];
 

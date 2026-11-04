@@ -1,8 +1,9 @@
-import { format } from 'date-fns';
+import { endOfDay, format, parseISO } from 'date-fns';
 import { ActionSheetIOS, View } from 'react-native';
 
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { FormNote, PickerRow } from '~/components/Form';
+import { useCurrentDayKey } from '~/lib/accountData';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -14,6 +15,9 @@ import { useLogger } from './context';
 /** Day, time and meal for the entry, as on the web logger's When row. */
 export function WhenBlock({ disabled }: { disabled?: boolean }) {
   const { when, setWhen, selectedKey, groups, purpose } = useLogger();
+  // The Day picker ends on today, moving on at midnight while the sheet is open.
+  const currentDay = useCurrentDayKey();
+  const latestDay = endOfDay(parseISO(currentDay));
   if (purpose === 'ingredients') return null;
   const sameDay = usesDayGroups(when, selectedKey);
   const group = sameDay ? groups.find((candidate) => candidate.id === when.groupId) ?? null : null;
@@ -34,7 +38,7 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
           label="Day"
           mode="date"
           value={when.date}
-          max={new Date()}
+          max={latestDay}
           disabled={disabled}
           onChange={(date) => {
             const day = new Date(date);

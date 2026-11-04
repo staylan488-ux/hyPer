@@ -2,11 +2,12 @@ import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, Pressable, TextInput, View } from 'react-native';
 
+import { parseDecimal } from '@/lib/decimalText';
 import { describeTargetUnchanged, type ManualFoodFields } from '@/lib/foodLoggerUtils';
 import { describeFoodWithAi, type FoodDescriptionResult } from '@/lib/foodDescription';
 import { formatMacroInput } from '@/lib/foodUnits';
 import { resolveManualFood, type OneOffFood } from '@/lib/manualFood';
-import { createMealIngredient } from '@/lib/mealComposition';
+import { createMealIngredient, decodeMealComposition } from '@/lib/mealComposition';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { providerFallbackNote } from '@/lib/photoReview';
@@ -59,10 +60,10 @@ const DESCRIBE_LIMIT = 1500;
 
 const valuesOf = (fields: ManualFoodFields) => ({
   name: fields.name.trim(),
-  calories: parseFloat(fields.calories) || 0,
-  protein: parseFloat(fields.protein) || 0,
-  carbs: parseFloat(fields.carbs) || 0,
-  fat: parseFloat(fields.fat) || 0,
+  calories: parseDecimal(fields.calories) || 0,
+  protein: parseDecimal(fields.protein) || 0,
+  carbs: parseDecimal(fields.carbs) || 0,
+  fat: parseDecimal(fields.fat) || 0,
 });
 
 const MACRO_FIELDS = ['calories', 'protein', 'carbs', 'fat'] as const;
@@ -120,8 +121,10 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   // Next on the keyboard walks Name and the macros in order.
   const macroFields = useRef<(TextField | null)[]>([]);
   const usingSavedValues = Boolean(selectedSavedMeal && foodValuesMatch(selectedSavedMeal, values));
+  // A built meal's recipe is changed in the meal builder; numbers typed here would replace it.
+  const builtMeal = Boolean(selectedSavedMeal && decodeMealComposition(selectedSavedMeal.description));
   const suggestions = nameFocused ? savedMealSuggestions(savedMeals, draft.fields.name) : [];
-  const servings = parseFloat(draft.servings);
+  const servings = parseDecimal(draft.servings);
   const servingsValue = Number.isFinite(servings) && servings > 0 ? servings : 1;
 
   const setField = (field: keyof ManualFoodFields, value: string) => setDraft((current) => ({ ...current, fields: { ...current.fields, [field]: value } }));
@@ -173,7 +176,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
   };
 
   const updateSavedMeal = async () => {
-    if (!draft.selectedSavedMealId || updatingMeal) return;
+    if (!draft.selectedSavedMealId || updatingMeal || builtMeal) return;
     if (!values.name) {
       haptics.error();
       setMealMessage({ text: 'Meal name is required to update.', alert: true });
@@ -230,6 +233,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
     setSaving(true);
     setError(null);
     setMealMessage(null);
+    const release = logger.beginSave();
     try {
       const userId = await getSessionUserId();
       if (!userId) {
@@ -279,13 +283,14 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
       setError(SAVE_FAILED);
     } finally {
       setSaving(false);
+      release();
     }
   };
 
   const stepServings = (delta: number) => {
     haptics.select();
     setDraft((current) => {
-      const now = parseFloat(current.servings);
+      const now = parseDecimal(current.servings);
       const next = Math.max(0.25, Math.round(((Number.isFinite(now) ? now : 1) + delta) * 100) / 100);
       return { ...current, servings: String(next) };
     });
@@ -432,7 +437,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
 
       {logger.purpose === 'log' ? (
         <View style={{ marginTop: 18 }}>
-          {selectedSavedMeal && !usingSavedValues ? (
+          {selectedSavedMeal && !usingSavedValues && !builtMeal ? (
             <View style={{ paddingHorizontal: space.gutter }}>
               <Capsule title="Update saved meal" variant="quiet" busy={updatingMeal} disabled={saving} onPress={() => void updateSavedMeal()} />
             </View>

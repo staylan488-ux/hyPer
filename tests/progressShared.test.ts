@@ -28,6 +28,14 @@ describe('coaching calls', () => {
     ]).map(({ mv }) => mv.muscle_group);
     expect(order).toEqual(['f', 'd', 'c', 'e', 'a', 'b']);
   });
+
+  it('does not grade a muscle with no landmark, and lists it last', () => {
+    const call = buildCoachingCall(volume('traps', 4, null, false));
+    expect(call).toMatchObject({ chip: 'Not graded', tone: 'stone' });
+    expect(call.headline).not.toMatch(/add/i);
+    const order = coachMuscles([volume('traps', 9, null, false), volume('b', 10, 'mev_mav')]).map(({ mv }) => mv.muscle_group);
+    expect(order).toEqual(['b', 'traps']);
+  });
 });
 
 describe('averageLoggedDays', () => {

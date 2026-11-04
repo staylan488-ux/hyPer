@@ -24,7 +24,7 @@ import { Section } from '~/components/Section';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
-import { loadTargets, useTargetsStore } from '~/lib/you';
+import { loadTargets, useTargetsLoaded, useTargetsStore } from '~/lib/you';
 import { useBlanc } from '~/theme/blanc';
 
 const FIELDS: { key: keyof TargetNumbers; label: string; unit: string }[] = [
@@ -39,7 +39,8 @@ const FIELDS: { key: keyof TargetNumbers; label: string; unit: string }[] = [
  * the calculator or coach suggested. Typing makes them targets set by hand;
  * nothing is saved until Save. Opened from one of the numbers (`focus`), that
  * field is ready to type; Next walks the four, Done on the last puts the
- * keyboard away.
+ * keyboard away. Opened before the saved targets are read, the fields and
+ * Save wait for them.
  */
 export default function TargetsEditSheet() {
   const c = useBlanc();
@@ -48,8 +49,19 @@ export default function TargetsEditSheet() {
   const target = useAppStore((state) => state.macroTarget);
   // Taken once: suggestions handed over by the calculator or the coach.
   const [staged] = useState(() => useTargetsStore.getState().staged);
+  const read = useTargetsLoaded('targets');
+  // Suggested numbers need nothing read first.
+  const ready = read.loaded || staged !== null;
+  const loadFailed = !ready && read.failed;
+  const [readyOnOpen] = useState(ready);
   const base = baseTargets(target);
-  const [draft, setDraft] = useState<TargetDraft>(() => staged?.draft ?? base);
+  // Untouched, the draft is the saved targets, so it follows them in.
+  const [edited, setEdited] = useState<TargetDraft | null>(() => staged?.draft ?? null);
+  const draft = edited ?? base;
+  // A field cleared to retype stays empty rather than turning into 0; Save
+  // waits for a number in it.
+  const [empty, setEmpty] = useState<Partial<Record<keyof TargetNumbers, boolean>>>({});
+  const anyEmpty = FIELDS.some((field) => empty[field.key]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -75,8 +87,14 @@ export default function TargetsEditSheet() {
     if (saved) router.back();
   }, [saved]);
 
+  // The field asked for was not ready to type when the sheet opened.
+  useEffect(() => {
+    if (!ready || readyOnOpen) return;
+    fields.current[FIELDS.findIndex((field) => field.key === focus)]?.focus();
+  }, [ready, readyOnOpen, focus]);
+
   const save = async () => {
-    if (saving) return;
+    if (saving || !ready || anyEmpty) return;
     Keyboard.dismiss();
     setSaving(true);
     setError(null);
@@ -120,23 +138,25 @@ export default function TargetsEditSheet() {
               }}
               label={field.label}
               unit={field.unit}
-              value={String(draft[field.key])}
+              value={ready && !empty[field.key] ? String(draft[field.key]) : ''}
+              editable={ready}
               keyboardType="number-pad"
               selectTextOnFocus
-              autoFocus={field.key === focus}
+              autoFocus={ready && field.key === focus}
               maxLength={5}
               returnKeyType={index < FIELDS.length - 1 ? 'next' : 'done'}
               submitBehavior={index < FIELDS.length - 1 ? 'submit' : 'blurAndSubmit'}
               onSubmitEditing={() => fields.current[index + 1]?.focus()}
               onChangeText={(text) => {
                 setError(null);
-                setDraft((current) => editTargetField(current, field.key, text));
+                setEmpty((current) => ({ ...current, [field.key]: text.trim() === '' }));
+                setEdited((current) => editTargetField(current ?? base, field.key, text));
               }}
             />
           </View>
         ))}
       </Label>
-      {driftPct > TARGET_DRIFT_WARNING_PCT ? (
+      {!ready ? null : driftPct > TARGET_DRIFT_WARNING_PCT ? (
         <FormNote alert>
           These macros add up to {formatWhole(kcalFromMacros)} kcal, not {formatWhole(draft.calories)}. Check them before saving.
         </FormNote>
@@ -164,13 +184,24 @@ export default function TargetsEditSheet() {
         </Section>
       ) : null}
 
-      {error ? (
+      {error || loadFailed ? (
         <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 12 }} accessibilityRole="alert">
-          {error}
+          {error ?? 'Your saved targets did not load. Check your connection and try again.'}
         </BlancText>
       ) : null}
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
-        <Capsule title={error ? 'Retry' : 'Save targets'} size="large" fill busy={saving} disabled={!changed} onPress={() => void save()} />
+        {loadFailed ? (
+          <Capsule title="Try again" size="large" fill onPress={read.retry} />
+        ) : (
+          <Capsule
+            title={error ? 'Retry' : 'Save targets'}
+            size="large"
+            fill
+            busy={saving || !ready}
+            disabled={!changed || anyEmpty}
+            onPress={() => void save()}
+          />
+        )}
       </View>
     </KeyboardAwareScrollView>
   );

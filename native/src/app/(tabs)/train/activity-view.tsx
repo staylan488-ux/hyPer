@@ -11,6 +11,7 @@ import {
   paceSecondsPerMile,
 } from '@/lib/activityMetrics';
 import { formatActivityDuration, formatActivityStartTime, resolveActivityTitle } from '@/lib/activitySessions';
+import { isRestSegment } from '@/lib/runDisplay';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySegment } from '@/types';
 import { BlancText } from '~/components/BlancText';
@@ -132,29 +133,29 @@ export default function ActivityViewScreen() {
         {splits.length >= 2 ? (
           <Section title="Splits">
             <Label>
-              {splits.map((segment, index) => (
-                <View key={segment.id}>
-                  {index > 0 ? <Hairline inset={18} /> : null}
-                  <Row
-                    title={`${index + 1}`}
-                    quiet
-                    detail={formatSegmentDistance(segment.distance_m) ?? undefined}
-                    value={[
-                      formatClockDuration(segment.duration_seconds),
-                      formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
-                    ]
-                      .filter(Boolean)
-                      .join('  ·  ')}
-                    accessibilityLabel={`Split ${index + 1}, ${[
-                      formatSegmentDistance(segment.distance_m),
-                      formatClockDuration(segment.duration_seconds),
-                      formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds)),
-                    ]
-                      .filter(Boolean)
-                      .join(', ')}`}
-                  />
-                </View>
-              ))}
+              {splits.map((segment, index) => {
+                // A rest reads as on the finished run: its time, no distance or pace.
+                const rest = isRestSegment(segment);
+                const time = formatClockDuration(segment.duration_seconds);
+                const distance = rest ? null : formatSegmentDistance(segment.distance_m);
+                const pace = rest ? null : formatPace(paceSecondsPerMile(segment.distance_m, segment.duration_seconds));
+                return (
+                  <View key={segment.id}>
+                    {index > 0 ? <Hairline inset={18} /> : null}
+                    <Row
+                      title={rest ? '·' : `${index + 1}`}
+                      quiet
+                      detail={rest ? 'rest' : distance ?? undefined}
+                      value={[time, pace].filter(Boolean).join('  ·  ')}
+                      accessibilityLabel={
+                        rest
+                          ? ['Rest', time].filter(Boolean).join(', ')
+                          : `Split ${index + 1}, ${[distance, time, pace].filter(Boolean).join(', ')}`
+                      }
+                    />
+                  </View>
+                );
+              })}
             </Label>
           </Section>
         ) : null}

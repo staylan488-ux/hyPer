@@ -11,6 +11,14 @@ export const parseNumber = (text: string) => {
   return Number.isFinite(value) && value >= 0 ? value : null;
 };
 
+/** A bodyweight movement carries no load of its own. */
+export const isBodyweight = (exercise: { equipment: string | null } | null | undefined) =>
+  exercise?.equipment?.trim().toLowerCase() === 'bodyweight';
+
+/** The weight a set logs: as typed, or 0 when left empty on a bodyweight movement. */
+export const weightToLog = (text: string, bodyweight: boolean) =>
+  bodyweight && text.trim() === '' ? 0 : parseNumber(text);
+
 /** Asks how hard the set was: an RPE from 6 to 10, or none. */
 export function chooseRpe(onChoose: (rpe: number | null) => void) {
   haptics.tap();

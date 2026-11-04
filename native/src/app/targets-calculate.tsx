@@ -3,7 +3,7 @@ import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { recordManualBodyWeight } from '@/lib/healthWeights';
 import { macroCaloriePercentages } from '@/lib/nutritionCalculator';
@@ -24,6 +24,7 @@ import {
   wizardRateDisplay,
   wizardResult,
   wizardWeightChanged,
+  wizardWeightKg,
   type WizardDraft,
 } from '@/lib/nutritionWizard';
 import { useAppStore } from '@/stores/appStore';
@@ -38,19 +39,77 @@ import { Section } from '~/components/Section';
 import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
-import { loadWeights, stageTargets, useWeightStore } from '~/lib/you';
+import { loadWeights, stageTargets, useTargetsLoaded, useWeightStore } from '~/lib/you';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
  * Calculate targets: body, activity and goal on one page, with the targets
  * they give updating underneath. Saving keeps the profile (and a changed
  * weight) and hands the targets to the edit sheet for a last look.
+ *
+ * The form starts from the saved profile and the latest weigh-in, so it waits
+ * for them: started from the defaults, saving wrote a profile without its
+ * learned burn (and a made-up weigh-in).
  */
 export default function TargetsCalculateSheet() {
   const c = useBlanc();
+  const profileRead = useTargetsLoaded('profile');
+  const [weightsRead, setWeightsRead] = useState(() => !useWeightStore.getState().loading);
+  const [open, setOpen] = useState(false);
+  const ready = profileRead.loaded && weightsRead;
+
+  useEffect(() => {
+    if (!weightsRead) void loadWeights().finally(() => setWeightsRead(true));
+  }, [weightsRead]);
+  // Once open it stays open: a later reload of the weights keeps what is typed.
+  useEffect(() => {
+    if (ready) setOpen(true);
+  }, [ready]);
+
+  if (ready || open) return <Calculator />;
+  return (
+    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }}>
+      <SheetHeader />
+      {profileRead.failed ? (
+        <>
+          <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 24 }} accessibilityRole="alert">
+            Your profile did not load. Check your connection and try again.
+          </BlancText>
+          <View style={{ marginHorizontal: 16, marginTop: 24 }}>
+            <Capsule title="Try again" size="large" fill onPress={profileRead.retry} />
+          </View>
+        </>
+      ) : (
+        <ActivityIndicator style={{ marginTop: 48 }} accessibilityLabel="Loading your profile" />
+      )}
+    </ScrollView>
+  );
+}
+
+function SheetHeader() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
+      <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
+      <View style={{ flex: 1, alignItems: 'center' }}>
+        <BlancText variant="headline" accessibilityRole="header">
+          Calculate targets
+        </BlancText>
+      </View>
+      <View style={{ width: 44 }} />
+    </View>
+  );
+}
+
+function Calculator() {
+  const c = useBlanc();
   const profile = useAppStore((state) => state.nutritionProfile);
-  const latestKg = useWeightStore((state) => (state.history[0] ? Number(state.history[0].kilograms) : null));
-  const [initial] = useState(() => initialWizardDraft(profile, latestKg));
+  // The latest weigh-in as the form opened. An Apple Health import can reload
+  // the weights while it is open; only a typed change records a weigh-in.
+  const [openedKg] = useState(() => {
+    const latest = useWeightStore.getState().history[0];
+    return latest ? Number(latest.kilograms) : null;
+  });
+  const [initial] = useState(() => initialWizardDraft(profile, openedKg));
   const [draft, setDraft] = useState<WizardDraft>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +144,9 @@ export default function TargetsCalculateSheet() {
       return;
     }
     const userId = useAuthStore.getState().user?.id;
-    if (userId && wizardWeightChanged(latestKg, outcome.weightKg)) {
+    // With no weigh-in known (none yet, or the read failed) the form opens at a
+    // default weight, which is recorded only once it is changed.
+    if (userId && wizardWeightChanged(openedKg ?? wizardWeightKg(initial), outcome.weightKg)) {
       try {
         await recordManualBodyWeight(userId, outcome.weightKg);
         void loadWeights();
@@ -108,15 +169,7 @@ export default function TargetsCalculateSheet() {
 
   return (
     <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
-        <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <BlancText variant="headline" accessibilityRole="header">
-            Calculate targets
-          </BlancText>
-        </View>
-        <View style={{ width: 44 }} />
-      </View>
+      <SheetHeader />
 
       <Section title="You">
         <Label>
@@ -166,7 +219,7 @@ export default function TargetsCalculateSheet() {
           <Hairline />
           <FieldRow label="Body fat" unit="%" value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
         </Label>
-        <FormNote>{latestKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
+        <FormNote>{openedKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
       </Section>
 
       <Section title="Activity">

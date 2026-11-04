@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 
-import { nextPlannedSession, todayHero, weekSessionTarget } from '@/lib/todayModel';
+import { nextPlannedDay, todayHero, weekSessionTarget } from '@/lib/todayModel';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
 import { useScheduleWorkouts } from '@/hooks/useScheduleWorkouts';
@@ -9,8 +9,9 @@ import { useWeekSessions } from '@/hooks/useWeekSessions';
 import { readTodayDone } from '@/lib/todayDay';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
+import type { SplitDay } from '@/types';
 
-import { useAccountDay } from './accountData';
+import { useAccountDay, useWorkoutsRevision } from './accountData';
 
 /** Bumped after the schedule is saved on this device, so screens re-read it. */
 export const useScheduleRevision = create<{ revision: number; bump: () => void }>((set) => ({
@@ -29,20 +30,23 @@ export function useTodayPlan() {
   const activeSplit = useAppStore((state) => state.activeSplit);
   const currentWorkout = useAppStore((state) => state.currentWorkout);
   const currentWorkoutDayPlan = useAppStore((state) => state.currentWorkoutDayPlan);
+  const splits = useAppStore((state) => state.splits);
   const workoutMode = useAppStore((state) => state.workoutMode);
   const hydratedForUserId = useAppStore((state) => state.hydratedForUserId);
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const revision = useScheduleRevision((state) => state.revision);
+  // History's deletes and completions, and pull to refresh, re-read what was done.
+  const workoutsRevision = useWorkoutsRevision((state) => state.revision);
   const { schedule, loading: scheduleLoading } = usePlanSchedule(userId, activeSplit?.id, revision);
   const {
     workouts: scheduleWorkouts,
     loading: scheduleWorkoutsLoading,
     error: scheduleError,
     retry: retrySchedule,
-  } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled);
+  } = useScheduleWorkouts(userId, activeSplit, schedule, currentWorkout, adaptiveSchedulingEnabled, workoutsRevision);
 
   // Starting or finishing a session changes whether today is done and the week's count.
-  const refreshKey = `${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`;
+  const refreshKey = `${refreshedAt}:${workoutsRevision}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`;
   const todayDone = useTodayDone(userId, dayKey, refreshKey);
   const storeReady = Boolean(userId) && hydratedForUserId === userId;
 
@@ -52,6 +56,7 @@ export function useTodayPlan() {
         heroLoading: loading && !storeReady,
         currentWorkout,
         currentWorkoutDayPlan,
+        splits,
         todayDone,
         workoutMode,
         activeSplit,
@@ -70,6 +75,7 @@ export function useTodayPlan() {
       storeReady,
       currentWorkout,
       currentWorkoutDayPlan,
+      splits,
       todayDone,
       workoutMode,
       activeSplit,
@@ -85,15 +91,29 @@ export function useTodayPlan() {
     ],
   );
 
+  // The days after today are planned from the completions. A day already
+  // trained shows before they load, so its next session waits for them.
+  const aheadLoading = scheduleLoading || scheduleWorkoutsLoading;
+  const aheadKnown = !aheadLoading && !scheduleError;
   const next =
-    hero.kind === 'rest' || hero.kind === 'done'
-      ? nextPlannedSession({ activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey })
+    (hero.kind === 'rest' || hero.kind === 'done') && aheadKnown
+      ? nextPlannedDay({ activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey })
       : null;
+  // The session up next: today's, or after a rest day or a day trained, the
+  // next planned one. undefined while unknown (loading, or the completions
+  // failed to load); null when there is none to go by.
+  let upNext: SplitDay | null | undefined = null;
+  if (hero.kind === 'planned') upNext = hero.day;
+  else if (hero.kind === 'rest' || hero.kind === 'done') upNext = aheadKnown ? next?.day ?? null : undefined;
+  else if (hero.kind === 'loading' || hero.kind === 'schedule-error') upNext = undefined;
   const week = useWeekSessions(userId, dayKey, refreshKey);
 
   return {
     hero,
-    next,
+    next: next?.label ?? null,
+    upNext,
+    /** The days after today can be planned: the schedule and its completions have loaded. */
+    aheadKnown,
     schedule,
     scheduleWorkouts,
     adaptiveSchedulingEnabled,

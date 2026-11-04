@@ -11,8 +11,8 @@ import { renameTemplateWithConfirm } from '@/lib/programSummary';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore, type SavedSplit } from '@/stores/splitEditStore';
-import type { DraftExercise } from '@/lib/splitDraft';
-import type { FlexDayTemplate, Split } from '@/types';
+import { dayLabel, type DraftExercise, type DraftSplit } from '@/lib/splitDraft';
+import type { FlexDayTemplate, Split, Workout } from '@/types';
 
 import { haptics } from './haptics';
 
@@ -80,6 +80,39 @@ function programInUse(split: Split): boolean {
   const workout = useAppStore.getState().currentWorkout;
   if (!workout || workout.completed || !workout.split_day_id) return false;
   return split.days.some((day) => day.id === workout.split_day_id);
+}
+
+/** The program day a workout in progress came from, or null. */
+export function liveWorkoutDayId(workout: Pick<Workout, 'split_day_id' | 'completed'> | null): string | null {
+  return workout && !workout.completed ? workout.split_day_id : null;
+}
+
+function refuseLiveDay(label: string) {
+  haptics.error();
+  Alert.alert('Finish your workout first', `Today's workout is ${label}.`);
+}
+
+/**
+ * Removing the day a workout in progress came from would drop that session
+ * (its workout loses the day), so the editor refuses, as deleting its program
+ * does. True when refused.
+ */
+export function refuseRemovingLiveDay(dayId: string, label: string): boolean {
+  if (dayId !== liveWorkoutDayId(useAppStore.getState().currentWorkout)) return false;
+  refuseLiveDay(label);
+  return true;
+}
+
+/** The same at Save, for a draft that left the day out (a restored one can). True when refused. */
+export function refuseSavingWithoutLiveDay(draft: Pick<DraftSplit, 'id' | 'days' | '_isNew'>): boolean {
+  const { currentWorkout, activeSplit, splits } = useAppStore.getState();
+  const dayId = liveWorkoutDayId(currentWorkout);
+  if (!dayId || draft._isNew || draft.days.some((day) => day.id === dayId)) return false;
+  const saved = [activeSplit, ...splits].find((split) => split?.id === draft.id);
+  const index = saved?.days.findIndex((day) => day.id === dayId) ?? -1;
+  if (!saved || index < 0) return false;
+  refuseLiveDay(dayLabel(saved.days[index], index));
+  return true;
 }
 
 /**

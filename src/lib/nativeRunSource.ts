@@ -5,7 +5,7 @@ interface NativePositionSource {
   getNowMs: () => number;
   start: (
     onSample: (sample: GpsSample) => void,
-    onError: (message: string) => void,
+    onError: (message: string, code?: string) => void,
     onControl?: (control: NativeRunControl) => void,
   ) => void;
   stop: (discard?: boolean) => void;
@@ -214,7 +214,7 @@ export function createNativeRunSource(
             receive({ kind: 'sample', timestampMs: sample.timestampMs, sample });
           }));
           await addListener(NativeRun.addListener('locationError', (event) => {
-            if (!stopped) onError(event.message);
+            if (!stopped) onError(event.message, event.code);
           }));
           await addListener(NativeRun.addListener('runControl', (control) => {
             receive({ kind: 'control', timestampMs: control.timestampMs, control });

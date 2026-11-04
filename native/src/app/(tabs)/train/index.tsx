@@ -7,7 +7,7 @@ import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
+import { heldMovement, moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
 import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
@@ -25,7 +25,7 @@ import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { TabScroll, tabBarCover } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
-import { useAccountRefresh } from '~/lib/accountData';
+import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatClock, formatLoad, formatRepRange } from '~/lib/format';
@@ -35,7 +35,7 @@ import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, s
 import { startRest } from '~/lib/rest';
 import { useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
-import { chooseRpe, parseNumber } from '~/lib/setEntry';
+import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
 import { useTodayPlan } from '~/lib/today';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
@@ -188,7 +188,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   });
   useEffect(() => onPreviousChange(), [previous]);
 
-  const weight = draft ? parseNumber(draft.weight) : null;
+  // On a bodyweight movement an empty weight logs as 0: no "0" to type first.
+  const weight = draft ? weightToLog(draft.weight, isBodyweight(current?.set.exercise)) : null;
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
   const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
@@ -325,6 +326,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [reordering, setReordering] = useState(false);
   const [orderRevision, setOrderRevision] = useState(0);
   const [dragging, setDragging] = useState(false);
+  // The movement under the finger: a pair lifts as one, but a hold on B opens B.
+  const touchedMovement = useRef<string | null>(null);
+  // Written through a callback: a ref written inline in the list would keep
+  // the React Compiler from memoizing the list.
+  const touchMovement = useCallback((id: string) => {
+    touchedMovement.current = id;
+  }, []);
   // Blocks: a superset pair moves as one. (Computed after every hook, so the
   // React Compiler can keep the movement list from rebuilding as you type.)
   const blocks = movementBlocks(
@@ -436,7 +444,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               node: block.map((id, index) => {
                 const movement = byId.get(id);
                 return movement ? (
-                  <View key={id}>
+                  <View key={id} onTouchStart={() => touchMovement(id)}>
                     {index > 0 ? <Hairline /> : null}
                     {movementRow(movement, blocks.findIndex((entry) => entry === block))}
                   </View>
@@ -447,7 +455,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             revision={orderRevision}
             roundBottom={!session.flexible}
             onMove={(key, index) => void moveBlock(key, index)}
-            onHold={(key) => openMovement(key)}
+            onHold={(key) => openMovement(heldMovement(blocks, key, touchedMovement.current))}
             onDragging={setDragging}
           />
           {session.flexible ? (
@@ -927,8 +935,10 @@ function StartPlanned() {
   const plan = useTodayPlan();
   const header = useStartHeader('Train');
   const { refreshing, refresh } = useAccountRefresh();
+  // The account's day, as the card below: the week moves on with it overnight.
+  const dayKey = useAccountDay((state) => state.dayKey);
   const week = plan.schedule
-    ? differenceInCalendarWeeks(new Date(), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
+    ? differenceInCalendarWeeks(parseISO(dayKey), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
     : null;
   // How finishing another day moves the plan, by the web's rule.
   const otherNote = !plan.schedule

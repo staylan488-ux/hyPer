@@ -30,6 +30,8 @@ export type LoggerContextValue = {
   complete: () => void;
   /** Claims the sheet for a lookup; the returned cleanup releases only that claim, once. */
   beginBusy: () => () => void;
+  /** Holds the sheet open while a save runs; the returned cleanup releases only that claim, once. */
+  beginSave: () => () => void;
 };
 
 export const LoggerContext = createContext<LoggerContextValue | null>(null);

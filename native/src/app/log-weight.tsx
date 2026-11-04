@@ -10,6 +10,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FigureInput } from '~/components/FigureInput';
 import { GlassButton } from '~/components/GlassButton';
+import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { logWeighIn, setWeightUnit, useWeightStore } from '~/lib/you';
@@ -21,6 +22,8 @@ export default function LogWeightSheet() {
   const latest = useWeightStore((state) => state.history[0] ?? null);
   const failedHistory = useWeightStore((state) => state.failed);
   const unit = useWeightStore((state) => state.unit);
+  // A sheet left open past midnight stops calling yesterday "today".
+  const todayKey = useCurrentDayKey();
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +106,7 @@ export default function LogWeightSheet() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 12 }}>
           <BlancText variant="footnote" tone="graphite" style={{ flex: 1 }}>
-            {lastWeighInLabel(latest, unit, failedHistory)}
+            {lastWeighInLabel(latest, unit, failedHistory, todayKey)}
           </BlancText>
           <Host matchContents style={{ width: 110 }}>
             <Picker selection={unit} onSelectionChange={(next) => switchUnit(next as WeightUnit)} modifiers={[pickerStyle('segmented')]}>

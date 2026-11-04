@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { ActionSheetIOS, Pressable, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { normalizeDecimalText } from '@/lib/decimalText';
 import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
@@ -54,13 +55,14 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
   const valid = Boolean(draft.name.trim()) && draft.ingredients.length > 0 && Boolean(draft.time) && invalidRows.length === 0;
   const frozen = busy || draft.locked;
   // Saved meals are one per name: a taken name puts this meal in that one's place.
-  const { savedMeals } = useLogger();
+  const { savedMeals, beginSave } = useLogger();
   const replaces = saveOnly ? savedMealNamed(savedMeals, draft.name, draft.entryId) : undefined;
 
   const save = async () => {
     if (!valid || busy) return;
     setBusy(true);
     setError('');
+    const release = beginSave();
     try {
       // A draft can outlive its meal group, or be restored on another day:
       // check the group still exists before writing.
@@ -91,6 +93,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
       setError(`${failure instanceof Error ? failure.message : 'Could not save the meal.'} Your meal is kept here. Retry to finish saving.`);
     } finally {
       setBusy(false);
+      release();
     }
   };
 
@@ -127,7 +130,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         </BlancText>
       </View>
 
-      <Section title="Ingredients" note={String(draft.ingredients.length)} action={draft.locked ? undefined : { title: 'Add', onPress: onAddIngredients }}>
+      <Section title="Ingredients" note={String(draft.ingredients.length)} action={frozen ? undefined : { title: 'Add', onPress: onAddIngredients }}>
         <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
           {draft.ingredients.map((item, index) => (
             <Animated.View key={item.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
@@ -218,7 +221,8 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   const c = useBlanc();
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
   const field = useRef<TextField>(null);
-  const valid = Number.isFinite(Number(value)) && Number(value) > 0;
+  const typed = Number(normalizeDecimalText(value));
+  const valid = Number.isFinite(typed) && typed > 0;
   const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: onRemove }];
   // A tap anywhere on the row puts the cursor in its amount; a hold offers Remove.
   const content = (
@@ -262,7 +266,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           }}
           onChangeText={(next) => {
             setValue(next);
-            const servings = Number(next) / item.food.serving_size;
+            const servings = Number(normalizeDecimalText(next)) / item.food.serving_size;
             const invalid =
               !Number.isFinite(servings) ||
               servings <= 0 ||

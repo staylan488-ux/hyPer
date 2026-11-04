@@ -91,6 +91,13 @@ describe('week volume summary', () => {
     ])).toEqual({ trained: 4, inRange: 2, under: 1, over: 1 });
   });
 
+  it('leaves an ungraded muscle out of the in-range count', () => {
+    expect(summarizeWeekVolume([
+      volume('back', 10, 'mev_mav'), { muscle_group: 'traps', weekly_sets: 4, status: null },
+    ])).toEqual({ trained: 1, inRange: 1, under: 0, over: 0 });
+    expect(pickInsight([{ muscle_group: 'traps', weekly_sets: 4, status: null }])).toBeNull();
+  });
+
   it('flags the most-under muscle with main’s gap rule', () => {
     const insight = pickInsight([volume('chest', 2, 'below_mev'), volume('back', 5, 'below_mev')]);
     expect(insight).toMatchObject({ tone: 'under', muscle: 'Chest', flag: 'under · add ~6 sets this week' });

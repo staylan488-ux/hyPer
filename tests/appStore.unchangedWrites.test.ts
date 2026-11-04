@@ -201,6 +201,22 @@ describe('reads that changed nothing keep the stored data', () => {
     expect(useAppStore.getState().weeklyVolume).not.toBe(graded);
     expect(useAppStore.getState().weeklyVolume[0].landmark).toBe(raised[0]);
   });
+
+  it('calculateWeeklyVolume always lands its first read, even an empty week', async () => {
+    resetAppData();
+    const unread = useAppStore.getState().weeklyVolume;
+    answer('workouts', []);
+    answer('volume_landmarks', []);
+    await useAppStore.getState().calculateWeeklyVolume();
+    // Progress tells "nothing trained yet" from "not read yet" by this.
+    const read = useAppStore.getState().weeklyVolume;
+    expect(read).not.toBe(unread);
+
+    answer('workouts', []);
+    answer('volume_landmarks', []);
+    await useAppStore.getState().calculateWeeklyVolume();
+    expect(useAppStore.getState().weeklyVolume).toBe(read);
+  });
 });
 
 describe('startWorkout reads the day while checking for a workout to resume', () => {
@@ -268,8 +284,10 @@ describe('startWorkout reads the day while checking for a workout to resume', ()
 
   it('resumes a workout without using the day read, and an unused failed read stays handled', async () => {
     const existing: Workout = {
-      ...inserted, id: 'workout-live', created_at: '2026-11-04T11:00:00.000Z',
-      sets: [{ id: 'set-1', workout_id: 'workout-live', exercise_id: 'squat', set_number: 1, weight: 100, reps: 5, rpe: null, completed: true, completed_at: '2026-11-04T11:10:00.000Z' }],
+      // An hour before the test's local noon, in any time zone (a UTC time
+      // would start after noon east of UTC+1, and a later start never resumes).
+      ...inserted, id: 'workout-live', created_at: new Date('2026-11-04T11:00:00').toISOString(),
+      sets: [{ id: 'set-1', workout_id: 'workout-live', exercise_id: 'squat', set_number: 1, weight: 100, reps: 5, rpe: null, completed: true, completed_at: new Date('2026-11-04T11:10:00').toISOString() }],
     };
     answer('workouts', existing);
     reject('split_exercises', new Error('offline'));

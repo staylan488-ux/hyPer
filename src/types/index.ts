@@ -328,11 +328,14 @@ export interface VolumeLandmark {
   mrv: number;
 }
 
+export type VolumeStatus = 'below_mev' | 'mev_mav' | 'mav' | 'approaching_mrv' | 'above_mrv';
+
 export interface MuscleVolume {
   muscle_group: MuscleGroup;
   weekly_sets: number;
   landmark?: VolumeLandmark;
-  status: 'below_mev' | 'mev_mav' | 'mav' | 'approaching_mrv' | 'above_mrv';
+  /** null: no landmark to grade against (traps has no default). */
+  status: VolumeStatus | null;
 }
 
 export interface SplitTemplate {

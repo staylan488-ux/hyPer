@@ -15,6 +15,28 @@ import { useBlanc } from '~/theme/blanc';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+/**
+ * The days of `month` with food logged: null when they could not be read,
+ * undefined when signed out. (Kept out of the sheet so the React Compiler,
+ * which skips a component with a try, still compiles it.)
+ */
+async function readLoggedDays(month: Date): Promise<Set<string> | null | undefined> {
+  try {
+    const userId = await getSessionUserId();
+    if (!userId) return undefined;
+    const { data, error } = await supabase
+      .from('nutrition_logs')
+      .select('date')
+      .eq('user_id', userId)
+      .gte('date', dayKey(startOfMonth(month)))
+      .lte('date', dayKey(endOfMonth(month)));
+    if (error || !data) return null;
+    return new Set((data as { date: string }[]).map((row) => row.date));
+  } catch {
+    return null;
+  }
+}
+
 /** The loaded month's days with food, when `month` is the month Fuel has loaded. */
 function loadedMonthDays(month: Date): Set<string> | null {
   const store = useFuelStore.getState();
@@ -33,33 +55,31 @@ export default function FuelMonthSheet() {
   const [month, setMonth] = useState(() => startOfMonth(selected));
   // The loaded month's dots are there from the first frame.
   const [logged, setLogged] = useState<Set<string>>(() => loadedMonthDays(month) ?? new Set());
+  // A month whose dates could not be read says so, rather than looking empty.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const today = startOfDay(new Date());
   const days = buildCalendarDays(month);
 
   // The dots: the loaded month's entries when it is this month, else a light read of dates.
   useEffect(() => {
     let current = true;
+    setFailed(false);
     const loadedDays = loadedMonthDays(month);
     if (loadedDays) {
       setLogged(sameDays(loadedDays));
       return;
     }
     setLogged(sameDays(new Set()));
-    void (async () => {
-      const userId = await getSessionUserId();
-      if (!userId) return;
-      const { data } = await supabase
-        .from('nutrition_logs')
-        .select('date')
-        .eq('user_id', userId)
-        .gte('date', dayKey(startOfMonth(month)))
-        .lte('date', dayKey(endOfMonth(month)));
-      if (current && data) setLogged(new Set((data as { date: string }[]).map((row) => row.date)));
-    })();
+    void readLoggedDays(month).then((read) => {
+      if (!current || read === undefined) return;
+      if (read) setLogged(read);
+      else setFailed(true);
+    });
     return () => {
       current = false;
     };
-  }, [month]);
+  }, [month, attempt]);
 
   const canGoForward = !isAfter(startOfMonth(addMonths(month, 1)), today);
   // The chevrons tap on their own; a swipe ticks as the month changes.
@@ -145,6 +165,20 @@ export default function FuelMonthSheet() {
           </View>
         </View>
       </GestureDetector>
+
+      {failed ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            haptics.tap();
+            setAttempt((value) => value + 1);
+          }}
+          style={({ pressed }) => ({ alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 16, marginTop: 8, opacity: pressed ? 0.5 : 1 })}>
+          <BlancText variant="footnote" tone="live">
+            Couldn’t load this month. Tap to try again.
+          </BlancText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

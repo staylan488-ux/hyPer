@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
+  runOnUI,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
@@ -33,6 +34,8 @@ type Shared = {
   roundTop: boolean;
   roundBottom: boolean;
   order: SharedValue<string[]>;
+  /** An order that came while a dropped row settled; it takes over once the row rests. */
+  pending: SharedValue<string[] | null>;
   heights: SharedValue<Record<string, number>>;
   active: SharedValue<string | null>;
   startTop: SharedValue<number>;
@@ -87,21 +90,30 @@ export function DragList({ items, enabled, onMove, onHold, onDragging, revision 
   const keys = items.map((item) => item.key);
   const signature = keys.join('|');
   const order = useSharedValue<string[]>(keys);
+  const pending = useSharedValue<string[] | null>(null);
   const heights = useSharedValue<Record<string, number>>({});
   const active = useSharedValue<string | null>(null);
   const startTop = useSharedValue(0);
   const dragY = useSharedValue(0);
   const lift = useSharedValue(0);
   const shared = useMemo<Shared>(
-    () => ({ roundTop, roundBottom, order, heights, active, startTop, dragY, lift }),
-    [roundTop, roundBottom, order, heights, active, startTop, dragY, lift],
+    () => ({ roundTop, roundBottom, order, pending, heights, active, startTop, dragY, lift }),
+    [roundTop, roundBottom, order, pending, heights, active, startTop, dragY, lift],
   );
 
-  // Follow the items' own order whenever it changes (not mid-drag). The shared
-  // values never change, so this runs as the signature or revision does.
+  // Follow the items' own order whenever it changes. Not mid-drag; one that
+  // comes while a dropped row settles (a save that failed at once puts the
+  // old order back) waits for the row to rest. Decided on the UI thread, where
+  // the row settles. The shared values never change, so this runs as the
+  // signature or revision does.
   useEffect(() => {
-    if (active.get() === null) order.set(signature ? signature.split('|') : []);
-  }, [signature, revision, active, order]);
+    const next = signature ? signature.split('|') : [];
+    runOnUI(() => {
+      'worklet';
+      if (active.get() === null) order.set(next);
+      else pending.set(next);
+    })();
+  }, [signature, revision, active, order, pending]);
 
   // The rows call the latest handlers through these stable ones, so a parent
   // that passes new handlers on every render (Train does, on every logged set)
@@ -152,7 +164,7 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
   children: ReactNode;
 }) {
   const c = useBlanc();
-  const { order, heights, active, startTop, dragY, lift } = shared;
+  const { order, pending, heights, active, startTop, dragY, lift } = shared;
   // This row's resting place; it glides to a new one as rows move around it.
   const top = useSharedValue<number | null>(null);
   const startIndex = useSharedValue(-1);
@@ -222,6 +234,8 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
         }
       })
       .onEnd((event) => {
+        // An order from before the drop would undo it.
+        pending.set(null);
         const index = order.get().indexOf(id);
         const moved = index !== startIndex.get();
         const held = Math.abs(event.translationY) < HOLD_SLOP && Math.abs(event.translationX) < HOLD_SLOP;
@@ -234,11 +248,18 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
         lift.set(withTiming(0, SETTLE));
         dragY.set(
           withTiming(final - startTop.get(), SETTLE, (done) => {
-            if (done && active.get() === id) active.set(null);
+            if (!done || active.get() !== id) return;
+            active.set(null);
+            // An order that came while the row settled takes over now.
+            const next = pending.get();
+            if (next) {
+              order.set(next);
+              pending.set(null);
+            }
           }),
         );
       });
-  }, [enabled, id, onDragging, onMove, onHold, active, startTop, startIndex, order, heights, dragY, lift]);
+  }, [enabled, id, onDragging, onMove, onHold, active, startTop, startIndex, order, pending, heights, dragY, lift]);
 
   const { roundTop, roundBottom } = shared;
   const place = useAnimatedStyle(() => {
@@ -273,7 +294,12 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
         exiting={blockExit}
         onLayout={(event) => {
           const height = event.nativeEvent.layout.height;
-          if (heights.get()[id] !== height) heights.set({ ...heights.get(), [id]: height });
+          // Merged on the UI thread: a write from here lands later, so rows laid
+          // out together would each copy the same old heights and drop the others.
+          heights.modify((value) => {
+            'worklet';
+            return value[id] === height ? value : { ...value, [id]: height };
+          }, false);
         }}
         style={[{ position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: c.label, overflow: 'hidden', borderCurve: 'continuous' }, place]}>
         <Animated.View style={[{ height: StyleSheet.hairlineWidth, marginLeft: 18, backgroundColor: c.hairline }, rule]} />

@@ -53,6 +53,16 @@ export function summarize(session: SessionModel, previous: PreviousWorkoutSetMap
   };
 }
 
+/**
+ * The label's last line: "session 2 of 4 this week", or "session 5 this week"
+ * once the week's plan is passed. `weekCount` is null until it loads.
+ */
+export function savedLine(weekCount: number | null, planned: number | null): string {
+  if (weekCount === null || Math.max(planned ?? 0, weekCount) <= 0) return 'Saved to History';
+  const of = planned && weekCount <= planned ? ` of ${planned}` : '';
+  return `Saved to History · session ${weekCount}${of} this week`;
+}
+
 export const useFinishedStore = create<{ summary: FinishedSummary | null; set: (summary: FinishedSummary) => void }>((set) => ({
   summary: null,
   set: (summary) => set({ summary }),

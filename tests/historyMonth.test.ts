@@ -82,16 +82,39 @@ describe('moveHistoryMovement', () => {
 });
 
 describe('buildPastSetUpdate', () => {
+  const pastWorkout = (completedAt: string | null, sets: Array<Partial<WorkoutSet>> = []) => ({
+    completed_at: completedAt,
+    created_at: '2026-10-20T17:30:00.000Z',
+    date: '2026-10-20',
+    sets: sets as WorkoutSet[],
+  });
+
   it('completes a set only with both weight and reps', () => {
-    const update = buildPastSetUpdate({ completed_at: null }, { weight: 100, reps: null, rpe: null }, '2026-10-20T19:00:00.000Z');
+    const update = buildPastSetUpdate({ id: 's1', completed_at: null }, { weight: 100, reps: null, rpe: null }, pastWorkout('2026-10-20T19:00:00.000Z'));
     expect(update).toMatchObject({ completed: false, completed_at: null });
   });
 
   it('keeps the set time, else uses the workout time', () => {
-    const own = buildPastSetUpdate({ completed_at: '2026-10-20T18:00:00.000Z' }, { weight: 1, reps: 1, rpe: 8 }, '2026-10-20T19:00:00.000Z');
+    const own = buildPastSetUpdate({ id: 's1', completed_at: '2026-10-20T18:00:00.000Z' }, { weight: 1, reps: 1, rpe: 8 }, pastWorkout('2026-10-20T19:00:00.000Z'));
     expect(own.completed_at).toBe('2026-10-20T18:00:00.000Z');
-    const fallback = buildPastSetUpdate({ completed_at: null }, { weight: 1, reps: 1, rpe: null }, '2026-10-20T19:00:00.000Z');
+    const fallback = buildPastSetUpdate({ id: 's1', completed_at: null }, { weight: 1, reps: 1, rpe: null }, pastWorkout('2026-10-20T19:00:00.000Z'));
     expect(fallback.completed_at).toBe('2026-10-20T19:00:00.000Z');
+  });
+
+  it('dates a forgotten set in an unfinished workout by its last logged set, never now', () => {
+    const workout = pastWorkout(null, [
+      { id: 's1', completed: true, completed_at: '2026-10-20T18:05:00.000Z' },
+      { id: 's2', completed: true, completed_at: '2026-10-20T18:40:00.000Z' },
+      { id: 's3', completed: false, completed_at: null },
+    ]);
+    const update = buildPastSetUpdate({ id: 's3', completed_at: null }, { weight: 100, reps: 5, rpe: null }, workout);
+    expect(update.completed_at).toBe('2026-10-20T18:40:00.000Z');
+  });
+
+  it('falls back to when the workout started when nothing else was logged', () => {
+    const workout = pastWorkout(null, [{ id: 's1', completed: false, completed_at: null }]);
+    const update = buildPastSetUpdate({ id: 's1', completed_at: null }, { weight: 100, reps: 5, rpe: null }, workout);
+    expect(update.completed_at).toBe('2026-10-20T17:30:00.000Z');
   });
 });
 
