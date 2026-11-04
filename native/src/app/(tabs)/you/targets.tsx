@@ -122,6 +122,12 @@ export default function TargetsScreen() {
                   {!ready ? ' ' : target ? mode : 'Starting defaults, not saved'}
                 </BlancText>
               </Pressable>
+              {/* A refresh that failed says so under the numbers it left in place. */}
+              {status === 'error' && target ? (
+                <BlancText variant="footnote" tone="live" style={{ marginTop: 4 }} accessibilityRole="alert">
+                  Couldn’t refresh your targets. These are the last ones loaded.
+                </BlancText>
+              ) : null}
             </View>
             <Label style={{ marginTop: 24 }}>
               <Row
@@ -148,7 +154,7 @@ export default function TargetsScreen() {
         </Label>
 
         {profile ? (
-          <Section title="Automatic adjustments">
+          <Section title="Adaptive targets">
             <Label>
               <Row
                 title="Daily burn"
@@ -159,16 +165,14 @@ export default function TargetsScreen() {
               />
             </Label>
             {base.source === 'manual' ? (
-              <>
-                <View style={{ marginHorizontal: space.inset, marginTop: 14 }}>
-                  <Capsule title="Resume adaptive targets" variant="quiet" fill busy={resuming} onPress={() => void resume()} />
-                </View>
-                <FormNote>Your targets are set by hand, so they stay fixed until you resume.</FormNote>
-              </>
+              <View style={{ marginHorizontal: space.inset, marginTop: 14 }}>
+                <Capsule title="Resume adaptive targets" variant="quiet" fill busy={resuming} onPress={() => void resume()} />
+              </View>
             ) : null}
           </Section>
         ) : null}
 
+        {/* What Resume did, under the button that did it. */}
         {message ? <FormNote alert={message.alert}>{message.text}</FormNote> : null}
       </TabScroll>
     </>

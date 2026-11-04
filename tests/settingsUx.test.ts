@@ -77,7 +77,7 @@ describe('truthful nutrition target mode labels', () => {
   });
 
   it.each([true, false, undefined])('manual targets stay manual regardless of profile adaptive setting (%s)', (enabled) => {
-    expect(targetModeLabel('manual', enabled)).toBe('Manual');
+    expect(targetModeLabel('manual', enabled)).toBe('Set by hand');
   });
 
   it('distinguishes a calculation eligible to adapt from an existing adaptive target', () => {
@@ -86,8 +86,8 @@ describe('truthful nutrition target mode labels', () => {
   });
 
   it.each(['calculated', 'adaptive'] as const)('does not promise automatic updates for %s without an enabled profile', (source) => {
-    expect(targetModeLabel(source, false)).toBe('Calculated · automatic updates off');
-    expect(targetModeLabel(source, undefined)).toBe('Calculated · automatic updates off');
+    expect(targetModeLabel(source, false)).toBe('Calculated · not adapting');
+    expect(targetModeLabel(source, undefined)).toBe('Calculated · not adapting');
   });
 });
 

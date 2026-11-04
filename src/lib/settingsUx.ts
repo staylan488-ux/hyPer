@@ -31,8 +31,8 @@ export function targetModeLabel(
   enabled: boolean | undefined,
 ): string {
   if (!source) return 'Not set';
-  if (source === 'manual') return 'Manual';
-  if (!enabled) return 'Calculated · automatic updates off';
+  if (source === 'manual') return 'Set by hand';
+  if (!enabled) return 'Calculated · not adapting';
   return source === 'adaptive' ? 'Adaptive' : 'Calculated · can adapt';
 }
 
@@ -131,10 +131,10 @@ export function resumeAdaptiveMessage(
   adaptiveEnabled: boolean | undefined,
   refresh: 'updated' | 'unchanged' | 'skipped' | 'failed',
 ): string {
-  if (!adaptiveEnabled) return 'Target source saved. Complete nutrition setup to enable automatic updates.';
+  if (!adaptiveEnabled) return 'Target source saved. Complete nutrition setup to turn on adaptive targets.';
   return refresh === 'failed'
-    ? 'Automatic target management resumed, but recalculation could not run right now. It will retry automatically.'
-    : 'Automatic target management resumed. Recalculation was requested; values may stay the same until enough data is available.';
+    ? 'Adaptive targets resumed, but recalculation could not run right now. It will retry automatically.'
+    : 'Adaptive targets resumed. Recalculation was requested; values may stay the same until enough data is available.';
 }
 
 /** The sign-out question, which says what an unsaved edit would lose. */

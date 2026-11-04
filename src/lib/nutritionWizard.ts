@@ -263,8 +263,8 @@ export function wizardRateDisplay(draft: WizardDraft, result: MacroTargetResult)
 /** One line on how the resting rate and protein were worked out. */
 export function wizardMethodNote(result: MacroTargetResult): string {
   return result.bmrMethod === 'cunningham'
-    ? `Resting burn ${result.bmr} kcal from your lean mass (Cunningham, the best fit for lean lifters), protein set per kg of lean mass.`
-    : `Resting burn ${result.bmr} kcal (Mifflin-St Jeor), protein set per kg of bodyweight. Add body fat for a lean-mass estimate.`;
+    ? `Resting burn ${result.bmr.toLocaleString('en-US')} kcal from your lean mass (Cunningham, the best fit for lean lifters), protein set per kg of lean mass.`
+    : `Resting burn ${result.bmr.toLocaleString('en-US')} kcal (Mifflin-St Jeor), protein set per kg of bodyweight. Add body fat for a lean-mass estimate.`;
 }
 
 /**

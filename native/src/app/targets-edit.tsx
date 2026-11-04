@@ -82,8 +82,10 @@ export default function TargetsEditSheet() {
     setError(null);
     try {
       await useAppStore.getState().updateMacroTarget(macroTargetColumns(draft));
+      // The figure on Targets and the haptic say it saved; no line lingers
+      // there, and an earlier Resume's line goes with the change.
       haptics.success();
-      useTargetsStore.setState({ message: { text: 'Daily targets saved.' } });
+      useTargetsStore.setState({ message: null });
       void loadTargets();
       setSaved(true);
     } catch {
@@ -144,7 +146,7 @@ export default function TargetsEditSheet() {
         <FormNote>
           {draft.source === 'manual'
             ? 'Set by hand: they stay fixed until you resume adaptive targets.'
-            : 'Calculated: they can adapt when automatic adjustments are on.'}
+            : 'Calculated: they can adapt when adaptive targets are on.'}
         </FormNote>
       )}
 
@@ -164,11 +166,7 @@ export default function TargetsEditSheet() {
         </Section>
       ) : null}
 
-      {error ? (
-        <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 12 }} accessibilityRole="alert">
-          {error}
-        </BlancText>
-      ) : null}
+      {error ? <FormNote alert>{error}</FormNote> : null}
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         <Capsule title={error ? 'Retry' : 'Save targets'} size="large" fill busy={saving} disabled={!changed} onPress={() => void save()} />
       </View>

@@ -216,7 +216,7 @@ export default function TargetsCalculateSheet() {
                     {rate.value.toFixed(2)}% a week
                   </BlancText>
                   <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-                    About {rate.weeklyChange.toFixed(2)} {rate.unit} a week · {rate.monthlyChange.toFixed(1)} a month
+                    About {rate.weeklyChange.toFixed(2)} {rate.unit} a week · {rate.monthlyChange.toFixed(1)} {rate.unit} a month
                   </BlancText>
                 </View>
                 <Stepper
@@ -273,12 +273,13 @@ export default function TargetsCalculateSheet() {
               ) : null}
             </>
           ) : null}
+          {/* Read-only: they follow the choices above. */}
           <Hairline />
-          <Row title="Protein" value={`${result.protein} g · ${split.protein}%`} />
+          <Row form title="Protein" value={`${result.protein} g · ${split.protein}%`} />
           <Hairline />
-          <Row title="Carbs" value={`${result.carbs} g · ${split.carbs}%`} />
+          <Row form title="Carbs" value={`${result.carbs} g · ${split.carbs}%`} />
           <Hairline />
-          <Row title="Fat" value={`${result.fat} g · ${split.fat}%`} />
+          <Row form title="Fat" value={`${result.fat} g · ${split.fat}%`} />
         </Label>
         {result.notes.map((note) => (
           <FormNote key={note.code}>{note.message}</FormNote>
@@ -286,11 +287,7 @@ export default function TargetsCalculateSheet() {
         <FormNote>{wizardMethodNote(result)}</FormNote>
       </Section>
 
-      {error ? (
-        <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 32, marginTop: 16 }} accessibilityRole="alert">
-          {error}
-        </BlancText>
-      ) : null}
+      {error ? <FormNote alert>{error}</FormNote> : null}
       <View style={{ marginHorizontal: 16, marginTop: 24 }}>
         <Capsule title="Save profile and review" size="large" fill busy={saving} disabled={!ready} onPress={() => void save()} />
       </View>
@@ -299,9 +296,14 @@ export default function TargetsCalculateSheet() {
   );
 }
 
-/** "2,791 burn + 334 to gain", the target in its two parts. */
+/**
+ * "2,791 burn + 334 to gain", the target in its two parts. Maintaining, the
+ * target is the burn rounded to whole macros (5 g steps, a few dozen kcal at
+ * most), and says so rather than show two figures that seem to disagree.
+ */
 function breakdownLine({ burn, change }: { burn: number; change: number }, goal: WizardDraft['goal']): string {
-  if (goal === 'maintain' || Math.abs(change) < 1) return `${formatWhole(burn)} kcal daily burn`;
+  if (Math.abs(change) < 1) return `${formatWhole(burn)} kcal daily burn`;
+  if (goal === 'maintain' && Math.abs(change) < 50) return `${formatWhole(burn)} kcal daily burn, rounded to fit the macros`;
   return `${formatWhole(burn)} burn ${change > 0 ? '+' : '−'} ${formatWhole(Math.abs(change))} to ${change > 0 ? 'gain' : 'lose'}`;
 }
 
@@ -333,7 +335,7 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
     <Pressable
       accessible={false}
       onPress={() => feetField.current?.focus()}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 52, paddingLeft: 18, paddingRight: 16 }}>
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingLeft: 18, paddingRight: 16 }}>
       <BlancText variant="body" style={{ flex: 1 }}>
         Height
       </BlancText>
