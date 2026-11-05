@@ -39,9 +39,12 @@ export default function ProgramViewScreen() {
     return (
       <>
         <Stack.Screen options={{ title: '' }} />
-        <BlancText variant="secondary" tone="graphite" style={{ margin: space.gutter }}>
-          This program is no longer here.
-        </BlancText>
+        {/* In the screen's scroll view, so it sits below the header as the program would. */}
+        <TabScroll>
+          <BlancText variant="secondary" tone="graphite" style={{ margin: space.gutter }}>
+            This program is no longer here.
+          </BlancText>
+        </TabScroll>
       </>
     );
   }
