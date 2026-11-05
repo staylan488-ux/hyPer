@@ -247,8 +247,7 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   the owner: editing a weighed entry (200 g) opens per-serving Manual with no
   grams; products edited or deleted before this fix may still answer scans
   with their old numbers (needs a one-time data repair); Recent keeps old
-  numbers after a saved meal is edited; "No program yet" shows when other
-  programs exist but none is active; device surfaces are cleaned only when
+  numbers after a saved meal is edited; device surfaces are cleaned only when
   the tabs unmount (sign-in flow); Health sync and run state are per device,
   not per account; beat last time compares a swapped superset's first set
   with last time's set 2; a swap while a set saves can add a set; a pull to

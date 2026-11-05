@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { HeroState } from '@/lib/todayModel';
+import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
@@ -39,6 +40,7 @@ export function PlanCard({
   // At the accessibility text sizes the button moves under the words.
   const large = useLargeText();
   const { starting, start } = useStartSession();
+  const hasPrograms = useAppStore((state) => state.splits.length > 0);
   const finished = useFinishedToday(hero.kind === 'done');
   // A finished day first shown from the phone's copy keeps saying so until
   // History's record lands, also once this launch's own reads decide it again.
@@ -113,9 +115,9 @@ export function PlanCard({
       action = place === 'train' ? { title: 'Set up', primary: true, onPress: openSchedule } : { title: 'Choose', onPress: toTrain };
       break;
     case 'first-run':
-      title = 'No program yet';
-      detail = 'Five questions, or start blank';
-      action = { title: 'Create', primary: true, onPress: () => router.push('/train/program') };
+      title = hasPrograms ? 'No active program' : 'No program yet';
+      detail = hasPrograms ? 'Choose a program to use' : 'Five questions, or start blank';
+      action = { title: hasPrograms ? 'Choose' : 'Create', primary: true, onPress: () => router.push('/train/program') };
       break;
     case 'schedule-error':
       title = 'Couldn’t load your plan';

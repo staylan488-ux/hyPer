@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import { act, createElement, Fragment, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
-import type { HeroState } from '@/lib/todayModel';
+import { todayHero, type HeroState } from '@/lib/todayModel';
+import type { Split } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -31,11 +32,14 @@ const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, 
 const noop = () => {};
 // History's read of today's workout: undefined while it runs.
 const history = create<{ finished: Finished | null | undefined }>(() => ({ finished: undefined }));
+const programs = create<{ splits: Split[] }>(() => ({ splits: [] }));
+const push = vi.fn();
 
 const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>(
   'components/PlanCard.tsx',
   {
-    'expo-router': { router: { navigate: noop, push: noop } },
+    'expo-router': { router: { navigate: noop, push } },
+    '@/stores/appStore': { useAppStore: programs },
     'react-native': {
       Pressable: ({ children }: PropsWithChildren) => createElement('div', { 'data-card': 'pressable' }, children),
       View: ({ children, style }: PropsWithChildren<{ style?: { height?: number } }>) =>
@@ -43,7 +47,9 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
     },
     'react-native-reanimated': { default: { View: Wrap }, FadeIn: { duration: () => undefined } },
     '~/components/BlancText': { BlancText: ({ children }: PropsWithChildren) => createElement('span', null, children) },
-    '~/components/Capsule': { Capsule: ({ title }: { title: string }) => createElement('button', null, title) },
+    '~/components/Capsule': {
+      Capsule: ({ title, onPress }: { title: string; onPress: () => void }) => createElement('button', { onClick: onPress }, title),
+    },
     '~/components/Label': {
       Label: ({ children, style }: PropsWithChildren<{ style?: unknown }>) => {
         const flat = [style].flat(2) as ({ minHeight?: number } | undefined)[];
@@ -76,9 +82,39 @@ async function show(props: Props) {
 
 beforeEach(() => {
   history.setState({ finished: undefined });
+  programs.setState({ splits: [] });
+  push.mockClear();
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
+});
+
+describe('Plan card without an active program', () => {
+  it.each(['today', 'train'] as const)('offers existing programs on %s and creation only when none remain', async (place) => {
+    const saved = { id: 'saved', name: 'Upper lower', is_active: false, days: [] } as unknown as Split;
+    programs.setState({ splits: [saved] });
+    const hero = todayHero({
+      heroLoading: false, currentWorkout: null, currentWorkoutDayPlan: null,
+      splits: [saved], todayDone: null, workoutMode: 'split', activeSplit: null,
+      schedule: null, scheduleLoading: false, scheduleWorkoutsLoading: false,
+      scheduleWorkouts: [], scheduleError: false, retrySchedule: noop,
+      refreshedAt: Date.parse('2026-11-04T12:00:00Z'), dayKey: '2026-11-04', adaptiveSchedulingEnabled: false,
+    });
+    await show({ hero, next: null, place });
+    expect(host.textContent).toContain('No active program');
+    expect(host.textContent).toContain('Choose a program to use');
+    expect(host.querySelector('button')?.textContent).toBe('Choose');
+    await act(async () => host.querySelector('button')?.click());
+    expect(push).toHaveBeenCalledWith('/train/program');
+
+    // Deleting the last saved program changes the still-open card.
+    await act(async () => programs.setState({ splits: [] }));
+    expect(host.textContent).toContain('No program yet');
+    expect(host.textContent).toContain('Five questions, or start blank');
+    expect(host.querySelector('button')?.textContent).toBe('Create');
+    await act(async () => host.querySelector('button')?.click());
+    expect(push).toHaveBeenLastCalledWith('/train/program');
+  });
 });
 
 afterEach(() => {
