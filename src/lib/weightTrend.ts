@@ -157,6 +157,13 @@ export interface WeightTrendOptions {
   alpha?: number;
   /** Fit the slope over only the last N days of the smoothed series. */
   windowDays?: number;
+  /**
+   * Start the smoothing afresh at a weigh-in that follows more than this many
+   * days without one. Across a long break the smoothed value is a weight from
+   * months ago, and every new reading would sit far enough from it to count as
+   * a mis-read. Off unless asked for.
+   */
+  restartAfterGapDays?: number;
 }
 
 export function buildWeightTrend(
@@ -188,10 +195,18 @@ export function buildWeightTrend(
   // today would invent data for someone who simply stopped weighing in.
   const points: WeightTrendPoint[] = [];
   let ewma: number | null = null;
+  let lastObservedIndex: number | null = null;
+  const restartAfter = options.restartAfterGapDays;
 
   for (let dayIndex = 0; dayIndex < spanDays; dayIndex += 1) {
     const date = localIsoDate(addLocalDays(firstDay, dayIndex));
     const observed = medians.get(date) ?? null;
+
+    // After a long break the first reading starts the trend again, unjudged.
+    if (observed != null && restartAfter != null && lastObservedIndex != null && dayIndex - lastObservedIndex > restartAfter) {
+      ewma = null;
+    }
+    if (observed != null) lastObservedIndex = dayIndex;
 
     // Judge the reading against the smoothed value as it stood BEFORE this day.
     // The first reading has nothing to be judged against.

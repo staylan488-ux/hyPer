@@ -13,6 +13,8 @@ import type { NutritionProfile } from '@/lib/nutritionProfile';
 import * as nutritionWizard from '@/lib/nutritionWizard';
 import * as settingsUx from '@/lib/settingsUx';
 import * as weightDisplayCore from '@/lib/weightDisplayCore';
+import * as weightHistory from '@/lib/weightHistory';
+import * as weightTrend from '@/lib/weightTrend';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -58,8 +60,10 @@ function youHarness() {
     connectOrSyncHealthWeights: vi.fn<(userId: string, enabled: boolean) => Promise<HealthResult>>(),
   };
   const preview = { active: false };
+  const deleteManualBodyWeight = vi.fn<(userId: string, id: string) => Promise<void>>(async () => {});
   const getNutritionProfile = vi.fn<(userId: string) => Promise<NutritionProfile | null>>(async () => null);
   const getBodyWeightHistorySince = vi.fn<(userId: string, days: number) => Promise<unknown[]>>(async () => []);
+  const getAllBodyWeights = vi.fn<(userId: string) => Promise<unknown[]>>(async () => []);
   const useAppStore = create(() => ({
     macroTarget: null as typeof saved | null,
     nutritionProfile: null,
@@ -85,8 +89,10 @@ function youHarness() {
     '@/lib/bodyWeightSummary': { WEIGHT_TREND_WINDOW_DAYS: 60 },
     '@/lib/healthWeights': {
       HEALTH_SYNC_STOPPED_MESSAGE: 'stopped',
+      bodyWeightWindowStart: (days: number, now = new Date()) => new Date(now.getTime() - days * 86_400_000).toISOString(),
       connectOrSyncHealthWeights: health.connectOrSyncHealthWeights,
-      deleteManualBodyWeight: vi.fn(),
+      deleteManualBodyWeight,
+      getAllBodyWeights,
       getBodyWeightHistorySince,
       healthSyncMessage: () => 'Apple Health weight is up to date.',
       isHealthWeightSyncEnabled: () => health.enabledFlag,
@@ -98,6 +104,7 @@ function youHarness() {
     '@/lib/savedMeals': { loadSavedMeals: vi.fn(async () => ({ meals: [], error: null })) },
     '@/lib/supabase': { supabase },
     '@/lib/weightDisplayCore': { getPreferredWeightUnit: () => 'lb', setPreferredWeightUnit: vi.fn() },
+    '@/lib/weightHistory': weightHistory,
     '@/lib/whoopStatus': {
       whoopCallbackStatus: (url: string) => (url.includes('whoop=connected') ? 'connected' : 'error'),
     },
@@ -106,13 +113,15 @@ function youHarness() {
     '~/platform/previewFlag': { isPreviewActive: () => preview.active },
   };
   const you = loadNativeModule<YouModule>('lib/you.ts', imports);
-  return { you, reads, health, preview, useAppStore, useAuthStore, openAuthSessionAsync, imports, getNutritionProfile, getBodyWeightHistorySince };
+  return { you, reads, health, preview, useAppStore, useAuthStore, openAuthSessionAsync, imports, getNutritionProfile, getBodyWeightHistorySince, getAllBodyWeights, deleteManualBodyWeight };
 }
 
 let root: Root | null = null;
 async function mount(element: ReturnType<typeof createElement>) {
-  root = createRoot(document.createElement('div'));
+  const container = document.createElement('div');
+  root = createRoot(container);
   await act(async () => { root!.render(element); });
+  return container;
 }
 
 afterEach(async () => {
@@ -553,52 +562,318 @@ describe('Food analysis after the Mac worker is saved', () => {
 const clock = { key: '' };
 const clockKey = () => clock.key || dateFns.format(new Date(), 'yyyy-MM-dd');
 
-function loadWeightScreen(you: YouModule, seen: { charts?: Array<{ days: number }>; rows?: Array<{ title: string; detail?: string }> }, options: { compile?: boolean } = {}) {
+type ChartProps = { calendar?: weightHistory.WeightChartWindow; summary?: string; span?: string };
+type RowSeen = { title: string; detail?: string; value?: string; onPress?: () => void };
+type Seen = {
+  charts?: ChartProps[];
+  rows?: RowSeen[];
+  pickers?: Array<{ selection: string; onSelectionChange: (next: string) => void }>;
+  sections?: Array<{ title: string; note?: string }>;
+  scrolls?: Array<((event: unknown) => void) | undefined>;
+};
+type YouWeights = YouModule & {
+  loadWeights: (options?: { all?: boolean }) => Promise<void>;
+  logWeighIn: (kilograms: number) => Promise<string | null>;
+  deleteWeighIn: (entry: unknown) => Promise<boolean>;
+  useWeightStore: { getState: () => { history: Array<{ id: string }>; all: Array<{ id: string }> | null; allFailed: boolean; failed: boolean; loading: boolean } };
+};
+
+function weightScreenImports(you: YouModule, seen: Seen) {
   const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
-  return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weight.tsx', {
-    '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
+  const rowMock = { Hairline: () => null, Row: (props: RowSeen) => { seen.rows?.push(props); return null; } };
+  const motion = { blockExit: null, figureLayout: null, rowEnter: null, rowExit: null, rowLayout: null };
+  const weighInRows = loadNativeModule('components/WeighInRows.tsx', {
+    'date-fns': dateFns,
+    'react-native': { ActionSheetIOS: {}, Alert: {}, View: Wrap },
+    'react-native-reanimated': { default: { View: Wrap } },
+    '@/lib/weightDisplayCore': weightDisplayCore,
+    '~/lib/accessibility': silentAccessibility,
+    '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd') },
+    '~/lib/haptics': { haptics: { success: vi.fn(), error: vi.fn() } },
+    '~/lib/motion': motion,
+    '~/lib/you': you,
+    '~/theme/blanc': { useBlanc: () => ({ label: '#fff' }) },
+    './Label': { Label: Wrap },
+    './Row': rowMock,
+    './SwipeRow': { SwipeRow: Wrap },
+  });
+  return {
+    '@expo/ui/swift-ui': {
+      Host: Wrap,
+      Picker: (props: PropsWithChildren<{ selection: string; onSelectionChange: (next: string) => void }>) => {
+        seen.pickers?.push(props);
+        return createElement(Fragment, null, props.children);
+      },
+      Text: Wrap,
+    },
     '@expo/ui/swift-ui/modifiers': { accessibilityLabel: () => null, pickerStyle: () => null, tag: () => null },
     'date-fns': dateFns,
     'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
-    'react-native': { ActionSheetIOS: {}, ActivityIndicator: () => null, Alert: {}, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
-    'react-native-reanimated': { default: { View: Wrap } },
+    'react-native': { ActivityIndicator: () => null, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
+    'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
     '@/lib/bodyWeightSummary': bodyWeightSummary,
     '@/lib/weightDisplayCore': weightDisplayCore,
+    '@/lib/weightHistory': weightHistory,
+    '@/lib/weightTrend': weightTrend,
     '~/components/BlancText': { BlancText: text },
     '~/components/Capsule': { Capsule: () => null },
     '~/components/Label': { Label: Wrap },
     '~/components/RollingText': { RollingText: text },
-    '~/components/Row': { Hairline: () => null, Row: (props: { title: string; detail?: string }) => { seen.rows?.push(props); return null; } },
-    '~/components/Section': { Section: Wrap },
-    '~/components/SwipeRow': { SwipeRow: Wrap },
-    '~/components/TabScroll': { TabScroll: Wrap },
-    '~/components/WeightChart': { WeightChart: (props: { days: number }) => { seen.charts?.push(props); return null; } },
+    '~/components/Row': rowMock,
+    '~/components/Section': {
+      Section: (props: PropsWithChildren<{ title: string; note?: string }>) => {
+        seen.sections?.push(props);
+        return createElement(Fragment, null, props.children);
+      },
+    },
+    '~/components/TabScroll': {
+      TabScroll: (props: PropsWithChildren<{ onScroll?: (event: unknown) => void }>) => {
+        seen.scrolls?.push(props.onScroll);
+        return createElement(Fragment, null, props.children);
+      },
+    },
+    '~/components/WeighInRows': weighInRows,
+    '~/components/WeightChart': { WeightChart: (props: ChartProps) => { seen.charts?.push(props); return null; } },
     '~/lib/accountData': { useCurrentDayKey: clockKey },
-    '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd'), today: clockKey },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
-    '~/lib/motion': { figureLayout: null, rowEnter: null, rowExit: null, rowLayout: null },
+    '~/lib/motion': motion,
     '~/lib/you': you,
-    '~/theme/blanc': { space: { gutter: 20, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
-  }, options).default;
+    '~/theme/blanc': { space: { gutter: 20, inset: 16, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
+  };
+}
+
+function loadWeightScreen(you: YouModule, seen: Seen, options: { compile?: boolean } = {}) {
+  return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weight.tsx', weightScreenImports(you, seen), options).default;
+}
+
+function loadWeighInsScreen(you: YouModule, seen: Seen) {
+  return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weigh-ins.tsx', weightScreenImports(you, seen)).default;
+}
+
+// The chart's range picker (Units is the other one on the page).
+const rangePicker = (pickers: NonNullable<Seen['pickers']>) => pickers.filter((picker) => picker.selection !== 'lb' && picker.selection !== 'kg').at(-1)!;
+
+const weighIn = (id: string, kilograms: number, measuredAt: string, source = 'manual') => ({
+  id, user_id: 'user-1', source, external_id: id, measured_at: measuredAt, kilograms, source_bundle: 'app.hyper', source_name: 'hyPer',
+});
+
+function youWeights() {
+  const harness = youHarness();
+  const you = loadNativeModule<YouWeights>('lib/you.ts', { ...harness.imports, '@/lib/bodyWeightSummary': bodyWeightSummary });
+  return { harness, you };
 }
 
 describe('Body weight chart', () => {
-  it('reads every day the chart shows', async () => {
-    const harness = youHarness();
-    const you = loadNativeModule<YouModule>('lib/you.ts', { ...harness.imports, '@/lib/bodyWeightSummary': bodyWeightSummary });
-    harness.getBodyWeightHistorySince.mockResolvedValue([
-      { id: 'w2', kilograms: 81, measured_at: '2026-11-03T07:00:00Z', source: 'manual' },
-      { id: 'w1', kilograms: 82, measured_at: '2026-10-01T07:00:00Z', source: 'manual' },
+  afterEach(() => { clock.key = ''; });
+
+  it('reads every weigh-in and draws the days the chosen range covers', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue([
+      weighIn('w3', 79.5, '2026-11-03T15:00:00Z'),
+      weighIn('w2', 79, '2026-10-01T15:00:00Z'),
+      weighIn('w1', 78, '2026-05-01T15:00:00Z'),
     ]);
-    const charts: Array<{ days: number }> = [];
-    const Screen = loadWeightScreen(you, { charts });
+    const charts: ChartProps[] = [];
+    const pickers: NonNullable<Seen['pickers']> = [];
+    const Screen = loadWeightScreen(you, { charts, pickers });
     await mount(createElement(Screen));
 
-    const shown = charts.at(-1)?.days;
-    expect(shown).toBeGreaterThan(0);
-    expect(harness.getBodyWeightHistorySince).toHaveBeenCalled();
-    for (const [, days] of harness.getBodyWeightHistorySince.mock.calls) expect(days).toBeGreaterThanOrEqual(shown!);
+    expect(harness.getAllBodyWeights).toHaveBeenCalledWith('user-1');
+    // Three months to start, ending today.
+    const threeMonths = charts.at(-1)!.calendar!;
+    expect(threeMonths).toMatchObject({ endDay: '2026-11-05', slots: 90 });
+    expect(threeMonths.series[0].date).toBe('2026-08-08');
+    expect(charts.at(-1)!.span).toBe('last 3 months');
+
+    // All goes back to the first weigh-in, six months ago.
+    await act(async () => { rangePicker(pickers).onSelectionChange('all'); });
+    const everything = charts.at(-1)!.calendar!;
+    expect(everything.startDay).toBe(dateFns.format(new Date('2026-05-01T15:00:00Z'), 'yyyy-MM-dd'));
+    expect(everything.series.at(-1)!.date).toBe(dateFns.format(new Date('2026-11-03T15:00:00Z'), 'yyyy-MM-dd'));
+    // The rate beside the change is the same days' average.
+    expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May\u00a0[0-9]+\u00a0· \+0\.\d\d lb\/wk$/);
+  });
+
+  it('draws the chart for someone back after months away', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue([
+      ...Array.from({ length: 3 }, (_, index) => weighIn(`n${index}`, 70, `2026-11-0${3 - index}T15:00:00Z`)),
+      weighIn('old', 90, '2025-01-10T15:00:00Z'),
+    ]);
+    const charts: ChartProps[] = [];
+    const pickers: NonNullable<Seen['pickers']> = [];
+    await mount(createElement(loadWeightScreen(you, { charts, pickers })));
+    expect(charts.length).toBeGreaterThan(0);
+    await act(async () => { rangePicker(pickers).onSelectionChange('all'); });
+    // The trend starts again at the first weigh-in back.
+    expect(charts.at(-1)!.calendar!.series.at(-1)!.ewmaKg).toBeCloseTo(70, 6);
+  });
+
+  it('says when older weigh-ins could not be read, rather than calling the recent ones all of them', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getBodyWeightHistorySince.mockResolvedValue([
+      weighIn('w2', 80, '2026-11-03T15:00:00Z'),
+      weighIn('w1', 80.4, '2026-10-20T15:00:00Z'),
+    ]);
+    await you.loadWeights();
+    harness.getAllBodyWeights.mockRejectedValue(new Error('offline'));
+    const charts: ChartProps[] = [];
+    const pickers: NonNullable<Seen['pickers']> = [];
+    const page = await mount(createElement(loadWeightScreen(you, { charts, pickers })));
+    await act(async () => {});
+    expect(page.textContent).toContain('Couldn’t load your older weigh-ins. Pull down to try again.');
+    await act(async () => { rangePicker(pickers).onSelectionChange('all'); });
+    expect(charts.at(-1)!.span).toBe('recent weigh-ins only');
+  });
+
+  it('says when the chosen range has no weigh-ins', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue([
+      weighIn('w2', 80, '2026-08-01T15:00:00Z'),
+      weighIn('w1', 79, '2026-07-20T15:00:00Z'),
+    ]);
+    const charts: ChartProps[] = [];
+    const pickers: NonNullable<Seen['pickers']> = [];
+    await mount(createElement(loadWeightScreen(you, { charts, pickers })));
+    await act(async () => { rangePicker(pickers).onSelectionChange('1m'); });
+    expect(charts.at(-1)!.calendar!.series).toHaveLength(0);
+    expect(charts.at(-1)!.summary).toBe('No weigh-ins in the last month');
+  });
+});
+
+describe('All weigh-ins', () => {
+  afterEach(() => { clock.key = ''; });
+
+  it('leads from Recent once there are more weigh-ins than it lists', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue(
+      Array.from({ length: 9 }, (_, index) => weighIn(`w${index}`, 80 - index * 0.1, `2026-11-0${5 - Math.min(index, 4)}T1${index}:00:00Z`)),
+    );
+    const rows: RowSeen[] = [];
+    await mount(createElement(loadWeightScreen(you, { rows })));
+    const all = rows.filter((row) => row.title === 'All weigh-ins').at(-1);
+    expect(all?.value).toBe('9');
+    expect(rows.filter((row) => row.title.endsWith(' lb')).length).toBeGreaterThan(0);
+  });
+
+  it('lists every weigh-in by month, newest first, with each month’s average', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue([
+      weighIn('n1', 81, '2026-11-02T15:00:00Z'),
+      weighIn('o2', 80.5, '2026-10-20T15:00:00Z'),
+      weighIn('o1', 79.5, '2026-10-10T15:00:00Z'),
+      weighIn('d1', 75, '2025-12-15T15:00:00Z'),
+    ]);
+    const sections: NonNullable<Seen['sections']> = [];
+    const rows: RowSeen[] = [];
+    await mount(createElement(loadWeighInsScreen(you, { sections, rows })));
+    const months = sections.slice(-3);
+    expect(months.map((month) => month.title)).toEqual(['November', 'October', 'December 2025']);
+    // Kept on one line at the largest text sizes.
+    expect(months[1].note).toBe(`avg\u00a0${weightDisplayCore.formatWeight(80, 'lb')}\u00a0lb`);
+    expect(new Set(rows.map((row) => row.title)).size).toBe(4);
+  });
+});
+
+describe('All weigh-ins with a long history', () => {
+  afterEach(() => { clock.key = ''; });
+
+  it('opens with about a screenful of rows and adds more as the end comes near', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue(
+      Array.from({ length: 200 }, (_, index) => weighIn(`w${index}`, 80, dateFns.subDays(new Date(2026, 10, 5, 8), index).toISOString())),
+    );
+    const rows: RowSeen[] = [];
+    const scrolls: NonNullable<Seen['scrolls']> = [];
+    await mount(createElement(loadWeighInsScreen(you, { rows, scrolls })));
+    const drawn = () => new Set(rows.slice(-400).map((row) => row.detail)).size;
+    rows.length = 0;
+    await act(async () => { root!.render(createElement(loadWeighInsScreen(you, { rows, scrolls }))); });
+    expect(drawn()).toBe(16);
+
+    // Scrolled to within the last screen or so of what is drawn.
+    const nearEnd = { nativeEvent: { contentOffset: { y: 400 }, contentSize: { height: 1_500 }, layoutMeasurement: { height: 800 } } };
+    rows.length = 0;
+    await act(async () => { scrolls.at(-1)!(nearEnd); });
+    expect(drawn()).toBe(36);
+  });
+});
+
+describe('Reading every weigh-in', () => {
+  it('keeps a weigh-in just logged when an older full read lands after it', async () => {
+    const { harness, you } = youWeights();
+    const slow = deferred<unknown[]>();
+    harness.getAllBodyWeights.mockReturnValueOnce(slow.promise);
+    const full = you.loadWeights({ all: true });
+    // A weigh-in is logged while the full read is out; its own read lands first.
+    harness.getBodyWeightHistorySince.mockResolvedValue([weighIn('new', 82, new Date().toISOString())]);
+    expect(await you.logWeighIn(82)).toBeNull();
+    slow.resolve([weighIn('old', 79, '2026-01-01T15:00:00Z')]);
+    await full;
+
+    const state = you.useWeightStore.getState();
+    expect(state.history.map((entry) => entry.id)).toEqual(['new']);
+    expect(state.all?.map((entry) => entry.id)).toEqual(['old']);
+    expect(state.loading).toBe(false);
+  });
+
+  it('says a failed full read failed, even when a recent read lands after it started', async () => {
+    const { harness, you } = youWeights();
+    const slow = deferred<unknown[]>();
+    harness.getAllBodyWeights.mockReturnValueOnce(slow.promise.then(() => { throw new Error('offline'); }));
+    const full = you.loadWeights({ all: true });
+    await you.loadWeights();
+    slow.resolve([]);
+    await full;
+    const state = you.useWeightStore.getState();
+    expect(state.allFailed).toBe(true);
+    // The recent read worked, so the screen isn't told the weigh-ins failed.
+    expect(state.failed).toBe(false);
+  });
+
+  it('keeps a deleted weigh-in deleted when a full read that started before the delete lands after it', async () => {
+    const { harness, you } = youWeights();
+    const recent = weighIn('recent', 81, new Date().toISOString());
+    const old = weighIn('old', 78, '2026-01-01T15:00:00Z');
+    harness.getAllBodyWeights.mockResolvedValue([recent, old]);
+    await you.loadWeights({ all: true });
+
+    const slow = deferred<unknown[]>();
+    harness.getAllBodyWeights.mockReturnValueOnce(slow.promise);
+    const full = you.loadWeights({ all: true });
+    expect(await you.deleteWeighIn(old)).toBe(true);
+    // The read was answered before the delete reached the server.
+    slow.resolve([recent, old]);
+    await full;
+    expect(you.useWeightStore.getState().all?.map((entry) => entry.id)).toEqual(['recent']);
+  });
+
+  it('takes a deleted weigh-in out of every list and puts it back where it was if the delete fails', async () => {
+    const { harness, you } = youWeights();
+    const recent = weighIn('recent', 81, new Date().toISOString());
+    const old = weighIn('old', 78, '2026-01-01T15:00:00Z');
+    harness.getAllBodyWeights.mockResolvedValue([recent, old]);
+    await you.loadWeights({ all: true });
+
+    harness.deleteManualBodyWeight.mockRejectedValueOnce(new Error('offline'));
+    const pending = you.deleteWeighIn(old);
+    expect(you.useWeightStore.getState().all?.map((entry) => entry.id)).toEqual(['recent']);
+    expect(await pending).toBe(false);
+    expect(you.useWeightStore.getState().all?.map((entry) => entry.id)).toEqual(['recent', 'old']);
+    // It was never among the recent ones, so it doesn't land there.
+    expect(you.useWeightStore.getState().history.map((entry) => entry.id)).toEqual(['recent']);
+
+    expect(await you.deleteWeighIn(recent)).toBe(true);
+    expect(you.useWeightStore.getState().history).toEqual([]);
+    expect(you.useWeightStore.getState().all?.map((entry) => entry.id)).toEqual(['old']);
   });
 });
 
@@ -610,9 +885,9 @@ describe("Body weight's recent weigh-ins, as the app compiles it", () => {
     const you = loadNativeModule<YouModule>('lib/you.ts', { ...harness.imports, '@/lib/bodyWeightSummary': bodyWeightSummary });
     const weighedAt = new Date();
     weighedAt.setHours(7, 0, 0, 0);
-    harness.getBodyWeightHistorySince.mockResolvedValue([{ id: 'w1', kilograms: 81, measured_at: weighedAt.toISOString(), source: 'manual' }]);
+    harness.getAllBodyWeights.mockResolvedValue([{ id: 'w1', kilograms: 81, measured_at: weighedAt.toISOString(), source: 'manual' }]);
     clock.key = dateFns.format(weighedAt, 'yyyy-MM-dd');
-    const rows: Array<{ title: string; detail?: string }> = [];
+    const rows: RowSeen[] = [];
     const Screen = loadWeightScreen(you, { rows }, { compile: true });
     await mount(createElement(Screen));
     const weighIn = () => rows.filter((row) => row.detail?.includes('7:00 AM')).at(-1)?.detail;

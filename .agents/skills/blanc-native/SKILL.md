@@ -349,10 +349,16 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   which runs the web's edit protocol one edit at a time per workout. Delete a
   workout only after `confirmDeleteWorkout` asks. The muscle figure draws the
   shared maquette shapes with react-native-svg.
-- You (milestone 7) is the You tab's stack (`you/weight`, `targets`,
-  `adaptation`, `meals`, `analysis`, `worker`, `connections`, `account`,
-  `about`) plus root sheets (`log-weight`, `targets-edit`,
-  `targets-calculate`, `targets-coach`, `saved-meal`). Screen state shared
+- You (milestone 7) is the You tab's stack (`you/weight`, `weigh-ins`,
+  `targets`, `adaptation`, `meals`, `analysis`, `worker`, `connections`,
+  `account`, `about`) plus root sheets (`log-weight`, `targets-edit`,
+  `targets-calculate`, `targets-coach`, `saved-meal`). Body weight's chart
+  reads 1M, 3M (the default), 6M, 1Y or All on a calendar axis ending today,
+  and Recent ends in All weigh-ins (every one, by month, with each month's
+  average); both come from one paged read of every weigh-in
+  (`loadWeights({ all: true })`, rules in `src/lib/weightHistory.ts`), joined
+  to the 90-day read that every log and sync repeats. A gain reads like a
+  loss, signed and in ink. Screen state shared
   between them lives in `native/src/lib/you.ts`; the rules come from
   `settingsUx`, `bodyWeightSummary`, `nutritionWizard`, `healthWeights`,
   `whoopStatus` and `foodTrialUsage`, which the web You page also uses. The

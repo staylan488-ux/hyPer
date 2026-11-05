@@ -50,6 +50,8 @@ const UNIT_PATTERNS = UNITS.map(({ written, one, many, space }) => ({
  */
 export function speak(text: string): string {
   let spoken = text
+    // A no-break space (it keeps "avg 172.4 lb" on one line) reads as a space.
+    .replace(/\u00a0/g, ' ')
     .replace(/\s*·\s*/g, ', ')
     .replace(/(\d)\s*[–—]\s*(\d)/g, '$1 to $2')
     .replace(/(\d) \/ (\d)/g, '$1 of $2')
@@ -60,6 +62,8 @@ export function speak(text: string): string {
     .replace(/ ?\/km\b/g, ' per kilometer')
     // "add ~2 sets"
     .replace(/~(\d)/g, 'about $1')
+    // A month's "avg 172.4 lb"
+    .replace(/\bavg\b/g, 'average')
     .replace(/↑\s*/g, '');
   for (const { pattern, one, many } of UNIT_PATTERNS) {
     spoken = spoken.replace(pattern, (_match, before: string, value: string) => `${before}${value} ${value === '1' ? one : many}`);

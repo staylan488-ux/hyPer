@@ -260,6 +260,26 @@ describe('weight trend', () => {
     expect(trend.kgPerWeek).not.toBeNull();
   });
 
+  it('starts afresh after a long break only when asked', () => {
+    // One old weigh-in, then three weeks of a much lower weight after a long break.
+    const samples = [
+      ...samplesFrom('2025-01-10', [90]),
+      ...samplesFrom('2026-10-15', Array.from({ length: 21 }, () => 70)),
+    ];
+    const carried = buildWeightTrend(samples);
+    expect(carried.fittedDayCount).toBe(1);
+    expect(carried.latestEwmaKg).toBeGreaterThan(72);
+
+    const restarted = buildWeightTrend(samples, { restartAfterGapDays: 28 });
+    expect(restarted.fittedDayCount).toBe(22);
+    expect(restarted.latestEwmaKg).toBeCloseTo(70, 6);
+    // The first reading after the break is the new start, not a mis-read.
+    expect(restarted.points.find((point) => point.date === '2026-10-15')).toMatchObject({ ewmaKg: 70, isOutlier: false });
+    // A break no longer than the limit carries on as before.
+    const shortBreak = [...samplesFrom('2026-10-01', [80]), ...samplesFrom('2026-10-29', [80.4])];
+    expect(buildWeightTrend(shortBreak, { restartAfterGapDays: 28 }).points.at(-1)!.ewmaKg).toBeCloseTo(80.04, 6);
+  });
+
   it('does not care what order the samples arrive in', () => {
     const ordered = samplesFrom('2026-07-01', [82, 81.8, 81.6, 81.4]);
     const shuffled = [ordered[2], ordered[0], ordered[3], ordered[1]];
