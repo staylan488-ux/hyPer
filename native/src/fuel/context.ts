@@ -1,5 +1,6 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, type Dispatch, type SetStateAction } from 'react';
 
+import type { PendingEntryId } from '@/lib/pendingEntryId';
 import type { BarcodeProvider } from '@/lib/saveNutritionEntry';
 import type { MealIngredient } from '@/lib/mealComposition';
 import type { Food, NutritionGroup } from '@/types';
@@ -8,6 +9,8 @@ import type { When } from '~/lib/foodLogger';
 
 /** Where a chosen food came from, for its review line and log source. */
 export type ChosenMeta = { source: 'barcode'; barcode: string; provider: BarcodeProvider } | null;
+
+export type QuickAddState = 'saving' | 'done' | 'error';
 
 export type LoggerContextValue = {
   /** Logging entries, or adding ingredients to a meal being built. */
@@ -32,6 +35,10 @@ export type LoggerContextValue = {
   beginBusy: () => () => void;
   /** Holds the sheet open while a save runs; the returned cleanup releases only that claim, once. */
   beginSave: () => () => void;
+  /** List saves survive switching tabs or opening a food review. */
+  quickAddStates: Record<string, QuickAddState>;
+  setQuickAddStates: Dispatch<SetStateAction<Record<string, QuickAddState>>>;
+  pendingQuickAdds: Map<string, PendingEntryId>;
 };
 
 export const LoggerContext = createContext<LoggerContextValue | null>(null);
