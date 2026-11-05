@@ -4,7 +4,7 @@
 import { addDays, addMonths, differenceInCalendarDays, differenceInCalendarMonths, format, startOfMonth, startOfWeek } from 'date-fns';
 
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
-import { dailyMedianWeights, type WeightSampleLike, type WeightTrendPoint } from '@/lib/weightTrend';
+import { buildWeightTrend, dailyMedianWeights, type WeightSampleLike, type WeightTrend, type WeightTrendPoint } from '@/lib/weightTrend';
 
 export type WeightRangeKey = '1m' | '3m' | '6m' | '1y' | 'all';
 
@@ -31,6 +31,22 @@ export const DEFAULT_WEIGHT_RANGE: WeightRangeKey = '3m';
 
 export function weightRange(key: WeightRangeKey): WeightRange {
   return WEIGHT_RANGES.find((range) => range.key === key) ?? WEIGHT_RANGES[1];
+}
+
+/**
+ * Four weeks without a weigh-in: by then the smoothed value is mostly a weight
+ * from before the break (about 95% of its weight comes from the last four
+ * weeks), so the trend starts again at the next one.
+ */
+export const WEIGHT_TREND_RESTART_DAYS = 28;
+
+/**
+ * Body weight's trend over every weigh-in. Someone coming back after months
+ * away starts a new trend, rather than having every new reading judged a
+ * mis-read against the old weight.
+ */
+export function weightHistoryTrend(entries: WeightSampleLike[]): WeightTrend {
+  return buildWeightTrend(entries, { restartAfterGapDays: WEIGHT_TREND_RESTART_DAYS });
 }
 
 /** A local calendar day (yyyy-MM-dd) as a local midnight. */

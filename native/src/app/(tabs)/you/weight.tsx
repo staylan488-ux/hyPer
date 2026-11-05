@@ -13,10 +13,10 @@ import {
   weightChangeLabel,
   weightChartWindow,
   weightRange,
+  weightHistoryTrend,
   weightRangeKgPerWeek,
   type WeightRangeKey,
 } from '@/lib/weightHistory';
-import { buildWeightTrend } from '@/lib/weightTrend';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
@@ -51,8 +51,10 @@ export default function WeightScreen() {
   // Every weigh-in once the full read lands; the recent ones until then.
   const everything = useAllWeighIns();
   const allRead = useWeightStore((state) => state.all !== null);
+  // The full read failed before one ever landed: only the recent weigh-ins are here.
+  const olderMissing = useWeightStore((state) => state.allFailed && state.all === null);
   const entries = everything ?? history;
-  const trend = useMemo(() => buildWeightTrend(entries), [entries]);
+  const trend = useMemo(() => weightHistoryTrend(entries), [entries]);
   const latest = entries[0] ?? null;
   const [rangeKey, setRangeKey] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
   const range = weightRange(rangeKey);
@@ -72,7 +74,14 @@ export default function WeightScreen() {
       : undefined;
   const { refreshing, refresh } = usePullRefresh(readAll);
   const large = useLargeText();
-  const refreshFailed = failed && latest ? 'Couldn’t refresh your weigh-ins. Earlier ones are kept.' : null;
+  // Missing history matters more than a stale refresh: the chart's All would look complete.
+  const refreshFailed = !latest
+    ? null
+    : olderMissing
+      ? 'Couldn’t load your older weigh-ins. Pull down to try again.'
+      : failed
+        ? 'Couldn’t refresh your weigh-ins. Earlier ones are kept.'
+        : null;
   // The failure arrives after the screen does (a load, a pull to refresh).
   useAnnounce(refreshFailed);
   // Only the first read shows a spinner; a pull to refresh keeps the page as it is.
@@ -140,14 +149,15 @@ export default function WeightScreen() {
         ) : (
           <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
             <View style={{ gap: 2 }}>
-              <BlancText variant="headline">{failed ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
+              {/* Older weigh-ins may be all there is: a failed full read isn't "none yet". */}
+              <BlancText variant="headline">{failed || olderMissing ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
               <BlancText variant="secondary" tone="graphite">
-                {failed
+                {failed || olderMissing
                   ? 'Your earlier weigh-ins are kept.'
                   : 'Regular weigh-ins show your trend and help adaptive targets.'}
               </BlancText>
             </View>
-            {failed ? (
+            {failed || olderMissing ? (
               <Capsule title="Try again" fill busy={loading} onPress={() => void readAll()} />
             ) : (
               <Capsule title="Log weight" size="large" fill onPress={() => router.push('/log-weight')} />
@@ -155,7 +165,8 @@ export default function WeightScreen() {
           </Label>
         )}
 
-        {trend.fittedDayCount >= 2 ? (
+        {/* Two days weighed draw a line, mis-reads or not: the dots show which is which. */}
+        {trend.observedDayCount >= 2 ? (
           <View style={{ marginTop: 24 }}>
             {/* How far back the chart looks, as Health's own charts choose it. */}
             <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset }}>
@@ -178,7 +189,7 @@ export default function WeightScreen() {
               <WeightChart
                 points={trend.points}
                 calendar={calendar}
-                span={range.key === 'all' ? 'since the first weigh-in' : `last ${range.spoken}`}
+                span={range.key !== 'all' ? `last ${range.spoken}` : olderMissing ? 'recent weigh-ins only' : 'since the first weigh-in'}
                 unit={unit}
                 height={168}
                 summary={trendLine}

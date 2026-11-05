@@ -52,6 +52,8 @@ export default function WeighInsScreen() {
       : 'Couldn’t load your older weigh-ins. Pull down to try again.'
     : null;
   useAnnounce(note);
+  // Older weigh-ins may be all there is: a failed full read isn't "none yet".
+  const notLoaded = failed || (allFailed && !all);
 
   useEffect(() => {
     void readAll();
@@ -97,12 +99,12 @@ export default function WeighInsScreen() {
         ) : months.length === 0 ? (
           <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
             <View style={{ gap: 2 }}>
-              <BlancText variant="headline">{failed ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
+              <BlancText variant="headline">{notLoaded ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
               <BlancText variant="secondary" tone="graphite">
-                {failed ? 'Your earlier weigh-ins are kept.' : 'Regular weigh-ins show your trend and help adaptive targets.'}
+                {notLoaded ? 'Your earlier weigh-ins are kept.' : 'Regular weigh-ins show your trend and help adaptive targets.'}
               </BlancText>
             </View>
-            {failed ? (
+            {notLoaded ? (
               <Capsule title="Try again" fill busy={loading} onPress={() => void readAll()} />
             ) : (
               <Capsule title="Log weight" size="large" fill onPress={() => router.push('/log-weight')} />

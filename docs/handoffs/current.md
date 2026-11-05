@@ -44,7 +44,11 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   (`getAllBodyWeights`) on You and Body weight, joined to the 90-day read
   (`mergeWeightHistory`); reads that overlap can't undo a newer one. The
   sample account has seven months of weigh-ins. Not seen on a phone or with
-  the real account; VoiceOver untried.
+  the real account; VoiceOver untried. A Codex review's four findings are
+  fixed: the chart's trend starts again after four weeks without a weigh-in
+  (`weightHistoryTrend`) and shows from two weighed days; pages follow the
+  last time read, not a row count; a deleted weigh-in stays out of reads
+  that land later; Body weight says when older weigh-ins failed to load.
 
 - 2026-11-04: pre-TestFlight reliability follow-up
   (`fix/pre-testflight-reliability`). The owner approved merging these fixes

@@ -118,8 +118,10 @@ function youHarness() {
 
 let root: Root | null = null;
 async function mount(element: ReturnType<typeof createElement>) {
-  root = createRoot(document.createElement('div'));
+  const container = document.createElement('div');
+  root = createRoot(container);
   await act(async () => { root!.render(element); });
+  return container;
 }
 
 afterEach(async () => {
@@ -694,6 +696,40 @@ describe('Body weight chart', () => {
     expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May\u00a0[0-9]+\u00a0· \+0\.\d\d lb\/wk$/);
   });
 
+  it('draws the chart for someone back after months away', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue([
+      ...Array.from({ length: 3 }, (_, index) => weighIn(`n${index}`, 70, `2026-11-0${3 - index}T15:00:00Z`)),
+      weighIn('old', 90, '2025-01-10T15:00:00Z'),
+    ]);
+    const charts: ChartProps[] = [];
+    const pickers: NonNullable<Seen['pickers']> = [];
+    await mount(createElement(loadWeightScreen(you, { charts, pickers })));
+    expect(charts.length).toBeGreaterThan(0);
+    await act(async () => { rangePicker(pickers).onSelectionChange('all'); });
+    // The trend starts again at the first weigh-in back.
+    expect(charts.at(-1)!.calendar!.series.at(-1)!.ewmaKg).toBeCloseTo(70, 6);
+  });
+
+  it('says when older weigh-ins could not be read, rather than calling the recent ones all of them', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getBodyWeightHistorySince.mockResolvedValue([
+      weighIn('w2', 80, '2026-11-03T15:00:00Z'),
+      weighIn('w1', 80.4, '2026-10-20T15:00:00Z'),
+    ]);
+    await you.loadWeights();
+    harness.getAllBodyWeights.mockRejectedValue(new Error('offline'));
+    const charts: ChartProps[] = [];
+    const pickers: NonNullable<Seen['pickers']> = [];
+    const page = await mount(createElement(loadWeightScreen(you, { charts, pickers })));
+    await act(async () => {});
+    expect(page.textContent).toContain('Couldn’t load your older weigh-ins. Pull down to try again.');
+    await act(async () => { rangePicker(pickers).onSelectionChange('all'); });
+    expect(charts.at(-1)!.span).toBe('recent weigh-ins only');
+  });
+
   it('says when the chosen range has no weigh-ins', async () => {
     clock.key = '2026-11-05';
     const { harness, you } = youWeights();
@@ -801,6 +837,23 @@ describe('Reading every weigh-in', () => {
     expect(state.allFailed).toBe(true);
     // The recent read worked, so the screen isn't told the weigh-ins failed.
     expect(state.failed).toBe(false);
+  });
+
+  it('keeps a deleted weigh-in deleted when a full read that started before the delete lands after it', async () => {
+    const { harness, you } = youWeights();
+    const recent = weighIn('recent', 81, new Date().toISOString());
+    const old = weighIn('old', 78, '2026-01-01T15:00:00Z');
+    harness.getAllBodyWeights.mockResolvedValue([recent, old]);
+    await you.loadWeights({ all: true });
+
+    const slow = deferred<unknown[]>();
+    harness.getAllBodyWeights.mockReturnValueOnce(slow.promise);
+    const full = you.loadWeights({ all: true });
+    expect(await you.deleteWeighIn(old)).toBe(true);
+    // The read was answered before the delete reached the server.
+    slow.resolve([recent, old]);
+    await full;
+    expect(you.useWeightStore.getState().all?.map((entry) => entry.id)).toEqual(['recent']);
   });
 
   it('takes a deleted weigh-in out of every list and puts it back where it was if the delete fails', async () => {

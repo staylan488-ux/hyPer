@@ -73,21 +73,29 @@ const BODY_WEIGHT_MAX_PAGES = 100;
 
 /**
  * Every weigh-in, newest first, read a page at a time because one request
- * returns at most BODY_WEIGHT_PAGE_SIZE rows. A row moved across a page
- * boundary by a write mid-read is kept once.
+ * returns at most BODY_WEIGHT_PAGE_SIZE rows. Each page after the first
+ * starts at the last time read (not at a row count), so a weigh-in deleted
+ * or added mid-read can't shift an untouched one past the next page. That
+ * time's rows are read again and kept once; a page holding nothing but that
+ * time steps past it (only more weigh-ins in one instant than a page holds
+ * could lose one).
  */
 export async function getAllBodyWeights(userId: string, pageSize = BODY_WEIGHT_PAGE_SIZE): Promise<BodyWeightMeasurement[]> {
   const rows: BodyWeightMeasurement[] = [];
   const seen = new Set<string>();
+  // Where the next page starts: at this time, or just before it.
+  let fromTime: string | null = null;
+  let pastTime = false;
   for (let page = 0; page < BODY_WEIGHT_MAX_PAGES; page++) {
-    const from = page * pageSize;
-    const { data, error } = await supabase
+    let query = supabase
       .from('body_weight_measurements')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', userId);
+    if (fromTime !== null) query = pastTime ? query.lt('measured_at', fromTime) : query.lte('measured_at', fromTime);
+    const { data, error } = await query
       .order('measured_at', { ascending: false })
       .order('id', { ascending: true })
-      .range(from, from + pageSize - 1);
+      .limit(pageSize);
     if (error) throw new Error(error.message);
     const read = (data || []) as BodyWeightMeasurement[];
     for (const row of read) {
@@ -96,6 +104,9 @@ export async function getAllBodyWeights(userId: string, pageSize = BODY_WEIGHT_P
       rows.push(row);
     }
     if (read.length < pageSize) break;
+    const last = read[read.length - 1].measured_at;
+    pastTime = last === fromTime;
+    fromTime = last;
   }
   return rows;
 }

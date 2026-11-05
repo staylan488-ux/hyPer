@@ -118,6 +118,15 @@ let allShown = 0;
 const readsRunning = new Map<number, () => boolean>();
 
 /**
+ * Weigh-ins deleted here, or being deleted. A read that started before a
+ * delete landed still holds the row; it must not bring it back (nothing
+ * would take it away again for one older than the recent window).
+ */
+const removedWeighIns = new Set<string>();
+const withoutRemoved = (list: BodyWeightMeasurement[]) =>
+  removedWeighIns.size === 0 ? list : list.filter((entry) => !removedWeighIns.has(entry.id));
+
+/**
  * Reads the weigh-ins of the last WEIGHT_TREND_WINDOW_DAYS days, newest
  * first, or with `all` every weigh-in (which brings the recent ones too). A
  * failed read keeps what is shown.
@@ -133,7 +142,7 @@ export async function loadWeights({ all = false }: { all?: boolean } = {}): Prom
   const since = bodyWeightWindowStart(WEIGHT_TREND_WINDOW_DAYS, now);
   try {
     if (all) {
-      const everything = await getAllBodyWeights(userId);
+      const everything = withoutRemoved(await getAllBodyWeights(userId));
       if (!isCurrent()) return;
       const sinceMs = Date.parse(since);
       const recent = read >= recentShown ? everything.filter((entry) => Date.parse(entry.measured_at) >= sinceMs) : null;
@@ -144,7 +153,7 @@ export async function loadWeights({ all = false }: { all?: boolean } = {}): Prom
         ...(recent ? { history: recent, historySince: since, failed: false } : null),
       });
     } else {
-      const history = await getBodyWeightHistorySince(userId, WEIGHT_TREND_WINDOW_DAYS, now);
+      const history = withoutRemoved(await getBodyWeightHistorySince(userId, WEIGHT_TREND_WINDOW_DAYS, now));
       if (isCurrent() && read >= recentShown) {
         recentShown = read;
         useWeightStore.setState({ history, historySince: since, failed: false });
@@ -462,11 +471,14 @@ export async function deleteWeighIn(measurement: BodyWeightMeasurement): Promise
   const wasRecent = has(before.history);
   const wasInAll = has(before.all);
   const without = (list: BodyWeightMeasurement[]) => list.filter((entry) => entry.id !== measurement.id);
+  // Kept out of any read that lands from now on, unless the delete fails.
+  removedWeighIns.add(measurement.id);
   useWeightStore.setState((state) => ({ history: without(state.history), all: state.all ? without(state.all) : null }));
   try {
     await deleteManualBodyWeight(userId, measurement.id);
     return true;
   } catch {
+    removedWeighIns.delete(measurement.id);
     // Back where it was, in each list it was in.
     const putBack = (list: BodyWeightMeasurement[]) =>
       [...without(list), measurement].sort((a, b) => Date.parse(b.measured_at) - Date.parse(a.measured_at));

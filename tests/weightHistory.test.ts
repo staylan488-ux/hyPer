@@ -8,6 +8,7 @@ import {
   weightChangeLabel,
   weightChartTicks,
   weightChartWindow,
+  weightHistoryTrend,
   weightRangeKgPerWeek,
 } from '@/lib/weightHistory';
 
@@ -190,37 +191,95 @@ describe('the recent read joined to the full one', () => {
   });
 });
 
+describe("Body weight's trend over every weigh-in", () => {
+  it('starts again for someone back after months away, so the new weigh-ins draw a line', () => {
+    const back = Array.from({ length: 3 }, (_, index) => weighIn(`n${index}`, `2026-11-0${index + 1}`, 70));
+    const trend = weightHistoryTrend([weighIn('old', '2025-01-10', 90), ...back]);
+    expect(trend.fittedDayCount).toBe(4);
+    expect(trend.latestEwmaKg).toBeCloseTo(70, 6);
+    const all = weightChartWindow(trend.points, null, '2026-11-05');
+    expect(weightChangeLabel(all.series, 'kg')).toBe('−20.0 kg since Jan\u00a010, 2025');
+  });
+});
+
 describe('reading every weigh-in', () => {
-  function table(rows: Array<{ id: string }>) {
-    const ranges: Array<[number, number]> = [];
+  type Stored = { id: string; measured_at: string };
+  /** The table, newest first; `between` runs after each page, as a write mid-read would. */
+  function table(stored: Stored[], between?: (page: number) => void) {
+    const pages: Array<string | null> = [];
     supabaseMock.from.mockImplementation(() => {
+      let from: string | null = null;
+      let keep: (row: Stored) => boolean = () => true;
       const query = {
         select: () => query,
         eq: () => query,
+        lte: (column: string, value: string) => {
+          expect(column).toBe('measured_at');
+          from = `<= ${value}`;
+          keep = (row) => row.measured_at <= value;
+          return query;
+        },
+        lt: (column: string, value: string) => {
+          expect(column).toBe('measured_at');
+          from = `< ${value}`;
+          keep = (row) => row.measured_at < value;
+          return query;
+        },
         order: () => query,
-        range: async (from: number, to: number) => {
-          ranges.push([from, to]);
-          return { data: rows.slice(from, to + 1), error: null };
+        limit: async (count: number) => {
+          pages.push(from);
+          const data = stored.filter(keep).slice(0, count);
+          between?.(pages.length);
+          return { data, error: null };
         },
       };
       return query;
     });
-    return ranges;
+    return pages;
   }
+  const at = (minute: number) => `2026-11-05T08:${String(59 - minute).padStart(2, '0')}:00+00:00`;
+  const rows = (count: number) => Array.from({ length: count }, (_, index) => ({ id: `w${index}`, measured_at: at(index) }));
 
-  it('reads page after page until a short one', async () => {
-    const rows = Array.from({ length: 5 }, (_, index) => ({ id: `w${index}` }));
-    const ranges = table(rows);
+  it('reads page after page from the last time read until a short one', async () => {
+    const pages = table(rows(5));
     const read = await getAllBodyWeights('user-1', 2);
     expect(read.map((row) => row.id)).toEqual(['w0', 'w1', 'w2', 'w3', 'w4']);
-    expect(ranges).toEqual([[0, 1], [2, 3], [4, 5]]);
+    // Each page starts again at the time the last one ended on.
+    expect(pages).toEqual([null, `<= ${at(1)}`, `<= ${at(2)}`, `<= ${at(3)}`, `<= ${at(4)}`]);
   });
 
-  it('keeps a row once when a write moves it across a page boundary', async () => {
-    const ranges = table([{ id: 'a' }, { id: 'b' }, { id: 'b' }, { id: 'c' }]);
+  it('keeps every weigh-in that shares the time a page ended on, once', async () => {
+    const stored = [
+      { id: 'a', measured_at: at(0) },
+      { id: 'b', measured_at: at(1) },
+      { id: 'c', measured_at: at(1) },
+      { id: 'd', measured_at: at(2) },
+    ];
+    table(stored);
     const read = await getAllBodyWeights('user-1', 2);
-    expect(read.map((row) => row.id)).toEqual(['a', 'b', 'c']);
-    expect(ranges).toHaveLength(3);
+    expect(read.map((row) => row.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('skips nothing when a weigh-in already read is deleted before the next page', async () => {
+    const stored = rows(5);
+    table(stored, (page) => {
+      if (page === 1) stored.splice(0, 1);
+    });
+    const read = await getAllBodyWeights('user-1', 2);
+    expect(read.map((row) => row.id)).toEqual(['w0', 'w1', 'w2', 'w3', 'w4']);
+  });
+
+  it('steps past a time that fills a whole page', async () => {
+    const stored = [
+      { id: 'a', measured_at: at(0) },
+      { id: 'b', measured_at: at(1) },
+      { id: 'c', measured_at: at(1) },
+      { id: 'd', measured_at: at(2) },
+    ];
+    const pages = table(stored);
+    const read = await getAllBodyWeights('user-1', 2);
+    expect(read.map((row) => row.id)).toEqual(['a', 'b', 'c', 'd']);
+    expect(pages).toEqual([null, `<= ${at(1)}`, `< ${at(1)}`]);
   });
 
   it('fails as a whole when a page fails', async () => {
@@ -228,8 +287,10 @@ describe('reading every weigh-in', () => {
       const query = {
         select: () => query,
         eq: () => query,
+        lte: () => query,
+        lt: () => query,
         order: () => query,
-        range: async () => ({ data: null, error: { message: 'offline' } }),
+        limit: async () => ({ data: null, error: { message: 'offline' } }),
       };
       return query;
     });
