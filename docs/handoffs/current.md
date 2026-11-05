@@ -34,11 +34,10 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 
 ## Open items
 
-- 2026-11-04: pre-TestFlight reliability fixes prepared on
-  `fix/pre-testflight-reliability`. The owner requested fixing these before
-  merging, shipping through Discord, and normal use for 24 hours. Not merged
-  or released yet: GitHub CLI's stored token is invalid; browser sign-in is
-  needed before the requested GitHub merge.
+- 2026-11-04: pre-TestFlight reliability follow-up
+  (`fix/pre-testflight-reliability`). The owner approved merging these fixes
+  before shipping main through Discord and using the new build normally for
+  24 hours. No TestFlight upload was performed in this session.
   - Editing a weighed or measured entry opens the existing amount editor
     (grams or millilitres), not Manual's servings. Saving keeps the original
     food row, source, date and time. Amount changes participate in the leave
@@ -67,6 +66,10 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     Contrast. Swift checks exercised concurrent takes and cross-process
     locking. Real camera, physical controls and real GPS remain phone checks.
     No auth changes, database repair, phone installation or TestFlight upload.
+  - GitHub access was confirmed through the owner's approved Mac Terminal
+    window. Devin's background shell could not access the saved Keychain
+    login and misleadingly reported an invalid token. No credentials were
+    copied and no security settings were changed.
 
 - 2026-11-04: review follow-ups, all on main.
   - #179, from a Codex review of #178: a saved food's barcode follows a
@@ -83,7 +86,7 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     used when under 60 s old). Simulator (sample data): launch, Snap a meal
     into the AI tab, logging a set, Finish, Program and Log food.
   - Left from that review: the native Snap a meal read/remove race is
-    addressed in the pending reliability follow-up above; a reminder may
+    addressed in the reliability follow-up above; a reminder may
     be planned twice after travelling east
     (`fuelReminderPlan.ts`, unconfirmed, check on a phone first).
 - 2026-11-04: End early (#180, the owner's ask). A movement with logged sets
@@ -176,7 +179,7 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     motion and its 5 PM to 11 PM limit; the calorie wording needs the owner's
     goal saved as Bulk or Lean bulk.
   - Seen in passing: a Fuel entry deleted during a pull-to-refresh read
-    could come back (the pending reliability follow-up above covers normal
+    could come back (the reliability follow-up above covers normal
     refreshes as well as the launch copy).
     The schedule editor's default day, also seen then, is fixed by #178 (the
     sheet waits for the plan's session up next).
@@ -230,7 +233,7 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   or on a phone. Left for the owner (they change sign-in or need a phone):
   sign-out offline can undo itself, a launch offline with an expired token
   waits about 25 s. The widget or lock-screen tap closing a run is addressed
-  in the pending reliability follow-up above. The unlikely ones are listed
+  in the reliability follow-up above. The unlikely ones are listed
   in the owner's doc "Hidden state machines in hyPer".
 - 2026-11-03: PR #169 review follow-up, based on `b49cf40`, was prepared in
   `codex/pr169-state-fixes`; no merge or release was performed.
@@ -279,7 +282,7 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   web suite, lint, build, test types, native `tsc` and an iOS bundle export;
   not run in a simulator or on a phone (the intro from a widget, the
   widgets' Swift, drag and swipe feel, the disabled Log food tabs). Left for
-  the owner: the weighed-entry editor is addressed in the pending reliability
+  the owner: the weighed-entry editor is addressed in the reliability
   follow-up above; products edited or deleted before this fix may still
   answer scans with their old numbers (needs a one-time data repair); Recent keeps old
   numbers after a saved meal is edited; device surfaces are cleaned only when
