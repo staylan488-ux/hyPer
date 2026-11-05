@@ -62,6 +62,8 @@ describe('VoiceOver words for Blanc shorthand', () => {
     expect(speak('↑ Beat last time · +5 lb')).toBe('Beat last time, +5 pounds');
     expect(speak('1,858 kcal left')).toBe('1,858 calories left');
     expect(speak('kcal over')).toBe('calories over');
+    expect(speak('October, avg 172.4 lb')).toBe('October, average 172.4 pounds');
+    expect(speak('+4.1 lb since Aug 7 · +0.43 lb/wk')).toBe('+4.1 pounds since Aug 7, +0.43 pounds a week');
     // As the app writes durations and run distances: "1h 20m", "400 m", "+30 s".
     expect(speak('1h 20m')).toBe('1 hour 20 minutes');
     expect(speak('2 h · 45m')).toBe('2 hours, 45 minutes');

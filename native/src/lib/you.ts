@@ -3,7 +3,7 @@
 // holds what the native screens share between them.
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
@@ -12,8 +12,10 @@ import { getFoodAnalysisMode, saveFoodAnalysisMode } from '@/lib/foodTrial';
 import { WEIGHT_TREND_WINDOW_DAYS } from '@/lib/bodyWeightSummary';
 import {
   HEALTH_SYNC_STOPPED_MESSAGE,
+  bodyWeightWindowStart,
   connectOrSyncHealthWeights,
   deleteManualBodyWeight,
+  getAllBodyWeights,
   getBodyWeightHistorySince,
   healthSyncMessage,
   isHealthWeightSyncEnabled,
@@ -28,6 +30,7 @@ import { loadSavedMeals } from '@/lib/savedMeals';
 import type { TargetDraft } from '@/lib/settingsUx';
 import { supabase } from '@/lib/supabase';
 import { getPreferredWeightUnit, setPreferredWeightUnit, type WeightUnit } from '@/lib/weightDisplayCore';
+import { mergeWeightHistory } from '@/lib/weightHistory';
 import { whoopCallbackStatus } from '@/lib/whoopStatus';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -59,41 +62,113 @@ export function usePullRefresh(load: () => Promise<unknown>) {
   return { refreshing, refresh };
 }
 
-/** Everything the You page shows: weight, targets, saved meals and WHOOP. */
+/**
+ * Everything the You page shows: weight, targets, saved meals and WHOOP. Every
+ * weigh-in is read, not only the recent ones, so Body weight opens with its
+ * whole history already drawn.
+ */
 export async function loadYou(): Promise<void> {
-  await Promise.allSettled([loadWeights(), loadTargets(), loadYouMeals(), useAppStore.getState().fetchWhoopConnection()]);
+  await Promise.allSettled([loadWeights({ all: true }), loadTargets(), loadYouMeals(), useAppStore.getState().fetchWhoopConnection()]);
 }
 
 // ── Body weight ──────────────────────────────────────────────────────────
 
 type WeightState = {
+  /** The weigh-ins of the last WEIGHT_TREND_WINDOW_DAYS days, newest first. */
   history: BodyWeightMeasurement[];
+  /** Where `history`'s window starts (an ISO time), from the read that brought it. */
+  historySince: string | null;
   loading: boolean;
   failed: boolean;
   unit: WeightUnit;
+  /**
+   * Every weigh-in, newest first, from the last full read (Body weight and
+   * All weigh-ins ask for one); null until one lands. Its recent part is
+   * shown from `history`, which every log and sync reads again.
+   */
+  all: BodyWeightMeasurement[] | null;
+  /** The last full read failed: only the recent weigh-ins can be shown. */
+  allFailed: boolean;
 };
 
 export const useWeightStore = create<WeightState>(() => ({
   history: [],
+  historySince: null,
   loading: true,
   failed: false,
   unit: getPreferredWeightUnit(),
+  all: null,
+  allFailed: false,
 }));
 
-/** The weigh-ins of the last WEIGHT_TREND_WINDOW_DAYS days, newest first. A failed read keeps what is shown. */
-export async function loadWeights(): Promise<void> {
+// Reads can overlap (a log's read while the screen's full read runs). Each
+// takes a number; an answer is shown only if no read started after it has
+// been shown already, so a slow older read can't hide a weigh-in just logged.
+let readsStarted = 0;
+let recentShown = 0;
+let allShown = 0;
+/** The reads still running, each with its account's check. */
+const readsRunning = new Map<number, () => boolean>();
+
+/**
+ * Reads the weigh-ins of the last WEIGHT_TREND_WINDOW_DAYS days, newest
+ * first, or with `all` every weigh-in (which brings the recent ones too). A
+ * failed read keeps what is shown.
+ */
+export async function loadWeights({ all = false }: { all?: boolean } = {}): Promise<void> {
   const userId = currentUserId();
   if (!userId) return;
   const isCurrent = captureAccountScope();
+  const read = ++readsStarted;
+  readsRunning.set(read, isCurrent);
   useWeightStore.setState({ loading: true });
+  const now = new Date();
+  const since = bodyWeightWindowStart(WEIGHT_TREND_WINDOW_DAYS, now);
   try {
-    const history = await getBodyWeightHistorySince(userId, WEIGHT_TREND_WINDOW_DAYS);
-    if (isCurrent()) useWeightStore.setState({ history, failed: false });
+    if (all) {
+      const everything = await getAllBodyWeights(userId);
+      if (!isCurrent()) return;
+      const sinceMs = Date.parse(since);
+      const recent = read >= recentShown ? everything.filter((entry) => Date.parse(entry.measured_at) >= sinceMs) : null;
+      if (recent) recentShown = read;
+      if (read >= allShown) allShown = read;
+      useWeightStore.setState({
+        ...(read === allShown ? { all: everything, allFailed: false } : null),
+        ...(recent ? { history: recent, historySince: since, failed: false } : null),
+      });
+    } else {
+      const history = await getBodyWeightHistorySince(userId, WEIGHT_TREND_WINDOW_DAYS, now);
+      if (isCurrent() && read >= recentShown) {
+        recentShown = read;
+        useWeightStore.setState({ history, historySince: since, failed: false });
+      }
+    }
   } catch {
-    if (isCurrent()) useWeightStore.setState({ failed: true });
+    // Said only while nothing newer is shown.
+    if (isCurrent()) {
+      useWeightStore.setState({
+        ...(read >= recentShown ? { failed: true } : null),
+        ...(all && read >= allShown ? { allFailed: true } : null),
+      });
+    }
   } finally {
-    if (isCurrent()) useWeightStore.setState({ loading: false });
+    readsRunning.delete(read);
+    // Loading while another read for this account still runs.
+    if (isCurrent()) useWeightStore.setState({ loading: [...readsRunning.values()].some((current) => current()) });
   }
+}
+
+/**
+ * Every weigh-in, newest first, once a full read has landed: the full read for
+ * older ones joined to the recent read. After a failed full read, the recent
+ * ones alone; before any, null.
+ */
+export function useAllWeighIns(): BodyWeightMeasurement[] | null {
+  const history = useWeightStore((state) => state.history);
+  const since = useWeightStore((state) => state.historySince);
+  const all = useWeightStore((state) => state.all);
+  const allFailed = useWeightStore((state) => state.allFailed);
+  return useMemo(() => (all ? mergeWeightHistory(history, since, all) : allFailed ? history : null), [history, since, all, allFailed]);
 }
 
 export function setWeightUnit(unit: WeightUnit) {
@@ -133,7 +208,8 @@ export async function connectOrSyncHealth(): Promise<boolean> {
   try {
     const result = await connectOrSyncHealthWeights(userId, enabled);
     useHealthStore.setState({ enabled: true, message: { text: healthSyncMessage(result) } });
-    await loadWeights();
+    // An import can bring years of older weigh-ins: once every weigh-in was read, read them all again.
+    await loadWeights({ all: useWeightStore.getState().all !== null });
     return true;
   } catch (error) {
     useHealthStore.setState({
@@ -363,7 +439,7 @@ export const APPEARANCE_LABELS: Record<AppearanceChoice, string> = {
 
 /** Leaves nothing of this account in You's screens. */
 export function resetYou() {
-  useWeightStore.setState({ history: [], loading: true, failed: false });
+  useWeightStore.setState({ history: [], historySince: null, loading: true, failed: false, all: null, allFailed: false });
   useTargetsStore.setState({ status: 'loading', staged: null, message: null });
   useYouMealsStore.setState({ meals: null, failed: false });
   useHealthStore.setState({ busy: false, message: null });
@@ -373,15 +449,26 @@ export function resetYou() {
 export async function deleteWeighIn(measurement: BodyWeightMeasurement): Promise<boolean> {
   const userId = currentUserId();
   if (!userId || measurement.source !== 'manual') return false;
-  const before = useWeightStore.getState().history;
-  useWeightStore.setState({ history: before.filter((entry) => entry.id !== measurement.id) });
+  const isCurrent = captureAccountScope();
+  const before = useWeightStore.getState();
+  const has = (list: BodyWeightMeasurement[] | null) => list?.some((entry) => entry.id === measurement.id) ?? false;
+  const wasRecent = has(before.history);
+  const wasInAll = has(before.all);
+  const without = (list: BodyWeightMeasurement[]) => list.filter((entry) => entry.id !== measurement.id);
+  useWeightStore.setState((state) => ({ history: without(state.history), all: state.all ? without(state.all) : null }));
   try {
     await deleteManualBodyWeight(userId, measurement.id);
     return true;
   } catch {
-    useWeightStore.setState((state) => ({
-      history: [...state.history, measurement].sort((a, b) => b.measured_at.localeCompare(a.measured_at)),
-    }));
+    // Back where it was, in each list it was in.
+    const putBack = (list: BodyWeightMeasurement[]) =>
+      [...without(list), measurement].sort((a, b) => Date.parse(b.measured_at) - Date.parse(a.measured_at));
+    if (isCurrent()) {
+      useWeightStore.setState((state) => ({
+        history: wasRecent ? putBack(state.history) : state.history,
+        all: wasInAll && state.all ? putBack(state.all) : state.all,
+      }));
+    }
     return false;
   }
 }

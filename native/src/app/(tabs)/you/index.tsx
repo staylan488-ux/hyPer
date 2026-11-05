@@ -2,6 +2,7 @@ import { HStack, Host, Image, Menu, Text as SwiftText, Toggle } from '@expo/ui/s
 import { accessibilityHidden, accessibilityLabel, accessibilityValue, font, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -189,16 +190,20 @@ function WeightCard() {
           style={({ pressed }) => ({ padding: 18, gap: 4, backgroundColor: pressed ? c.pressed : 'transparent' })}>
           {latest ? (
             <>
-              {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                <RollingText variant="figure" size={44}>
-                  {formatWeight(Number(latest.kilograms), unit)}
-                </RollingText>
-                <Animated.View layout={figureLayout}>
-                  <BlancText variant="secondary" tone="graphite">
-                    {unit}
-                  </BlancText>
-                </Animated.View>
+              {/* The chevron says the card opens every weigh-in, as an iOS row's does. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
+                  <RollingText variant="figure" size={44}>
+                    {formatWeight(Number(latest.kilograms), unit)}
+                  </RollingText>
+                  <Animated.View layout={figureLayout}>
+                    <BlancText variant="secondary" tone="graphite">
+                      {unit}
+                    </BlancText>
+                  </Animated.View>
+                </View>
+                <SymbolView name="chevron.right" size={13} weight="semibold" tintColor={c.upcoming} style={{ marginRight: -2 }} />
               </View>
               {line ? (
                 <BlancText variant="secondary" tone="graphite">
@@ -213,6 +218,11 @@ function WeightCard() {
             </>
           ) : (
             <>
+              {loading ? null : (
+                <View style={{ position: 'absolute', top: 0, bottom: 0, right: 16, justifyContent: 'center' }}>
+                  <SymbolView name="chevron.right" size={13} weight="semibold" tintColor={c.upcoming} />
+                </View>
+              )}
               <BlancText variant="headline">{loading ? ' ' : failed ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
               <BlancText variant="secondary" tone="graphite">
                 {loading ? ' ' : failed ? 'Open to try again.' : 'Log one to start your trend.'}

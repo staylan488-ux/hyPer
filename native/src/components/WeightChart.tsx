@@ -1,11 +1,12 @@
 import { format, parseISO } from 'date-fns';
 import { useMemo, useState } from 'react';
-import { View, type AccessibilityActionEvent } from 'react-native';
+import { useWindowDimensions, View, type AccessibilityActionEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
 import { indexAtX, linearScale, monotonePath, paddedDomain, xAtIndex } from '@/lib/chartGeometry';
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
+import { weightChartTicks, type WeightChartPoint, type WeightChartWindow } from '@/lib/weightHistory';
 import type { WeightTrendPoint } from '@/lib/weightTrend';
 import { speak, spokenUnit, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -14,26 +15,42 @@ import { useBlanc } from '~/theme/blanc';
 import { BlancText } from './BlancText';
 
 const PAD_Y = 8;
+// The date axis: a short tick hanging from the baseline, its label beside it.
+const TICK = 5;
+const AXIS_GAP = 4;
+// Axis labels stop growing here, like the big figures; VoiceOver reads the days instead.
+const AXIS_MAX_SCALE = 1.3;
+// About how wide a footnote character draws, to keep labels from running together.
+const AXIS_CHAR = 7.2;
 
 /**
  * The smoothed body-weight line with the day's weigh-ins as dots (a mis-read
  * hollow). The full chart reads any day: tap it (tap that day again to let
  * go), or hold and slide; VoiceOver swipes up and down through the days. The
  * day read is the chart's value, which VoiceOver speaks as it changes, so the
- * readout line above is hidden from it. The compact one is a quiet sparkline:
- * the line alone, scaled to the line, so a slow trend still shows, ending on a
- * dot at the latest trend.
+ * readout line above is hidden from it. Given a `calendar` (Body weight's
+ * ranges), the days sit on a calendar axis with dates under it, so the line
+ * starts where the weigh-ins do and stops at the last one. The compact one is
+ * a quiet sparkline: the line alone, scaled to the line, so a slow trend
+ * still shows, ending on a dot at the latest trend.
  */
 export function WeightChart({
   points,
   days,
+  calendar,
+  span,
   unit,
   height,
   compact,
   summary,
 }: {
   points: WeightTrendPoint[];
-  days: number;
+  /** Without a calendar: the last this many days of `points`, edge to edge. */
+  days?: number;
+  /** The calendar days to show, as weightChartWindow gives them. */
+  calendar?: WeightChartWindow;
+  /** VoiceOver's name for the days shown, after "Body weight trend": "last 3 months". */
+  span?: string;
   unit: WeightUnit;
   height: number;
   compact?: boolean;
@@ -42,14 +59,29 @@ export function WeightChart({
 }) {
   const c = useBlanc();
   const large = useLargeText();
+  const { fontScale } = useWindowDimensions();
   // Increase Contrast draws the weigh-in dots at full strength.
   const contrast = useIncreaseContrast();
   const [width, setWidth] = useState(0);
-  const [active, setActive] = useState<number | null>(null);
-  const series = useMemo(() => points.slice(-days), [points, days]);
+  // The day read, by date, for the days it was read in: another range starts from its summary.
+  const view = calendar ? `${calendar.startDay}/${calendar.slots}` : 'last';
+  const [reading, setReading] = useState<{ date: string; view: string } | null>(null);
+  const active = reading?.view === view ? reading.date : null;
+  const setActive = (update: string | null | ((current: string | null) => string | null)) =>
+    setReading((current) => {
+      const before = current?.view === view ? current.date : null;
+      const date = typeof update === 'function' ? update(before) : update;
+      return date === null ? null : { date, view };
+    });
+  const { slots, series } = useMemo((): { slots: number; series: WeightChartPoint[] } => {
+    if (calendar) return { slots: calendar.slots, series: calendar.series };
+    const shown = days === undefined ? points : points.slice(-days);
+    return { slots: shown.length, series: shown.map((point, index) => ({ ...point, slot: index })) };
+  }, [points, days, calendar]);
+  const ticks = useMemo(() => (calendar && !compact ? weightChartTicks(calendar.startDay, calendar.slots) : []), [calendar, compact]);
 
   const geometry = useMemo(() => {
-    if (series.length < 2 || width <= 0) return null;
+    if (series.length === 0 || width <= 0) return null;
     const toUnit = (kg: number) => kgToUnit(kg, unit);
     const values = series.flatMap((point) => [
       toUnit(point.ewmaKg),
@@ -58,44 +90,72 @@ export function WeightChart({
     // At least 2 lb (1 kg) top to bottom, half that for the sparkline.
     const minSpan = (unit === 'lb' ? 2 : 1) / (compact ? 2 : 1);
     const y = linearScale(paddedDomain(values, 0.14, minSpan), [height - PAD_Y, PAD_Y]);
-    const x = (index: number) => xAtIndex(index, width, series.length, 'point');
-    const line = series.map((point, index) => ({ x: x(index), y: y(toUnit(point.ewmaKg)) }));
+    const x = (slot: number) => xAtIndex(slot, width, slots, 'point');
+    // Dots shrink as the days crowd together, so a year reads as a band around the line.
+    const radius = Math.max(1.25, Math.min(2.5, (width / Math.max(1, slots)) * 0.9));
+    const line = series.map((point) => ({ x: x(point.slot), y: y(toUnit(point.ewmaKg)) }));
     const dots = compact
       ? []
       : series.flatMap((point, index) =>
-          point.observedKg == null ? [] : [{ index, x: x(index), y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
+          point.observedKg == null ? [] : [{ index, x: line[index].x, y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
         );
-    return { line, path: monotonePath(line), dots };
-  }, [series, width, height, unit, compact]);
+    const axis = ticks.map((tick) => ({ ...tick, x: x(tick.slot) }));
+    return { line, path: monotonePath(line), dots, radius, axis };
+  }, [series, slots, width, height, unit, compact, ticks]);
 
-  if (series.length < 2) return null;
+  // Labels that would run into the one before or past the edge are left out.
+  const axisLabels = useMemo(() => {
+    if (!geometry) return [];
+    const char = AXIS_CHAR * Math.min(fontScale, AXIS_MAX_SCALE);
+    const shown: Array<{ slot: number; label: string; x: number }> = [];
+    let end = -Infinity;
+    for (const tick of geometry.axis) {
+      const right = tick.x + AXIS_GAP + tick.label.length * char;
+      if (tick.x < end + 8 || right > width) continue;
+      shown.push(tick);
+      end = right;
+    }
+    return shown;
+  }, [geometry, fontScale, width]);
 
+  // Without a calendar the chart needs two days; with one, an empty range still shows its days.
+  if (series.length < (calendar && !compact ? 0 : 2)) return null;
+
+  const first = series[0]?.slot ?? 0;
+  const indexOfActive = active === null ? -1 : series.findIndex((point) => point.date === active);
   const choose = (index: number) =>
     setActive((current) => {
-      if (current !== index) haptics.select();
-      return index;
+      const date = series[index].date;
+      if (current !== date) haptics.select();
+      return date;
     });
+  // The day under a finger, or the nearest one with the line, before its first day or after its last.
+  const indexAt = (x: number) => {
+    const slot = indexAtX(x, width, slots, 'point');
+    if (slot === null || series.length === 0) return null;
+    return Math.min(series.length - 1, Math.max(0, slot - first));
+  };
   const select = (x: number) => {
-    const index = indexAtX(x, width, series.length, 'point');
+    const index = indexAt(x);
     if (index !== null) choose(index);
   };
   // A tap on the day already read puts the summary back.
   const tap = (x: number) => {
-    const index = indexAtX(x, width, series.length, 'point');
+    const index = indexAt(x);
     if (index === null) return;
+    const date = series[index].date;
     setActive((current) => {
       haptics.select();
-      return current === index ? null : index;
+      return current === date ? null : date;
     });
   };
   // VoiceOver: the first swipe reads the latest day, then one day at a time.
   const step = (direction: 1 | -1) => {
+    if (series.length === 0) return;
     const last = series.length - 1;
-    setActive((current) => {
-      const next = current === null ? last : Math.min(last, Math.max(0, current + direction));
-      if (next !== current) haptics.select();
-      return next;
-    });
+    const next = indexOfActive === -1 ? last : Math.min(last, Math.max(0, indexOfActive + direction));
+    if (next !== indexOfActive) haptics.select();
+    setActive(series[next].date);
   };
   // A tap reads one day; holding then sliding reads day by day. Sliding
   // straight away is left to the page (scrolling, or iOS's swipe back).
@@ -113,32 +173,35 @@ export function WeightChart({
       .onEnd((event) => tap(event.x)),
   );
 
-  const selected = active !== null ? series[active] : null;
+  const selected = indexOfActive >= 0 ? series[indexOfActive] : null;
+  // A year or more back, the day names its year too.
+  const yearly = slots > 330;
   const readout = selected
-    ? `${format(parseISO(selected.date), 'EEE, MMM d')} · ${
+    ? `${format(parseISO(selected.date), yearly ? 'MMM d, yyyy' : 'EEE, MMM d')} · ${
         selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)} · ` : ''
       }trend ${kgToUnit(selected.ewmaKg, unit).toFixed(1)} ${unit}`
     : summary;
   // The same day in words. With no day chosen it reads the summary (the
-  // trend and its weekly rate), and the hint tells VoiceOver how to start.
+  // change and its weekly rate), and the hint tells VoiceOver how to start.
   const spokenReadout = selected
-    ? `${format(parseISO(selected.date), 'EEEE, MMMM d')}, ${
+    ? `${format(parseISO(selected.date), yearly ? 'MMMM d, yyyy' : 'EEEE, MMMM d')}, ${
         selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)} ${spokenUnit(unit)}, ` : ''
       }trend ${kgToUnit(selected.ewmaKg, unit).toFixed(1)} ${spokenUnit(unit)}`
     : speak(summary ?? '');
-  const activePoint = active !== null && geometry ? geometry.line[active] : null;
+  const activePoint = indexOfActive >= 0 && geometry ? geometry.line[indexOfActive] : null;
+  const axisHeight = Math.ceil(18 * Math.min(fontScale, AXIS_MAX_SCALE)) + AXIS_GAP;
 
   const chart = (
     <View
       style={{ height }}
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       accessible
-      accessibilityLabel={`Body weight trend, last ${series.length} days`}
+      accessibilityLabel={`Body weight trend, ${span ?? `last ${series.length} days`}`}
       {...(compact
         ? {}
         : {
             accessibilityRole: 'adjustable' as const,
-            accessibilityHint: 'Swipe up or down to read a day.',
+            accessibilityHint: series.length > 0 ? 'Swipe up or down to read a day.' : undefined,
             accessibilityValue: { text: spokenReadout },
             accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
             onAccessibilityAction: (event: AccessibilityActionEvent) => {
@@ -146,23 +209,25 @@ export function WeightChart({
               if (event.nativeEvent.actionName === 'decrement') step(-1);
             },
           })}>
-      {geometry ? (
+      {width > 0 ? (
         <Svg width={width} height={height} style={{ overflow: 'visible' }}>
           {compact ? null : <Line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke={c.hairline} strokeWidth={1} />}
-          {geometry.dots.map((dot) => (
+          {geometry?.dots.map((dot) => (
             <Circle
               key={dot.index}
               cx={dot.x}
               cy={dot.y}
-              r={2.5}
+              r={geometry.radius}
               fill={dot.outlier ? 'none' : c.graphite}
               stroke={dot.outlier ? c.graphite : 'none'}
               strokeWidth={1}
               opacity={contrast ? 1 : 0.6}
             />
           ))}
-          <Path d={geometry.path} stroke={c.ink} strokeWidth={compact ? 1.5 : 2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          {compact ? (
+          {geometry && geometry.line.length > 1 ? (
+            <Path d={geometry.path} stroke={c.ink} strokeWidth={compact ? 1.5 : 2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          ) : null}
+          {compact && geometry ? (
             <Circle cx={geometry.line[geometry.line.length - 1].x} cy={geometry.line[geometry.line.length - 1].y} r={3} fill={c.ink} />
           ) : null}
           {activePoint ? (
@@ -190,6 +255,19 @@ export function WeightChart({
         </BlancText>
       )}
       {compact ? chart : <GestureDetector gesture={gesture}>{chart}</GestureDetector>}
+      {ticks.length > 0 ? (
+        // The dates under the line, for sight; VoiceOver reads each day's date instead.
+        <View style={{ height: axisHeight }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
+          {axisLabels.map((tick) => (
+            <View key={tick.slot} style={{ position: 'absolute', left: tick.x, top: 0, flexDirection: 'row' }}>
+              <View style={{ width: 1, height: TICK, backgroundColor: c.hairline }} />
+              <BlancText variant="footnote" tone="graphite" maxFontSizeMultiplier={AXIS_MAX_SCALE} numberOfLines={1} style={{ marginLeft: AXIS_GAP - 1, marginTop: 1 }}>
+                {tick.label}
+              </BlancText>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }

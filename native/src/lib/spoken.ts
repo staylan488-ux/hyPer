@@ -60,6 +60,8 @@ export function speak(text: string): string {
     .replace(/ ?\/km\b/g, ' per kilometer')
     // "add ~2 sets"
     .replace(/~(\d)/g, 'about $1')
+    // A month's "avg 172.4 lb"
+    .replace(/\bavg\b/g, 'average')
     .replace(/↑\s*/g, '');
   for (const { pattern, one, many } of UNIT_PATTERNS) {
     spoken = spoken.replace(pattern, (_match, before: string, value: string) => `${before}${value} ${value === '1' ? one : many}`);

@@ -16,6 +16,11 @@ export function getYouPreviewState(): YouPreviewState | null {
   } catch { return state; }
 }
 
+/** Days before today with a sample weigh-in, newest first. */
+const SAMPLE_WEIGH_IN_DAYS = Array.from({ length: 210 }, (_, index) => index).filter(
+  (index) => index < 14 || (index % 7 !== 3 && index % 7 !== 5 && (index < 100 || index >= 110)),
+);
+
 export function buildYouFixtures(state: YouPreviewState, now = new Date()): Record<string, Record<string, unknown>[]> {
   const stamp = (days: number) => {
     const date = new Date(now);
@@ -34,10 +39,12 @@ export function buildYouFixtures(state: YouPreviewState, now = new Date()): Reco
       expenditure_kcal: 2600, expenditure_confidence: 'learning', expenditure_updated_at: stamp(1),
       created_at: stamp(30), updated_at: stamp(1),
     }],
-    body_weight_measurements: Array.from({ length: 14 }, (_, index) => ({
+    // Seven months of a slow gain: every morning for the last two weeks, most
+    // mornings before that, and ten days away in the middle.
+    body_weight_measurements: SAMPLE_WEIGH_IN_DAYS.map((index) => ({
       id: `you-weight-${index}`, user_id: PREVIEW_USER_ID, source: 'manual',
       external_id: `you-weight-${index}`, measured_at: stamp(index),
-      kilograms: Number((78.4 + index * 0.025 + [0, 0.2, -0.1, 0.1][index % 4]).toFixed(1)),
+      kilograms: Number((78.4 - index * 0.02 + [0, 0.2, -0.1, 0.1, -0.2, 0.3, -0.05][index % 7]).toFixed(1)),
       source_bundle: 'app.hyper', source_name: 'hyPer', created_at: stamp(index),
     })),
     whoop_connections: [{

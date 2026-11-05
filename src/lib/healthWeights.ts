@@ -40,6 +40,11 @@ export async function getBodyWeightHistory(userId: string, limit = 14): Promise<
   return (data || []) as BodyWeightMeasurement[];
 }
 
+/** Where getBodyWeightHistorySince's window starts: `days` days before `now`, as an ISO time. */
+export function bodyWeightWindowStart(days: number, now: Date = new Date()): string {
+  return new Date(now.getTime() - days * 24 * 60 * 60 * 1_000).toISOString();
+}
+
 /**
  * Weigh-ins from the last `days` calendar days. getBodyWeightHistory limits by
  * ROWS, so several weigh-ins in one day eat its window — the trend estimator
@@ -50,7 +55,7 @@ export async function getBodyWeightHistorySince(
   days: number,
   now: Date = new Date(),
 ): Promise<BodyWeightMeasurement[]> {
-  const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1_000).toISOString();
+  const since = bodyWeightWindowStart(days, now);
   const { data, error } = await supabase
     .from('body_weight_measurements')
     .select('*')
@@ -59,6 +64,40 @@ export async function getBodyWeightHistorySince(
     .order('measured_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data || []) as BodyWeightMeasurement[];
+}
+
+/** Rows per request when reading every weigh-in: the API's own cap. */
+export const BODY_WEIGHT_PAGE_SIZE = 1_000;
+// Years of several-a-day Apple Health readings still fit; a runaway loop doesn't.
+const BODY_WEIGHT_MAX_PAGES = 100;
+
+/**
+ * Every weigh-in, newest first, read a page at a time because one request
+ * returns at most BODY_WEIGHT_PAGE_SIZE rows. A row moved across a page
+ * boundary by a write mid-read is kept once.
+ */
+export async function getAllBodyWeights(userId: string, pageSize = BODY_WEIGHT_PAGE_SIZE): Promise<BodyWeightMeasurement[]> {
+  const rows: BodyWeightMeasurement[] = [];
+  const seen = new Set<string>();
+  for (let page = 0; page < BODY_WEIGHT_MAX_PAGES; page++) {
+    const from = page * pageSize;
+    const { data, error } = await supabase
+      .from('body_weight_measurements')
+      .select('*')
+      .eq('user_id', userId)
+      .order('measured_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const read = (data || []) as BodyWeightMeasurement[];
+    for (const row of read) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      rows.push(row);
+    }
+    if (read.length < pageSize) break;
+  }
+  return rows;
 }
 
 export async function getLatestBodyWeight(userId: string): Promise<BodyWeightMeasurement | null> {
