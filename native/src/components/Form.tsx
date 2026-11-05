@@ -2,7 +2,7 @@ import { DatePicker, Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { accessibilityLabel as swiftAccessibilityLabel, datePickerStyle, disabled as swiftDisabled, labelsHidden, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { SymbolView } from 'expo-symbols';
 import { Children, useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
-import { Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
+import { ActionSheetIOS, Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
 
 import { fieldLabel, speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -257,8 +257,10 @@ export function PickerRow({ label, value, mode, min, max, onChange, disabled }: 
 
 /**
  * A label and iOS's pull-down menu of choices, like a Settings row. The menu
- * carries the name for VoiceOver (one stop: "Type, Run"); at the
- * accessibility text sizes it sits under its label.
+ * carries the name for VoiceOver (one stop: "Type, Run"). At the
+ * accessibility text sizes the choice sits under its label as wrapping text
+ * and a tap lists the choices in an action sheet: iOS's menu button keeps its
+ * label on one line, so a long choice ran off the screen.
  */
 export function MenuRow({ label, value, options, onChange }: {
   label: string;
@@ -268,14 +270,34 @@ export function MenuRow({ label, value, options, onChange }: {
 }) {
   const c = useBlanc();
   const large = useLargeText();
+  if (large) {
+    const current = options.find((option) => option.value === value)?.label ?? value;
+    const choose = () => {
+      const labels = [...options.map((option) => option.label), 'Cancel'];
+      ActionSheetIOS.showActionSheetWithOptions({ title: label, options: labels, cancelButtonIndex: options.length }, (index) => {
+        const next = options[index];
+        if (!next || next.value === value) return;
+        haptics.select();
+        onChange(next.value);
+      });
+    };
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={speak(`${label}, ${current}`)}
+        accessibilityHint="Shows the choices"
+        onPress={choose}
+        style={({ pressed }) => [stackedRowStyle, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
+        <BlancText variant="body">{label}</BlancText>
+        <BlancText variant="body" tone="graphite">
+          {current}
+        </BlancText>
+      </Pressable>
+    );
+  }
   return (
-    <View
-      style={
-        large
-          ? { alignItems: 'flex-start', minHeight: 52, paddingVertical: 10, paddingLeft: 18, paddingRight: 8, gap: 4 }
-          : { flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }
-      }>
-      <BlancText variant="body" style={large ? undefined : { flex: 1 }} {...spokenByControl}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 52, paddingLeft: 18, paddingRight: 8 }}>
+      <BlancText variant="body" style={{ flex: 1 }} {...spokenByControl}>
         {label}
       </BlancText>
       <Host matchContents>

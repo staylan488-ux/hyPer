@@ -7,6 +7,7 @@ import { BlancText } from '~/components/BlancText';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
+import { useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { space } from '~/theme/blanc';
 
@@ -14,12 +15,16 @@ import { space } from '~/theme/blanc';
 export default function AdaptationScreen() {
   const profile = useAppStore((state) => state.nutritionProfile);
   const burn = expenditureSummary(profile);
+  const large = useLargeText();
   return (
     <>
       <Stack.Screen options={{ title: 'Daily burn' }} />
       <TabScroll>
         {burn.kcal !== null ? (
-          <View accessible style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: space.gutter, paddingTop: 12 }}>
+          // At the accessibility text sizes the words wrap below the capped figure.
+          <View
+            accessible
+            style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, paddingHorizontal: space.gutter, paddingTop: 12, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
             <BlancText variant="figure" size={64}>
               {formatWhole(burn.kcal)}
             </BlancText>

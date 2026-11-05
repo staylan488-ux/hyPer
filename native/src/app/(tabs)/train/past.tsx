@@ -82,9 +82,12 @@ export default function PastWorkoutScreen() {
     return (
       <>
         <Stack.Screen options={{ title: '' }} />
-        <BlancText variant="secondary" tone="graphite" style={{ margin: space.gutter }}>
-          This workout is no longer here.
-        </BlancText>
+        {/* In the screen's scroll view, so it sits below the header as the workout would. */}
+        <TabScroll>
+          <BlancText variant="secondary" tone="graphite" style={{ margin: space.gutter }}>
+            This workout is no longer here.
+          </BlancText>
+        </TabScroll>
       </>
     );
   }
