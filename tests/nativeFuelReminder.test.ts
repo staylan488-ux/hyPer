@@ -6,6 +6,7 @@ import { create } from 'zustand';
 
 import * as plan from '../native/src/lib/fuelReminderPlan';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { memoryStorage } from './memoryStorage';
 
 // The fuel reminder handed to iOS through the real hook, with a fake
 // expo-notifications that holds pending and shown notifications and, like
@@ -132,7 +133,7 @@ const response = (identifier: string, date: number, actionIdentifier = DEFAULT_A
 });
 
 beforeEach(() => {
-  localStorage.clear();
+  vi.stubGlobal('localStorage', memoryStorage());
   vi.useFakeTimers();
   vi.setSystemTime(new Date(2026, 10, 4, 13, 0));
   seedSettings({ enabled: true, minutes: 1200 });
@@ -178,6 +179,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 afterAll(() => {
