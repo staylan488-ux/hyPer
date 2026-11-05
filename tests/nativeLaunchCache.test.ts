@@ -172,7 +172,9 @@ describe('restoring the copy at launch', () => {
   it('holds the plan when the copy recorded a live workout', async () => {
     const modules = await load();
     const storage = savedCopy();
-    const training = { stamp: stamp('training'), body: { workout: { id: 'w1', created_at: '2026-11-04T12:00:00.000Z', date: DAY }, today: null } };
+    // Started an hour before now, in any time zone.
+    const startedAt = new Date(NOW.getTime() - 3_600_000).toISOString();
+    const training = { stamp: stamp('training'), body: { workout: { id: 'w1', created_at: startedAt, date: DAY }, today: null } };
     storage.values.set('hyper-launch:training', JSON.stringify(training));
     install(modules, storage);
     await signIn(modules);

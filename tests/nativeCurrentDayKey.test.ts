@@ -37,6 +37,8 @@ describe('the current day key', () => {
   it("is the clock's day, and moves on at midnight with nothing else changing", async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 10, 4, 23, 58));
+    // The store took its first day from the real clock when the module loaded.
+    accountData.useAccountDay.setState({ dayKey: '2026-11-04' });
     const host = document.createElement('div');
     const Day = () => createElement('span', null, accountData.useCurrentDayKey());
     root = createRoot(host);
