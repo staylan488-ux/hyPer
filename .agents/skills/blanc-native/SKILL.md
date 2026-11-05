@@ -414,7 +414,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   VoiceOver). Search's portion read holds a press off (`beginRead`) without
   holding the sheet: closing then still closes, while `beginBusy` lookups ask
   first. A save running (`beginSave`) refuses a press as well, since the tabs
-  hold still until it lands. Camera access turned off shows Open Settings
+  hold still until it lands, and so does a quick add left unconfirmed (its
+  retry would close with the meal). Camera access turned off shows Open Settings
   under the error. Train only switches tabs when nothing covers them and never
   starts a workout. One system picker at a time (`pickFoodPhoto`), none while a
   photo's action sheet is up (`showPhotoChoices`). Intents that open the app

@@ -7,7 +7,7 @@ import { ensureFoodRow } from '@/lib/foodPersistence';
 import { formatMeasurementAmount } from '@/lib/foodUnits';
 import { createMealIngredient, decodeMealComposition } from '@/lib/mealComposition';
 import { servingLabel } from '@/lib/nutritionLedger';
-import { createPendingEntryId, type PendingEntryId } from '@/lib/pendingEntryId';
+import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { chosenFoodLogSource } from '@/lib/saveNutritionEntry';
 import { filterSavedMeals, retireSavedMeal } from '@/lib/savedMeals';
 import { getSessionUserId } from '@/lib/sessionUser';
@@ -27,9 +27,9 @@ import { haptics } from '~/lib/haptics';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
 
-import { useLogger } from './context';
+import { useLogger, type QuickAddState } from './context';
 
-export type AddState = 'saving' | 'done' | 'error';
+export type AddState = QuickAddState;
 
 /** How many USDA searches and portions this session keeps. */
 const USDA_CACHE_LIMIT = 50;
@@ -333,8 +333,7 @@ function RoundButton({ symbol, label, busy, done, onPress }: {
  */
 export function useQuickAdd() {
   const logger = useLogger();
-  const [added, setAdded] = useState<Record<string, AddState>>({});
-  const pendingIds = useRef(new Map<string, PendingEntryId>());
+  const { quickAddStates: added, setQuickAddStates: setAdded, pendingQuickAdds: pendingIds } = logger;
   // `add` reads the sheet as last drawn from here, so it stays one function
   // and a list redraws only the row whose state changed.
   const drawn = useRef({ added, logger });
@@ -344,8 +343,6 @@ export function useQuickAdd() {
 
   const add = useCallback(async (key: string, food: Food, options: { servings?: number; source?: string } = {}) => {
     const { added: states, logger: sheet } = drawn.current;
-    const current = states[key];
-    if (current === 'saving' || current === 'done') return;
     const servings = options.servings ?? 1;
     if (sheet.purpose === 'ingredients') {
       try {
@@ -357,8 +354,11 @@ export function useQuickAdd() {
       }
       return;
     }
-    const pending = pendingIds.current.get(key) ?? createPendingEntryId();
-    pendingIds.current.set(key, pending);
+    const current = states[key];
+    if (current === 'saving' || current === 'done') return;
+    const release = sheet.beginSave();
+    const pending = pendingIds.get(key) ?? createPendingEntryId();
+    pendingIds.set(key, pending);
     setAdded((state) => ({ ...state, [key]: 'saving' }));
     const saved = await saveQuickAdd(food, {
       servings,
@@ -370,18 +370,20 @@ export function useQuickAdd() {
     if (!saved) {
       haptics.error();
       setAdded((state) => ({ ...state, [key]: 'error' }));
+      release();
       announce(`${food.name} not saved`);
       return;
     }
-    pendingIds.current.delete(key);
+    pendingIds.delete(key);
     haptics.success();
     setAdded((state) => ({ ...state, [key]: 'done' }));
+    release();
     // The row says so too, but VoiceOver stays on the + it pressed.
     announce(`${food.name} added`);
     // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
     void useFuelStore.getState().refresh();
-  }, []);
-  return { added, add, enabled: !logger.editing };
+  }, [pendingIds, setAdded]);
+  return { added: logger.purpose === 'ingredients' ? {} : added, add, enabled: !logger.editing };
 }
 
 /** Saved meals: filter, review, quick add; Edit to change or delete them. */

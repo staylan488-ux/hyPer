@@ -38,7 +38,11 @@ const release = vi.fn();
 const beginRead = vi.fn(() => release);
 const beginBusy = vi.fn(() => release);
 const chooseFood = vi.fn();
-const logger = { purpose: 'log', editing: null, beginBusy, beginRead, chooseFood, addIngredients: noop, groups: [], when: {} };
+const logger = {
+  purpose: 'log', editing: null, beginBusy, beginRead, beginSave: () => noop, chooseFood, addIngredients: noop, groups: [], when: {},
+  // Quick adds live on the sheet (#179), so a list keeps them across tabs.
+  quickAddStates: {}, setQuickAddStates: noop, pendingQuickAdds: new Map(),
+};
 
 const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType }>('fuel/FoodLists.tsx', {
   'expo-symbols': { SymbolView: Empty },

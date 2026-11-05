@@ -23,6 +23,7 @@ import {
 import { getFoodAnalysisMode } from '@/lib/foodTrial';
 import { nutritionGroupLabel } from '@/lib/nutritionGroups';
 import { logMacro } from '@/lib/nutritionMacros';
+import type { PendingEntryId } from '@/lib/pendingEntryId';
 import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { mealFromLoggedFoods } from '@/lib/savedMealFromLog';
 import { loadSavedMeals } from '@/lib/savedMeals';
@@ -46,7 +47,7 @@ import { sheetSnap, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { figureLayout } from '~/lib/motion';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
-import { LoggerContext, type ChosenMeta, type LoggerContextValue } from '~/fuel/context';
+import { LoggerContext, type ChosenMeta, type LoggerContextValue, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { emptyManual, manualFromFood, manualHasChanges, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
@@ -251,6 +252,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   // apart from lookups, so a lookup ending never lets go of a save.
   const [saveClaims, beginSave] = useClaims();
   const saving = saveClaims > 0;
+  const [quickAddStates, setQuickAddStates] = useState<Record<string, QuickAddState>>({});
+  const [pendingQuickAdds] = useState(() => new Map<string, PendingEntryId>());
+  const quickAddFailed = Object.values(quickAddStates).some((state) => state === 'error');
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
   // effect closes.
@@ -423,15 +427,22 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       setWhen,
       savedMeals,
       reloadSavedMeals,
-      chooseFood: (food, meta = null, servings) => setChosen({ food, meta, servings }),
+      chooseFood: (food, meta = null, servings) => {
+        if (!saving) setChosen({ food, meta, servings });
+      },
       addIngredients,
-      composeMeal: (food, editSaved) => startMeal(food, editSaved),
+      composeMeal: (food, editSaved) => {
+        if (!saving) startMeal(food, editSaved);
+      },
       complete,
       beginBusy,
       beginRead,
       beginSave,
+      quickAddStates,
+      setQuickAddStates,
+      pendingQuickAdds,
     }),
-    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave],
+    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave, saving, quickAddStates, pendingQuickAdds],
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
@@ -446,6 +457,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     (meal.name.trim() !== savingFrom.name.trim() || mealPartsKey(meal) !== mealPartsKey(savingFrom));
   const unsaved =
     savingChanged ||
+    quickAddFailed ||
     busy ||
     aiHasDraft(ai) ||
     (!gemini && (photo.items.length > 0 || Boolean(photo.photos.top || photo.photos.side))) ||
@@ -453,15 +465,17 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     (Boolean(meal) && storageFailed);
   useLeaveGuard(
     (unsaved || saving) && !closing,
-    busy
-      ? { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }
-      : estimate
-        ? { title: 'Discard this estimate?', message: 'You have not logged it yet.' }
-        : savingChanged
-          ? { title: 'Discard this meal?', message: 'It has not been saved.' }
-          : editing
-            ? { title: 'Discard your changes?', message: 'The entry stays as it was.' }
-            : { title: 'Discard this entry?', message: 'It has not been logged yet.' },
+    quickAddFailed
+      ? { title: 'Leave this unconfirmed save?', message: 'The food may already be in your log. Retry its + button to confirm it, or check your log before adding it again.' }
+      : busy
+        ? { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }
+        : estimate
+          ? { title: 'Discard this estimate?', message: 'You have not logged it yet.' }
+          : savingChanged
+            ? { title: 'Discard this meal?', message: 'It has not been saved.' }
+            : editing
+              ? { title: 'Discard your changes?', message: 'The entry stays as it was.' }
+              : { title: 'Discard this entry?', message: 'It has not been logged yet.' },
     { busy: saving },
   );
   // Closes once the guard has seen `closing`, as the other sheets do.
@@ -520,6 +534,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     if (next !== 'manual') setManual((current) => (current.barcodeBinding ? { ...current, barcodeBinding: null } : current));
   };
   const openTab = (next: Tab) => {
+    if (saving) return;
     haptics.select();
     showTab(next);
   };
@@ -547,8 +562,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       // a save running holds the tabs still (Manual would unmount mid-save): refused, never switched
       occupied: closing || busy || saving || readClaims > 0 || Boolean(chosen) || Boolean(meal && !paused) || tab === 'scan' || manualDescribed.current,
       holdsWork: unsaved,
+      // a quick add left unconfirmed is work too: logging the meal would close the sheet past its retry
       analysisDraftOnly:
-        (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) && !manualHasChanges(manual, manualBase, savedMeals) && !(meal && storageFailed),
+        (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) && !manualHasChanges(manual, manualBase, savedMeals) && !(meal && storageFailed) && !quickAddFailed,
       forNow: selectedKey === today() && !groupTouched.current,
     });
     if (answer === 'ignore') return;
@@ -594,10 +610,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const savedTab = tab === 'saved' ? (
     <SavedTab
       onNewSavedMeal={() => {
+        if (saving) return;
         loadManual({ ...emptyManual, saveAsReusable: true });
         setTab('manual');
       }}
       onEditSavedMeal={(saved) => {
+        if (saving) return;
         if (decodeMealComposition(saved.description)) {
           startMeal(saved, true);
           return;
@@ -734,7 +752,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
           {!chosen && !(meal && mealReview && !paused) ? (
             <Host matchContents={{ vertical: true }} style={{ marginHorizontal: 16, marginTop: 14 }}>
-              {/* Still while a save runs: Manual unmounts on a switch, losing a failure and its retry-safe ids. */}
+              {/* Keep a save's result visible on its original tab. */}
               <Picker
                 selection={tab}
                 onSelectionChange={(value: Tab) => openTab(value)}
