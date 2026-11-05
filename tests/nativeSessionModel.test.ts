@@ -466,6 +466,58 @@ describe('buildSessionModel with skipped movements', () => {
     expect(named(['Row', 'Curl'])).toBe('Skipped Row and Curl.');
     expect(named(['Row', 'Curl', 'Dip'])).toBe('Skipped 3 movements.');
   });
+
+  it('ends a movement early when it is skipped after 2 of 3 sets, keeping and counting the logged ones', () => {
+    const partly = workout([set(bench, 1, true), set(bench, 2, true), set(bench, 3, false), set(row, 1, false)]);
+    const model = buildSessionModel(partly, { split, plan: dayPlan([item(bench, 0, { skipped: true }), item(row, 1)]) }, null);
+    expect(model?.movements[0]).toMatchObject({ skipped: true, endedEarly: true, done: 2 });
+    // Both logged bench sets count; the third leaves the count and never comes up.
+    expect(model?.sets.map((entry) => entry.id)).toEqual(['bench-1', 'bench-2', 'row-1']);
+    expect(model?.doneCount).toBe(2);
+    expect(model?.current?.set.id).toBe('row-1');
+    expect(skippedLine(model!)).toBe('Ended Barbell Bench Press early.');
+  });
+
+  it('keeps a skip with nothing logged as skipped', () => {
+    const model = buildSessionModel(midSession(), { split, plan: rowSkipped }, null);
+    const skippedRow = model?.movements.find((movement) => movement.exerciseId === 'row');
+    expect(skippedRow).toMatchObject({ skipped: true, endedEarly: false, done: 0 });
+    expect(skippedLine(model!)).toBe('Skipped Barbell Row.');
+  });
+
+  it('shows an ended-early movement at once while the skip is still saving', () => {
+    const partly = workout([set(bench, 1, true), set(bench, 2, false), set(row, 1, false)]);
+    const model = buildSessionModel(partly, { split, skips: { bench: true } }, null);
+    expect(model?.movements[0]).toMatchObject({ skipped: true, endedEarly: true });
+    expect(model?.current?.set.id).toBe('row-1');
+  });
+
+  it('ends one of a superset early and leaves its partner to finish on its own', () => {
+    const paired = dayPlan([
+      item(bench, 0, { superset_group_id: 'g1', skipped: true }),
+      item(row, 1, { superset_group_id: 'g1' }),
+      item(curl, 2),
+    ]);
+    const sets = [set(bench, 1, true), set(bench, 2, false), set(row, 1, true), set(row, 2, false), set(curl, 1, false)];
+    const model = buildSessionModel(workout(sets, { split_day_id: null }), { split, plan: paired }, null);
+    expect(model?.movements[0]).toMatchObject({ skipped: true, endedEarly: true, done: 1 });
+    expect(model?.movements.map((movement) => movement.superset)).toEqual([null, null, null]);
+    expect(model?.current?.set.id).toBe('row-2');
+    expect(model?.current?.blocked).toBeNull();
+    expect(model?.sets.map((entry) => entry.id)).toEqual(['bench-1', 'row-1', 'row-2', 'curl-1']);
+  });
+
+  it('names skipped and ended-early movements apart for Finish', () => {
+    const line = skippedLine({
+      movements: [
+        { name: 'Row', skipped: true, endedEarly: false },
+        { name: 'Lat Pulldown', skipped: true, endedEarly: true },
+        { name: 'Curl', skipped: true, endedEarly: true },
+        { name: 'Dip', skipped: false, endedEarly: false },
+      ] as never,
+    });
+    expect(line).toBe('Skipped Row. Ended Lat Pulldown and Curl early.');
+  });
 });
 
 describe('mealForTime', () => {

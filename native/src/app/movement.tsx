@@ -93,6 +93,7 @@ export default function MovementSheet() {
 
 /** "Instead of Bench Press" for a swap, the superset, else the rep target. */
 function movementLine(movement: Movement): string {
+  if (movement.endedEarly) return `Ended early · ${movement.done} of ${movement.sets.length} sets`;
   if (movement.skipped) return 'Skipped for this workout';
   if (movement.substitutesFor) return `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`;
   if (movement.superset) return `Superset ${movement.superset.role} with ${movement.superset.partnerName}`;
@@ -314,13 +315,26 @@ function MovementDetail({
             />
             <Hairline />
             {/* Shows the change at once; the save follows, and says so if it fails. */}
+            {/* With a set logged, skipping ends the movement early and keeps those sets. */}
             <Row
-              title={movement.skipped ? 'Bring back' : 'Skip'}
-              accessibilityLabel={movement.skipped ? `Bring back ${movement.name}` : `Skip ${movement.name} for this workout`}
+              title={movement.skipped ? 'Bring back' : movement.done > 0 ? 'End early' : 'Skip'}
+              accessibilityLabel={
+                movement.skipped
+                  ? `Bring back ${movement.name}`
+                  : movement.done > 0
+                    ? `End ${movement.name} early for this workout, keeping ${movement.done} of ${movement.sets.length} sets`
+                    : `Skip ${movement.name} for this workout`
+              }
               onPress={() => {
                 void setSkipped(workoutId, movement, !movement.skipped);
                 // The row's words change under VoiceOver's focus.
-                announce(movement.skipped ? `${movement.name} brought back` : `${movement.name} skipped for this workout`);
+                announce(
+                  movement.skipped
+                    ? `${movement.name} brought back`
+                    : movement.done > 0
+                      ? `${movement.name} ended early for this workout`
+                      : `${movement.name} skipped for this workout`,
+                );
               }}
             />
           </Label>

@@ -43,6 +43,11 @@ export type Movement = {
    * sets left can be skipped.
    */
   skipped: boolean;
+  /**
+   * Skipped after at least one set was logged: the movement ends there, its
+   * logged sets kept and counted. It reads as ended early, not skipped.
+   */
+  endedEarly: boolean;
 };
 
 export type SessionModel = {
@@ -198,6 +203,7 @@ export function buildSessionModel(
         ? { groupId: flow.groupId, role: flow.role, partnerId: flow.partnerExerciseId, partnerName: names.get(flow.partnerExerciseId) ?? 'Exercise' }
         : null,
       skipped: skipped.has(exerciseId),
+      endedEarly: skipped.has(exerciseId) && sets.some((set) => set.completed),
     };
   });
 
@@ -248,11 +254,23 @@ export function afterLoggedSet(
   return { nextExerciseId: next?.exercise_id ?? null, rest: !flow || flow.role === 'B' };
 }
 
-/** What Finish says about skipped movements: their names, or how many. */
-export function skippedLine(session: Pick<SessionModel, 'movements'>): string | null {
-  const names = session.movements.filter((movement) => movement.skipped).map((movement) => movement.name);
+/** "Skipped Row.", "Ended Row and Curl early.", or how many. */
+function namesLine(names: string[], verb: string, after = ''): string | null {
   if (names.length === 0) return null;
-  if (names.length === 1) return `Skipped ${names[0]}.`;
-  if (names.length === 2) return `Skipped ${names[0]} and ${names[1]}.`;
-  return `Skipped ${names.length} movements.`;
+  if (names.length === 1) return `${verb} ${names[0]}${after}.`;
+  if (names.length === 2) return `${verb} ${names[0]} and ${names[1]}${after}.`;
+  return `${verb} ${names.length} movements${after}.`;
+}
+
+/**
+ * What Finish says about skipped movements: their names, or how many. One
+ * skipped after a set was logged is named as ended early instead.
+ */
+export function skippedLine(session: Pick<SessionModel, 'movements'>): string | null {
+  const marked = session.movements.filter((movement) => movement.skipped);
+  const lines = [
+    namesLine(marked.filter((movement) => !movement.endedEarly).map((movement) => movement.name), 'Skipped'),
+    namesLine(marked.filter((movement) => movement.endedEarly).map((movement) => movement.name), 'Ended', ' early'),
+  ].filter(Boolean);
+  return lines.length > 0 ? lines.join(' ') : null;
 }
