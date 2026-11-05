@@ -12,8 +12,15 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   shared code the app imports. The Vercel project `hy-per` that hosted the web
   app no longer builds (`vercel.json` turns its Git deployments off); its last
   web build stays online until the project is deleted in Vercel.
-- TestFlight: 2.0.0 build 65, built from main at 5072efb (through PR #170)
-  on 2026-11-04 UTC, is the latest upload; the Team group gets every build.
+- TestFlight: 2.0.3 build 68, built from main at 24ba2fe (through PR #180)
+  on 2026-11-04 Pacific, is the latest upload; the Team group gets every
+  build. 2.0.2 build 67 (main at 83f47a4, through #179) came before it.
+- 2026-11-04 merges, in order: #178 (the bug hunt #175, accessibility #174
+  and design review #177 stacked; #174, #175 and #177 closed as merged with
+  it), #179 (three fixes from a Codex review of #178), #176 (Snap a meal,
+  instant launch, Fuel reminder, with four fixes from a Codex review of it
+  added on top) and #180 (End early). The entries below for those branches
+  describe work that is now on main.
 - Ship pipeline: since PR #156, `scripts/ship.sh` hands over to the build
   clone's own copy and cleans up after every run. The running bot keeps its old
   code until it is restarted with `scripts/ship-bot/install-launchd.sh` (not
@@ -26,6 +33,32 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   models and serves only a device set to the worker.
 
 ## Open items
+
+- 2026-11-04: review follow-ups, all on main.
+  - #179, from a Codex review of #178: a saved food's barcode follows a
+    retried edit whose first answer was lost, and the retry record survives a
+    relaunch (on-device storage; same-device retries only); History's "beat
+    last time" compares only with sessions that started earlier (a missing
+    start time leaves out the whole day); quick-add holds the Log food sheet
+    while it saves and keeps its retry ids across tabs.
+  - On #176, from a Codex review: program delete, day removal and program
+    saves wait for the workout read (`workoutLoadedForUserId`), so a launch
+    from the phone's copy can't strand a live workout; a confirmed food write
+    withdraws the Fuel reminder until totals read again
+    (`totalsNeedRefresh`); Snap a meal logs at the press's time (`atMs`,
+    used when under 60 s old). Simulator (sample data): launch, Snap a meal
+    into the AI tab, logging a set, Finish, Program and Log food.
+  - Left from that review: two native Snap a meal presses at the same moment
+    can lose one (`HyperLaunchStore.swift` reads then removes without a
+    lock); a reminder may be planned twice after travelling east
+    (`fuelReminderPlan.ts`, unconfirmed, check on a phone first).
+- 2026-11-04: End early (#180, the owner's ask). A movement with logged sets
+  reads End early instead of Skip, and "Ended early · 2 of 3" once ended;
+  Finish names the two kinds apart. Wording only: logged sets were already
+  kept and counted, and `removeUnloggedSets` removes only unlogged ones.
+  Simulator (sample data): one of three sets logged, then ended early. Not
+  seen: the End early chip itself (the notification prompt covered the card)
+  and its fit at large text sizes.
 
 - PR #158 was checked with the web suite, lint, build and native `tsc`; the
   widget's Swift and the changed screens were not built or run in a simulator.
