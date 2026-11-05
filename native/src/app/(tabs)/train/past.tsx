@@ -66,16 +66,17 @@ export default function PastWorkoutScreen() {
   const exerciseKey = movements.map((movement) => movement.exerciseId).sort().join(',');
   const workoutId = workout?.id ?? null;
   const workoutDate = workout?.date ?? null;
+  const workoutStartedAt = workout?.created_at ?? null;
   useEffect(() => {
     if (!userId || !workoutId || !workoutDate || !exerciseKey) return;
     let on = true;
-    void fetchPreviousSetTargets({ userId, workoutId, date: workoutDate, exerciseIds: exerciseKey.split(',') }).then((result) => {
+    void fetchPreviousSetTargets({ userId, workoutId, date: workoutDate, beforeCreatedAt: workoutStartedAt, exerciseIds: exerciseKey.split(',') }).then((result) => {
       if (on && result) setPrevious(result);
     });
     return () => {
       on = false;
     };
-  }, [userId, workoutId, workoutDate, exerciseKey]);
+  }, [userId, workoutId, workoutDate, workoutStartedAt, exerciseKey]);
 
   if (!workout) {
     return (

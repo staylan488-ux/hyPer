@@ -4,6 +4,7 @@ const database = vi.hoisted(() => {
   type Result = { data: unknown; error: { message: string } | null };
   const state = {
     results: {} as Record<string, Result>,
+    rows: null as Record<string, Record<string, unknown>[]> | null,
     calls: [] as Array<{ table: string; chain: Array<[string, ...unknown[]]> }>,
   };
 
@@ -18,6 +19,7 @@ const database = vi.hoisted(() => {
     eq(...args: unknown[]) { return this.record('eq', ...args); }
     neq(...args: unknown[]) { return this.record('neq', ...args); }
     lte(...args: unknown[]) { return this.record('lte', ...args); }
+    lt(...args: unknown[]) { return this.record('lt', ...args); }
     in(...args: unknown[]) { return this.record('in', ...args); }
     order(...args: unknown[]) { return this.record('order', ...args); }
     limit(...args: unknown[]) { return this.record('limit', ...args); }
@@ -25,7 +27,27 @@ const database = vi.hoisted(() => {
       onfulfilled?: ((value: Result) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
     ): PromiseLike<TResult1 | TResult2> {
-      return Promise.resolve(state.results[this.table] ?? { data: [], error: null }).then(onfulfilled, onrejected);
+      if (!state.rows) return Promise.resolve(state.results[this.table] ?? { data: [], error: null }).then(onfulfilled, onrejected);
+      let rows = [...(state.rows[this.table] ?? [])];
+      for (const [method, column, value] of this.chain) {
+        const key = String(column);
+        if (method === 'eq') rows = rows.filter((row) => row[key] === value);
+        if (method === 'neq') rows = rows.filter((row) => row[key] !== value);
+        if (method === 'in') rows = rows.filter((row) => (value as unknown[]).includes(row[key]));
+        if (method === 'lt') rows = rows.filter((row) => row[key] != null && String(row[key]) < String(value));
+        if (method === 'lte') rows = rows.filter((row) => row[key] != null && String(row[key]) <= String(value));
+      }
+      const orders = this.chain.filter(([method]) => method === 'order');
+      rows.sort((a, b) => {
+        for (const [, column, options] of orders) {
+          const comparison = String(a[String(column)]).localeCompare(String(b[String(column)]));
+          if (comparison) return (options as { ascending: boolean }).ascending ? comparison : -comparison;
+        }
+        return 0;
+      });
+      const limit = this.chain.find(([method]) => method === 'limit')?.[1];
+      if (typeof limit === 'number') rows = rows.slice(0, limit);
+      return Promise.resolve({ data: rows, error: null }).then(onfulfilled, onrejected);
     }
   }
 
@@ -155,7 +177,44 @@ describe('fetchPreviousSetTargets', () => {
 
   beforeEach(() => {
     database.state.results = {};
+    database.state.rows = null;
     database.state.calls = [];
+  });
+
+  it('uses only strictly earlier sessions for morning and evening history, before the query limit', async () => {
+    const workout = (id: string, date: string, time: string) => ({ id, user_id: 'user-1', date, created_at: `${date}T${time}:00.000Z` });
+    const workouts = [
+      ...Array.from({ length: 31 }, (_, index) => workout(`later-${index}`, params.date, '21:00')),
+      workout('evening', params.date, '19:00'),
+      workout('morning', params.date, '08:00'),
+      workout('a-simultaneous', params.date, '08:00'),
+      workout('yesterday', '2026-09-25', '20:00'),
+      workout('older', '2026-09-24', '20:00'),
+    ];
+    database.state.rows = {
+      workouts,
+      sets: workouts.map((workout) => ({ ...row({ workout_id: workout.id, weight: workout.id === 'yesterday' ? 180 : workout.id === 'morning' ? 190 : 220 }), completed: true })),
+    };
+    const morning = await fetchPreviousSetTargets({ ...params, workoutId: 'morning', beforeCreatedAt: '2026-09-26T08:00:00.000Z' });
+    expect(morning?.bench[1].weight).toBe(180);
+    const evening = await fetchPreviousSetTargets({ ...params, workoutId: 'evening', beforeCreatedAt: '2026-09-26T19:00:00.000Z' });
+    expect(evening?.bench[1].weight).toBe(190);
+    // Equal start times keep the same deterministic order regardless of database row order.
+    database.state.rows.workouts.reverse();
+    const reordered = await fetchPreviousSetTargets({ ...params, workoutId: 'evening', beforeCreatedAt: '2026-09-26T19:00:00.000Z' });
+    expect(reordered).toEqual(evening);
+  });
+
+  it('uses earlier dates only when a historical session has no recorded start time', async () => {
+    database.state.rows = {
+      workouts: [
+        { id: 'evening', user_id: 'user-1', date: params.date, created_at: '2026-09-26T19:00:00.000Z' },
+        { id: 'yesterday', user_id: 'user-1', date: '2026-09-25', created_at: '2026-09-25T19:00:00.000Z' },
+      ],
+      sets: [row({ workout_id: 'evening', weight: 220 }), row({ workout_id: 'yesterday', weight: 180 })].map((set) => ({ ...set, completed: true })),
+    };
+    const targets = await fetchPreviousSetTargets({ ...params, beforeCreatedAt: null });
+    expect(targets?.bench[1].weight).toBe(180);
   });
 
   it('keeps the query shape and groups the returned sets', async () => {
@@ -178,6 +237,8 @@ describe('fetchPreviousSetTargets', () => {
           ['lte', 'date', '2026-09-26'],
           ['neq', 'id', 'current'],
           ['order', 'date', { ascending: false }],
+          ['order', 'created_at', { ascending: false }],
+          ['order', 'id', { ascending: false }],
           ['limit', 30],
         ],
       },

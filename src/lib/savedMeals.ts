@@ -130,56 +130,77 @@ function boundBarcode(barcode: SavedMealBarcode | null | undefined): BoundBarcod
   return barcode?.external_source && barcode.external_id ? { external_source: barcode.external_source, external_id: barcode.external_id } : null;
 }
 
-// Barcodes a failed replace may have left on no row, by `${userId}:${oldMealId}`.
-// Kept here, not in an editor, so the next try of that meal from either editor finds it.
-const lostBarcodes = new Map<string, BoundBarcode>();
+// Written before releasing a barcode. Expo's SQLite localStorage keeps this
+// small, owner-scoped retry record across editor closes and app relaunches.
+const barcodeRecoveryKey = (userId: string, mealId: string) => `hyper:saved-meal-barcode:${userId}:${mealId}`;
+
+function clearBarcodeRecovery(key: string) {
+  try { globalThis.localStorage?.removeItem(key); } catch { /* Retry can still reconcile the holder. */ }
+}
 
 /**
- * Replaces a saved meal with new values for future logs: inserts the new meal,
- * with the old one's serving (250 g, 6 piece) and barcode, then retires the old
- * one (past logs keep pointing at it). When retiring fails the new meal still
- * exists, so the caller warns that both are listed.
- *
- * A failure that may leave the barcode on no row keeps it, and the next try of
- * the same meal puts it on the new meal.
+ * Inserts new nutrition values and retires the previous rows, preserving past
+ * logs. A retry reconciles the actual barcode holder, including an INSERT that
+ * committed without returning its response. Recovery is local to this device;
+ * these separate writes do not provide atomic edits across multiple devices.
  */
 export async function replaceSavedMeal(
   userId: string,
   oldMealId: string,
   values: OneServingFoodValues,
 ): Promise<{ id: string | null; retireFailed: boolean }> {
-  const key = `${userId}:${oldMealId}`;
-  const held = lostBarcodes.get(key) ?? null;
-  const failed = (lost: BoundBarcode | null) => {
-    if (lost) lostBarcodes.set(key, lost);
-    else lostBarcodes.delete(key);
-    return { id: null, retireFailed: false };
-  };
-  const { data: old, error: readError } = await supabase
-    .from('foods')
-    .select('serving_size, serving_unit, external_source, external_id')
-    .eq('id', oldMealId)
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (readError) return failed(held);
-  const row = old as ({ serving_size: number | string | null; serving_unit: string | null } & SavedMealBarcode) | null;
-  const onRow = boundBarcode(row);
-  const barcode = onRow ?? held;
-  // A barcode belongs to one row (idx_foods_external_identity), so the old row lets go of it first.
-  // An error may be a lost answer to a release that landed, so the barcode is kept; the row's own still wins next time.
-  if (onRow && (await setBarcode(userId, oldMealId, { external_source: null, external_id: null })).error) return failed(onRow);
-  const { id } = await insertSavedMeal(userId, values, {
-    serving_size: Number(row?.serving_size) || 1,
-    serving_unit: row?.serving_unit || 'serving',
-    ...barcode,
-  });
-  if (!id) {
-    if (!barcode) return failed(null);
-    const { error } = await setBarcode(userId, oldMealId, barcode);
-    // A unique clash (23505) means another row holds the barcode, so it is not lost.
-    return failed(error && error.code !== '23505' ? barcode : null);
+  const key = barcodeRecoveryKey(userId, oldMealId);
+  const failed = { id: null, retireFailed: false };
+  try {
+    const raw = globalThis.localStorage?.getItem(key);
+    const held = raw ? boundBarcode(JSON.parse(raw)) : null;
+    const { data: old, error: readError } = await supabase
+      .from('foods')
+      .select('serving_size, serving_unit, external_source, external_id')
+      .eq('id', oldMealId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (readError) return failed;
+    const row = old as ({ serving_size: number | string | null; serving_unit: string | null } & SavedMealBarcode) | null;
+    const onRow = boundBarcode(row);
+    const barcode = onRow ?? held;
+    let holderId: string | null = onRow ? oldMealId : null;
+    if (barcode) {
+      // If durable recovery cannot be saved, leave the server untouched.
+      if (!globalThis.localStorage) return failed;
+      globalThis.localStorage.setItem(key, JSON.stringify(barcode));
+      if (!onRow) {
+        const { data: holder, error } = await supabase.from('foods')
+          .select('id').eq('user_id', userId)
+          .eq('external_source', barcode.external_source).eq('external_id', barcode.external_id)
+          .maybeSingle();
+        if (error) return failed;
+        holderId = holder?.id ?? null;
+      }
+      // A barcode belongs to one row. A failed release may still have landed;
+      // keep the durable record until a later retry verifies the actual holder.
+      if (holderId && (await setBarcode(userId, holderId, { external_source: null, external_id: null })).error) return failed;
+    }
+    const { id } = await insertSavedMeal(userId, values, {
+      serving_size: Number(row?.serving_size) || 1,
+      serving_unit: row?.serving_unit || 'serving',
+      ...barcode,
+    });
+    if (!id) {
+      if (barcode) {
+        const { error } = await setBarcode(userId, holderId ?? oldMealId, barcode);
+        // 23505 can mean our INSERT committed: retain recovery and reconcile
+        // that holder on retry instead of saving a barcode-less replacement.
+        if (!error && (!holderId || holderId === oldMealId)) clearBarcodeRecovery(key);
+      }
+      return failed;
+    }
+    const { error } = await retireSavedMeal(userId, oldMealId);
+    const abandoned = holderId && holderId !== oldMealId ? await retireSavedMeal(userId, holderId) : null;
+    clearBarcodeRecovery(key);
+    return { id, retireFailed: Boolean(error || abandoned?.error) };
+  } catch {
+    // Storage or transport exceptions must leave the editor retryable too.
+    return failed;
   }
-  lostBarcodes.delete(key);
-  const { error } = await retireSavedMeal(userId, oldMealId);
-  return { id, retireFailed: Boolean(error) };
 }
