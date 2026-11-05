@@ -14,6 +14,7 @@ import * as nutritionWizard from '@/lib/nutritionWizard';
 import * as settingsUx from '@/lib/settingsUx';
 import * as weightDisplayCore from '@/lib/weightDisplayCore';
 import * as weightHistory from '@/lib/weightHistory';
+import * as weightTrend from '@/lib/weightTrend';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -566,6 +567,7 @@ type Seen = {
   rows?: RowSeen[];
   pickers?: Array<{ selection: string; onSelectionChange: (next: string) => void }>;
   sections?: Array<{ title: string; note?: string }>;
+  scrolls?: Array<((event: unknown) => void) | undefined>;
 };
 type YouWeights = YouModule & {
   loadWeights: (options?: { all?: boolean }) => Promise<void>;
@@ -606,10 +608,11 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     'date-fns': dateFns,
     'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
     'react-native': { ActivityIndicator: () => null, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
-    'react-native-reanimated': { default: { View: Wrap } },
+    'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
     '@/lib/bodyWeightSummary': bodyWeightSummary,
     '@/lib/weightDisplayCore': weightDisplayCore,
     '@/lib/weightHistory': weightHistory,
+    '@/lib/weightTrend': weightTrend,
     '~/components/BlancText': { BlancText: text },
     '~/components/Capsule': { Capsule: () => null },
     '~/components/Label': { Label: Wrap },
@@ -621,7 +624,12 @@ function weightScreenImports(you: YouModule, seen: Seen) {
         return createElement(Fragment, null, props.children);
       },
     },
-    '~/components/TabScroll': { TabScroll: Wrap },
+    '~/components/TabScroll': {
+      TabScroll: (props: PropsWithChildren<{ onScroll?: (event: unknown) => void }>) => {
+        seen.scrolls?.push(props.onScroll);
+        return createElement(Fragment, null, props.children);
+      },
+    },
     '~/components/WeighInRows': weighInRows,
     '~/components/WeightChart': { WeightChart: (props: ChartProps) => { seen.charts?.push(props); return null; } },
     '~/lib/accountData': { useCurrentDayKey: clockKey },
@@ -682,7 +690,8 @@ describe('Body weight chart', () => {
     const everything = charts.at(-1)!.calendar!;
     expect(everything.startDay).toBe(dateFns.format(new Date('2026-05-01T15:00:00Z'), 'yyyy-MM-dd'));
     expect(everything.series.at(-1)!.date).toBe(dateFns.format(new Date('2026-11-03T15:00:00Z'), 'yyyy-MM-dd'));
-    expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May [0-9]+/);
+    // The rate beside the change is the same days' average.
+    expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May [0-9]+\u00a0· \+0\.\d\d lb\/wk$/);
   });
 
   it('says when the chosen range has no weigh-ins', async () => {
@@ -731,8 +740,34 @@ describe('All weigh-ins', () => {
     await mount(createElement(loadWeighInsScreen(you, { sections, rows })));
     const months = sections.slice(-3);
     expect(months.map((month) => month.title)).toEqual(['November', 'October', 'December 2025']);
-    expect(months[1].note).toBe(`avg ${weightDisplayCore.formatWeight(80, 'lb')} lb`);
+    // Kept on one line at the largest text sizes.
+    expect(months[1].note).toBe(`avg\u00a0${weightDisplayCore.formatWeight(80, 'lb')}\u00a0lb`);
     expect(new Set(rows.map((row) => row.title)).size).toBe(4);
+  });
+});
+
+describe('All weigh-ins with a long history', () => {
+  afterEach(() => { clock.key = ''; });
+
+  it('opens with about a screenful of rows and adds more as the end comes near', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue(
+      Array.from({ length: 200 }, (_, index) => weighIn(`w${index}`, 80, dateFns.subDays(new Date(2026, 10, 5, 8), index).toISOString())),
+    );
+    const rows: RowSeen[] = [];
+    const scrolls: NonNullable<Seen['scrolls']> = [];
+    await mount(createElement(loadWeighInsScreen(you, { rows, scrolls })));
+    const drawn = () => new Set(rows.slice(-400).map((row) => row.detail)).size;
+    rows.length = 0;
+    await act(async () => { root!.render(createElement(loadWeighInsScreen(you, { rows, scrolls }))); });
+    expect(drawn()).toBe(16);
+
+    // Scrolled to within the last screen or so of what is drawn.
+    const nearEnd = { nativeEvent: { contentOffset: { y: 400 }, contentSize: { height: 1_500 }, layoutMeasurement: { height: 800 } } };
+    rows.length = 0;
+    await act(async () => { scrolls.at(-1)!(nearEnd); });
+    expect(drawn()).toBe(56);
   });
 });
 

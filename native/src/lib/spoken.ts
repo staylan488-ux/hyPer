@@ -50,6 +50,8 @@ const UNIT_PATTERNS = UNITS.map(({ written, one, many, space }) => ({
  */
 export function speak(text: string): string {
   let spoken = text
+    // A no-break space (it keeps "avg 172.4 lb" on one line) reads as a space.
+    .replace(/\u00a0/g, ' ')
     .replace(/\s*·\s*/g, ', ')
     .replace(/(\d)\s*[–—]\s*(\d)/g, '$1 to $2')
     .replace(/(\d) \/ (\d)/g, '$1 of $2')

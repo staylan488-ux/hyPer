@@ -1,7 +1,7 @@
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { formatWeight } from '@/lib/weightDisplayCore';
 import { weighInsByMonth } from '@/lib/weightHistory';
@@ -20,10 +20,13 @@ import { space } from '~/theme/blanc';
 
 const readAll = () => loadWeights({ all: true });
 
-// Rows drawn at first, and added each time the end of the list comes near:
-// years of weigh-ins don't all render at once.
-const ROWS_PER_PAGE = 90;
-const NEAR_END = 900;
+// Years of weigh-ins don't render at once. The screen opens with about a
+// screenful (each row is a swipe row with its own menu, and iOS waits for the
+// first draw before sliding the screen in), and more rows are added well
+// before the end comes into view.
+const FIRST_ROWS = 16;
+const ROWS_PER_PAGE = 40;
+const NEAR_END = 1_200;
 
 /**
  * All weigh-ins: every one, newest first, by month, each month with its
@@ -40,7 +43,7 @@ export default function WeighInsScreen() {
   const todayKey = useCurrentDayKey();
   const months = useMemo(() => weighInsByMonth(everything ?? [], todayKey), [everything, todayKey]);
   const { refreshing, refresh } = usePullRefresh(readAll);
-  const [budget, setBudget] = useState(ROWS_PER_PAGE);
+  const [budget, setBudget] = useState(FIRST_ROWS);
   // Only older weigh-ins are missing when the full read failed; a failed refresh keeps the list.
   const note = allFailed
     ? all
@@ -53,9 +56,8 @@ export default function WeighInsScreen() {
     void readAll();
   }, []);
 
-  // Whole months, until the rows drawn reach the budget.
-  const { shown, rows } = useMemo(() => wholeMonths(months, budget), [months, budget]);
-  const more = shown.length < months.length;
+  // The newest rows, up to the budget; a month's average is always its whole month's.
+  const { shown, rows, more } = useMemo(() => firstRows(months, budget), [months, budget]);
   const onScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (!more) return;
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -107,14 +109,18 @@ export default function WeighInsScreen() {
           </Label>
         ) : (
           shown.map((month, index) => (
-            <Animated.View key={month.key} exiting={blockExit} layout={rowLayout}>
-              <Section
-                title={month.title}
-                note={month.averageKg === null ? undefined : `avg ${formatWeight(month.averageKg, unit)} ${unit}`}
-                style={index === 0 ? { marginTop: 12 } : undefined}>
-                <WeighInRows entries={month.entries} unit={unit} todayKey={todayKey} />
-              </Section>
-            </Animated.View>
+            // A month drawn with the screen or added while scrolling appears as it is; a weigh-in logged later still fades in.
+            <LayoutAnimationConfig key={month.key} skipEntering>
+              <Animated.View exiting={blockExit} layout={rowLayout}>
+                <Section
+                  title={month.title}
+                  // Kept on one line: "avg 172.4 lb" never breaks inside.
+                  note={month.averageKg === null ? undefined : `avg\u00a0${formatWeight(month.averageKg, unit)}\u00a0${unit}`}
+                  style={index === 0 ? { marginTop: 12 } : undefined}>
+                  <WeighInRows entries={month.entries} unit={unit} todayKey={todayKey} />
+                </Section>
+              </Animated.View>
+            </LayoutAnimationConfig>
           ))
         )}
       </TabScroll>
@@ -122,13 +128,16 @@ export default function WeighInsScreen() {
   );
 }
 
-/** The first months whose rows reach `budget`, and how many rows they hold. */
-function wholeMonths<M extends { entries: unknown[] }>(months: M[], budget: number) {
+/** The months holding the newest `budget` rows (the last one cut short), how many rows that is, and whether any are left out. */
+function firstRows<M extends { entries: unknown[] }>(months: M[], budget: number) {
+  const shown: M[] = [];
   let rows = 0;
-  let count = 0;
-  while (count < months.length && rows < budget) {
-    rows += months[count].entries.length;
-    count += 1;
+  for (const month of months) {
+    if (rows >= budget) break;
+    const entries = month.entries.slice(0, budget - rows);
+    shown.push(entries.length === month.entries.length ? month : { ...month, entries });
+    rows += entries.length;
   }
-  return { shown: months.slice(0, count), rows };
+  const total = months.reduce((sum, month) => sum + month.entries.length, 0);
+  return { shown, rows, more: rows < total };
 }

@@ -8,6 +8,7 @@ import {
   weightChangeLabel,
   weightChartTicks,
   weightChartWindow,
+  weightRangeKgPerWeek,
 } from '@/lib/weightHistory';
 
 const supabaseMock = vi.hoisted(() => ({ from: vi.fn() }));
@@ -123,6 +124,21 @@ describe('the change across a range', () => {
 
   it('has nothing to say about a single day', () => {
     expect(weightChangeLabel(buildWeightTrend([weighIn('a', '2026-11-04', 80)]).points, 'lb')).toBeNull();
+  });
+});
+
+describe('the weekly rate across a range', () => {
+  it('averages the trend over the days shown', () => {
+    const trend = buildWeightTrend([weighIn('b', '2026-11-04', 80), weighIn('a', '2026-08-01', 76)]);
+    const days = 95;
+    const expected = ((trend.points.at(-1)!.ewmaKg - trend.points[0].ewmaKg) / days) * 7;
+    expect(weightRangeKgPerWeek(trend.points)).toBeCloseTo(expected);
+    expect(weightRangeKgPerWeek(trend.points)!).toBeGreaterThan(0);
+  });
+
+  it('leaves out a rate under two weeks', () => {
+    const trend = buildWeightTrend([weighIn('b', '2026-11-04', 80), weighIn('a', '2026-10-25', 79)]);
+    expect(weightRangeKgPerWeek(trend.points)).toBeNull();
   });
 });
 

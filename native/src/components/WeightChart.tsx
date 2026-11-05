@@ -15,6 +15,10 @@ import { useBlanc } from '~/theme/blanc';
 import { BlancText } from './BlancText';
 
 const PAD_Y = 8;
+// The full chart's days start and end this far in, so the first and last
+// day's dots (and the chosen day's ring) draw whole: iOS clips the drawing
+// to its frame.
+const PAD_X = 6;
 // The date axis: a short tick hanging from the baseline, its label beside it.
 const TICK = 5;
 const AXIS_GAP = 4;
@@ -80,6 +84,8 @@ export function WeightChart({
   }, [points, days, calendar]);
   const ticks = useMemo(() => (calendar && !compact ? weightChartTicks(calendar.startDay, calendar.slots) : []), [calendar, compact]);
 
+  const padX = compact ? 0 : PAD_X;
+  const plotWidth = Math.max(1, width - 2 * padX);
   const geometry = useMemo(() => {
     if (series.length === 0 || width <= 0) return null;
     const toUnit = (kg: number) => kgToUnit(kg, unit);
@@ -90,9 +96,9 @@ export function WeightChart({
     // At least 2 lb (1 kg) top to bottom, half that for the sparkline.
     const minSpan = (unit === 'lb' ? 2 : 1) / (compact ? 2 : 1);
     const y = linearScale(paddedDomain(values, 0.14, minSpan), [height - PAD_Y, PAD_Y]);
-    const x = (slot: number) => xAtIndex(slot, width, slots, 'point');
+    const x = (slot: number) => padX + xAtIndex(slot, plotWidth, slots, 'point');
     // Dots shrink as the days crowd together, so a year reads as a band around the line.
-    const radius = Math.max(1.25, Math.min(2.5, (width / Math.max(1, slots)) * 0.9));
+    const radius = Math.max(1.25, Math.min(2.5, (plotWidth / Math.max(1, slots)) * 0.9));
     const line = series.map((point) => ({ x: x(point.slot), y: y(toUnit(point.ewmaKg)) }));
     const dots = compact
       ? []
@@ -101,7 +107,7 @@ export function WeightChart({
         );
     const axis = ticks.map((tick) => ({ ...tick, x: x(tick.slot) }));
     return { line, path: monotonePath(line), dots, radius, axis };
-  }, [series, slots, width, height, unit, compact, ticks]);
+  }, [series, slots, width, plotWidth, padX, height, unit, compact, ticks]);
 
   // Labels that would run into the one before or past the edge are left out.
   const axisLabels = useMemo(() => {
@@ -131,7 +137,7 @@ export function WeightChart({
     });
   // The day under a finger, or the nearest one with the line, before its first day or after its last.
   const indexAt = (x: number) => {
-    const slot = indexAtX(x, width, slots, 'point');
+    const slot = indexAtX(x - padX, plotWidth, slots, 'point');
     if (slot === null || series.length === 0) return null;
     return Math.min(series.length - 1, Math.max(0, slot - first));
   };
@@ -177,8 +183,9 @@ export function WeightChart({
   // A year or more back, the day names its year too.
   const yearly = slots > 330;
   const readout = selected
-    ? `${format(parseISO(selected.date), yearly ? 'MMM d, yyyy' : 'EEE, MMM d')} · ${
-        selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)} · ` : ''
+    ? // Each dot stays with the words before it when the line wraps at the largest text sizes.
+      `${format(parseISO(selected.date), yearly ? 'MMM d, yyyy' : 'EEE, MMM d')}\u00a0· ${
+        selected.observedKg != null ? `weighed ${kgToUnit(selected.observedKg, unit).toFixed(1)}\u00a0· ` : ''
       }trend ${kgToUnit(selected.ewmaKg, unit).toFixed(1)} ${unit}`
     : summary;
   // The same day in words. With no day chosen it reads the summary (the

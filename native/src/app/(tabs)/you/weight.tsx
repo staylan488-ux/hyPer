@@ -5,9 +5,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
+import { weeklyRateLabel } from '@/lib/bodyWeightSummary';
 import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
-import { DEFAULT_WEIGHT_RANGE, WEIGHT_RANGES, weightChangeLabel, weightChartWindow, weightRange, type WeightRangeKey } from '@/lib/weightHistory';
+import {
+  DEFAULT_WEIGHT_RANGE,
+  WEIGHT_RANGES,
+  weightChangeLabel,
+  weightChartWindow,
+  weightRange,
+  weightRangeKgPerWeek,
+  type WeightRangeKey,
+} from '@/lib/weightHistory';
+import { buildWeightTrend } from '@/lib/weightTrend';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
@@ -43,19 +52,21 @@ export default function WeightScreen() {
   const everything = useAllWeighIns();
   const allRead = useWeightStore((state) => state.all !== null);
   const entries = everything ?? history;
-  const { trend, rate } = useMemo(() => bodyWeightTrends(entries), [entries]);
+  const trend = useMemo(() => buildWeightTrend(entries), [entries]);
   const latest = entries[0] ?? null;
-  const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
   const [rangeKey, setRangeKey] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
   const range = weightRange(rangeKey);
   // Handed to the rows and the chart, so "Today" and the range move on at midnight.
   const todayKey = useCurrentDayKey();
   const calendar = useMemo(() => weightChartWindow(trend.points, range.days, todayKey), [trend.points, range.days, todayKey]);
-  // The chart's resting line: "+4.1 lb since Aug 7 · +0.43 lb/wk". Gaining
-  // reads like losing, in ink: whether it's good is the goal's to say.
+  // The chart's resting line: "+4.1 lb since Aug 7 · +0.32 lb/wk", the
+  // rate averaged over the same days. Gaining reads like losing, in ink:
+  // whether it's good is the goal's to say.
   const change = weightChangeLabel(calendar.series, unit);
+  const rateLabel = weeklyRateLabel(weightRangeKgPerWeek(calendar.series), unit);
   const trendLine = change
-    ? [change, rateLabel].filter(Boolean).join(' · ')
+    ? // The dot stays with the words before it when the line wraps at the largest text sizes.
+      [change, rateLabel].filter(Boolean).join('\u00a0· ')
     : calendar.series.length === 0
       ? `No weigh-ins in the last ${range.spoken}`
       : undefined;

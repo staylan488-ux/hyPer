@@ -139,6 +139,23 @@ export function weightChangeLabel(series: WeightTrendPoint[], unit: WeightUnit):
   return `${change > 0 ? '+' : '−'}${shown} ${unit} since ${since}`;
 }
 
+/** Under two weeks the change says enough: a weekly rate from a few days would be mostly noise. */
+const MIN_RATE_DAYS = 14;
+
+/**
+ * The trend's average weekly change across the days shown, in kg (negative
+ * loses), so the rate beside "+8.1 lb since May 8" describes those same
+ * days. Null under two weeks.
+ */
+export function weightRangeKgPerWeek(series: WeightTrendPoint[]): number | null {
+  if (series.length < 2) return null;
+  const first = series[0];
+  const last = series[series.length - 1];
+  const days = differenceInCalendarDays(day(last.date), day(first.date));
+  if (days < MIN_RATE_DAYS) return null;
+  return ((last.ewmaKg - first.ewmaKg) / days) * 7;
+}
+
 export interface WeighInMonth<T> {
   /** yyyy-MM, local. */
   key: string;
