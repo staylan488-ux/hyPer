@@ -9,7 +9,7 @@ import { buildEntryPayload, persistNutritionEntry } from '@/lib/saveNutritionEnt
 import { supabase } from '@/lib/supabase';
 import type { NutritionGroup } from '@/types';
 
-import type { FoodLog } from './fuel';
+import { useFuelStore, type FoodLog } from './fuel';
 
 /** When an entry is logged and where it goes. */
 export type When = { date: Date; time: string; groupId: string | null };
@@ -74,6 +74,9 @@ export async function saveFoodEntry(input: {
     await persistNutritionEntry(payloadFor(null), input.editingId, writeId);
   }
   // confirmed: the next save is a new entry
+  // Multi-item logging can stop after this item; its old reminder must go
+  // even if a later item fails before the sheet's completion refresh.
+  useFuelStore.getState().invalidateTotals();
   if (!input.retryId) input.pending.clear();
 }
 

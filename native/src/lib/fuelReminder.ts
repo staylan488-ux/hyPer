@@ -106,11 +106,14 @@ function wanted(): { userId: string; inputs: Inputs | null } | null {
   if (!userId || loadedFor !== userId) return null;
   // Off, or nothing iOS would show: nothing pending.
   if (!settings.enabled || permission === 'denied') return { userId, inputs: null };
+  const fuel = useFuelStore.getState();
+  // A confirmed save makes the old shortfall unreliable, even if its refresh
+  // fails. Take reminders back until a read reconciles today's totals.
+  if (fuel.totalsNeedRefresh) return { userId, inputs: null };
   // Not read or not answered yet: iOS would refuse it; keep what it holds.
   if (permission !== 'granted') return null;
   const app = useAppStore.getState();
   if (app.macroTargetLoadedForUserId !== userId || app.nutritionProfileLoadedForUserId !== userId) return null;
-  const fuel = useFuelStore.getState();
   if (fuel.todayLoadedForUserId !== userId || fuel.todayLoadedKey !== fuel.todayKey) return null;
   return {
     userId,
@@ -280,7 +283,7 @@ function followAccount(userId: string) {
   loadAccount(userId);
   const stopFuel = useFuelStore.subscribe((s, p) => {
     if (s.todayTotals !== p.todayTotals || s.todayKey !== p.todayKey || s.todayLoadedKey !== p.todayLoadedKey
-      || s.todayLoadedForUserId !== p.todayLoadedForUserId) requestSync();
+      || s.todayLoadedForUserId !== p.todayLoadedForUserId || s.totalsNeedRefresh !== p.totalsNeedRefresh) requestSync();
   });
   const stopApp = useAppStore.subscribe((s, p) => {
     if (s.macroTarget !== p.macroTarget || s.nutritionProfile !== p.nutritionProfile

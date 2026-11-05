@@ -26,6 +26,7 @@ import * as timeout from '@/lib/withTimeout';
 import type { Food } from '@/types';
 import type * as LaunchActions from '../native/src/lib/launchActions';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { nativeFuelStore } from './helpers/nativeFuelStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -109,7 +110,7 @@ afterEach(async () => {
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false }: {
+function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions }: {
   editing?: boolean;
   worker?: boolean;
   savedMeal?: boolean;
@@ -125,6 +126,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
   /** The real Recent, Saved and Search lists, saving through the real food logger. */
   realLists?: boolean;
   realClock?: boolean;
+  fuelActions?: { refresh: () => Promise<void>; refreshAfterWrite: () => Promise<void>; invalidateTotals: () => void };
 } = {}) {
   const captured: {
     buttons: Record<string, Button>;
@@ -197,7 +199,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
   const permission = vi.fn(async () => ({ granted: true }));
   const imagePicker = { requestCameraPermissionsAsync: permission, launchCameraAsync: camera, launchImageLibraryAsync: vi.fn() };
   const openSettings = vi.fn();
-  const fuel = { logs: [loggedMilk], groups: [], refresh: noop };
+  const fuel = { logs: [loggedMilk], groups: [], refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, ...fuelActions };
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
   const imports: Record<string, unknown> = {
     'date-fns': dates,
@@ -289,6 +291,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
     // VoiceOver and the text size are device services: silent, standard size (announcements recorded).
     '~/lib/accessibility': { announce, useAnnounce: noop, useLargeText: () => false, useScreenReader: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
     '~/lib/foodLogger': { initialWhen: when, usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
+    './fuel': { useFuelStore },
     '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
     '~/lib/launchActions': launchActions,
@@ -1312,5 +1315,39 @@ describe('real Recent and Saved quick-add', () => {
     await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
     expect(h.text()).toContain('1 ingredient');
     expect(h.persistEntry).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('food writes invalidate old reminder totals', () => {
+  it.each(['log', 'edit', 'quick-add', 'built meal'])('keeps %s successful but blocks stale reminders when its refresh fails', async (path) => {
+    const real = nativeFuelStore('user-a');
+    real.read.mockResolvedValue({ data: [{ ...loggedMilk, user_id: 'user-a', food_id: loggedMilk.food.id }], error: null });
+    await real.useFuelStore.getState().loadToday('2026-11-03');
+    expect(real.useFuelStore.getState().totalsNeedRefresh).toBe(false);
+    real.read.mockResolvedValue({ data: null, error: new Error('offline') });
+    const h = loggerHarness({ editing: path === 'edit', realLists: path === 'quick-add', fuelActions: real.useFuelStore.getState() });
+    await h.render();
+    if (path === 'quick-add') {
+      await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
+      expect(h.persistEntry).toHaveBeenCalledOnce();
+      expect(h.text()).toContain('Added');
+    } else if (path === 'built meal') {
+      await h.click('Build a meal');
+      await act(async () => { h.captured.context!.addIngredients([composition.createMealIngredient(milk, 1)]); });
+      await h.click('Review meal');
+      await act(async () => { h.captured.review!.update({ name: 'Milk meal' }); });
+      await h.click('Log meal');
+      expect(h.saveMeal).toHaveBeenCalledOnce();
+      expect(h.back).toHaveBeenCalledOnce();
+    } else {
+      if (path === 'log') await h.tab('manual');
+      await act(async () => { h.captured.fields.Name.onChangeText('Milk'); });
+      await h.click(path === 'edit' ? 'Save changes' : 'Log entry');
+      expect(h.saveFood).toHaveBeenCalledOnce();
+      expect(h.back).toHaveBeenCalledOnce();
+    }
+    expect(real.useFuelStore.getState().totalsNeedRefresh).toBe(true);
+    expect(real.useFuelStore.getState().todayTotals.calories).toBeGreaterThan(0);
   });
 });

@@ -1,12 +1,17 @@
 // @vitest-environment happy-dom
+import * as dates from 'date-fns';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
 import * as plan from '../native/src/lib/fuelReminderPlan';
+import * as entry from '@/lib/saveNutritionEntry';
+import * as pending from '@/lib/pendingEntryId';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { memoryStorage } from './memoryStorage';
+import { nativeFuelStore } from './helpers/nativeFuelStore';
+import type { FoodLog } from '../native/src/lib/fuel';
 
 // The fuel reminder handed to iOS through the real hook, with a fake
 // expo-notifications that holds pending and shown notifications and, like
@@ -132,6 +137,24 @@ const response = (identifier: string, date: number, actionIdentifier = DEFAULT_A
   notification: { date, request: { identifier } },
 });
 
+function loadReminder(fuelStore: unknown = fuel): Mod {
+  return loadNativeModule<Mod>('lib/fuelReminder.ts', {
+    'expo-notifications': notifications,
+    zustand: { create },
+    '@/lib/appVisibility': {
+      onAppVisible: (listener: () => void) => {
+        visible = listener;
+        return () => { visible = null; };
+      },
+    },
+    '@/stores/appStore': { useAppStore: app },
+    '@/stores/authStore': { useAuthStore: auth },
+    './fuel': { useFuelStore: fuelStore },
+    './fuelReminderPlan': plan,
+    './launchActions': { postLaunchPress },
+  });
+}
+
 beforeEach(() => {
   vi.stubGlobal('localStorage', memoryStorage());
   vi.useFakeTimers();
@@ -155,21 +178,7 @@ beforeEach(() => {
   postLaunchPress.mockClear();
   notifications.setNotificationCategoryAsync.mockClear();
   visible = null;
-  mod = loadNativeModule<Mod>('lib/fuelReminder.ts', {
-    'expo-notifications': notifications,
-    zustand: { create },
-    '@/lib/appVisibility': {
-      onAppVisible: (listener: () => void) => {
-        visible = listener;
-        return () => { visible = null; };
-      },
-    },
-    '@/stores/appStore': { useAppStore: app },
-    '@/stores/authStore': { useAuthStore: auth },
-    './fuel': { useFuelStore: fuel },
-    './fuelReminderPlan': plan,
-    './launchActions': { postLaunchPress },
-  });
+  mod = loadReminder();
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -538,5 +547,69 @@ describe('the notification handler', () => {
     expect(await handled(id(DAY))).toEqual({ shouldShowBanner: false, shouldShowList: true, shouldPlaySound: false, shouldSetBadge: false });
     expect(await handled('hyper-rest-over')).toMatchObject({ shouldShowBanner: false, shouldShowList: false, shouldPlaySound: true });
     expect(await handled('something-else')).toMatchObject({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true });
+  });
+});
+
+
+describe('confirmed food writes with a failed refresh', () => {
+  const log = (calories: number, protein: number): FoodLog => ({
+    id: 'entry', user_id: 'user-1', date: DAY, food_id: 'food', servings: 1, logged_at: null,
+    food: { id: 'food', name: 'Meal', calories, protein, carbs: 0, fat: 0 } as FoodLog['food'],
+  });
+
+  it.each([undefined, 'edited-entry'])('invalidates each confirmed entry even if the next item fails (editing ID: %s)', async (editingId) => {
+    const real = nativeFuelStore();
+    real.read.mockResolvedValue({ data: [log(1950, 120)], error: null });
+    await real.useFuelStore.getState().loadToday(DAY);
+    mod = loadReminder(real.useFuelStore);
+    await render();
+    await settle();
+    expect(pendingIds()).toContain(id(DAY));
+    const persist = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('offline'));
+    const logger = loadNativeModule<typeof import('../native/src/lib/foodLogger')>('lib/foodLogger.ts', {
+      'date-fns': dates,
+      '@/lib/foodLoggerUtils': {},
+      '@/lib/pendingEntryId': pending,
+      '@/lib/saveNutritionEntry': { ...entry, persistNutritionEntry: persist },
+      '@/lib/supabase': {},
+      './fuel': real,
+    });
+    const input = {
+      foodId: 'food', servings: 1, source: 'manual', editingId,
+      when: { date: new Date(2026, 10, 4), time: '13:00', groupId: null },
+      groups: [], pending: pending.createPendingEntryId(),
+    };
+    await logger.saveFoodEntry(input);
+    await expect(logger.saveFoodEntry(input)).rejects.toThrow('offline');
+    await settle();
+    expect(pendingIds()).not.toContain(id(DAY));
+    expect(real.useFuelStore.getState().totalsNeedRefresh).toBe(true);
+  });
+
+  it('takes back an old reminder after Copy to today, and waits for reconciled totals', async () => {
+    const real = nativeFuelStore();
+    real.read.mockResolvedValue({ data: [log(1950, 120)], error: null });
+    await real.useFuelStore.getState().loadToday(DAY);
+    mod = loadReminder(real.useFuelStore);
+    await render();
+    await settle();
+    expect(pendingIds()).toContain(id(DAY));
+    expect(ios.pending.get(id(DAY))!.content.title).toContain('850');
+
+    real.read.mockResolvedValue({ data: null, error: new Error('offline') });
+    expect(await real.useFuelStore.getState().copyToToday([log(850, 40)], null)).toBe(true);
+    expect(real.copy).toHaveBeenCalledOnce();
+    await settle();
+    expect(pendingIds()).not.toContain(id(DAY));
+    await act(async () => { visible?.(); });
+    await settle();
+    expect(pendingIds()).not.toContain(id(DAY));
+
+    // A later successful read can schedule from its new shortfall.
+    real.read.mockResolvedValue({ data: [log(2100, 140)], error: null });
+    await real.useFuelStore.getState().refresh();
+    await settle();
+    expect(ios.pending.get(id(DAY))!.content.title).toContain('700');
+    expect(ios.pending.get(id(DAY))!.content.title).not.toContain('850');
   });
 });

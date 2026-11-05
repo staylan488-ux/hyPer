@@ -381,7 +381,7 @@ export function useQuickAdd() {
     // The row says so too, but VoiceOver stays on the + it pressed.
     announce(`${food.name} added`);
     // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
-    void useFuelStore.getState().refresh();
+    void useFuelStore.getState().refreshAfterWrite();
   }, [pendingIds, setAdded]);
   return { added: logger.purpose === 'ingredients' ? {} : added, add, enabled: !logger.editing };
 }

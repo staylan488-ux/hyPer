@@ -62,12 +62,17 @@ type FuelState = {
   /** The account and day whose totals have actually loaded, including an empty day. */
   todayLoadedForUserId: string | null;
   todayLoadedKey: string | null;
+  /** A confirmed write changed the log; reminders wait for a new read. */
+  totalsNeedRefresh: boolean;
   /** The day whose totals are the phone's copy (launchCache.ts) until a read for it lands; no loaded marker. */
   todayCopyKey: string | null;
   /** Shows a day, loading its month when needed. */
   select: (key: string) => void;
   /** Reloads the shown month (and today's totals when today is in another month). */
   refresh: () => Promise<void>;
+  invalidateTotals: () => void;
+  /** Invalidate totals after a confirmed nutrition write, then reconcile them. */
+  refreshAfterWrite: () => Promise<void>;
   /** The account load: today's totals; Fuel left on the old today moves on. */
   loadToday: (key?: string) => Promise<void>;
   /** Creates a day's missing Breakfast, Lunch and Dinner (a failed day is not retried this session). */
@@ -144,6 +149,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
         todayLoadedForUserId: userId,
         todayLoadedKey: todayKey,
         todayCopyKey: null,
+        totalsNeedRefresh: false,
       } : {}),
     });
     void get().ensureDayGroups(get().selected);
@@ -179,6 +185,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
     todayLoadedForUserId: null,
     todayLoadedKey: null,
     todayCopyKey: null,
+    totalsNeedRefresh: false,
 
     select: (key) => {
       set({ selected: key });
@@ -192,6 +199,20 @@ export const useFuelStore = create<FuelState>((set, get) => {
         loadMonth(monthOf(selected)),
         monthOf(todayKey) !== monthOf(selected) ? get().loadToday(todayKey) : undefined,
       ]);
+    },
+
+    invalidateTotals: () => {
+      // A read started before the write must not mark the old totals current.
+      monthRequest += 1;
+      todayRequest += 1;
+      set({ totalsNeedRefresh: true });
+    },
+
+    refreshAfterWrite: async () => {
+      get().invalidateTotals();
+      // The write is already confirmed. A read failure must not turn it into
+      // a failed save (and invite a duplicate); the next refresh retries it.
+      await get().refresh().catch(() => {});
     },
 
     loadToday: async (key = today()) => {
@@ -213,7 +234,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
         FOOD_COLUMNS,
       );
       if (!error && data && get().todayKey === key && isCurrent() && request === todayRequest) {
-        set({ todayTotals: sumMacros(data), todayLoadedForUserId: userId, todayLoadedKey: key, todayCopyKey: null });
+        set({ todayTotals: sumMacros(data), todayLoadedForUserId: userId, todayLoadedKey: key, todayCopyKey: null, totalsNeedRefresh: false });
       }
     },
 
@@ -265,7 +286,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
     moveEntryToYesterday: async (id) => {
       const log = get().logs.find((candidate) => candidate.id === id);
       if (!log || !(await moveEntryToPreviousDay(log).catch(() => null))) return false;
-      await get().refresh();
+      await get().refreshAfterWrite();
       return true;
     },
 
@@ -291,7 +312,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
       if (!saved.ok) return false;
       copyIds.delete(retryKey);
       get().select(key);
-      await get().refresh();
+      await get().refreshAfterWrite();
       return true;
     },
 
@@ -434,5 +455,6 @@ export function resetFuel() {
   useFuelStore.setState({
     selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key,
     todayTotals: emptyTotals, todayLoadedForUserId: null, todayLoadedKey: null, todayCopyKey: null,
+    totalsNeedRefresh: false,
   });
 }

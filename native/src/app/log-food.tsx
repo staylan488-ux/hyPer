@@ -393,7 +393,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const purpose: LoggerContextValue['purpose'] = capturing ? 'ingredients' : 'log';
 
   const complete = useCallback(() => {
-    void useFuelStore.getState().refresh();
+    void useFuelStore.getState().refreshAfterWrite();
     // The sheet closes on a save: VoiceOver says it went through.
     announce(savedTarget ? 'Saved meal updated' : editing ? 'Changes saved' : 'Logged');
     setClosing(true);
