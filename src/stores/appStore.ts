@@ -15,7 +15,7 @@ import { finishedRunToActivity, type FinishedRun } from '@/lib/runTracker';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { canResumeWorkout, isAbandonedSplitStart } from '@/lib/workoutSessions';
 import { runSaveWithRetry, saveWorkoutSet } from '@/lib/saveWorkoutSet';
-import { trackWorkoutSetSave } from '@/lib/workoutFinish';
+import { trackWorkoutSetSave, waitForWorkoutSetSaves } from '@/lib/workoutFinish';
 import { computeWeeklyVolume, trainingWeekRange, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import {
   getNutritionProfile,
@@ -1334,14 +1334,28 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   substituteWorkoutExercise: writesWorkout(async (exerciseId, replacement) => {
     const isAccountCurrent = captureAccountScope();
+    const initial = get().currentWorkout;
+    if (!initial || initial.completed) throw new Error('No active workout.');
+    // Count only after Log set has landed. Otherwise its still-unfinished
+    // local row gets a replacement as well as the completed original.
+    if (!await waitForWorkoutSetSaves(initial.id)) throw new Error('The set could not save. Retry it before swapping.');
+    if (!isAccountCurrent() || get().currentWorkout?.id !== initial.id || get().currentWorkout?.completed) {
+      throw new Error('This workout is no longer open.');
+    }
+    const preparedPlan = get().currentWorkoutDayPlan?.workout_id === initial.id
+      ? get().currentWorkoutDayPlan
+      : await get().ensureWorkoutDayPlan(initial.id);
+    if (!await waitForWorkoutSetSaves(initial.id)) throw new Error('The set could not save. Retry it before swapping.');
     const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (!currentWorkout || currentWorkout.completed) throw new Error('No active workout.');
+    if (!isAccountCurrent() || !currentWorkout || currentWorkout.id !== initial.id || currentWorkout.completed) {
+      throw new Error('This workout is no longer open.');
+    }
     const sourceSets = currentWorkout.sets.filter((entry) => entry.exercise_id === exerciseId);
     if (!sourceSets.some((entry) => !entry.completed)) throw new Error('This movement has no remaining sets.');
 
     const plan = currentWorkoutDayPlan?.workout_id === currentWorkout.id
       ? currentWorkoutDayPlan
-      : await get().ensureWorkoutDayPlan(currentWorkout.id);
+      : preparedPlan;
     if (!plan) throw new Error('Could not prepare the workout. Please try again.');
 
     // Rejects a duplicate before anything is written. The replacement's loads

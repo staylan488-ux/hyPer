@@ -250,7 +250,7 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   numbers after a saved meal is edited; device surfaces are cleaned only when
   the tabs unmount (sign-in flow); Health sync and run state are per device,
   not per account; beat last time compares a swapped superset's first set
-  with last time's set 2; a swap while a set saves can add a set; a pull to
+  with last time's set 2; a pull to
   refresh still running at midnight can set the account's day back to the
   day before until the next refresh.
 - 2026-11-04: accessibility pass on the native app (branch

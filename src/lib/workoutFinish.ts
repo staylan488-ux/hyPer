@@ -15,6 +15,14 @@ export function trackWorkoutSetSave<T>(workoutId: string, save: Promise<T>): Pro
   return save;
 }
 
+/** A movement swap counts unfinished sets only after in-flight saves settle. */
+export async function waitForWorkoutSetSaves(workoutId: string): Promise<boolean> {
+  while (pending.get(workoutId)?.size) {
+    if ((await Promise.all(pending.get(workoutId)!)).some((saved) => !saved)) return false;
+  }
+  return true;
+}
+
 type FinishPreparation<T> = { kind: 'ready'; session: T } | { kind: 'save-failed' } | { kind: 'changed' };
 
 /** Call when opening the question, then await the result when confirming. */
