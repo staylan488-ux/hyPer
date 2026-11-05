@@ -64,11 +64,18 @@ export function usePullRefresh(load: () => Promise<unknown>) {
 
 /**
  * Everything the You page shows: weight, targets, saved meals and WHOOP. Every
- * weigh-in is read, not only the recent ones, so Body weight opens with its
- * whole history already drawn.
+ * weigh-in is read as well as the recent ones, so Body weight opens with its
+ * whole history drawn, while the card still shows as soon as the short read
+ * lands, however long the history.
  */
 export async function loadYou(): Promise<void> {
-  await Promise.allSettled([loadWeights({ all: true }), loadTargets(), loadYouMeals(), useAppStore.getState().fetchWhoopConnection()]);
+  await Promise.allSettled([
+    loadWeights(),
+    loadWeights({ all: true }),
+    loadTargets(),
+    loadYouMeals(),
+    useAppStore.getState().fetchWhoopConnection(),
+  ]);
 }
 
 // ── Body weight ──────────────────────────────────────────────────────────

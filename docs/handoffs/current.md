@@ -34,6 +34,18 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 
 ## Open items
 
+- 2026-11-05: full weigh-in history (branch `claude/project-thread-kduqvg`,
+  the owner's ask: weigh-ins older than about a week couldn't be found).
+  You's Body weight card has a chevron; Body weight's chart takes 1M, 3M
+  (default), 6M, 1Y or All on a calendar axis ending today, with dates under
+  it and the change across the range in its line; Recent ends in All
+  weigh-ins, every weigh-in by month with each month's average, swipe and
+  hold to delete typed ones. Every weigh-in is read page by page
+  (`getAllBodyWeights`) on You and Body weight, joined to the 90-day read
+  (`mergeWeightHistory`); reads that overlap can't undo a newer one. The
+  sample account has seven months of weigh-ins. Not seen on a phone or with
+  the real account; VoiceOver untried.
+
 - 2026-11-04: pre-TestFlight reliability follow-up
   (`fix/pre-testflight-reliability`). The owner approved merging these fixes
   before shipping main through Discord and using the new build normally for
