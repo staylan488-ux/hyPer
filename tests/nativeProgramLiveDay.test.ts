@@ -40,6 +40,7 @@ const saveSplitEdit = vi.fn();
 const removeDay = vi.fn();
 const app = create(() => ({
   currentWorkout: null as Pick<Workout, 'id' | 'split_day_id' | 'completed'> | null,
+  workoutLoadedForUserId: 'user-1' as string | null,
   activeSplit: program as Split | null,
   splits: [program],
   createSplit: noop,
@@ -126,14 +127,14 @@ async function open() {
   await act(async () => { root.render(createElement(ProgramEditScreen)); });
 }
 const swipe = (name: string) => host.querySelector<HTMLButtonElement>(`[data-swipe="${name}:Remove"]`)!;
-const save = () => act(async () => { header.find((item) => item.label === 'Save')!.onPress(); });
+const save = () => act(async () => { header.find((item) => item.label === 'Save' || item.label === 'Create')!.onPress(); });
 
 beforeEach(() => {
   alert.mockClear();
   saveSplitEdit.mockClear();
   removeDay.mockClear();
   menus.clear();
-  app.setState({ currentWorkout: { id: 'w1', split_day_id: 'day-push', completed: false } });
+  app.setState({ currentWorkout: { id: 'w1', split_day_id: 'day-push', completed: false }, workoutLoadedForUserId: 'user-1' });
   splitEdit.setState({ draft: draftOf([push, pull]) });
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -146,6 +147,36 @@ afterEach(() => {
 });
 
 describe('editing the program of a workout in progress', () => {
+  it('blocks removing a cached day and saving a restored draft until this account’s workout read succeeds', async () => {
+    app.setState({ currentWorkout: null, workoutLoadedForUserId: null });
+    await open();
+    await act(async () => { swipe('Push').click(); });
+    expect(removeDay).not.toHaveBeenCalled();
+    expect(alert).toHaveBeenCalledWith('Workout still loading', expect.any(String));
+
+    // A saved draft can already omit a day without pressing Remove this launch.
+    act(() => splitEdit.setState({ draft: draftOf([pull]) }));
+    await save();
+    expect(saveSplitEdit).not.toHaveBeenCalled();
+
+    // A marker for another account cannot unlock this one.
+    app.setState({ workoutLoadedForUserId: 'another-user' });
+    await save();
+    expect(saveSplitEdit).not.toHaveBeenCalled();
+
+    app.setState({ workoutLoadedForUserId: 'user-1' });
+    await save();
+    expect(saveSplitEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows creating a new program while the workout read is pending', async () => {
+    app.setState({ currentWorkout: null, workoutLoadedForUserId: null });
+    splitEdit.setState({ draft: { ...draftOf([pull]), _isNew: true } });
+    await open();
+    await save();
+    expect(saveSplitEdit).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses to remove the live workout\'s day, and removes any other', async () => {
     await open();
 

@@ -97,12 +97,22 @@ function refuseLiveDay(label: string) {
   Alert.alert('Finish your workout first', `Today's workout is ${label}.`);
 }
 
+/** Cached programs do not establish whether this account has an unfinished workout. */
+function refuseUntilWorkoutLoaded(): boolean {
+  const user = userId();
+  if (user && useAppStore.getState().workoutLoadedForUserId === user) return false;
+  haptics.error();
+  Alert.alert('Workout still loading', 'Wait for your workout to load before removing a day, deleting a program, or saving program edits. If it does not load, check your connection and refresh Train.');
+  return true;
+}
+
 /**
  * Removing the day a workout in progress came from would drop that session
  * (its workout loses the day), so the editor refuses, as deleting its program
  * does. True when refused.
  */
 export function refuseRemovingLiveDay(dayId: string, label: string): boolean {
+  if (refuseUntilWorkoutLoaded()) return true;
   if (dayId !== liveWorkoutDayId(useAppStore.getState().currentWorkout)) return false;
   refuseLiveDay(label);
   return true;
@@ -110,9 +120,11 @@ export function refuseRemovingLiveDay(dayId: string, label: string): boolean {
 
 /** The same at Save, for a draft that left the day out (a restored one can). True when refused. */
 export function refuseSavingWithoutLiveDay(draft: Pick<DraftSplit, 'id' | 'days' | '_isNew'>): boolean {
+  if (draft._isNew) return false;
+  if (refuseUntilWorkoutLoaded()) return true;
   const { currentWorkout, activeSplit, splits } = useAppStore.getState();
   const dayId = liveWorkoutDayId(currentWorkout);
-  if (!dayId || draft._isNew || draft.days.some((day) => day.id === dayId)) return false;
+  if (!dayId || draft.days.some((day) => day.id === dayId)) return false;
   const saved = [activeSplit, ...splits].find((split) => split?.id === draft.id);
   const index = saved?.days.findIndex((day) => day.id === dayId) ?? -1;
   if (!saved || index < 0) return false;
@@ -142,6 +154,7 @@ function markDeleting(id: string, deleting: boolean) {
  * it back. Resolves true once deleted.
  */
 export async function deleteProgram(split: Split, onConfirmed?: () => void): Promise<boolean> {
+  if (refuseUntilWorkoutLoaded()) return false;
   if (programInUse(split)) {
     haptics.error();
     Alert.alert('Finish your workout first', `Today's workout is from ${split.name}.`);
@@ -153,7 +166,7 @@ export async function deleteProgram(split: Split, onConfirmed?: () => void): Pro
     confirmLabel: 'Delete',
     destructive: true,
   });
-  if (!confirmed) return false;
+  if (!confirmed || refuseUntilWorkoutLoaded()) return false;
   markDeleting(split.id, true);
   onConfirmed?.();
   const result = await useAppStore
@@ -242,4 +255,3 @@ export function planTarget(item: {
   if (range.minSets === range.maxSets) return formatTarget(item.target_sets, item.target_reps_min, item.target_reps_max);
   return formatTarget(range.targetSets, item.target_reps_min, item.target_reps_max, { min: range.minSets, max: range.maxSets });
 }
-

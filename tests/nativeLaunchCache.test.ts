@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Split, Workout } from '@/types';
 import type { TodaySeed } from '../native/src/lib/launchSnapshot';
+import { create } from 'zustand';
+import * as splitDraft from '@/lib/splitDraft';
+import { loadNativeModule } from './helpers/loadNativeModule';
 
 const mocks = vi.hoisted(() => ({
   user: 'user-1' as string | null,
@@ -139,6 +142,74 @@ afterEach(() => {
 });
 
 describe('restoring the copy at launch', () => {
+  it('protects cached programs after pending and failed workout reads, then uses the restored live day', async () => {
+    const modules = await load();
+    install(modules, savedCopy());
+    await signIn(modules);
+    const alert = vi.fn((_title: string, _message: string, buttons?: { text: string; onPress?: () => void }[]) => {
+      buttons?.find((button) => button.text === 'Delete')?.onPress?.();
+    });
+    const deleteSplit = vi.fn().mockResolvedValue({ ok: true });
+    modules.app.setState({ deleteSplit });
+    const actions = loadNativeModule<{
+      deleteProgram: (split: Split) => Promise<boolean>;
+      refuseRemovingLiveDay: (id: string, label: string) => boolean;
+      refuseSavingWithoutLiveDay: (draft: { id: string; days: Split['days'] }) => boolean;
+    }>('lib/program.ts', {
+      'expo-router': { router: {} },
+      'react-native': { Alert: { alert } },
+      zustand: { create },
+      '@/lib/planSchedule': {}, '@/lib/programSummary': {}, '@/lib/setRangeNotes': {},
+      '@/lib/splitDraft': splitDraft,
+      '@/stores/appStore': { useAppStore: modules.app },
+      '@/stores/authStore': { useAuthStore: modules.auth },
+      '@/stores/splitEditStore': {}, './format': {},
+      './haptics': { haptics: { error: vi.fn(), success: vi.fn() } },
+    });
+    const cached = modules.app.getState().splits[0];
+    const withoutPush = { id: cached.id, days: cached.days.slice(1) };
+    expect(await actions.deleteProgram(cached)).toBe(false);
+    expect(actions.refuseRemovingLiveDay('push', 'Push')).toBe(true);
+    expect(actions.refuseSavingWithoutLiveDay(withoutPush)).toBe(true);
+    expect(alert).toHaveBeenCalledWith('Workout still loading', expect.any(String));
+    expect(deleteSplit).not.toHaveBeenCalled();
+
+    mocks.results.workouts = { data: null, error: new Error('offline') };
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await modules.app.getState().fetchCurrentWorkout();
+    consoleError.mockRestore();
+    expect(modules.app.getState().workoutLoadedForUserId).toBeNull();
+    expect(await actions.deleteProgram(cached)).toBe(false);
+    expect(actions.refuseRemovingLiveDay('push', 'Push')).toBe(true);
+    expect(actions.refuseSavingWithoutLiveDay(withoutPush)).toBe(true);
+    expect(deleteSplit).not.toHaveBeenCalled();
+
+    mocks.results.workouts = { data: { ...live, split_day_id: 'push' }, error: null };
+    mocks.results.workout_day_plans = { data: null, error: null };
+    await modules.app.getState().fetchCurrentWorkout();
+    expect(modules.app.getState().workoutLoadedForUserId).toBe(USER);
+    expect(await actions.deleteProgram(cached)).toBe(false);
+    expect(actions.refuseRemovingLiveDay('push', 'Push')).toBe(true);
+    expect(actions.refuseSavingWithoutLiveDay(withoutPush)).toBe(true);
+    expect(deleteSplit).not.toHaveBeenCalled();
+
+    mocks.results.workouts = { data: null, error: null };
+    await modules.app.getState().fetchCurrentWorkout();
+    expect(actions.refuseRemovingLiveDay('push', 'Push')).toBe(false);
+    expect(actions.refuseSavingWithoutLiveDay(withoutPush)).toBe(false);
+    expect(await actions.deleteProgram(cached)).toBe(true);
+    expect(deleteSplit).toHaveBeenCalledWith('ppl');
+
+    // An account reset while the confirmation is open must not use the old read.
+    deleteSplit.mockClear();
+    alert.mockImplementationOnce((_title, _message, buttons) => {
+      modules.app.setState({ workoutLoadedForUserId: null });
+      buttons?.find((button) => button.text === 'Delete')?.onPress?.();
+    });
+    expect(await actions.deleteProgram(cached)).toBe(false);
+    expect(deleteSplit).not.toHaveBeenCalled();
+  });
+
   it('fills the stores inside the same sign-in update, with no loaded marker', async () => {
     const modules = await load();
     const storage = savedCopy();
