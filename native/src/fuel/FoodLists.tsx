@@ -381,7 +381,7 @@ export function useQuickAdd() {
     // The row says so too, but VoiceOver stays on the + it pressed.
     announce(`${food.name} added`);
     // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
-    void useFuelStore.getState().refresh();
+    void useFuelStore.getState().refreshAfterWrite();
   }, [pendingIds, setAdded]);
   return { added: logger.purpose === 'ingredients' ? {} : added, add, enabled: !logger.editing };
 }
@@ -586,6 +586,14 @@ export function SearchTab() {
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const trimmed = query.trim();
+  // A result's portion read claims the sheet until the review opens, so Snap a
+  // meal can't hide that review behind the camera. Closing meanwhile loses
+  // nothing, so it is not held (beginRead, not beginBusy).
+  const { beginRead } = logger;
+  useEffect(() => {
+    if (!opening) return;
+    return beginRead();
+  }, [opening, beginRead]);
   // Results land a moment after typing stops: VoiceOver says how many.
   useAnnounce(
     state === 'error'

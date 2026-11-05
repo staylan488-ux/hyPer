@@ -1,8 +1,7 @@
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, Alert, Linking, Pressable, TextInput, View } from 'react-native';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { Alert, Linking, Pressable, TextInput, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { buildClarifiedMealHint, isValidTrialReview } from '@/lib/foodTrialReview';
@@ -36,7 +35,7 @@ import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
-import { prepareImage, type PickedPhoto } from './PhotoTab';
+import { CAMERA_OFF, dropPhotoChoices, foodPickerUp, pickFoodPhoto, prepareImage, showPhotoChoices, type PickedPhoto } from './PhotoTab';
 import { WhenBlock } from './WhenBlock';
 
 /** A food from the estimate, with a key that stays with it while foods are removed. */
@@ -68,6 +67,8 @@ export const emptyAi = (hint = ''): AiDraft => ({
 export const aiHasDraft = (draft: AiDraft) => Boolean(draft.hint.trim()) || draft.photos.length > 0 || draft.result !== null;
 
 const MAX_PHOTOS = 2;
+/** The AI tab can take a photo now: no estimate yet and room for one more (Snap a meal). */
+export const aiTakesPhoto = (draft: AiDraft) => draft.result === null && !draft.saveStarted && draft.photos.length < MAX_PHOTOS;
 const LIMIT = 1500;
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
@@ -76,7 +77,12 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
  * photos (a plate or a nutrition label), answer one follow-up question if
  * asked, then review each food and log it.
  */
-export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void }) {
+export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
+  draft: AiDraft;
+  setDraft: (update: (draft: AiDraft) => AiDraft) => void;
+  /** Snap a meal: each new value opens the camera, then analyzes the photo (log-food.tsx). */
+  cameraRequest?: number;
+}) {
   const c = useBlanc();
   const large = useLargeText();
   const logger = useLogger();
@@ -101,6 +107,8 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     live.current = true;
     return () => {
       live.current = false;
+      // closed under Add photo's choices: they never answer, so Snap a meal stops waiting for them
+      dropPhotoChoices();
     };
   }, []);
 
@@ -111,30 +119,23 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
 
   const addPhoto = () => {
     if (draft.photos.length >= MAX_PHOTOS) return;
-    ActionSheetIOS.showActionSheetWithOptions({ options: ['Take photo', 'Choose from library', 'Cancel'], cancelButtonIndex: 2 }, async (index) => {
+    showPhotoChoices({ options: ['Take photo', 'Choose from library', 'Cancel'], cancelButtonIndex: 2 }, async (index) => {
       if (index === 2) return;
       setError(null);
       try {
-        if (index === 0 && !(await ImagePicker.requestCameraPermissionsAsync()).granted) {
-          setError('Camera access is off. Allow Camera for hyPer in Settings, then try again.');
-          return;
-        }
-        const options = { mediaTypes: ['images'] as ImagePicker.MediaType[], quality: 1, exif: false };
-        const picked = index === 0 ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-        const asset = picked.canceled ? null : picked.assets[0];
-        if (!asset) return;
+        const photo = await pickFoodPhoto(index === 0 ? 'camera' : 'library');
+        if (!photo) return;
         haptics.select();
-        setDraft((current) =>
-          current.photos.length >= MAX_PHOTOS ? current : { ...current, photos: [...current.photos, { uri: asset.uri, width: asset.width, height: asset.height }] },
-        );
+        setDraft((current) => (current.photos.length >= MAX_PHOTOS ? current : { ...current, photos: [...current.photos, photo] }));
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
       }
     });
   };
 
-  const analyze = async (clarify = false) => {
-    if (busy || (!clarify && !draft.hint.trim() && draft.photos.length === 0)) return;
+  // Snap a meal passes the photos it just added; every other call uses the draft's.
+  const analyze = async ({ clarify = false, photos = draft.photos }: { clarify?: boolean; photos?: PickedPhoto[] } = {}) => {
+    if (busy || (!clarify && !draft.hint.trim() && photos.length === 0)) return;
     setBusyState('analysis');
     setError(null);
     try {
@@ -142,7 +143,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
       if (clarify) setDraft((current) => ({ ...current, clarificationUsed: true }));
       const images = isPreviewActive()
         ? []
-        : await Promise.all(draft.photos.map(async (photo, index) => ({ ...(await prepareImage(photo)), angle: index === 0 ? ('top' as const) : ('side' as const) })));
+        : await Promise.all(photos.map(async (photo, index) => ({ ...(await prepareImage(photo)), angle: index === 0 ? ('top' as const) : ('side' as const) })));
       const response = await analyzeFoodTrial({
         images,
         hint: isPreviewActive() && hint.trim().length < 5 ? 'Preview meal' : hint,
@@ -171,6 +172,30 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
       setBusyState(null);
     }
   };
+
+  // Snap a meal (log-food.tsx asks once the sheet is up): the camera at once,
+  // then the analysis without a tap. Cancelling leaves the tab as it was.
+  const seenCamera = useRef(cameraRequest);
+  const snap = useEffectEvent(async () => {
+    if (busy !== null || foodPickerUp() || !aiTakesPhoto(draft)) return;
+    setError(null);
+    try {
+      const photo = await pickFoodPhoto('camera');
+      if (!photo || !live.current) return;
+      haptics.select();
+      const photos = [...draft.photos, photo];
+      setDraft((current) => (current.photos.length >= MAX_PHOTOS ? current : { ...current, photos: [...current.photos, photo] }));
+      announce('Analyzing meal');
+      void analyze({ photos });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
+    }
+  });
+  useEffect(() => {
+    if (cameraRequest === seenCamera.current) return;
+    seenCamera.current = cameraRequest;
+    void snap();
+  }, [cameraRequest]);
 
   const clearEstimate = () => {
     setError(null);
@@ -211,7 +236,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     setDraft((current) => ({ ...current, photos: current.photos.filter((candidate) => candidate !== photo) }));
   };
   const photoMenu = (photo: PickedPhoto, index: number) =>
-    ActionSheetIOS.showActionSheetWithOptions(
+    showPhotoChoices(
       { title: `Photo ${index + 1}`, options: ['Remove photo', 'Cancel'], cancelButtonIndex: 1, destructiveButtonIndex: 0 },
       (choice) => {
         if (choice === 0) removePhoto(photo);
@@ -342,6 +367,19 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
     </Section>
   );
 
+  // Camera access off: the way to turn it on, as the run screen does for Location.
+  // On the capsules' inset, over the tab's own capsules.
+  const errorNote = error ? (
+    <>
+      <FormNote alert>{error}</FormNote>
+      {error === CAMERA_OFF ? (
+        <View style={{ paddingHorizontal: space.inset, marginTop: 12 }}>
+          <Capsule title="Open Settings" variant="quiet" onPress={() => void Linking.openSettings()} />
+        </View>
+      ) : null}
+    </>
+  ) : null;
+
   // ── Describe and photos ──
   if (!result) {
     return (
@@ -365,7 +403,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
           <FormNote>Photo, text, or both. Include the amount and any added oil or sauce you know about.</FormNote>
         </Section>
         {photoControls}
-        {error ? <FormNote alert>{error}</FormNote> : null}
+        {errorNote}
         <View style={{ paddingHorizontal: space.inset, marginTop: 22 }}>
           <Capsule
             title={busy === 'analysis' ? 'Analyzing…' : 'Analyze meal'}
@@ -407,14 +445,14 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
                 onChangeText={(answer) => setDraft((current) => ({ ...current, answer }))}
                 placeholder="Optional, or use an estimate"
                 returnKeyType="go"
-                onSubmitEditing={() => void analyze(true)}
+                onSubmitEditing={() => void analyze({ clarify: true })}
               />
             </Label>
           </View>
         ) : null}
         {photoControls}
         <FormNote>Add a meal or nutrition label photo. Up to two photos. Remove a photo to replace it.</FormNote>
-        {error ? <FormNote alert>{error}</FormNote> : null}
+        {errorNote}
         {/* At the accessibility sizes the two capsules stack, full width, instead of squeezing. */}
         <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
           <Capsule title="Change meal" variant="quiet" size="large" disabled={busy !== null} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
@@ -422,7 +460,7 @@ export function AiTab({ draft, setDraft }: { draft: AiDraft; setDraft: (update: 
             title={draft.clarificationUsed ? 'Retry estimate' : draft.answer.trim() || draft.photos.length ? 'Update estimate' : 'Use an estimate'}
             size="large"
             busy={busy === 'analysis'}
-            onPress={() => void analyze(true)}
+            onPress={() => void analyze({ clarify: true })}
             style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
           />
         </View>

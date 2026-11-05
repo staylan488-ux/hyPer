@@ -33,6 +33,7 @@ export function useWidgetSnapshot() {
     && state.nutritionProfileLoadedForUserId === userId);
   const plan = useTodayPlan();
   const hero = plan.hero;
+  const seeded = plan.seeded;
   const workoutMode = useAppStore((state) => state.workoutMode);
   const activeSplit = useAppStore((state) => state.activeSplit);
   const target = useAppStore((state) => state.macroTarget);
@@ -44,8 +45,9 @@ export function useWidgetSnapshot() {
     && state.todayLoadedKey === fuelDay
     && fuelDay === dayKey);
 
+  // A plan shown from the phone's copy never reaches the widgets.
   const days = useMemo(
-    () => widgetPlan({
+    () => (plan.seeded ? null : widgetPlan({
       hero: plan.hero,
       dayKey,
       workoutMode,
@@ -54,8 +56,8 @@ export function useWidgetSnapshot() {
       scheduleWorkouts: plan.scheduleWorkouts,
       adaptiveSchedulingEnabled: plan.adaptiveSchedulingEnabled,
       aheadKnown: plan.aheadKnown,
-    }),
-    [plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled, plan.aheadKnown],
+    })),
+    [plan.seeded, plan.hero, dayKey, workoutMode, activeSplit, plan.schedule, plan.scheduleWorkouts, plan.adaptiveSchedulingEnabled, plan.aheadKnown],
   );
 
   const json = useMemo(() => {
@@ -63,12 +65,13 @@ export function useWidgetSnapshot() {
     // While the plan is unknown (a completions read loading or failed), Fuel
     // still updates beside the plan last written for this account today.
     // Today still follows a known hero (a session just finished); only the
-    // days after it are reused.
+    // days after it are reused. A hero from the phone's copy is not known:
+    // the plan last written stands as it was.
     const last = userId && writtenPlan?.userId === userId && writtenPlan.plan[0]?.day === dayKey ? writtenPlan.plan : null;
-    const plan = days ?? (last && (widgetPlanFromToday(hero, dayKey, last.slice(1)) ?? last));
+    const plan = days ?? (last && (seeded ? last : (widgetPlanFromToday(hero, dayKey, last.slice(1)) ?? last)));
     if (!plan) return null;
     return JSON.stringify(buildWidgetSnapshot({ fuelDay, target, totals, goal, plan }));
-  }, [loading, loaded, targetsLoaded, fuelLoaded, days, hero, userId, dayKey, fuelDay, target, totals, goal]);
+  }, [loading, loaded, targetsLoaded, fuelLoaded, days, hero, seeded, userId, dayKey, fuelDay, target, totals, goal]);
 
   useEffect(() => {
     if (!json || json === written || !userId) return;

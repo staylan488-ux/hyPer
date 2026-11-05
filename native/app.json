@@ -28,6 +28,23 @@
         "UIBackgroundModes": [
           "location",
           "audio"
+        ],
+        "UIApplicationShortcutItems": [
+          {
+            "UIApplicationShortcutItemType": "hyper.snap-meal",
+            "UIApplicationShortcutItemTitle": "Snap a meal",
+            "UIApplicationShortcutItemIconSymbolName": "camera.viewfinder"
+          },
+          {
+            "UIApplicationShortcutItemType": "hyper.log-food",
+            "UIApplicationShortcutItemTitle": "Log food",
+            "UIApplicationShortcutItemIconSymbolName": "fork.knife"
+          },
+          {
+            "UIApplicationShortcutItemType": "hyper.train",
+            "UIApplicationShortcutItemTitle": "Train",
+            "UIApplicationShortcutItemIconSymbolName": "dumbbell"
+          }
         ]
       },
       "entitlements": {

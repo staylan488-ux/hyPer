@@ -16,6 +16,8 @@ import type { SplitDay } from '@/types';
 
 import { useAccountDay, useWorkoutsRevision } from './accountData';
 import { loadHistoryMonth, useHistoryStore } from './history';
+import { noteTodayPlan, useLaunchHint } from './launchCache';
+import { heroFromSeed, planBasis, seedHero, type TodaySeed } from './launchSnapshot';
 
 /** Bumped after the schedule is saved on this device, so screens re-read it. */
 export const useScheduleRevision = create<{ revision: number; bump: () => void }>((set) => ({
@@ -27,6 +29,9 @@ export const useScheduleRevision = create<{ revision: number; bump: () => void }
  * Today's training plan by the web app's rules (todayModel's todayHero): the
  * live session, the day planned by the program's schedule, a rest day, or a
  * session already done. Also the next session and this week's count.
+ *
+ * A cold start later the same day shows the plan this phone last decided
+ * (launchCache's seed) while the reads it rests on land; `seeded` says so.
  */
 export function useTodayPlan() {
   const userId = useAuthStore((state) => state.user?.id);
@@ -37,6 +42,9 @@ export function useTodayPlan() {
   const splits = useAppStore((state) => state.splits);
   const workoutMode = useAppStore((state) => state.workoutMode);
   const hydratedForUserId = useAppStore((state) => state.hydratedForUserId);
+  const workoutLoaded = useAppStore((state) => Boolean(userId) && state.workoutLoadedForUserId === userId);
+  const launchSeed = useLaunchHint((state) => state.seed);
+  const holdPlan = useLaunchHint((state) => state.holdPlan);
   const adaptiveSchedulingEnabled = useAdaptiveSplitScheduling();
   const revision = useScheduleRevision((state) => state.revision);
   // History's deletes and completions, and pull to refresh, re-read what was done.
@@ -51,13 +59,15 @@ export function useTodayPlan() {
 
   // Starting or finishing a session changes whether today is done and the week's count.
   const refreshKey = `${refreshedAt}:${workoutsRevision}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`;
-  const todayDone = useTodayDone(userId, dayKey, refreshKey);
+  const { done: todayDone, confirmed: doneConfirmed } = useTodayDone(userId, dayKey, refreshKey);
   const storeReady = Boolean(userId) && hydratedForUserId === userId;
+  // The phone's copy didn't say "no workout": the plan waits for this launch's workout read.
+  const heldForWorkout = holdPlan && !workoutLoaded;
 
   const hero = useMemo(
     () =>
       todayHero({
-        heroLoading: loading && !storeReady,
+        heroLoading: (loading && !storeReady) || heldForWorkout,
         currentWorkout,
         currentWorkoutDayPlan,
         splits,
@@ -77,6 +87,7 @@ export function useTodayPlan() {
     [
       loading,
       storeReady,
+      heldForWorkout,
       currentWorkout,
       currentWorkoutDayPlan,
       splits,
@@ -95,40 +106,81 @@ export function useTodayPlan() {
     ],
   );
 
+  // The plan decided earlier today, while this launch decides it again, and
+  // only from the same schedule and days (a change shows the card's place).
+  const basis = useMemo(
+    () => planBasis({ activeSplit, schedule, adaptiveSchedulingEnabled }),
+    [activeSplit, schedule, adaptiveSchedulingEnabled],
+  );
+  const fromSeed = useMemo(
+    () => (!currentWorkout && !heldForWorkout && (!storeReady || hero.kind === 'loading')
+      ? heroFromSeed(launchSeed, { dayKey, activeSplit, workoutMode, basis })
+      : null),
+    [currentWorkout, heldForWorkout, storeReady, hero.kind, launchSeed, dayKey, activeSplit, workoutMode, basis],
+  );
+
   // The days after today are planned from the completions. A day already
   // trained shows before they load, so its next session waits for them.
   const aheadLoading = scheduleLoading || scheduleWorkoutsLoading;
   const aheadKnown = !aheadLoading && !scheduleError;
-  const next =
-    (hero.kind === 'rest' || hero.kind === 'done') && aheadKnown
+  const nextDay =
+    !fromSeed && (hero.kind === 'rest' || hero.kind === 'done') && aheadKnown
       ? nextPlannedDay({ activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey })
       : null;
+  // A plan shown from the phone's copy shows the next session that copy kept.
+  const next = fromSeed ? launchSeed?.next ?? null : nextDay?.label ?? null;
   // The session up next: today's, or after a rest day or a day trained, the
-  // next planned one. undefined while unknown (loading, or the completions
-  // failed to load); null when there is none to go by.
+  // next planned one. undefined while unknown (loading, a plan shown from the
+  // phone's copy, or the completions failed to load); null when there is none
+  // to go by.
   let upNext: SplitDay | null | undefined = null;
-  if (hero.kind === 'planned') upNext = hero.day;
-  else if (hero.kind === 'rest' || hero.kind === 'done') upNext = aheadKnown ? next?.day ?? null : undefined;
+  if (fromSeed) upNext = undefined;
+  else if (hero.kind === 'planned') upNext = hero.day;
+  else if (hero.kind === 'rest' || hero.kind === 'done') upNext = aheadKnown ? nextDay?.day ?? null : undefined;
   else if (hero.kind === 'loading' || hero.kind === 'schedule-error') upNext = undefined;
   const week = useWeekSessions(userId, dayKey, refreshKey);
+  const seedWeek = !currentWorkout && launchSeed?.dayKey === dayKey ? launchSeed.weekDone : null;
+
+  // Kept for the next cold start: only a plan decided from this launch's own reads.
+  const stable = storeReady && !currentWorkout && doneConfirmed && !fromSeed ? seedHero(hero) : null;
+  const seedJson = stable
+    ? JSON.stringify({
+      dayKey,
+      splitId: activeSplit?.id ?? null,
+      mode: workoutMode,
+      basis,
+      hero: stable,
+      next,
+      weekDone: week.dates?.length ?? null,
+    } satisfies TodaySeed)
+    : null;
+  useEffect(() => {
+    if (seedJson) noteTodayPlan(JSON.parse(seedJson) as TodaySeed);
+  }, [seedJson]);
 
   return {
-    hero,
-    next: next?.label ?? null,
+    hero: fromSeed ?? hero,
+    next,
     upNext,
     /** The days after today can be planned: the schedule and its completions have loaded. */
     aheadKnown,
     schedule,
     scheduleWorkouts,
     adaptiveSchedulingEnabled,
-    weekDone: week.dates?.length ?? null,
+    weekDone: week.dates?.length ?? seedWeek,
     weekTarget: weekSessionTarget(workoutMode, schedule, activeSplit),
+    /** The hero comes from the phone's copy (never for the widgets). */
+    seeded: fromSeed !== null,
   };
 }
 
-/** Whether a session was completed today; undefined until known. A failed read counts as not done, as on the web. */
+/**
+ * Whether a session was completed today; done is undefined until known. A
+ * failed read counts as not done, as on the web. confirmed: the latest read
+ * (for this refreshKey) succeeded.
+ */
 function useTodayDone(userId: string | undefined, dayKey: string, refreshKey: string) {
-  const [result, setResult] = useState<{ key: string; done: { title: string } | null } | null>(null);
+  const [result, setResult] = useState<{ key: string; refreshKey: string; done: { title: string } | null; ok: boolean } | null>(null);
   const key = `${userId}:${dayKey}`;
   useEffect(() => {
     if (!userId) return;
@@ -136,16 +188,21 @@ function useTodayDone(userId: string | undefined, dayKey: string, refreshKey: st
     const readKey = `${userId}:${dayKey}`;
     readTodayDone(userId, dayKey)
       .then((done) => {
-        if (!cancelled) setResult({ key: readKey, done });
+        if (!cancelled) setResult({ key: readKey, refreshKey, done, ok: true });
       })
       .catch(() => {
-        if (!cancelled) setResult((previous) => (previous?.key === readKey ? previous : { key: readKey, done: null }));
+        if (!cancelled) {
+          setResult((previous) => (previous?.key === readKey
+            ? { ...previous, refreshKey, ok: false }
+            : { key: readKey, refreshKey, done: null, ok: false }));
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [userId, dayKey, refreshKey]);
-  return result?.key === key ? result.done : undefined;
+  const current = result?.key === key ? result : null;
+  return { done: current ? current.done : undefined, confirmed: Boolean(current?.ok && current.refreshKey === refreshKey) };
 }
 
 /** Today's finished workout as Today and Train show it once the day is done. */

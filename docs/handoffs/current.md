@@ -55,6 +55,74 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   iOS bundle export and eight review agents; not run in a simulator or on a
   phone. Worth a hand check: swipe, the press spring, drag-to-reorder and
   logging food.
+- 2026-11-04: the last three picks from the improvement menu (branch
+  `claude/project-thread-n7auph`), checked with the web suite, lint, build,
+  native `tsc`, scratch prebuilds of both app variants and review agents. On
+  the Mac (2026-11-04, at 23cd2d9) the app and HyperWidgets built with no
+  errors or warnings in hyPer's Swift, the three intents and quick actions
+  were present, Snap a meal, Log food and Train opened cold and warm (real
+  quick actions included), and the Fuel reminder scheduled, showed on the lock
+  screen once and opened Log food cold and from the background (sample data,
+  simulator). In sample mode a cold press shows Today for 1 to 2 s before Log
+  food rises. Not yet checked (needs the phone): the reminder's Snap a meal
+  button, the control in Control Center and on the Action button, Siri and
+  Spotlight, the real camera, and instant launch on the real account. A
+  device build needs a prebuild with pod install (new HyperLaunch pod).
+  - Snap a meal from anywhere: the Snap a meal control (Control Center, lock
+    screen, Action button), App Shortcuts (Snap a meal, Log food, Open Train)
+    and quick actions (Snap a meal, Log food, Train). The menu's "Start
+    workout" became Train, which only opens the tab (the owner chose it).
+    Snap a meal during a Search result's portion read is refused (error
+    haptic); closing Log food then still closes, as before. Device checks: the Xcode 26.6 build (App Intents
+    metadata, phrase validation, any openAppWhenRun warning); the control
+    pressed warm, cold and locked (if it doesn't open the app, use the
+    OpenIntent fallback in the design); Shortcuts listing Snap a meal once;
+    Spotlight and Siri; quick actions cold and warm; the intro skipped or
+    hurried and press-to-camera time; the camera prompt, refused access and
+    VoiceOver lines; presses over a live workout, a sheet, the run and an open
+    Log food sheet in each state; a double press; the worker's Photo tab; the
+    test and released apps side by side; a real Gemini photo through to Log
+    meal (a real-account build, with the owner's approval).
+  - Instant launch: the last program, quick starts, the week's volume, the
+    target, the profile and today's food are kept on the phone
+    (`hyper-launch:*` keys, included in device backups) and drawn the moment
+    sign-in is restored. Sign-in restore is unchanged; the live workout is
+    never kept. Device checks (Debug, `EXPO_PUBLIC_HYPER_PREVIEW=0`, local test
+    account): cold-launch recordings with the intro, Reduce Motion, a very bad
+    network and airplane mode; edits made on the copy before the first read;
+    kill mid-workout and reopen; sign out then another account (no keys left);
+    midnight, the 1st of a month and a week boundary; a schedule save on weak
+    signal (the plan card stays blank until decided); preview creates no keys;
+    Hermes timing under 16 ms. Accepted: a program edited from the copy before
+    the program read lands can overwrite a change made on another install
+    (needs a schema change to prevent); unchanged quick starts renew their
+    copy only every 30 days.
+  - Fuel reminder (the menu's "Bulk nudge"): You's switch and time, local only.
+    A tap opens Log food, and pressing and holding it offers Snap a meal;
+    the root reads taps from launch, so they follow the press rules. Device
+    checks: a tap cold (intro left out or hurried), warm, and on the offline
+    screen then left (nothing opens on the next visit); the permission
+    prompt and the red note when notifications are off; `-hyperAction
+    fuelReminder` on the lock screen; no banner with the app in front;
+    logging enough before the time cancels it; a time zone and a DST change;
+    sign-out and an expired session leave nothing pending; You's Time row
+    motion and its 5 PM to 11 PM limit; the calorie wording needs the owner's
+    goal saved as Bulk or Lean bulk.
+  - Seen in passing, existing behaviour: a Fuel entry deleted during a
+    pull-to-refresh read can come back (fixed only while the copy is shown).
+    The schedule editor's default day, also seen then, is fixed by #178 (the
+    sheet waits for the plan's session up next).
+  - Joined with #178 (bug hunt, accessibility, design review) by a merge:
+    Snap a meal is refused while a Log food save runs (the tabs hold still);
+    the camera's Open Settings, the Fuel reminder card and the Analyzing meal
+    line follow #178's capsule, list-row and announcement patterns; Today
+    shows the copy's totals for the copy's own day only (`todayCopyKey`); a
+    plan from the copy leaves the session up next unknown (Schedule waits) and
+    never reaches the widgets' stand-in plan; a finished day from the copy
+    says "Trained today" at the record's height until History's read brings
+    the record (a day decided this launch keeps #178's blank hold); the intro
+    takes both the press hurry and the widget launch's markless fade. Device
+    checks for #178 are listed in its own entries.
 - 2026-11-04: a design review of every screen (branch
   `claude/project-thread-5xt4wh`), inside Blanc. Shared pieces first: one way
   to write a set ("80 lb × 10", bodyweight "10 reps"), a target ("4 × 8–10"),

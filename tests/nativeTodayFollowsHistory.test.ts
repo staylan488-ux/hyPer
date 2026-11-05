@@ -80,6 +80,9 @@ beforeEach(async () => {
     '@/lib/historyMonth': {},
     '@/lib/workoutSessions': {},
     './history': {},
+    // The launch copy (lib/launchCache.ts): none kept on this phone.
+    './launchCache': { useLaunchHint: create(() => ({ seed: null, holdPlan: false })), noteTodayPlan: () => {} },
+    './launchSnapshot': { heroFromSeed: () => null, planBasis: () => '', seedHero: () => null },
   }));
   host = document.createElement('div');
   document.body.appendChild(host);

@@ -61,8 +61,13 @@ export const useWorkoutsRevision = create<{ revision: number; bump: () => void }
 export function useAccountData() {
   const load = useCallback(async (day: string) => {
     await loadAccount(day);
-    // Re-learn expenditure at most weekly, after the screens are already up.
-    void useAppStore.getState().refreshAdaptiveTargets();
+    // Re-learn expenditure at most weekly, after the screens are up, and only from
+    // this launch's own profile and target reads, never from the phone's copy.
+    const app = useAppStore.getState();
+    const owner = app.nutritionProfile?.user_id;
+    if (owner && app.nutritionProfileLoadedForUserId === owner && app.macroTargetLoadedForUserId === owner) {
+      void app.refreshAdaptiveTargets();
+    }
     return day;
   }, []);
   const { dayKey, refreshedAt, loading } = useTodayRefresh(load, noNewDayWork);

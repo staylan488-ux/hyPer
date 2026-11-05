@@ -18,13 +18,21 @@ a build whose configuration differs from the last one.
 ## Native contracts
 
 - Native modules live in `native/modules` (Keychain session, HealthKit, run
-  recorder, barcode scanner, Live Activity, widget data, view frames), each
-  with its Swift beside its TypeScript API.
+  recorder, barcode scanner, Live Activity, widget data, view frames, presses
+  from outside the app), each with its Swift beside its TypeScript API.
 - The widget extension (`native/targets/widgets`) is added on prebuild by
   [withHyperWidgets.js](../../../../native/plugins/withHyperWidgets.js).
   `WorkoutActivityAttributes` has one definition in
   `native/modules/hyper-activity/ios`, copied into the extension; ActivityKit
   matches the app's and the extension's copies by name and fields.
+- Presses from outside the app (`native/modules/hyper-launch`):
+  `SnapMealIntent` (`shared/`) and `HyperLaunchStore` (`ios/`) are copied into
+  the app and the widget extension, because the Snap a meal control's intent
+  must be in both. The App Shortcuts (`shared/HyperAppShortcuts.swift`) go into
+  the app only, and no intent goes into the HyperLaunch pod (App Intents
+  metadata extraction skips pods). Quick actions reach the module through its
+  `ExpoAppDelegateSubscriber`. A prebuild without `--clean` adds new widget
+  files to an existing target; removing one still needs `--clean`.
 - The Keychain session and URL schemes follow the bundle ID iOS reports.
   Preserve auth during unrelated work; when auth changes are explicitly
   requested, validate the sign-in callback on a device before release.

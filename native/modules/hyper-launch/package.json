@@ -1,0 +1,8 @@
+{
+  "name": "hyper-launch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Presses from outside the app: the Snap a meal control, App Shortcuts and Home Screen quick actions.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

@@ -105,6 +105,8 @@ const easeInOut = Easing.bezier(0.4, 0, 0.2, 1);
 type BrandIntroProps = {
   /** The first screen is known (the saved session has been read). */
   ready: boolean;
+  /** A press from outside the app is waiting: land at once, as a tap does. */
+  hurry?: boolean;
   /** The intro has handed over; unmount it. */
   onDone: () => void;
   /**
@@ -115,7 +117,7 @@ type BrandIntroProps = {
   markless?: boolean;
 };
 
-export function BrandIntro({ ready, onDone, markless = false }: BrandIntroProps) {
+export function BrandIntro({ ready, hurry, onDone, markless = false }: BrandIntroProps) {
   const c = useBlanc();
   const { width, height } = useWindowDimensions();
   const origin = { x: width / 2, y: height * ORIGIN_Y };
@@ -125,6 +127,9 @@ export function BrandIntro({ ready, onDone, markless = false }: BrandIntroProps)
   const [started, setStarted] = useState(false);
   const [spelled, setSpelled] = useState(false);
   const [skipped, setSkipped] = useState(false);
+  useEffect(() => {
+    if (hurry) setSkipped(true);
+  }, [hurry]);
   const [leaving, setLeaving] = useState(false);
   const [noAnchor, setNoAnchor] = useState(false);
   const finished = useRef(false);

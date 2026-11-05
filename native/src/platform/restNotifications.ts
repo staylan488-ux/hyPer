@@ -4,15 +4,22 @@
 // web app's. Local only: the app asks for no push permission.
 import * as Notifications from 'expo-notifications';
 
+import { isFuelReminderId } from '~/lib/fuelReminderPlan';
+
 /** One slot: scheduling again replaces the pending one. */
 const REST_NOTIFICATION_ID = 'hyper-rest-over';
 
-// With the app in front, rest ends with a haptic and the sound, no banner: the
-// screen already shows it. Anything else presents normally.
+// The app's one notification handler. With the app in front, rest ends with a
+// haptic and the sound, no banner: the screen already shows it. The fuel
+// reminder goes quietly to Notification Center (no banner, no sound): Fuel
+// and Today already show the figures, and it is there once you leave.
+// Anything else presents normally.
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
-    const rest = notification.request.identifier === REST_NOTIFICATION_ID;
-    return { shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: !rest, shouldShowList: !rest };
+    const id = notification.request.identifier;
+    const rest = id === REST_NOTIFICATION_ID;
+    const reminder = isFuelReminderId(id);
+    return { shouldPlaySound: !reminder, shouldSetBadge: false, shouldShowBanner: !rest && !reminder, shouldShowList: !rest };
   },
 });
 

@@ -1,7 +1,8 @@
+import Constants from 'expo-constants';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
+import { AppState, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ReducedMotionConfig, ReduceMotion, useReducedMotion } from 'react-native-reanimated';
@@ -13,6 +14,10 @@ import { DevLaunchRunner } from '~/components/DevLaunchRunner';
 import { useReduceMotionOverride } from '~/lib/accessibility';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
+import { followReminderTaps } from '~/lib/fuelReminder';
+import { installLaunchCache } from '~/lib/launchCache';
+import { backendOf } from '~/lib/launchSnapshot';
+import { launchWaiting, takeNativeLaunch, useLaunchActions } from '~/lib/launch';
 import { pendingLaunchLink } from '~/lib/launchLink';
 import { restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
@@ -24,6 +29,24 @@ restoreAppearance();
 // Preview mode: fill the shared stores with the sample account before the
 // first screen renders (no-op when preview is off).
 maybeSeedPreview();
+// The phone's copy of the last program, targets and today's food fills the
+// screens the moment sign-in is restored; the account load then refreshes it. Never in preview.
+installLaunchCache({
+  preview: isPreviewActive(),
+  backend: backendOf(process.env.EXPO_PUBLIC_SUPABASE_URL),
+  build: `${Constants.expoConfig?.version ?? ''}+${Constants.expoConfig?.ios?.buildNumber ?? ''}`,
+  // Saved as the app leaves the screen, the app switcher (where it can be closed) included.
+  onLeave: (save) => {
+    AppState.addEventListener('change', (state) => {
+      if (state !== 'active') save();
+    });
+  },
+});
+// A press of Snap a meal, Log food or Train that launched the app (lib/launch.ts).
+takeNativeLaunch();
+// A tap on the Fuel reminder, or its Snap a meal button, becomes the same press
+// the moment it lands, at launch or later (lib/fuelReminder.ts).
+followReminderTaps();
 // Otherwise restore the saved session (Keychain) and follow auth changes, as
 // the web app does on launch.
 if (!isPreviewActive()) void useAuthStore.getState().initialize();
@@ -40,9 +63,11 @@ export default function RootLayout() {
     colors: { ...base.colors, primary: p.ink, background: p.ground, card: p.ground, text: p.ink, border: p.hairline },
   };
   const screen = useAuthScreen();
-  // Cold launch only, and never under Reduce Motion or a scripted dev check.
+  // Cold launch only, and never under Reduce Motion, a scripted dev check or a launch from a press.
   const reducedMotion = useReducedMotion();
-  const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro));
+  const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro) || launchWaiting());
+  // A press from outside the app goes straight to its screen; one that arrives during the intro hurries it.
+  const hurryIntro = useLaunchActions(screen, introDone);
   // A widget or card that launched the app opens a screen with no P to land on.
   const [launchedToScreen] = useState(() => pendingLaunchLink() !== null);
 
@@ -215,7 +240,7 @@ export default function RootLayout() {
           </Stack.Protected>
         </Stack>
         {introDone ? null : (
-          <BrandIntro ready={screen !== 'boot'} markless={launchedToScreen} onDone={() => setIntroDone(true)} />
+          <BrandIntro ready={screen !== 'boot'} hurry={hurryIntro} markless={launchedToScreen} onDone={() => setIntroDone(true)} />
         )}
         <ReduceMotionSync />
         {__DEV__ ? <DevLaunchRunner /> : null}

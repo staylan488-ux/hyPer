@@ -84,7 +84,7 @@ export default function TodayScreen() {
             {format(now, 'EEEE, MMMM d')}
           </BlancText>
 
-          {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" />}
+          {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
 
           <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (

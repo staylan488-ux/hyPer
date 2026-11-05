@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
+import { checkFuelReminderSoon } from '~/lib/fuelReminder';
+import { receiveLaunchPress } from '~/lib/launchActions';
 import { setSkipped } from '~/lib/movement';
 import { startRest } from '~/lib/rest';
 import { liveSessionModel, previousTargetsFor, useFocusStore } from '~/lib/session';
@@ -59,6 +61,11 @@ export function DevLaunchRunner() {
       timers.push(setTimeout(() => router.push('/log-food'), 900));
     }
 
+    if (action?.startsWith('launch:')) {
+      // A press of the Snap a meal control, an App Shortcut or a quick action, as iOS hands it over.
+      receiveLaunchPress({ action: action.slice('launch:'.length), atMs: Date.now() });
+    }
+
     if (action === 'switchMovement') {
       // The same path as tapping another movement; the scroll trace shows
       // whether the screen moves.
@@ -104,6 +111,12 @@ export function DevLaunchRunner() {
           });
         }, 1200),
       );
+    }
+
+    if (action === 'fuelReminder') {
+      // Today's reminder a minute from now through the real setting and schedule
+      // (tap Allow at the prompt); Metro logs what iOS then holds.
+      checkFuelReminderSoon();
     }
 
     if (action === 'noWorkout') {

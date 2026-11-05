@@ -1,9 +1,10 @@
+import * as Device from 'expo-device';
 import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Alert, Pressable, Image as RNImage, TextInput, View } from 'react-native';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, Image as RNImage, TextInput, View, type ActionSheetIOSOptions } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -72,6 +73,52 @@ export const emptyPhoto = (): PhotoDraft => ({
   summary: '',
 });
 
+/** Said when camera access is refused (both analysis tabs). */
+export const CAMERA_OFF = 'Camera access is off. Allow Camera for hyPer in Settings, then try again.';
+/** The simulator has no camera; UIKit would close the app rather than open one. */
+export const CAMERA_UNAVAILABLE = 'The camera isn’t available here.';
+
+// One system picker at a time: a second (Snap a meal while Add photo is open) would stack on the first.
+let pickerUp = false;
+// Add photo's choices (or a photo's own menu) are up: a camera presented now would sit on them.
+let choosingPhoto = false;
+/** The camera, the photo library, the camera prompt or Add photo's choices are on screen. */
+export const foodPickerUp = () => pickerUp || choosingPhoto;
+
+/** A photo's action sheet (Take photo, Choose from library, Remove photo); the callback runs for every answer, Cancel included. */
+export function showPhotoChoices(options: ActionSheetIOSOptions, onChoice: (index: number) => void): void {
+  choosingPhoto = true;
+  ActionSheetIOS.showActionSheetWithOptions(options, (index) => {
+    choosingPhoto = false;
+    onChoice(index);
+  });
+}
+/** A tab closed under its choices never hears back from them. */
+export const dropPhotoChoices = (): void => {
+  choosingPhoto = false;
+};
+
+/** A photo from the camera (asking for access the first time) or the library. Null when cancelled or a picker is already up. */
+export async function pickFoodPhoto(source: 'camera' | 'library'): Promise<PickedPhoto | null> {
+  if (pickerUp) return null;
+  if (source === 'camera' && !Device.isDevice) throw new Error(CAMERA_UNAVAILABLE);
+  pickerUp = true;
+  try {
+    if (source === 'camera' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) throw new Error(CAMERA_OFF);
+    const options = { mediaTypes: ['images'] as ImagePicker.MediaType[], quality: 1, exif: false };
+    const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset) return null;
+    if (asset.type && asset.type !== 'image') throw new Error('Please choose an image file.');
+    return { uri: asset.uri, width: asset.width, height: asset.height };
+  } finally {
+    pickerUp = false;
+  }
+}
+
+/** The Photo tab can take a photo now: no estimate yet and a view still empty (Snap a meal). */
+export const photoTakesPhoto = (draft: PhotoDraft) => draft.items.length === 0 && !(draft.photos.top && draft.photos.side);
+
 /** Re-encodes a photo as JPEG at most 2576 px on its long edge, within the worker's size budget. */
 export async function prepareImage(photo: PickedPhoto): Promise<{ imageBase64: string; mimeType: string }> {
   const scale = Math.min(1, MAX_ANALYSIS_IMAGE_DIMENSION / Math.max(photo.width || 1, photo.height || 1));
@@ -97,12 +144,19 @@ function readCombinePreference(): boolean {
 }
 
 /** Photo: one or two photos of the plate, analyzed by the food worker, then reviewed item by item. */
-export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void }) {
+export function PhotoTab({ draft, setDraft, cameraRequest = 0 }: {
+  draft: PhotoDraft;
+  setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void;
+  /** Snap a meal: each new value opens the camera, then analyzes the photo (log-food.tsx). */
+  cameraRequest?: number;
+}) {
   const logger = useLogger();
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysisGate] = useState(createRequestGate);
   useEffect(() => () => analysisGate.invalidate(), [analysisGate]);
+  // Closed under Add photo's choices: they never answer, so Snap a meal stops waiting for them.
+  useEffect(() => dropPhotoChoices, []);
   const { beginBusy } = logger;
   // Claims the sheet only while this tab's own lookup runs.
   useEffect(() => {
@@ -112,7 +166,7 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
 
   const pick = (angle: PhotoAnalysisAngle) => {
     const options = ['Take photo', 'Choose from library', ...(draft.photos[angle] ? ['Remove photo'] : []), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions(
+    showPhotoChoices(
       { options, cancelButtonIndex: options.length - 1, destructiveButtonIndex: draft.photos[angle] ? 2 : undefined },
       async (index) => {
         if (index === options.length - 1) return;
@@ -126,23 +180,10 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
           return;
         }
         try {
-          if (index === 0) {
-            const permission = await ImagePicker.requestCameraPermissionsAsync();
-            if (!permission.granted) {
-              setError('Camera access is off. Allow Camera for hyPer in Settings, then try again.');
-              return;
-            }
-          }
-          const options = { mediaTypes: ['images'] as ImagePicker.MediaType[], quality: 1, exif: false };
-          const result = index === 0 ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-          const asset = result.canceled ? null : result.assets[0];
-          if (!asset) return;
-          if (asset.type && asset.type !== 'image') {
-            setError('Please choose an image file.');
-            return;
-          }
+          const photo = await pickFoodPhoto(index === 0 ? 'camera' : 'library');
+          if (!photo) return;
           haptics.select();
-          setDraft((current) => ({ ...current, photos: { ...current.photos, [angle]: { uri: asset.uri, width: asset.width, height: asset.height } } }));
+          setDraft((current) => ({ ...current, photos: { ...current.photos, [angle]: photo } }));
         } catch (cause) {
           setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
         }
@@ -156,13 +197,14 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
     setDraft((current) => ({ ...current, photos: { top: { uri: source.uri, width: source.width ?? 1024, height: source.height ?? 1024 } } }));
   };
 
-  const analyze = async () => {
-    if ((!draft.photos.top && !draft.photos.side) || analyzing) return;
+  // Snap a meal passes the photos it just added; the Analyze button uses the draft's.
+  const analyze = async (photos: PhotoDraft['photos'] = draft.photos) => {
+    if ((!photos.top && !photos.side) || analyzing) return;
     const isCurrent = analysisGate.begin();
     setAnalyzing(true);
     setError(null);
     try {
-      const entries = (['top', 'side'] as const).flatMap((angle) => (draft.photos[angle] ? [{ angle, photo: draft.photos[angle]! }] : []));
+      const entries = (['top', 'side'] as const).flatMap((angle) => (photos[angle] ? [{ angle, photo: photos[angle]! }] : []));
       // preview answers from a fixture and never reads the images
       const images = isPreviewActive()
         ? entries.map(({ angle }) => ({ angle, imageBase64: '', mimeType: 'image/jpeg' }))
@@ -199,6 +241,29 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
     }
   };
 
+  // Snap a meal: the camera at once, then the analysis without a tap.
+  const seenCamera = useRef(cameraRequest);
+  const snap = useEffectEvent(async () => {
+    const angle: PhotoAnalysisAngle | null = !draft.photos.top ? 'top' : !draft.photos.side ? 'side' : null;
+    if (!angle || analyzing || foodPickerUp() || !photoTakesPhoto(draft)) return;
+    setError(null);
+    try {
+      const photo = await pickFoodPhoto('camera');
+      if (!photo) return;
+      haptics.select();
+      setDraft((current) => ({ ...current, photos: { ...current.photos, [angle]: photo } }));
+      announce('Analyzing meal');
+      void analyze({ ...draft.photos, [angle]: photo });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
+    }
+  });
+  useEffect(() => {
+    if (cameraRequest === seenCamera.current) return;
+    seenCamera.current = cameraRequest;
+    void snap();
+  }, [cameraRequest]);
+
   if (draft.items.length > 0) return <PhotoReview draft={draft} setDraft={setDraft} />;
 
   return (
@@ -231,6 +296,12 @@ export function PhotoTab({ draft, setDraft }: { draft: PhotoDraft; setDraft: (up
       </Section>
 
       {error ? <FormNote alert>{error}</FormNote> : null}
+      {/* Camera access off: the way to turn it on, as the run screen does for Location; on the capsules' inset, over Analyze. */}
+      {error === CAMERA_OFF ? (
+        <View style={{ paddingHorizontal: space.inset, marginTop: 12 }}>
+          <Capsule title="Open Settings" variant="quiet" onPress={() => void Linking.openSettings()} />
+        </View>
+      ) : null}
       <View style={{ paddingHorizontal: space.inset, marginTop: 20 }}>
         <Capsule
           title={analyzing ? 'Reading the plate…' : 'Analyze'}

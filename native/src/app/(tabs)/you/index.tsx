@@ -14,6 +14,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { FormNote, ToggleRow } from '~/components/Form';
+import { FuelReminderSetting } from '~/components/FuelReminderSetting';
 import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
@@ -25,7 +26,7 @@ import { useCurrentDayKey } from '~/lib/accountData';
 import { formatWhole } from '~/lib/format';
 import { dayKey } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
-import { figureLayout } from '~/lib/motion';
+import { figureLayout, rowLayout } from '~/lib/motion';
 import {
   APPEARANCE_LABELS,
   chooseAppearance,
@@ -91,7 +92,7 @@ export default function YouScreen() {
 
         <WeightCard />
 
-        <Label style={{ marginTop: space.section }}>
+        <Label layout={rowLayout} style={{ marginTop: space.section }}>
           <Row
             title="Targets"
             value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : targetKnown ? 'Not set' : undefined}
@@ -114,7 +115,9 @@ export default function YouScreen() {
           />
         </Label>
 
-        <Label style={{ marginTop: space.section }}>
+        <FuelReminderSetting />
+
+        <Label layout={rowLayout} style={{ marginTop: space.section }}>
           <Row title="Connections" value={connections} chevron onPress={() => router.push('/you/connections')} />
           <Hairline />
           <AppearanceRow />
@@ -122,7 +125,7 @@ export default function YouScreen() {
 
         <SchedulingSetting />
 
-        <Label style={{ marginTop: space.section }}>
+        <Label layout={rowLayout} style={{ marginTop: space.section }}>
           <Row title="Start a run" chevron onPress={() => router.push('/run')} />
           <Hairline />
           <Row title="About" chevron onPress={() => router.push('/you/about')} />
@@ -167,7 +170,7 @@ function WeightCard() {
 
   return (
     <Section title="Body weight" action={{ title: 'Log', onPress: () => router.push('/log-weight') }}>
-      <Label style={{ overflow: 'hidden' }}>
+      <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
@@ -298,7 +301,7 @@ function SchedulingSetting() {
   };
 
   return (
-    <View style={{ marginTop: space.section }}>
+    <Animated.View layout={rowLayout} style={{ marginTop: space.section }}>
       <Label>
         <ToggleRow list label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
       </Label>
@@ -307,6 +310,6 @@ function SchedulingSetting() {
           ? 'Couldn’t save this setting. Your previous choice is still active.'
           : 'Upcoming workouts and rest days follow the program days you complete. Off keeps your saved schedule.'}
       </FormNote>
-    </View>
+    </Animated.View>
   );
 }

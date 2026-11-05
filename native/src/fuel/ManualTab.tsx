@@ -84,11 +84,13 @@ export function manualHasChanges(draft: ManualDraft, base: ManualDraft, savedMea
 }
 
 /** Manual entry: describe it to the AI, or type the name and macros per serving. */
-export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
+export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: {
   draft: ManualDraft;
   setDraft: (update: (draft: ManualDraft) => ManualDraft) => void;
   /** Gemini mode: the description goes to the AI tab instead of filling these fields. */
   onGeminiHandoff?: (description: string) => void;
+  /** Told whether Describe with AI holds typed text, which only this tab keeps (Snap a meal must not drop it). */
+  onDescribeText?: (typed: boolean) => void;
 }) {
   const c = useBlanc();
   const large = useLargeText();
@@ -119,6 +121,12 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff }: {
     if (!describing) return;
     return beginBusy();
   }, [describing, beginBusy]);
+  const describeTyped = describeOpen && description.trim().length > 0;
+  useEffect(() => {
+    if (!describeTyped || !onDescribeText) return;
+    onDescribeText(true);
+    return () => onDescribeText(false);
+  }, [describeTyped, onDescribeText]);
 
   const savedMeals = logger.savedMeals ?? [];
   const selectedSavedMeal = draft.selectedSavedMealId ? savedMeals.find((meal) => meal.id === draft.selectedSavedMealId) ?? null : null;

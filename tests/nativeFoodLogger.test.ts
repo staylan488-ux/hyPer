@@ -3,12 +3,15 @@ import * as dates from 'date-fns';
 import { act, createContext, createElement, Fragment, isValidElement, useContext, useEffect, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as zustand from 'zustand';
 
 import * as barcodes from '@/lib/barcodes';
 import * as decimalText from '@/lib/decimalText';
 import * as foodTrial from '@/lib/foodTrial';
 import * as foodTrialReview from '@/lib/foodTrialReview';
 import * as foodUnits from '@/lib/foodUnits';
+import * as loggerUtils from '@/lib/foodLoggerUtils';
+import { mealForTime } from '../native/src/lib/meals';
 import * as composition from '@/lib/mealComposition';
 import * as pendingEntry from '@/lib/pendingEntryId';
 import * as recentFoods from '@/lib/recentFoods';
@@ -21,9 +24,14 @@ import { assertComposedMealOptions } from '@/lib/saveMealComposition';
 import { filterSavedMeals, foodValuesMatch, savedMealSuggestions } from '@/lib/savedMeals';
 import * as timeout from '@/lib/withTimeout';
 import type { Food } from '@/types';
+import type * as LaunchActions from '../native/src/lib/launchActions';
 import { loadNativeModule } from './helpers/loadNativeModule';
+import { nativeFuelStore } from './helpers/nativeFuelStore';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// The real press store, on this React (native/'s zustand would bring its own copy).
+const launchActions = loadNativeModule<typeof LaunchActions>('lib/launchActions.ts', { zustand });
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
 /** The words a pressable shows, to find it the way a person would. */
@@ -65,7 +73,7 @@ type Press = PropsWithChildren<{ onPress?: () => void; accessibilityLabel?: stri
 type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
 type AlertButton = { text: string; onPress?: () => void };
 type Input = { accessibilityLabel?: string; onChangeText?: (text: string) => void; onFocus?: () => void };
-type Context = { beginBusy: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null };
+type Context = { beginBusy: () => () => void; beginRead: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null } };
 type ReviewProps = {
   draft: composition.MealDraft;
   savedTarget?: Food;
@@ -75,13 +83,19 @@ type ReviewProps = {
 type ManualDraft = { fields: Record<'name' | 'calories' | 'protein' | 'carbs' | 'fat', string>; selectedSavedMealId: string | null };
 type ManualProps = { draft: ManualDraft; setDraft: (update: (draft: ManualDraft) => ManualDraft) => void; onGeminiHandoff?: (description: string) => void };
 type PhotoDraft = { photos: Record<string, unknown>; items: photoReview.PhotoReviewItem[]; summary: string };
-type PhotoProps = { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void };
-type AiDraft = { hint: string; result: foodTrial.FoodTrialResult | null; items: Array<foodTrial.TrialFoodItem & { key: string }> };
-type AiProps = { draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void };
+type PhotoProps = { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void; cameraRequest?: number };
+type AiDraft = { hint: string; photos: unknown[]; result: unknown; items: Array<foodTrial.TrialFoodItem & { key: string }> };
+type AiProps = { cameraRequest?: number; draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void };
+type Choices = { options: { options: string[] }; callback: (index: number) => Promise<void> | void };
+type Asset = { uri: string; width: number; height: number; type: string };
+type PickerResult = { canceled: boolean; assets: Asset[] };
 type NativeModule = Record<string, unknown>;
 
 const active: Array<() => Promise<void>> = [];
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-03T10:00:00'));
+  launchActions.useLaunchStore.setState({ press: null, held: true, cameraAsks: 0, openingAt: 0 });
   const data = new Map<string, string>();
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => data.get(key) ?? null,
@@ -92,10 +106,28 @@ beforeEach(() => {
 afterEach(async () => {
   for (const close of active.splice(0)) await close();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, worker = false, savedMeal = false, realReview = false, realAi = false, realLists = false } = {}) {
+function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions }: {
+  editing?: boolean;
+  worker?: boolean;
+  savedMeal?: boolean;
+  params?: Record<string, string | undefined>;
+  /** False is the simulator: no camera. */
+  device?: boolean;
+  /** The meal the clock picks for a new entry today. */
+  clockGroup?: string | null;
+  /** The real FoodReview instead of a stand-in. */
+  realReview?: boolean;
+  /** The real AI tab instead of a stand-in. */
+  realAi?: boolean;
+  /** The real Recent, Saved and Search lists, saving through the real food logger. */
+  realLists?: boolean;
+  realClock?: boolean;
+  fuelActions?: { refresh: () => Promise<void>; refreshAfterWrite: () => Promise<void>; invalidateTotals: () => void };
+} = {}) {
   const captured: {
     buttons: Record<string, Button>;
     fields: Record<string, Field>;
@@ -113,6 +145,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     scanCurrent?: () => boolean;
     guard?: { on: boolean; message: { title: string }; busy?: boolean };
     focus?: () => void;
+    choices?: Choices;
   } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {} };
   const ContextProvider = createContext<Context | null>(null);
   const useLogger = () => useContext(ContextProvider)!;
@@ -155,7 +188,18 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
   });
   const back = vi.fn();
   const push = vi.fn();
-  const fuel = { logs: [loggedMilk], groups: [], refresh: noop };
+  // The sheet's own navigation: its opening transition, sent by appear().
+  const listeners: Record<string, (event: { data: { closing: boolean } }) => void> = {};
+  const navigation = { addListener: (type: string, callback: (event: { data: { closing: boolean } }) => void) => { listeners[type] = callback; return noop; } };
+  const appear = (closing = false) => act(async () => { listeners.transitionEnd?.({ data: { closing } }); });
+  const refusePress = vi.fn();
+  const announce = vi.fn();
+  const when = vi.fn((): { date: Date; time: string; groupId: string | null } => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }));
+  const camera = vi.fn(async (): Promise<PickerResult> => ({ canceled: false, assets: [{ uri: 'cam', width: 10, height: 10, type: 'image' }] }));
+  const permission = vi.fn(async () => ({ granted: true }));
+  const imagePicker = { requestCameraPermissionsAsync: permission, launchCameraAsync: camera, launchImageLibraryAsync: vi.fn() };
+  const openSettings = vi.fn();
+  const fuel = { logs: [loggedMilk], groups: [], refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, ...fuelActions };
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
   const imports: Record<string, unknown> = {
     'date-fns': dates,
@@ -170,7 +214,8 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '@expo/ui/swift-ui/modifiers': { accessibilityLabel: noop, pickerStyle: noop, tag: noop, disabled: (disabled = true) => ({ disabled }) },
     'expo-router': {
       router: { back, push },
-      useLocalSearchParams: () => editing ? { entry: loggedMilk.id } : savedMeal ? { savedMeal: recipe.id } : {},
+      useLocalSearchParams: () => ({ ...(editing ? { entry: loggedMilk.id } : savedMeal ? { savedMeal: recipe.id } : {}), ...params }),
+      useNavigation: () => navigation,
       useFocusEffect: (callback: () => void) => {
         captured.focus = callback;
         useEffect(() => { callback(); }, [callback]);
@@ -179,20 +224,29 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     'expo-symbols': { SymbolView: Empty },
     'expo-image': { Image: Empty },
     'expo-image-manipulator': {},
-    'expo-image-picker': {},
+    'expo-image-picker': imagePicker,
+    'expo-device': { isDevice: device },
     'react-native': {
-      ActionSheetIOS: {}, Alert: { alert }, View: Wrap,
-      // Kept while shown, by the words on it.
+      ActionSheetIOS: { showActionSheetWithOptions: (options: Choices['options'], callback: Choices['callback']) => { captured.choices = { options, callback }; } },
+      Alert: { alert },
+      View: Wrap,
+      // Kept while shown, by its name for VoiceOver and by the words on it.
       Pressable: (props: Press) => {
-        const label = props.accessibilityLabel ?? textOf(props.children);
+        const names = [...new Set([props.accessibilityLabel, textOf(props.children)])].filter((name): name is string => Boolean(name));
         useEffect(() => {
-          if (!label) return;
-          captured.pressables[label] = props;
-          return () => { delete captured.pressables[label]; };
+          for (const name of names) captured.pressables[name] = props;
+          return () => {
+            for (const name of names) if (captured.pressables[name] === props) delete captured.pressables[name];
+          };
         });
         return Wrap(props);
-      }, ScrollView: Wrap, Keyboard: { dismiss: noop }, ActivityIndicator: Empty, Linking: {}, Image: {},
+      },
+      ScrollView: Wrap,
       TextInput: (props: Input) => { if (props.accessibilityLabel) captured.inputs[props.accessibilityLabel] = props; return null; },
+      Keyboard: { dismiss: noop },
+      ActivityIndicator: Empty,
+      Linking: { openSettings },
+      Image: {},
     },
     'react-native-keyboard-controller': { KeyboardAwareScrollView: Wrap },
     'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
@@ -234,11 +288,14 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
     '~/components/Stepper': { Stepper: Empty },
     '~/lib/format': { formatWhole: String },
-    // VoiceOver and the text size are device services: silent, standard size.
-    '~/lib/accessibility': { announce: noop, useAnnounce: noop, useLargeText: () => false, useScreenReader: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
-    '~/lib/foodLogger': { initialWhen: () => ({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }), usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
-    '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => null, today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
+    // VoiceOver and the text size are device services: silent, standard size (announcements recorded).
+    '~/lib/accessibility': { announce, useAnnounce: noop, useLargeText: () => false, useScreenReader: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
+    '~/lib/foodLogger': { initialWhen: when, usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
+    './fuel': { useFuelStore },
+    '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
+    '~/lib/launchActions': launchActions,
+    '~/lib/launch': { refusePress },
     '~/lib/leaveGuard': { useLeaveGuard: (on: boolean, message: { title: string }, options: { busy?: boolean } = {}) => { captured.guard = { on, message, busy: options.busy }; } },
     '~/lib/you': { loadYouMeals: loadYou, useYouMealsStore },
     '~/lib/motion': {},
@@ -247,10 +304,15 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     './context': { useLogger },
     './WhenBlock': { WhenBlock: Empty },
     './FoodLists': { spokenMacros: () => '' },
-    '~/fuel/FoodLists': { Empty, SearchTab: Empty, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
+    '~/fuel/FoodLists': { Empty: ({ text }: { text: string }) => text, SearchTab: Empty, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
     '~/fuel/FoodReview': { FoodReview: (props: { food: Food }) => { captured.foodReview = props; return null; } },
     '~/fuel/RecentTab': { RecentTab: Empty },
-    '~/fuel/AiTab': { emptyAi: () => ({ hint: '', answer: '', photos: [], result: null, items: [] }), aiHasDraft: () => false, AiTab: Probe },
+    '~/fuel/AiTab': {
+      emptyAi: () => ({ hint: '', answer: '', photos: [], result: null, items: [] }),
+      aiHasDraft: (draft: { hint: string; photos: unknown[]; result: unknown }) => Boolean(draft.hint) || draft.photos.length > 0 || draft.result !== null,
+      aiTakesPhoto: (draft: { photos: unknown[]; result: unknown }) => draft.result === null && draft.photos.length < 2,
+      AiTab: (props: AiProps) => { captured.ai = props; return createElement(Probe); },
+    },
     '~/theme/blanc': { useBlanc: () => ({}), space: { gutter: 20 }, type: {} },
   };
   const manualModule = loadNativeModule<NativeModule>('fuel/ManualTab.tsx', imports);
@@ -323,9 +385,23 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
       },
     });
   }
+  if (realClock) {
+    const realLogger = loadNativeModule<NativeModule>('lib/foodLogger.ts', {
+      ...imports, '@/lib/foodLoggerUtils': loggerUtils, '@/lib/saveNutritionEntry': saveNutrition, '@/lib/supabase': {},
+    });
+    imports['~/lib/foodLogger'] = { ...imports['~/lib/foodLogger'] as NativeModule, initialWhen: realLogger.initialWhen };
+    const groups = (key: string) => ['breakfast', 'lunch', 'dinner', 'snack'].map((label) => ({ id: `${key}:${label}`, date: key, label }));
+    imports['~/lib/fuel'] = {
+      ...imports['~/lib/fuel'] as NativeModule,
+      today: () => dates.format(new Date(), 'yyyy-MM-dd'),
+      useTodayKey: () => dates.format(new Date(), 'yyyy-MM-dd'),
+      loadDayGroups: async (key: string) => groups(key),
+      suggestedGroup: (list: Array<{ label: string }>, at?: Date) => list.find((group) => group.label === mealForTime(at ?? new Date())),
+    };
+  }
   const Sheet = loadNativeModule<{ default: ComponentType }>('app/log-food.tsx', imports).default;
   let root: Root | undefined;
-  let container: HTMLElement | undefined;
+  let container: HTMLDivElement | undefined;
   const close = async () => { await act(async () => { root?.unmount(); root = undefined; }); };
   active.push(close);
   const render = async () => {
@@ -335,7 +411,12 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
     root = createRoot(container);
     await act(async () => { root!.render(createElement(Sheet)); });
   };
+  /** The words on the sheet (lines and notes; Capsules and Rows are recorded instead). */
   const text = () => container?.textContent ?? '';
+  const press = async (name: string) => {
+    expect(captured.pressables[name]).toBeDefined();
+    await act(async () => { captured.pressables[name].onPress!(); });
+  };
   const tab = async (name: string) => {
     expect(captured.picker!.disabled).not.toBe(true);
     await act(async () => { captured.picker!.onSelectionChange(name); });
@@ -362,7 +443,13 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, rea
   };
   // A lookup holds the sheet: closing then asks to stop the analysis (Build a meal shows on Recent and Saved only).
   const busy = () => captured.guard!.message.title === 'Stop the analysis?';
-  return { captured, render, close, text, tab, click, startPhoto, openSavedEditor, busy, entries, persistEntry, lookup, analysis, analyze, token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push };
+  // Snap a meal pressed while this sheet is on top (lib/launch.ts hands it over).
+  const ask = (atMs?: number) => act(async () => { launchActions.askLoggerCamera(atMs); });
+  return {
+    captured, imports, render, close, text, tab, click, press, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
+    token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push,
+    refusePress, announce, when, camera, permission, openSettings,
+  };
 }
 
 describe('native food logger transitions', () => {
@@ -486,6 +573,23 @@ describe('native food logger transitions', () => {
     expect(h.captured.buttons['Build a meal']).toBeDefined();
   });
 
+  it('closes freely while a Search result’s portion read runs, and holds for an analysis', async () => {
+    const h = loggerHarness();
+    await h.render();
+    let read!: () => void;
+    await act(async () => { read = h.captured.context!.beginRead(); });
+    // Nothing is lost by closing during a read: no question, and Build a meal stays open.
+    expect(h.captured.guard!.on).toBe(false);
+    expect(h.captured.buttons['Build a meal'].disabled).toBe(false);
+    await act(async () => { read(); read(); });
+    let busy!: () => void;
+    await act(async () => { busy = h.captured.context!.beginBusy(); });
+    // An analysis is not a save: the guard asks, but the sheet isn't held as busy.
+    expect(h.captured.guard).toEqual({ on: true, message: { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }, busy: false });
+    await act(async () => { busy(); });
+    expect(h.captured.guard!.on).toBe(false);
+  });
+
   it('releases each busy owner once without clearing another owner', async () => {
     const h = loggerHarness();
     await h.render();
@@ -564,6 +668,316 @@ describe('native food logger transitions', () => {
     expect(h.analyze).not.toHaveBeenCalled();
     await h.close();
     await act(async () => { access.resolve('test'); });
+    expect(h.analyze).not.toHaveBeenCalled();
+  });
+});
+
+// Snap a meal (lib/launch.ts): a press opens Log food with start=camera, or
+// asks an open sheet, which answers through sheetSnap.
+describe('native food logger: Snap a meal', () => {
+  it.each([
+    ['2026-11-03T10:29:50', '2026-11-03T10:30:10', 'breakfast'],
+    ['2026-11-03T23:59:50', '2026-11-04T00:00:10', 'snack'],
+  ])('keeps the press date, minute and meal after opening late from %s', async (pressed, opened, meal) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(opened));
+      const h = loggerHarness({ realClock: true, params: { start: 'camera', atMs: String(new Date(pressed).getTime()) } });
+      await h.render();
+      expect(h.captured.context!.selectedKey).toBe(pressed.slice(0, 10));
+      expect(h.captured.context!.when).toMatchObject({ time: pressed.slice(11, 16), groupId: `${pressed.slice(0, 10)}:${meal}` });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['join', 'restart'])('keeps a delayed midnight press in an already open sheet (%s)', async (path) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const atMs = new Date('2026-11-03T23:59:50').getTime();
+      vi.setSystemTime(new Date(path === 'join' ? '2026-11-03T23:59:00' : '2026-11-04T00:00:01'));
+      const h = loggerHarness({ realClock: true });
+      await h.render();
+      await h.appear();
+      if (path === 'join') {
+        await h.tab('photo');
+        await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, hint: 'Late snack' })); });
+      }
+      vi.setSystemTime(new Date('2026-11-04T00:00:10'));
+      await h.ask(atMs);
+      expect(h.captured.context!.selectedKey).toBe('2026-11-03');
+      expect(h.captured.context!.when).toMatchObject({ time: '23:59', groupId: '2026-11-03:snack' });
+      if (path === 'join') expect(h.captured.ai!.draft.hint).toBe('Late snack');
+      expect(h.refusePress).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
+  const settle = () => act(async () => { for (let tick = 0; tick < 20; tick += 1) await Promise.resolve(); });
+
+  it('opens on AI and asks for the camera only once the sheet has slid up', async () => {
+    const h = loggerHarness({ params: { start: 'camera' } });
+    await h.render();
+    expect(h.captured.picker!.selection).toBe('photo');
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    await h.appear(true);
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    await h.appear();
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+    await h.appear();
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+  });
+
+  it('keeps a meal from last time under Resume pending meal and still opens the camera', async () => {
+    composition.saveMealDraft('user-a', {
+      name: 'Lunch', ingredients: [composition.createMealIngredient(milk, 1, 'kept-milk')], date: '2026-11-03', time: '12:00',
+      groupId: null, method: 'barcode', entryId: '00000000-0000-4000-8000-000000000001', saveAsReusableMeal: false, locked: false,
+    }, 'new');
+    const h = loggerHarness({ params: { start: 'camera' } });
+    await h.render();
+    expect(h.captured.buttons['Resume pending meal']).toBeDefined();
+    expect(h.captured.review).toBeUndefined();
+    await h.appear();
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+  });
+
+  it('switches an open sheet for today to AI, resets When to now and asks for the camera', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.appear();
+    expect(h.captured.picker!.selection).toBe('recent');
+    expect(h.when).toHaveBeenCalledTimes(1);
+    await h.ask();
+    expect(h.captured.picker!.selection).toBe('photo');
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+    expect(h.when).toHaveBeenCalledTimes(2);
+    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], null, expect.any(Date));
+    expect(h.refusePress).not.toHaveBeenCalled();
+  });
+
+  it('waits for the sheet to appear when asked during its slide', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.ask();
+    expect(h.captured.picker!.selection).toBe('photo');
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    await h.appear();
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+  });
+
+  it.each<{ day?: string; group?: string }>([{ day: '2026-11-02' }, { group: 'g1' }])('starts over for now when a sheet holding nothing was opened with %o', async (params) => {
+    const h = loggerHarness({ params });
+    await h.render();
+    await h.appear();
+    expect(h.when).toHaveBeenLastCalledWith(null, params.day ?? '2026-11-03', [], params.group ?? null, null);
+    const reads = h.loadSaved.mock.calls.length;
+    await h.ask();
+    // a fresh session (it reads Saved again as it mounts): today, no meal param, straight into the camera
+    expect(h.loadSaved).toHaveBeenCalledTimes(reads + 1);
+    expect(h.captured.context!.selectedKey).toBe('2026-11-03');
+    expect(h.when).toHaveBeenCalledTimes(2);
+    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], null, expect.any(Date));
+    expect(h.captured.picker!.selection).toBe('photo');
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+    expect(h.refusePress).not.toHaveBeenCalled();
+  });
+
+  it('refuses while typed Manual fields would be lost, and changes nothing', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.appear();
+    await h.tab('manual');
+    await act(async () => { h.captured.fields.Name.onChangeText('Toast'); });
+    await h.ask();
+    expect(h.refusePress).toHaveBeenCalledOnce();
+    expect(h.captured.picker!.selection).toBe('manual');
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    expect(h.captured.manual!.draft.fields.name).toBe('Toast');
+  });
+
+  it('refuses while an entry is edited or a food is under review', async () => {
+    const edit = loggerHarness({ editing: true });
+    await edit.render();
+    await edit.appear();
+    await edit.ask();
+    expect(edit.refusePress).toHaveBeenCalledOnce();
+    expect(edit.captured.picker!.selection).toBe('manual');
+    await edit.close();
+
+    const review = loggerHarness();
+    await review.render();
+    await review.appear();
+    await act(async () => { review.captured.context!.chooseFood(milk); });
+    await review.ask();
+    expect(review.refusePress).toHaveBeenCalledOnce();
+    expect(review.captured.foodReview!.food).toEqual(milk);
+  });
+
+  it('does nothing at all while the camera or library is already up', async () => {
+    const h = loggerHarness();
+    const shot = deferred<PickerResult>();
+    h.camera.mockReturnValueOnce(shot.promise);
+    await h.render();
+    await h.appear();
+    const { pickFoodPhoto } = h.imports['~/fuel/PhotoTab'] as { pickFoodPhoto: (source: 'camera' | 'library') => Promise<unknown> };
+    let picking!: Promise<unknown>;
+    await act(async () => { picking = pickFoodPhoto('camera'); });
+    await h.ask();
+    expect(h.refusePress).not.toHaveBeenCalled();
+    expect(h.captured.picker!.selection).toBe('recent');
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    await act(async () => { shot.resolve({ canceled: true, assets: [] }); await picking; });
+  });
+
+  it('takes the photo on the worker’s Photo tab and analyzes it without a tap', async () => {
+    const h = loggerHarness({ worker: true, params: { start: 'camera' } });
+    await h.render();
+    expect(h.captured.picker!.selection).toBe('photo');
+    expect(h.camera).not.toHaveBeenCalled();
+    await h.appear();
+    await settle();
+    expect(h.camera).toHaveBeenCalledOnce();
+    expect(h.captured.photo!.draft.photos).toEqual({ top: { uri: 'cam', width: 10, height: 10 } });
+    expect(h.analyze).toHaveBeenCalledOnce();
+    expect(h.announce).toHaveBeenCalledWith('Analyzing meal');
+    await act(async () => { h.analysis.resolve(photoResult); });
+    await settle();
+    expect(h.captured.photo!.draft.items).toEqual([photoItem]);
+    expect(h.captured.buttons['Log 1 item']).toBeDefined();
+  });
+
+  it('adds the photo to a description typed on AI, logged now to the meal the clock picks', async () => {
+    const h = loggerHarness({ clockGroup: 'g-lunch' });
+    await h.render();
+    await h.appear();
+    await h.tab('photo');
+    await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, hint: 'Two eggs on toast' })); });
+    expect(h.captured.guard!.on).toBe(true);
+    h.when.mockReturnValueOnce({ date: new Date('2026-11-03T12:34:00'), time: '12:34', groupId: 'g-lunch' });
+    await h.ask();
+    expect(h.refusePress).not.toHaveBeenCalled();
+    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], 'g-lunch', expect.any(Date));
+    expect(h.captured.context!.when).toMatchObject({ time: '12:34', groupId: 'g-lunch' });
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+    expect(h.captured.ai!.draft.hint).toBe('Two eggs on toast');
+  });
+
+  type Harness = ReturnType<typeof loggerHarness>;
+  it.each<[string, (h: Harness) => Promise<unknown>]>([
+    ['an estimate waiting', async (h) => {
+      await h.tab('photo');
+      await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, result: { items: [], summary: 'Eggs' } })); });
+    }],
+    ['the Scan tab open', (h) => h.tab('scan')],
+    ['a lookup running', (h) => act(async () => { h.captured.context!.beginBusy(); })],
+    ['a Search result’s portion read running', (h) => act(async () => { h.captured.context!.beginRead(); })],
+    // a save holds the tabs still (Manual would unmount mid-save), so a press can't switch them
+    ['a save running', (h) => act(async () => { h.captured.context!.beginSave(); })],
+    ['a meal being built', (h) => h.click('Build a meal')],
+  ])('refuses with %s, and changes nothing', async (_case, setup) => {
+    const h = loggerHarness();
+    await h.render();
+    await h.appear();
+    await setup(h);
+    const selection = h.captured.picker!.selection;
+    await h.ask();
+    expect(h.refusePress).toHaveBeenCalledOnce();
+    expect(h.captured.picker!.selection).toBe(selection);
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+  });
+
+  it('refuses while a description typed in Manual’s Describe with AI would be lost', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.appear();
+    await h.tab('manual');
+    await h.press('Describe a meal or food');
+    await act(async () => { h.captured.inputs['Describe the food'].onChangeText!('two eggs and toast'); });
+    await h.ask();
+    expect(h.refusePress).toHaveBeenCalledOnce();
+    expect(h.captured.picker!.selection).toBe('manual');
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    // cleared again, the sheet holds nothing and takes the press
+    await act(async () => { h.captured.inputs['Describe the food'].onChangeText!(' '); });
+    await h.ask();
+    expect(h.refusePress).toHaveBeenCalledOnce();
+    expect(h.captured.picker!.selection).toBe('photo');
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+  });
+
+  it('starts over when asked before the sheet has appeared, and opens the camera once it has', async () => {
+    const h = loggerHarness({ params: { day: '2026-11-02' } });
+    await h.render();
+    await h.ask();
+    expect(h.refusePress).not.toHaveBeenCalled();
+    expect(h.captured.context!.selectedKey).toBe('2026-11-03');
+    expect(h.captured.picker!.selection).toBe('photo');
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    await h.appear();
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+  });
+
+  it('refuses over a Save as meal sheet whose foods are gone', async () => {
+    const h = loggerHarness({ params: { saveEntries: 'gone' } });
+    await h.render();
+    expect(h.text()).toContain('Those foods are no longer in your log.');
+    await h.ask();
+    expect(h.refusePress).toHaveBeenCalledOnce();
+  });
+
+  it('leaves Add photo’s choices alone, then takes the press once they are answered', async () => {
+    const settleAll = () => act(async () => { for (let tick = 0; tick < 20; tick += 1) await Promise.resolve(); });
+    const h = loggerHarness({ worker: true });
+    await h.render();
+    await h.appear();
+    await h.tab('photo');
+    await h.press('Add top view photo');
+    expect(h.captured.choices!.options.options).toEqual(['Take photo', 'Choose from library', 'Cancel']);
+    await h.ask();
+    expect(h.refusePress).not.toHaveBeenCalled();
+    expect(h.captured.photo!.cameraRequest).toBe(0);
+    expect(h.camera).not.toHaveBeenCalled();
+    await act(async () => { await h.captured.choices!.callback(2); });
+    await h.ask();
+    await settleAll();
+    expect(h.captured.photo!.cameraRequest).toBe(1);
+    expect(h.camera).toHaveBeenCalledOnce();
+    expect(h.analyze).toHaveBeenCalledOnce();
+  });
+
+  // The real shared picker (PhotoTab's pickFoodPhoto) behind a snap on the worker's Photo tab.
+  it('says the camera isn’t available on the simulator, without opening one', async () => {
+    const h = loggerHarness({ worker: true, device: false, params: { start: 'camera' } });
+    await h.render();
+    await h.appear();
+    await settle();
+    expect(h.permission).not.toHaveBeenCalled();
+    expect(h.camera).not.toHaveBeenCalled();
+    expect(h.text()).toContain('The camera isn’t available here.');
+    expect(h.captured.buttons['Open Settings']).toBeUndefined();
+    expect(h.analyze).not.toHaveBeenCalled();
+  });
+
+  it('says camera access is off, with Open Settings, when it was refused', async () => {
+    const h = loggerHarness({ worker: true, params: { start: 'camera' } });
+    h.permission.mockResolvedValueOnce({ granted: false });
+    await h.render();
+    await h.appear();
+    await settle();
+    expect(h.camera).not.toHaveBeenCalled();
+    expect(h.text()).toContain('Camera access is off. Allow Camera for hyPer in Settings, then try again.');
+    await h.click('Open Settings');
+    expect(h.openSettings).toHaveBeenCalledOnce();
+    expect(h.analyze).not.toHaveBeenCalled();
+    const { foodPickerUp } = h.imports['~/fuel/PhotoTab'] as { foodPickerUp: () => boolean };
+    expect(foodPickerUp()).toBe(false);
+  });
+
+  it('turns away a video from the camera', async () => {
+    const h = loggerHarness({ worker: true, params: { start: 'camera' } });
+    h.camera.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'clip', width: 10, height: 10, type: 'video' }] });
+    await h.render();
+    await h.appear();
+    await settle();
+    expect(h.text()).toContain('Please choose an image file.');
+    expect(h.captured.photo!.draft.photos).toEqual({});
     expect(h.analyze).not.toHaveBeenCalled();
   });
 });
@@ -844,6 +1258,22 @@ describe('native food logger holds the sheet while a save runs', () => {
   });
 });
 
+describe('Snap a meal over a quick add that was not confirmed', () => {
+  it('refuses, so the sheet keeps the failed save and its retry', async () => {
+    const h = loggerHarness({ realLists: true });
+    h.persistEntry.mockImplementationOnce(async () => { throw new Error('response lost'); });
+    await h.render();
+    await h.appear();
+    await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
+    expect(h.text()).toContain('Not saved. Tap + to try again.');
+    await h.ask();
+    expect(h.refusePress).toHaveBeenCalledOnce();
+    expect(h.captured.picker!.selection).toBe('recent');
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    expect(h.text()).toContain('Not saved. Tap + to try again.');
+  });
+});
+
 describe('real Recent and Saved quick-add', () => {
   it.each(['recent', 'saved'])('holds %s while writing and preserves a failed retry across tabs', async (tab) => {
     const h = loggerHarness({ realLists: true });
@@ -885,5 +1315,39 @@ describe('real Recent and Saved quick-add', () => {
     await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
     expect(h.text()).toContain('1 ingredient');
     expect(h.persistEntry).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('food writes invalidate old reminder totals', () => {
+  it.each(['log', 'edit', 'quick-add', 'built meal'])('keeps %s successful but blocks stale reminders when its refresh fails', async (path) => {
+    const real = nativeFuelStore('user-a');
+    real.read.mockResolvedValue({ data: [{ ...loggedMilk, user_id: 'user-a', food_id: loggedMilk.food.id }], error: null });
+    await real.useFuelStore.getState().loadToday('2026-11-03');
+    expect(real.useFuelStore.getState().totalsNeedRefresh).toBe(false);
+    real.read.mockResolvedValue({ data: null, error: new Error('offline') });
+    const h = loggerHarness({ editing: path === 'edit', realLists: path === 'quick-add', fuelActions: real.useFuelStore.getState() });
+    await h.render();
+    if (path === 'quick-add') {
+      await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
+      expect(h.persistEntry).toHaveBeenCalledOnce();
+      expect(h.text()).toContain('Added');
+    } else if (path === 'built meal') {
+      await h.click('Build a meal');
+      await act(async () => { h.captured.context!.addIngredients([composition.createMealIngredient(milk, 1)]); });
+      await h.click('Review meal');
+      await act(async () => { h.captured.review!.update({ name: 'Milk meal' }); });
+      await h.click('Log meal');
+      expect(h.saveMeal).toHaveBeenCalledOnce();
+      expect(h.back).toHaveBeenCalledOnce();
+    } else {
+      if (path === 'log') await h.tab('manual');
+      await act(async () => { h.captured.fields.Name.onChangeText('Milk'); });
+      await h.click(path === 'edit' ? 'Save changes' : 'Log entry');
+      expect(h.saveFood).toHaveBeenCalledOnce();
+      expect(h.back).toHaveBeenCalledOnce();
+    }
+    expect(real.useFuelStore.getState().totalsNeedRefresh).toBe(true);
+    expect(real.useFuelStore.getState().todayTotals.calories).toBeGreaterThan(0);
   });
 });

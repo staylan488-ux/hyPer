@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { useRef, useState, type ComponentRef, type Ref } from 'react';
+import { useEffect, useRef, useState, type ComponentRef, type Ref } from 'react';
 import { Keyboard, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated from 'react-native-reanimated';
@@ -14,6 +14,7 @@ import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useIntroRise } from '~/lib/brand';
+import { clearFuelReminders } from '~/lib/fuelReminder';
 import { haptics } from '~/lib/haptics';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
@@ -32,6 +33,12 @@ export default function SignIn() {
   const large = useLargeText();
   const rise = useIntroRise();
   const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, signInWithApple, loading } = useAuthStore();
+
+  // Nobody is signed in: no account's fuel reminder stays on this phone, also
+  // when a saved session could not be restored at launch.
+  useEffect(() => {
+    void clearFuelReminders();
+  }, []);
 
   const [isLogin, setIsLogin] = useState(true);
   const [displayName, setDisplayName] = useState('');

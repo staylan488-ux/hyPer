@@ -1,5 +1,5 @@
 // Adds hyPer's widget extension to the iOS project on prebuild: the workout and
-// run Live Activities and the Fuel and Training widgets.
+// run Live Activities, the Fuel and Training widgets and the Snap a meal control.
 //
 // - Copies native/targets/widgets, the shared definitions (the cards' data, the
 //   cards' lock-screen intents, the widgets' snapshot store) and the P's font
@@ -9,11 +9,14 @@
 //   the app and makes the app depend on it. It shares the app's App Group, so
 //   the widgets can read what the app writes.
 // - Compiles both cards' data and button intents into the app too: iOS runs a
-//   Live Activity's button intent in the app's process.
+//   Live Activity's button intent in the app's process. The same goes for the
+//   Snap a meal control's intent and the store it leaves the press in; the App
+//   Shortcuts are compiled into the app only.
 // - Marks the app as supporting Live Activities.
 //
-// The extension is plain SwiftUI with no pods. Prebuild with --clean after
-// adding or removing files under targets/widgets: an existing target is kept.
+// The extension is plain SwiftUI with no pods. A prebuild without --clean adds
+// new extension files to the existing target; prebuild with --clean after
+// removing one.
 const fs = require('fs');
 const path = require('path');
 const { IOSConfig, withDangerousMod, withInfoPlist, withXcodeProject } = require('expo/config-plugins');
@@ -31,15 +34,24 @@ const SHARED_FILES = [
   'modules/hyper-activity/shared/RestControlIntent.swift',
   // Where the app leaves the widgets' data.
   'modules/hyper-widget-data/ios/WidgetSnapshotStore.swift',
+  // Snap a meal: the control's intent, and where it leaves the press for the app.
+  'modules/hyper-launch/shared/SnapMealIntent.swift',
+  'modules/hyper-launch/ios/HyperLaunchStore.swift',
   // The P's face, for the brand mark on the cards and widgets.
   'assets/fonts/FrauncesMark-MediumItalic.ttf',
 ];
-/** Compiled into the app as well: iOS performs a Live Activity intent in the app. */
+/** Compiled into the app as well: iOS performs a Live Activity intent, and an intent that opens the app, in the app. */
 const APP_FILES = [
   'modules/hyper-run/ios/RunActivityAttributes.swift',
   'modules/hyper-run/shared/RunControlIntent.swift',
   'modules/hyper-activity/ios/WorkoutActivityAttributes.swift',
   'modules/hyper-activity/shared/RestControlIntent.swift',
+  // Snap a meal, Log food and Train from outside the app. iOS reads App
+  // Shortcuts only from the app, and doesn't search a pod's static framework
+  // for App Intents.
+  'modules/hyper-launch/shared/SnapMealIntent.swift',
+  'modules/hyper-launch/shared/HyperAppShortcuts.swift',
+  'modules/hyper-launch/ios/HyperLaunchStore.swift',
 ];
 const APP_GROUPS_KEY = 'com.apple.security.application-groups';
 const ENTITLEMENTS = `${TARGET}.entitlements`;
@@ -155,30 +167,55 @@ function addFileReference(project, name, fields) {
   return uuid;
 }
 
+/** One extension file: listed under HyperWidgets, compiled (Swift) or bundled (others); a plist is only listed. */
+function addWidgetFile(project, name, children, sources, resources) {
+  const fileRef = addFileReference(project, name, {
+    lastKnownFileType: FILE_TYPES[path.extname(name)] ?? 'file',
+    path: quote(name),
+    sourceTree: quote('<group>'),
+  });
+  children.push({ value: fileRef, comment: name });
+  if (name.endsWith('.swift')) sources.push(addBuildFile(project, fileRef, name, 'Sources'));
+  else if (!name.endsWith('.plist')) resources.push(addBuildFile(project, fileRef, name, 'Resources'));
+}
+
+/**
+ * A prebuild without --clean keeps the existing target but copies every file
+ * again, so a new extension file would be missing from the build. This adds the
+ * files the target doesn't list yet. Removing a file still needs --clean.
+ */
+function addMissingWidgetFiles(project, target, files) {
+  const objects = project.hash.project.objects;
+  const phase = (isa, comment) => objects[isa]?.[target.buildPhases.find((entry) => entry.comment === comment)?.value];
+  const group = project.pbxGroupByName(TARGET);
+  const sources = phase('PBXSourcesBuildPhase', 'Sources');
+  const resources = phase('PBXResourcesBuildPhase', 'Resources');
+  if (!group || !sources || !resources) return;
+  const listed = new Set(group.children.map((child) => child.comment));
+  for (const name of files) {
+    if (!listed.has(name)) addWidgetFile(project, name, group.children, sources.files, resources.files);
+  }
+}
+
 const withWidgetTarget = (config) =>
   withXcodeProject(config, (config) => {
     const project = config.modResults;
-    if (project.pbxTargetByName(TARGET)) return config;
+    const files = sourceFiles(config.modRequest.projectRoot).map((file) => path.basename(file));
+    const existing = project.pbxTargetByName(TARGET);
+    if (existing) {
+      addMissingWidgetFiles(project, existing, files);
+      return config;
+    }
 
     const objects = project.hash.project.objects;
     const { firstProject } = project.getFirstProject();
     const appTargetUuid = project.getFirstTarget().uuid;
-    const files = sourceFiles(config.modRequest.projectRoot).map((file) => path.basename(file));
 
     // Files, grouped under HyperWidgets, with their sources and resources.
     const children = [];
     const sources = [];
     const resources = [];
-    for (const name of files) {
-      const fileRef = addFileReference(project, name, {
-        lastKnownFileType: FILE_TYPES[path.extname(name)] ?? 'file',
-        path: quote(name),
-        sourceTree: quote('<group>'),
-      });
-      children.push({ value: fileRef, comment: name });
-      if (name.endsWith('.swift')) sources.push(addBuildFile(project, fileRef, name, 'Sources'));
-      else if (!name.endsWith('.plist')) resources.push(addBuildFile(project, fileRef, name, 'Resources'));
-    }
+    for (const name of files) addWidgetFile(project, name, children, sources, resources);
     const groupUuid = project.generateUuid();
     objects.PBXGroup[groupUuid] = { isa: 'PBXGroup', children, path: TARGET, sourceTree: quote('<group>') };
     objects.PBXGroup[`${groupUuid}_comment`] = TARGET;
@@ -281,3 +318,4 @@ const withWidgetTarget = (config) =>
   });
 
 module.exports = (config) => withAppFiles(withWidgetTarget(withWidgetFiles(withLiveActivities(config))));
+module.exports.addMissingWidgetFiles = addMissingWidgetFiles;

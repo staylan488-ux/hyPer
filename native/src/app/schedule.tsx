@@ -41,7 +41,9 @@ export default function ScheduleSheet() {
   const split = useAppStore((state) => state.activeSplit);
   const plan = useTodayPlan();
   if (!split) return null;
-  return <ScheduleEditor split={split} saved={plan.schedule} upNext={plan.upNext} />;
+  // A plan shown from the phone's copy (launchCache) never picks what Save
+  // writes: the session up next stays unknown, so Save waits for the reads.
+  return <ScheduleEditor split={split} saved={plan.schedule} upNext={plan.seeded ? undefined : plan.upNext} />;
 }
 
 function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSchedule | null; upNext: SplitDay | null | undefined }) {

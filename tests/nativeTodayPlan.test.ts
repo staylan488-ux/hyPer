@@ -53,6 +53,9 @@ async function render() {
     '@/lib/historyMonth': {},
     '@/lib/workoutSessions': {},
     './history': {},
+    // The launch copy (lib/launchCache.ts): none kept on this phone.
+    './launchCache': { useLaunchHint: zustand.create(() => ({ seed: null, holdPlan: false })), noteTodayPlan: () => {} },
+    './launchSnapshot': { heroFromSeed: () => null, planBasis: () => '', seedHero: () => null },
   });
   const Probe = () => {
     const current = useTodayPlan();

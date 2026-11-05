@@ -31,8 +31,10 @@ export type LoggerContextValue = {
   composeMeal: (food: Food, editSaved?: boolean) => void;
   /** Closes the sheet after a confirmed save. */
   complete: () => void;
-  /** Claims the sheet for a lookup; the returned cleanup releases only that claim, once. */
+  /** Claims the sheet for a lookup; the returned cleanup releases only that claim, once. Closing asks first meanwhile. */
   beginBusy: () => () => void;
+  /** Claims the sheet for a read that opens a food (Search's portion read): Snap a meal is refused meanwhile, and closing doesn't ask. */
+  beginRead: () => () => void;
   /** Holds the sheet open while a save runs; the returned cleanup releases only that claim, once. */
   beginSave: () => () => void;
   /** List saves survive switching tabs or opening a food review. */

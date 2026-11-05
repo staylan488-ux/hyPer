@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -22,12 +23,28 @@ const PLAN_CARD_HEIGHT = 78;
 // A finished day's record: padding 14 + headline 22 + 2 + line 20 + 8 + tally 24 + 14.
 const RECORD_HEIGHT = 104;
 
-export function PlanCard({ hero, next, place }: { hero: HeroState; next: string | null; place: 'today' | 'train' }) {
+export function PlanCard({
+  hero,
+  next,
+  place,
+  seeded = false,
+}: {
+  hero: HeroState;
+  next: string | null;
+  place: 'today' | 'train';
+  /** The hero comes from the phone's copy (useTodayPlan's seeded). */
+  seeded?: boolean;
+}) {
   const c = useBlanc();
   // At the accessibility text sizes the button moves under the words.
   const large = useLargeText();
   const { starting, start } = useStartSession();
   const finished = useFinishedToday(hero.kind === 'done');
+  // A finished day first shown from the phone's copy keeps saying so until
+  // History's record lands, also once this launch's own reads decide it again.
+  const [doneFromCopy, setDoneFromCopy] = useState(false);
+  const sayDone = hero.kind === 'done' && (seeded || doneFromCopy);
+  if (sayDone !== doneFromCopy) setDoneFromCopy(sayDone);
   const toTrain = () => router.navigate('/train');
   const openSchedule = () => router.push('/schedule');
 
@@ -61,8 +78,11 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
       detail = next ? `Next: ${next}` : null;
       break;
     case 'done': {
-      // Holds the record's place while History is read for the workout.
-      if (finished === undefined) return <View style={{ height: RECORD_HEIGHT, marginTop: 18 }} />;
+      // Holds the record's place while History is read for the workout. A day
+      // shown from the phone's copy says "Trained today" from the first frame
+      // instead (History is never kept), at the record's height, so the record
+      // fills in without the card changing size.
+      if (finished === undefined && !sayDone) return <View style={{ height: RECORD_HEIGHT, marginTop: 18 }} />;
       if (!finished) {
         title = 'Trained today';
         detail = next ? `Next: ${next}` : null;
@@ -105,8 +125,10 @@ export function PlanCard({ hero, next, place }: { hero: HeroState; next: string 
 
   const record = hero.kind === 'done' ? finished : null;
   const openRecord = record ? () => router.push({ pathname: '/train/past', params: { id: record.id } }) : null;
+  // A seeded finished day keeps the record's place while History is read.
+  const holdingRecord = hero.kind === 'done' && finished === undefined;
   const face = {
-    minHeight: PLAN_CARD_HEIGHT,
+    minHeight: holdingRecord ? RECORD_HEIGHT : PLAN_CARD_HEIGHT,
     paddingHorizontal: 18,
     paddingVertical: 14,
     flexDirection: large ? ('column' as const) : ('row' as const),

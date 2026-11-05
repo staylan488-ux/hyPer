@@ -28,7 +28,7 @@ const program = (dayCount: number) => ({
 const inOrder: PlanSchedule = { splitId: 'split-1', startDate: '2026-10-26', mode: 'flex', weekdays: [], anchorDay: 0, flexAnchorIndex: 0, updatedAt: '2026-10-26T08:00:00.000Z' };
 const weekly: PlanSchedule = { splitId: 'split-1', startDate: '2026-10-26', mode: 'fixed', weekdays: [1, 3, 5], anchorDay: 1, updatedAt: '2026-10-26T08:00:00.000Z' };
 
-type Plan = { hero: HeroState; schedule: PlanSchedule | null; upNext: SplitDay | null | undefined };
+type Plan = { hero: HeroState; schedule: PlanSchedule | null; upNext: SplitDay | null | undefined; seeded?: boolean };
 const app = create(() => ({ activeSplit: program(3) as Split | null }));
 const todayPlan = create<Plan>(() => ({ hero: { kind: 'loading' }, schedule: inOrder, upNext: undefined }));
 const auth = create(() => ({ user: { id: 'user-1' } }));
@@ -107,7 +107,7 @@ beforeEach(() => {
   back.mockClear();
   leaveGuarded = false;
   app.setState({ activeSplit: program(3) });
-  todayPlan.setState({ hero: { kind: 'loading' }, schedule: inOrder, upNext: undefined });
+  todayPlan.setState({ hero: { kind: 'loading' }, schedule: inOrder, upNext: undefined, seeded: false });
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -128,6 +128,16 @@ describe('Schedule sheet, in order', () => {
     expect(leaveGuarded).toBe(false);
     await act(async () => { saveButton().click(); });
     expect(save).toHaveBeenCalledWith('user-1', expect.objectContaining({ mode: 'flex', flexAnchorIndex: 2 }));
+  });
+
+  it('waits while the plan shown is the phone’s copy, then checks the session up next', async () => {
+    await open();
+    // The copy's plan (launchCache) never picks what Save writes.
+    await loaded({ hero: { kind: 'planned', day: days[1] }, upNext: days[1], seeded: true });
+    expect(checked()).toEqual([]);
+    expect(saveButton().disabled).toBe(true);
+    await loaded({ hero: { kind: 'done', title: 'Lower A' }, upNext: days[2], seeded: false });
+    expect(checked()).toEqual(['Upper B']);
   });
 
   it('waits for the plan before checking a day or saving one', async () => {

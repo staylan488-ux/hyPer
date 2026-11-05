@@ -1133,7 +1133,7 @@ function StartPlanned() {
             {[split.name, week && week >= 1 ? `week ${week}` : null].filter(Boolean).join(' · ')}
           </BlancText>
         ) : null}
-        <PlanCard hero={plan.hero} next={plan.next} place="train" />
+        <PlanCard hero={plan.hero} next={plan.next} place="train" seeded={plan.seeded} />
         {otherDays.length > 0 ? (
           // Arrives with the card's fade, once its rows are known.
           <Animated.View entering={FadeIn.duration(220)}>
