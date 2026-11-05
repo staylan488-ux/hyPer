@@ -79,22 +79,29 @@ export function buildPreviousSetTargets(workoutIds: string[], previousSets: Prev
 
 /**
  * "Target to beat" for each set: completed sets from the last 30 workouts on
- * or before `date`, excluding the current one. Returns `null` on a query
- * error so the caller can tell a failure apart from "no history" (`{}`).
+ * or before `date`, excluding the current one. History supplies a strict
+ * `beforeCreatedAt` cutoff; null means the start is unknown, so only earlier
+ * dates are safe. Returns `null` on a query error, versus no history (`{}`).
  */
-export async function fetchPreviousSetTargets({ userId, workoutId, date, exerciseIds }: {
+export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeCreatedAt, exerciseIds }: {
   userId: string;
   workoutId: string;
   date: string;
+  beforeCreatedAt?: string | null;
   exerciseIds: string[];
 }): Promise<PreviousWorkoutSetMap | null> {
-  const { data: completedWorkouts, error: workoutsError } = await supabase
+  let query = supabase
     .from('workouts')
     .select('id')
     .eq('user_id', userId)
     .lte('date', date)
-    .neq('id', workoutId)
+    .neq('id', workoutId);
+  if (beforeCreatedAt === null) query = query.lt('date', date);
+  else if (beforeCreatedAt !== undefined) query = query.lt('created_at', beforeCreatedAt);
+  const { data: completedWorkouts, error: workoutsError } = await query
     .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(30);
 
   if (workoutsError) {
