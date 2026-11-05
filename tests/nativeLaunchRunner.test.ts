@@ -116,11 +116,26 @@ afterEach(async () => {
 });
 
 describe('useLaunchActionRunner', () => {
+  it.each([false, true])('carries a delayed press to the logger (already open: %s)', async (alreadyOpen) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const atMs = new Date('2026-11-03T23:59:50').getTime();
+      vi.setSystemTime(atMs);
+      rootState = alreadyOpen ? stack('(tabs)', 'log-food') : stack('(tabs)');
+      nativeQueue = [{ action: 'snap-meal', atMs }];
+      await render({ introDone: false });
+      vi.setSystemTime(atMs + 20_000);
+      await render();
+      if (alreadyOpen) expect(store()).toMatchObject({ cameraAtMs: atMs });
+      else expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { start: 'camera', atMs: String(atMs) } });
+    } finally { vi.useRealTimers(); }
+  });
+
   it('opens Log food with the camera once for a press that launched the app', async () => {
     nativeQueue = [fresh('snap-meal')];
     await render();
     expect(push).toHaveBeenCalledOnce();
-    expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { start: 'camera' } });
+    expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { start: 'camera', atMs: expect.any(String) } });
     await render();
     await render();
     expect(push).toHaveBeenCalledOnce();
@@ -320,7 +335,7 @@ describe('a Fuel reminder tap', () => {
     await render();
     await act(async () => { responder?.(tap(reminderPlan.FUEL_REMINDER_SNAP_ACTION)); });
     expect(push).toHaveBeenCalledOnce();
-    expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { start: 'camera' } });
+    expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { start: 'camera', atMs: expect.any(String) } });
   });
 
   it('forgets a tap made during the offline wait once the app is left, so a later visit opens nothing', async () => {

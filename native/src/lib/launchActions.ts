@@ -36,12 +36,18 @@ export function parseLaunchPress(raw: unknown): LaunchPress | null {
 export const isFreshPress = (press: LaunchPress, now: number) =>
   now - press.atMs <= LAUNCH_PRESS_TTL_MS && press.atMs - now <= CLOCK_SLACK_MS;
 
+/** Route params are strings; missing or implausible camera timestamps use now. */
+export function snapMealDate(raw: unknown, now = Date.now()): Date {
+  const atMs = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() ? Number(raw) : NaN;
+  return new Date(Number.isFinite(atMs) && isFreshPress({ action: 'snap-meal', atMs }, now) ? atMs : now);
+}
+
 export type LaunchStep =
   | { kind: 'wait' } // the signed-in tabs are not in the stack yet: keep the press
   | { kind: 'none' } // what it names is already in front
   | { kind: 'refused' } // something open covers it; nothing is closed
-  | { kind: 'open-log-food'; camera: boolean }
-  | { kind: 'logger-camera' } // the Log food sheet on top decides (sheetSnap)
+  | { kind: 'open-log-food'; camera: boolean; atMs?: number }
+  | { kind: 'logger-camera'; atMs?: number } // the Log food sheet on top decides (sheetSnap)
   | { kind: 'train' };
 
 type NavStack = { index?: number; routes: readonly { name: string; state?: unknown }[] };
@@ -76,10 +82,12 @@ type LaunchState = {
   held: boolean;
   /** Counts Snap a meal presses handed to an open Log food sheet. */
   cameraAsks: number;
+  /** Original time of the latest camera request. */
+  cameraAtMs: number | null;
   /** When a press last asked for a Log food sheet (0: none waiting to show). */
   openingAt: number;
 };
-export const useLaunchStore = create<LaunchState>(() => ({ press: null, held: true, cameraAsks: 0, openingAt: 0 }));
+export const useLaunchStore = create<LaunchState>(() => ({ press: null, held: true, cameraAsks: 0, cameraAtMs: null, openingAt: 0 }));
 
 /**
  * Keeps a press (from iOS, or any value shaped `{ action, atMs }`); a newer one
@@ -120,12 +128,12 @@ export function takeLaunchStep(stack: readonly string[], now = Date.now()): Laun
   const step = planLaunch(press.action, opening ? [...stack, 'log-food'] : stack);
   if (step.kind === 'wait') return step;
   useLaunchStore.setState({ press: null, openingAt: step.kind === 'open-log-food' ? now : shown ? 0 : openingAt });
-  return step;
+  return step.kind === 'logger-camera' || (step.kind === 'open-log-food' && step.camera) ? { ...step, atMs: press.atMs } : step;
 }
 
 /** Snap a meal while the Log food sheet is on top: the sheet decides (log-food.tsx). */
-export function askLoggerCamera(): void {
-  useLaunchStore.setState((state) => ({ cameraAsks: state.cameraAsks + 1 }));
+export function askLoggerCamera(atMs = Date.now()): void {
+  useLaunchStore.setState((state) => ({ cameraAsks: state.cameraAsks + 1, cameraAtMs: atMs }));
 }
 
 /** An open Log food sheet's answer to Snap a meal. */

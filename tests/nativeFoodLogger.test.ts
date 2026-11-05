@@ -10,6 +10,8 @@ import * as decimalText from '@/lib/decimalText';
 import * as foodTrial from '@/lib/foodTrial';
 import * as foodTrialReview from '@/lib/foodTrialReview';
 import * as foodUnits from '@/lib/foodUnits';
+import * as loggerUtils from '@/lib/foodLoggerUtils';
+import { mealForTime } from '../native/src/lib/meals';
 import * as composition from '@/lib/mealComposition';
 import * as pendingEntry from '@/lib/pendingEntryId';
 import * as recentFoods from '@/lib/recentFoods';
@@ -90,6 +92,8 @@ type NativeModule = Record<string, unknown>;
 
 const active: Array<() => Promise<void>> = [];
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-03T10:00:00'));
   launchActions.useLaunchStore.setState({ press: null, held: true, cameraAsks: 0, openingAt: 0 });
   const data = new Map<string, string>();
   vi.stubGlobal('localStorage', {
@@ -101,10 +105,11 @@ beforeEach(() => {
 afterEach(async () => {
   for (const close of active.splice(0)) await close();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false }: {
+function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false }: {
   editing?: boolean;
   worker?: boolean;
   savedMeal?: boolean;
@@ -119,6 +124,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
   realAi?: boolean;
   /** The real Recent, Saved and Search lists, saving through the real food logger. */
   realLists?: boolean;
+  realClock?: boolean;
 } = {}) {
   const captured: {
     buttons: Record<string, Button>;
@@ -376,6 +382,20 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
       },
     });
   }
+  if (realClock) {
+    const realLogger = loadNativeModule<NativeModule>('lib/foodLogger.ts', {
+      ...imports, '@/lib/foodLoggerUtils': loggerUtils, '@/lib/saveNutritionEntry': saveNutrition, '@/lib/supabase': {},
+    });
+    imports['~/lib/foodLogger'] = { ...imports['~/lib/foodLogger'] as NativeModule, initialWhen: realLogger.initialWhen };
+    const groups = (key: string) => ['breakfast', 'lunch', 'dinner', 'snack'].map((label) => ({ id: `${key}:${label}`, date: key, label }));
+    imports['~/lib/fuel'] = {
+      ...imports['~/lib/fuel'] as NativeModule,
+      today: () => dates.format(new Date(), 'yyyy-MM-dd'),
+      useTodayKey: () => dates.format(new Date(), 'yyyy-MM-dd'),
+      loadDayGroups: async (key: string) => groups(key),
+      suggestedGroup: (list: Array<{ label: string }>, at?: Date) => list.find((group) => group.label === mealForTime(at ?? new Date())),
+    };
+  }
   const Sheet = loadNativeModule<{ default: ComponentType }>('app/log-food.tsx', imports).default;
   let root: Root | undefined;
   let container: HTMLDivElement | undefined;
@@ -421,7 +441,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
   // A lookup holds the sheet: closing then asks to stop the analysis (Build a meal shows on Recent and Saved only).
   const busy = () => captured.guard!.message.title === 'Stop the analysis?';
   // Snap a meal pressed while this sheet is on top (lib/launch.ts hands it over).
-  const ask = () => act(async () => { launchActions.askLoggerCamera(); });
+  const ask = (atMs?: number) => act(async () => { launchActions.askLoggerCamera(atMs); });
   return {
     captured, imports, render, close, text, tab, click, press, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
     token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push,
@@ -652,6 +672,41 @@ describe('native food logger transitions', () => {
 // Snap a meal (lib/launch.ts): a press opens Log food with start=camera, or
 // asks an open sheet, which answers through sheetSnap.
 describe('native food logger: Snap a meal', () => {
+  it.each([
+    ['2026-11-03T10:29:50', '2026-11-03T10:30:10', 'breakfast'],
+    ['2026-11-03T23:59:50', '2026-11-04T00:00:10', 'snack'],
+  ])('keeps the press date, minute and meal after opening late from %s', async (pressed, opened, meal) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(opened));
+      const h = loggerHarness({ realClock: true, params: { start: 'camera', atMs: String(new Date(pressed).getTime()) } });
+      await h.render();
+      expect(h.captured.context!.selectedKey).toBe(pressed.slice(0, 10));
+      expect(h.captured.context!.when).toMatchObject({ time: pressed.slice(11, 16), groupId: `${pressed.slice(0, 10)}:${meal}` });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['join', 'restart'])('keeps a delayed midnight press in an already open sheet (%s)', async (path) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const atMs = new Date('2026-11-03T23:59:50').getTime();
+      vi.setSystemTime(new Date(path === 'join' ? '2026-11-03T23:59:00' : '2026-11-04T00:00:01'));
+      const h = loggerHarness({ realClock: true });
+      await h.render();
+      await h.appear();
+      if (path === 'join') {
+        await h.tab('photo');
+        await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, hint: 'Late snack' })); });
+      }
+      vi.setSystemTime(new Date('2026-11-04T00:00:10'));
+      await h.ask(atMs);
+      expect(h.captured.context!.selectedKey).toBe('2026-11-03');
+      expect(h.captured.context!.when).toMatchObject({ time: '23:59', groupId: '2026-11-03:snack' });
+      if (path === 'join') expect(h.captured.ai!.draft.hint).toBe('Late snack');
+      expect(h.refusePress).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
   const settle = () => act(async () => { for (let tick = 0; tick < 20; tick += 1) await Promise.resolve(); });
 
   it('opens on AI and asks for the camera only once the sheet has slid up', async () => {
@@ -690,7 +745,7 @@ describe('native food logger: Snap a meal', () => {
     expect(h.captured.picker!.selection).toBe('photo');
     expect(h.captured.ai!.cameraRequest).toBe(1);
     expect(h.when).toHaveBeenCalledTimes(2);
-    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], null);
+    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], null, expect.any(Date));
     expect(h.refusePress).not.toHaveBeenCalled();
   });
 
@@ -708,14 +763,14 @@ describe('native food logger: Snap a meal', () => {
     const h = loggerHarness({ params });
     await h.render();
     await h.appear();
-    expect(h.when).toHaveBeenLastCalledWith(null, params.day ?? '2026-11-03', [], params.group ?? null);
+    expect(h.when).toHaveBeenLastCalledWith(null, params.day ?? '2026-11-03', [], params.group ?? null, null);
     const reads = h.loadSaved.mock.calls.length;
     await h.ask();
     // a fresh session (it reads Saved again as it mounts): today, no meal param, straight into the camera
     expect(h.loadSaved).toHaveBeenCalledTimes(reads + 1);
     expect(h.captured.context!.selectedKey).toBe('2026-11-03');
     expect(h.when).toHaveBeenCalledTimes(2);
-    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], null);
+    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], null, expect.any(Date));
     expect(h.captured.picker!.selection).toBe('photo');
     expect(h.captured.ai!.cameraRequest).toBe(1);
     expect(h.refusePress).not.toHaveBeenCalled();
@@ -795,7 +850,7 @@ describe('native food logger: Snap a meal', () => {
     h.when.mockReturnValueOnce({ date: new Date('2026-11-03T12:34:00'), time: '12:34', groupId: 'g-lunch' });
     await h.ask();
     expect(h.refusePress).not.toHaveBeenCalled();
-    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], 'g-lunch');
+    expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], 'g-lunch', expect.any(Date));
     expect(h.captured.context!.when).toMatchObject({ time: '12:34', groupId: 'g-lunch' });
     expect(h.captured.ai!.cameraRequest).toBe(1);
     expect(h.captured.ai!.draft.hint).toBe('Two eggs on toast');

@@ -43,7 +43,7 @@ import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { refusePress } from '~/lib/launch';
-import { sheetSnap, useLaunchStore } from '~/lib/launchActions';
+import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { figureLayout } from '~/lib/motion';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
@@ -66,8 +66,10 @@ const mealPartsKey = (draft: MealDraft) => draft.ingredients.map((part) => `${pa
 /**
  * A new entry today goes to the meal that fits the clock; on another day the
  * clock says nothing about the meal, so it starts Unassigned, as on the web.
+ * A Snap press supplies the clock and day it actually happened on.
  */
-const suggestFor = (selectedKey: string, list: NutritionGroup[]) => (selectedKey === today() ? suggestedGroup(list)?.id ?? null : null);
+const suggestFor = (selectedKey: string, list: NutritionGroup[], pressedAt: Date | null = null) =>
+  (selectedKey === (pressedAt ? format(pressedAt, 'yyyy-MM-dd') : today()) ? suggestedGroup(list, pressedAt ?? undefined)?.id ?? null : null);
 
 /** The same groups as far as the sheet reads them (destination, labels, order). */
 const sameGroups = (a: NutritionGroup[], b: NutritionGroup[]) =>
@@ -101,10 +103,10 @@ function useClaims(): [number, () => () => void] {
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
  * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
  * `saveEntries` (comma-separated logged entries to keep as a new saved meal),
- * `start=camera` (Snap a meal: a new entry, straight into the camera).
+ * `start=camera`, `atMs` (Snap a meal: press time, straight into the camera).
  */
 export default function LogFoodSheet() {
-  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; start?: string }>();
+  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; start?: string; atMs?: string }>();
   const userId = useAuthStore((state) => state.user?.id) ?? '';
   // read once: the entry being edited stays as it was when the sheet opened
   const [editing] = useState<FoodLog | null>(() => (params.entry ? useFuelStore.getState().logs.find((log) => log.id === params.entry) ?? null : null));
@@ -131,9 +133,10 @@ export default function LogFoodSheet() {
   );
   // Snap a meal pressed over this sheet while it holds nothing: start over for now.
   const [snapRestart, setSnapRestart] = useState(0);
+  const [pressedAt, setPressedAt] = useState<Date | null>(() => params.start === 'camera' ? snapMealDate(params.atMs) : null);
   // Snap a meal (lib/launch.ts): a new entry, straight into the camera.
   const startCamera = !editing && !savedMeal && !saveFrom && (snapRestart > 0 || params.start === 'camera');
-  const selectedKey = editing?.date ?? saveFrom?.[0].date ?? (snapRestart > 0 ? today() : params.day ?? today());
+  const selectedKey = editing?.date ?? saveFrom?.[0].date ?? (pressedAt ? format(pressedAt, 'yyyy-MM-dd') : params.day ?? today());
   // A sheet with nothing to log into still answers Snap a meal pressed over it: it can't take it.
   const blank = !userId || (Boolean(params.saveEntries) && !saveFrom);
   useEffect(() => {
@@ -154,13 +157,14 @@ export default function LogFoodSheet() {
       selectedKey={selectedKey}
       groupParam={snapRestart > 0 ? null : params.group ?? null}
       startCamera={startCamera}
+      pressedAt={pressedAt}
       appeared={appeared}
-      onSnapRestart={() => setSnapRestart((count) => count + 1)}
+      onSnapRestart={(at) => { setPressedAt(at); setSnapRestart((count) => count + 1); }}
     />
   );
 }
 
-function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam, startCamera, appeared, onSnapRestart }: {
+function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam, startCamera, pressedAt, appeared, onSnapRestart }: {
   userId: string;
   editing: FoodLog | null;
   savedMeal: Food | null;
@@ -170,18 +174,21 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   groupParam: string | null;
   /** Snap a meal: open on the analysis tab and bring up the camera once the sheet is up. */
   startCamera: boolean;
+  /** Validated time of the press that opened this session. */
+  pressedAt: Date | null;
   /** The sheet has finished sliding up. */
   appeared: boolean;
   /** Snap a meal over this sheet while it holds nothing: a fresh session for now. */
-  onSnapRestart: () => void;
+  onSnapRestart: (at: Date) => void;
 }) {
   const c = useBlanc();
   const large = useLargeText();
   // Save as meal names the entries' day; read each render so it follows midnight.
   const todayKey = useTodayKey();
+  const [snapAt, setSnapAt] = useState(pressedAt);
   const [groups, setGroups] = useState<NutritionGroup[]>(() => useFuelStore.getState().groups.filter((group) => group.date === selectedKey));
   const [when, setWhenState] = useState<When>(() =>
-    initialWhen(editing, selectedKey, groups, groupParam ?? suggestFor(selectedKey, groups)),
+    initialWhen(editing, selectedKey, groups, groupParam ?? suggestFor(selectedKey, groups, snapAt), snapAt),
   );
   const groupTouched = useRef(Boolean(editing || groupParam));
   const setWhen = useCallback((next: When) => {
@@ -198,13 +205,13 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       if (!current) return;
       setGroups((existing) => (sameGroups(existing, loaded) ? existing : loaded));
       if (groupTouched.current) return;
-      const groupId = suggestFor(selectedKey, loaded);
+      const groupId = suggestFor(selectedKey, loaded, snapAt);
       setWhenState((value) => (value.groupId === groupId ? value : { ...value, groupId }));
     });
     return () => {
       current = false;
     };
-  }, [selectedKey]);
+  }, [selectedKey, snapAt]);
 
   // The day's groups can land after the sheet opened (the month was still
   // loading): pick them up instead of offering only Unassigned.
@@ -214,9 +221,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     if (fromStore.length === 0) return;
     setGroups((current) => (current.map((group) => group.id).join() === fromStore.map((group) => group.id).join() ? current : fromStore));
     if (groupTouched.current) return;
-    const groupId = suggestFor(selectedKey, fromStore);
+    const groupId = suggestFor(selectedKey, fromStore, snapAt);
     setWhenState((value) => (value.groupId || value.groupId === groupId ? value : { ...value, groupId }));
-  }, [storeGroups, selectedKey]);
+  }, [storeGroups, selectedKey, snapAt]);
 
   const [tab, setTab] = useState<Tab>(editing ? 'manual' : startCamera ? 'photo' : 'recent');
   const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(null);
@@ -556,6 +563,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const cameraAsks = useLaunchStore((state) => state.cameraAsks);
   const seenAsks = useRef(cameraAsks);
   const snapAsked = useEffectEvent(() => {
+    const at = snapMealDate(useLaunchStore.getState().cameraAtMs);
+    const pressDay = format(at, 'yyyy-MM-dd');
     const answer = sheetSnap({
       newEntry: !editing && !savedMeal && !saveFrom,
       pickerUp: foodPickerUp(),
@@ -565,7 +574,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       // a quick add left unconfirmed is work too: logging the meal would close the sheet past its retry
       analysisDraftOnly:
         (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) && !manualHasChanges(manual, manualBase, savedMeals) && !(meal && storageFailed) && !quickAddFailed,
-      forNow: selectedKey === today() && !groupTouched.current,
+      forNow: selectedKey === pressDay && !groupTouched.current,
     });
     if (answer === 'ignore') return;
     if (answer === 'refuse') {
@@ -573,11 +582,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       return;
     }
     if (answer === 'restart') {
-      onSnapRestart();
+      onSnapRestart(at);
       return;
     }
-    // Logs now, to the meal the clock picks, as a fresh sheet would.
-    setWhenState(initialWhen(null, selectedKey, groups, suggestFor(selectedKey, groups)));
+    // Use the press, including its meal, even if opening crossed midnight.
+    setSnapAt(at);
+    setWhenState(initialWhen(null, selectedKey, groups, suggestFor(selectedKey, groups, at), at));
     showTab('photo');
     if (appeared) setCameraRequest((count) => count + 1);
     else cameraPending.current = true;

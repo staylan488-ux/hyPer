@@ -36,6 +36,17 @@ describe('isFreshPress', () => {
   });
 });
 
+describe('snapMealDate', () => {
+  it('accepts route strings and camera-request numbers within the press window', () => {
+    expect(launch.snapMealDate(String(T - 20_000), T).getTime()).toBe(T - 20_000);
+    expect(launch.snapMealDate(T + 5_000, T).getTime()).toBe(T + 5_000);
+  });
+
+  it.each([undefined, null, '', 'nonsense', NaN, Infinity, T - 60_001, T + 5_001])('uses now for missing or implausible timestamp %s', (raw) => {
+    expect(launch.snapMealDate(raw, T).getTime()).toBe(T);
+  });
+});
+
 describe('receiveLaunchPress', () => {
   it('keeps a fresh press and ignores a stale one', () => {
     expect(launch.receiveLaunchPress(press('train', T - 61_000), T)).toBe(false);
@@ -134,23 +145,23 @@ describe('takeLaunchStep', () => {
 
   it('counts a Log food sheet just asked for as on top until it shows', () => {
     launch.receiveLaunchPress(press('snap-meal', T), T);
-    expect(launch.takeLaunchStep(['(tabs)'], T)).toEqual({ kind: 'open-log-food', camera: true });
+    expect(launch.takeLaunchStep(['(tabs)'], T)).toEqual({ kind: 'open-log-food', camera: true, atMs: T });
     expect(launch.useLaunchStore.getState().openingAt).toBe(T);
 
     launch.receiveLaunchPress(press('snap-meal', T + 300), T + 300);
-    expect(launch.takeLaunchStep(['(tabs)'], T + 300)).toEqual({ kind: 'logger-camera' });
+    expect(launch.takeLaunchStep(['(tabs)'], T + 300)).toEqual({ kind: 'logger-camera', atMs: T + 300 });
     launch.receiveLaunchPress(press('log-food', T + 400), T + 400);
     expect(launch.takeLaunchStep(['(tabs)'], T + 400)).toEqual({ kind: 'none' });
 
     launch.receiveLaunchPress(press('snap-meal', T + 1_600), T + 1_600);
-    expect(launch.takeLaunchStep(['(tabs)'], T + 1_600)).toEqual({ kind: 'open-log-food', camera: true });
+    expect(launch.takeLaunchStep(['(tabs)'], T + 1_600)).toEqual({ kind: 'open-log-food', camera: true, atMs: T + 1_600 });
   });
 
   it('closes the window once the stack shows the sheet', () => {
     launch.receiveLaunchPress(press('snap-meal', T), T);
     launch.takeLaunchStep(['(tabs)'], T);
     launch.receiveLaunchPress(press('snap-meal', T + 200), T + 200);
-    expect(launch.takeLaunchStep(['(tabs)', 'log-food'], T + 200)).toEqual({ kind: 'logger-camera' });
+    expect(launch.takeLaunchStep(['(tabs)', 'log-food'], T + 200)).toEqual({ kind: 'logger-camera', atMs: T + 200 });
     expect(launch.useLaunchStore.getState().openingAt).toBe(0);
   });
 });

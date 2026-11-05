@@ -20,14 +20,15 @@ export const SAVE_FAILED = 'Could not save this entry. Your changes are still he
  * The web logger's defaults: an edit keeps its day (read at noon) and its
  * time; a new entry on today takes the clock, and on a past day the day's
  * midnight, as the web Fuel page does for a day picked from the week strip.
+ * Snap a meal supplies its validated press time, even across midnight.
  */
-export function initialWhen(entry: FoodLog | null, selectedKey: string, groups: NutritionGroup[], fallbackGroupId: string | null): When {
+export function initialWhen(entry: FoodLog | null, selectedKey: string, groups: NutritionGroup[], fallbackGroupId: string | null, pressedAt?: Date | null): When {
   const day = entry?.date ?? selectedKey;
   const parsed = new Date(`${day}T12:00:00`);
   const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
   // An edit without a saved time reads its day at noon, as the web does; a new
   // entry on a past day starts at that day's midnight.
-  const clockSource = isToday(date) ? new Date() : entry ? date : startOfDay(date);
+  const clockSource = !entry && pressedAt ? pressedAt : isToday(date) ? new Date() : entry ? date : startOfDay(date);
   const groupId = entry
     ? entry.group_id || groups.find((group) => group.label === entry.meal_type)?.id || null
     : fallbackGroupId;
