@@ -691,7 +691,7 @@ describe('Body weight chart', () => {
     expect(everything.startDay).toBe(dateFns.format(new Date('2026-05-01T15:00:00Z'), 'yyyy-MM-dd'));
     expect(everything.series.at(-1)!.date).toBe(dateFns.format(new Date('2026-11-03T15:00:00Z'), 'yyyy-MM-dd'));
     // The rate beside the change is the same days' average.
-    expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May [0-9]+\u00a0· \+0\.\d\d lb\/wk$/);
+    expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May\u00a0[0-9]+\u00a0· \+0\.\d\d lb\/wk$/);
   });
 
   it('says when the chosen range has no weigh-ins', async () => {
@@ -767,7 +767,7 @@ describe('All weigh-ins with a long history', () => {
     const nearEnd = { nativeEvent: { contentOffset: { y: 400 }, contentSize: { height: 1_500 }, layoutMeasurement: { height: 800 } } };
     rows.length = 0;
     await act(async () => { scrolls.at(-1)!(nearEnd); });
-    expect(drawn()).toBe(56);
+    expect(drawn()).toBe(36);
   });
 });
 

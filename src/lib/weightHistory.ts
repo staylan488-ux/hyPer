@@ -123,7 +123,8 @@ export function weightChartTicks(startDay: string, slots: number): WeightChartTi
 
 /**
  * The trend's change across the days shown, from its first day to its last:
- * "+4.1 lb since Aug 7" ("since Mar 2, 2025" from another year), or "No
+ * "+4.1 lb since Aug 7" ("since Mar 2, 2025" from another year, the month
+ * and day joined by a no-break space), or "No
  * change since Aug 7". Null with fewer than two days. A gain is written like
  * a loss, with its sign and no judgement: whether it is good depends on the goal.
  */
@@ -132,7 +133,8 @@ export function weightChangeLabel(series: WeightTrendPoint[], unit: WeightUnit):
   const first = series[0];
   const last = series[series.length - 1];
   const from = day(first.date);
-  const since = format(from, from.getFullYear() === day(last.date).getFullYear() ? 'MMM d' : 'MMM d, yyyy');
+  // "Apr 10" stays together when the line wraps at the largest text sizes.
+  const since = format(from, from.getFullYear() === day(last.date).getFullYear() ? 'MMM d' : 'MMM d, yyyy').replace(' ', '\u00a0');
   const change = kgToUnit(last.ewmaKg - first.ewmaKg, unit);
   const shown = Math.abs(change).toFixed(1);
   if (Number(shown) === 0) return `No change since ${since}`;

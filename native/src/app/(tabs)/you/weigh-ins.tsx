@@ -25,8 +25,9 @@ const readAll = () => loadWeights({ all: true });
 // first draw before sliding the screen in), and more rows are added well
 // before the end comes into view.
 const FIRST_ROWS = 16;
-const ROWS_PER_PAGE = 40;
-const NEAR_END = 1_200;
+// Small pages from far ahead, so even a hard flick meets rows already drawn.
+const ROWS_PER_PAGE = 20;
+const NEAR_END = 2_400;
 
 /**
  * All weigh-ins: every one, newest first, by month, each month with its

@@ -112,14 +112,14 @@ describe('the date axis', () => {
 describe('the change across a range', () => {
   it('reads a gain with a plus and a loss with a minus, from the trend', () => {
     const gain = buildWeightTrend([weighIn('b', '2026-11-04', 80), weighIn('a', '2026-10-01', 78)]);
-    expect(weightChangeLabel(gain.points, 'kg')).toMatch(/^\+0\.\d kg since Oct 1$/);
+    expect(weightChangeLabel(gain.points, 'kg')).toMatch(/^\+0\.\d kg since Oct\u00a01$/);
     const loss = buildWeightTrend([weighIn('b', '2026-11-04', 78), weighIn('a', '2026-10-01', 80)]);
-    expect(weightChangeLabel(loss.points, 'kg')).toMatch(/^−0\.\d kg since Oct 1$/);
+    expect(weightChangeLabel(loss.points, 'kg')).toMatch(/^−0\.\d kg since Oct\u00a01$/);
   });
 
   it('names the year of a start in another year and says when nothing changed', () => {
     const trend = buildWeightTrend([weighIn('b', '2026-01-04', 80), weighIn('a', '2025-12-20', 80)]);
-    expect(weightChangeLabel(trend.points, 'lb')).toBe('No change since Dec 20, 2025');
+    expect(weightChangeLabel(trend.points, 'lb')).toBe('No change since Dec\u00a020, 2025');
   });
 
   it('has nothing to say about a single day', () => {
