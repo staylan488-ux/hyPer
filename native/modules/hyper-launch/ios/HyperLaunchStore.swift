@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// What a press outside the app asks it to open: the Snap a meal control, an
 /// App Shortcut (Shortcuts, Spotlight, Siri, the Action button) or a Home
@@ -39,7 +40,7 @@ enum HyperLaunchStore {
   /// Keeps the press (a newer one replaces it) and tells the app, if it is running.
   static func post(_ action: HyperLaunchAction) {
     let press: [String: Any] = ["action": action.rawValue, "atMs": Date().timeIntervalSince1970 * 1_000]
-    UserDefaults(suiteName: appGroup)?.set(press, forKey: key)
+    mailbox?.post(press)
     DispatchQueue.main.async {
       NotificationCenter.default.post(name: .hyperLaunchAction, object: nil)
     }
@@ -47,9 +48,45 @@ enum HyperLaunchStore {
 
   /// The press not yet taken, removed as it is read; empty when there is none.
   static func take() -> [String: Any] {
-    guard let defaults = UserDefaults(suiteName: appGroup), let press = defaults.dictionary(forKey: key) else { return [:] }
-    defaults.removeObject(forKey: key)
-    return press
+    mailbox?.take() ?? [:]
+  }
+
+  private static var mailbox: HyperLaunchMailbox? {
+    guard let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else { return nil }
+    return HyperLaunchMailbox(directory: directory, key: key)
+  }
+}
+
+struct HyperLaunchMailbox {
+  let directory: URL
+  let key: String
+
+  func post(_ press: [String: Any]) {
+    withLock {
+      let data = try PropertyListSerialization.data(fromPropertyList: press, format: .binary, options: 0)
+      try data.write(to: $0, options: .atomic)
+      return [:]
+    }
+  }
+
+  func take() -> [String: Any] {
+    withLock {
+      let data = try Data(contentsOf: $0)
+      let press = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] ?? [:]
+      try FileManager.default.removeItem(at: $0)
+      return press
+    }
+  }
+
+  @discardableResult
+  private func withLock(_ body: (URL) throws -> [String: Any]) -> [String: Any] {
+    let lock = directory.appendingPathComponent("\(key).lock")
+    let descriptor = open(lock.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+    guard descriptor >= 0 else { return [:] }
+    defer { close(descriptor) }
+    guard flock(descriptor, LOCK_EX) == 0 else { return [:] }
+    defer { flock(descriptor, LOCK_UN) }
+    return (try? body(directory.appendingPathComponent("\(key).plist"))) ?? [:]
   }
 }
 

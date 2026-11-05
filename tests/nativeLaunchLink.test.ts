@@ -97,6 +97,22 @@ describe('links that launch the app', () => {
     expect(launchLink.pendingLaunchLink()).toBeNull();
   });
 
+  it('keeps widget and card taps from closing an open run or a sheet above it', () => {
+    const release = launchLink.holdRunLinks();
+    try {
+      for (const path of ['/train', '/fuel', '/you/targets', '/run']) {
+        expect(redirectSystemPath({ path: `app.hyper.mobile://${path.slice(1)}`, initial: false })).toBe('');
+      }
+      expect(launchLink.pendingLaunchLink()).toBeNull();
+      expect(redirectSystemPath({ path: '/fuel', initial: true })).toBe('/fuel');
+      expect(redirectSystemPath({ path: 'app.hyper.mobile://auth/callback?code=pkce-code', initial: false })).toBe('/');
+      expect(exchangeCodeForSession).toHaveBeenCalledOnce();
+    } finally {
+      release();
+    }
+    expect(redirectSystemPath({ path: '/fuel', initial: false })).toBe('/fuel');
+  });
+
   it('still exchanges the email confirmation and keeps no launch link for it', () => {
     expect(redirectSystemPath({ path: 'app.hyper.mobile://auth/callback?code=pkce-code', initial: true })).toBe('/');
     expect(exchangeCodeForSession).toHaveBeenCalledWith('pkce-code');

@@ -140,6 +140,87 @@ describe('restoring today from the phone’s copy', () => {
   });
 });
 
+describe('deleting while the loaded month refreshes', () => {
+  beforeEach(async () => {
+    reads.food.mockResolvedValue({ data: copyMonth().logs, error: null });
+    await useFuelStore.getState().loadToday(DAY);
+  });
+
+  it.each([true, false])('keeps the entry gone when a stale refresh arrives (delete settled: %s)', async (settled) => {
+    const stale = deferred<{ data: FoodLog[]; error: null }>();
+    const deletion = deferred<boolean>();
+    reads.food.mockReturnValueOnce(stale.promise);
+    reads.deleteEntry.mockReturnValueOnce(deletion.promise);
+    const refresh = useFuelStore.getState().refresh();
+    await vi.waitFor(() => expect(reads.food).toHaveBeenCalledTimes(2));
+    const removing = useFuelStore.getState().deleteEntry('b');
+    if (settled) {
+      deletion.resolve(true);
+      await removing;
+    }
+    stale.resolve({ data: copyMonth().logs, error: null });
+    await refresh;
+    expect(useFuelStore.getState().logs.map((entry) => entry.id)).not.toContain('b');
+    expect(useFuelStore.getState().todayTotals.calories).toBe(500);
+    deletion.resolve(true);
+    expect(await removing).toBe(true);
+  });
+
+  it('restores a failed deletion once, even after a refresh', async () => {
+    const deletion = deferred<boolean>();
+    reads.deleteEntry.mockReturnValueOnce(deletion.promise);
+    const removing = useFuelStore.getState().deleteEntry('b');
+    await useFuelStore.getState().refresh();
+    expect(useFuelStore.getState().logs.map((entry) => entry.id)).not.toContain('b');
+    deletion.resolve(false);
+    expect(await removing).toBe(false);
+    expect(useFuelStore.getState().logs.filter((entry) => entry.id === 'b')).toHaveLength(1);
+    expect(useFuelStore.getState().todayTotals.calories).toBe(800);
+  });
+
+  it('does not restore a failed deletion into another month', async () => {
+    const deletion = deferred<boolean>();
+    reads.deleteEntry.mockReturnValueOnce(deletion.promise);
+    const removing = useFuelStore.getState().deleteEntry('b');
+    reads.food.mockResolvedValue({ data: [], error: null });
+    useFuelStore.getState().select('2026-10-01');
+    await useFuelStore.getState().refresh();
+    deletion.resolve(false);
+    await removing;
+    expect(useFuelStore.getState().logs).toEqual([]);
+  });
+
+  it('does not restore a failed deletion after the account is reset', async () => {
+    const deletion = deferred<boolean>();
+    reads.deleteEntry.mockReturnValueOnce(deletion.promise);
+    const removing = useFuelStore.getState().deleteEntry('b');
+    resetFuel();
+    deletion.resolve(false);
+    await removing;
+    expect(useFuelStore.getState().logs).toEqual([]);
+  });
+
+  it('keeps a stale day-only total from counting a deleted entry', async () => {
+    await useFuelStore.getState().deleteEntry('b');
+    useFuelStore.setState({ selected: '2026-10-01' });
+    reads.food.mockResolvedValue({ data: copyMonth().logs.filter((entry) => entry.date === DAY), error: null });
+    await useFuelStore.getState().loadToday(DAY);
+    expect(useFuelStore.getState().todayTotals.calories).toBe(500);
+    resetFuel();
+    await useFuelStore.getState().loadToday(DAY);
+    expect(useFuelStore.getState().todayTotals.calories).toBe(800);
+  });
+
+  it('shares simultaneous deletes and restores a thrown failure', async () => {
+    reads.deleteEntry.mockRejectedValueOnce(new Error('offline'));
+    const first = useFuelStore.getState().deleteEntry('b');
+    const second = useFuelStore.getState().deleteEntry('b');
+    expect(await Promise.all([first, second])).toEqual([false, false]);
+    expect(reads.deleteEntry).toHaveBeenCalledOnce();
+    expect(useFuelStore.getState().logs.filter((entry) => entry.id === 'b')).toHaveLength(1);
+  });
+});
+
 describe('while Fuel shows the copy', () => {
   beforeEach(() => {
     restoreFuelCopy({ todayKey: DAY, totals: copyTotals, month: copyMonth() });

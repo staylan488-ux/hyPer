@@ -55,6 +55,7 @@ import { Section } from '~/components/Section';
 import { announce, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { loadHistoryMonth } from '~/lib/history';
+import { holdRunLinks } from '~/lib/launchLink';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -95,6 +96,7 @@ const SPOKEN_STATUS: Record<RunStatus, string> = {
 };
 
 export default function RunScreen() {
+  useEffect(holdRunLinks, []);
   const tracker = useRunTracker();
   const state = tracker.state;
   const running = state?.status === 'running';

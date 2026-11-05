@@ -12,6 +12,14 @@ const LAUNCH_PATHS = ['/fuel', '/train', '/you/targets', '/run'] as const;
 export type LaunchPath = (typeof LAUNCH_PATHS)[number];
 
 let pending: LaunchPath | null = null;
+let openRuns = 0;
+
+export function holdRunLinks(): () => void {
+  openRuns += 1;
+  return () => { openRuns -= 1; };
+}
+
+export const blocksRunLink = (link: string): boolean => openRuns > 0 && launchPath(link) !== null;
 
 /** The app route a widget or card link opens, or null for any other link. */
 export function launchPath(link: string): LaunchPath | null {
