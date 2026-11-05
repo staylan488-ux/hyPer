@@ -52,7 +52,7 @@ const recipe: Food = {
   description: composition.encodeMealComposition([composition.createMealIngredient(milk, 1, 'milk-part')]),
 };
 const savedMilk: Food = { ...milk, id: 'saved-milk', user_id: 'user-a', source: 'saved_meal' };
-const loggedMilk = { id: 'log-milk', date: '2026-11-03', food: milk, servings: 1, logged_at: '2026-11-03T17:00:00Z', group_id: null };
+const loggedMilk = { id: 'log-milk', date: '2026-11-03', food_id: milk.id, food: milk, servings: 1, logged_at: '2026-11-03T17:00:00Z', group_id: null, source: 'barcode' as const };
 const photoResult = { items: [], provider: 'openai', model: 'test', summary: 'Fresh plate' };
 const photoItem: photoReview.PhotoReviewItem = {
   id: 'photo-milk', name: 'Milk', searchQuery: 'milk', amountGrams: 240, modelAmountGrams: 240,
@@ -68,7 +68,7 @@ function deferred<T>() {
 }
 
 type Button = { title: string; disabled?: boolean; onPress: () => void };
-type Field = { label: string; onChangeText: (text: string) => void };
+type Field = { label: string; value?: string; onChangeText: (text: string) => void };
 type Press = PropsWithChildren<{ onPress?: () => void; accessibilityLabel?: string; disabled?: boolean }>;
 type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
 type AlertButton = { text: string; onPress?: () => void };
@@ -110,8 +110,9 @@ afterEach(async () => {
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent }: {
+function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent }: {
   editing?: boolean;
+  entry?: typeof loggedMilk;
   worker?: boolean;
   savedMeal?: boolean;
   params?: Record<string, string | undefined>;
@@ -201,7 +202,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
   const permission = vi.fn(async () => ({ granted: true }));
   const imagePicker = { requestCameraPermissionsAsync: permission, launchCameraAsync: camera, launchImageLibraryAsync: vi.fn() };
   const openSettings = vi.fn();
-  const fuel = { logs: [loggedMilk], groups: [], refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, ...fuelActions };
+  const fuel = { logs: [entry], groups: [], refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, ...fuelActions };
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
   const imports: Record<string, unknown> = {
     'date-fns': dates,
@@ -266,7 +267,7 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
     '@/lib/foodPersistence': { ensureFoodRow: ensureFood },
     '@/lib/manualFood': { resolveManualFood: resolveFood },
     '@/lib/savedBarcodeFoods': {},
-    '@/lib/foodUnits': { formatMacroInput: String },
+    '@/lib/foodUnits': foodUnits,
     '@/lib/pendingEntryId': pendingEntry,
     '@/lib/requestGate': requestGate,
     '@/lib/barcodes': barcodes,
@@ -458,10 +459,49 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
   };
 }
 
+describe('editing measured food entries', () => {
+  it.each([
+    ['g', 100, 2, '200', '250', 2.5],
+    ['ml', 240, 1, '240', '120', 0.5],
+  ] as const)('opens in %s and saves the changed amount to the same entry', async (unit, size, servings, amount, nextAmount, nextServings) => {
+    const food = { ...milk, serving_unit: unit, serving_size: size };
+    const h = loggerHarness({ editing: true, realReview: true, entry: { ...loggedMilk, food, servings } });
+    await h.render();
+    expect(h.captured.foodReview?.food).toEqual(food);
+    expect(h.captured.fields.Amount.value).toBe(amount);
+    expect(h.captured.guard?.on).toBe(false);
+    await act(async () => { h.captured.fields.Amount.onChangeText(nextAmount); });
+    expect(h.captured.guard?.on).toBe(true);
+    await h.click('Save changes');
+    expect(h.saveFood).toHaveBeenCalledWith(expect.objectContaining({
+      foodId: milk.id, servings: nextServings, editingId: loggedMilk.id, source: 'barcode',
+    }));
+    expect(h.ensureFood).not.toHaveBeenCalled();
+    expect(h.back).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a serving-based entry in Manual', async () => {
+    const h = loggerHarness({ editing: true, entry: { ...loggedMilk, food: { ...milk, serving_size: 1, serving_unit: 'serving' } } });
+    await h.render();
+    expect(h.captured.foodReview).toBeUndefined();
+    expect(h.captured.manual?.draft.fields.name).toBe(milk.name);
+  });
+
+  it('keeps a changed amount when going back to edit the macros', async () => {
+    const h = loggerHarness({ editing: true, realReview: true });
+    await h.render();
+    await act(async () => { h.captured.fields.Amount.onChangeText('120'); });
+    await h.click('Back');
+    await h.click('Save changes');
+    expect(h.saveFood).toHaveBeenCalledWith(expect.objectContaining({ servings: 0.5, editingId: loggedMilk.id }));
+  });
+});
+
 describe('native food logger transitions', () => {
   it('keeps Saved → Edit separate from the entry that originally opened the sheet', async () => {
     const h = loggerHarness({ editing: true });
     await h.render();
+    await h.click('Back');
     await h.tab('saved');
     await act(async () => { h.captured.saved!.onEditSavedMeal(recipe); });
     expect(h.captured.review!.savedTarget?.id).toBe(recipe.id);
@@ -473,6 +513,7 @@ describe('native food logger transitions', () => {
     await h.close();
     await h.render();
     expect(h.captured.review).toBeUndefined();
+    await h.click('Back');
     expect(h.captured.manual!.draft.fields.name).toBe('Milk');
     await h.tab('saved');
     await act(async () => { h.captured.saved!.onEditSavedMeal(recipe); });
@@ -495,6 +536,7 @@ describe('native food logger transitions', () => {
     const oldRead = deferred<{ meals: Food[] }>();
     h.loadSaved.mockReturnValueOnce(oldRead.promise);
     await h.render();
+    await h.click('Back');
     await act(async () => { h.captured.fields.Name.onChangeText('My milk entry'); });
     await h.tab('saved');
     expect(h.mealsState.meals?.some((food) => food.id === savedMilk.id)).toBe(false);
@@ -804,7 +846,7 @@ describe('native food logger: Snap a meal', () => {
     await edit.appear();
     await edit.ask();
     expect(edit.refusePress).toHaveBeenCalledOnce();
-    expect(edit.captured.picker!.selection).toBe('manual');
+    expect(edit.captured.foodReview?.food).toEqual(milk);
     await edit.close();
 
     const review = loggerHarness();
@@ -1067,6 +1109,7 @@ describe('native food logger amounts and replacements', () => {
     localStorage.setItem(photoReview.COMBINE_MEAL_KEY, '0');
     const h = loggerHarness({ editing: true, worker: true });
     await h.render();
+    await h.click('Back');
     await h.tab('photo');
     const plate = [photoItem, { ...photoItem, id: 'photo-oats', name: 'Oats' }];
     await act(async () => { h.captured.photo!.setDraft((draft) => ({ ...draft, items: plate })); });
@@ -1132,6 +1175,7 @@ describe('native food logger holds the sheet while a save runs', () => {
     const write = deferred<void>();
     h.saveFood.mockReturnValueOnce(write.promise);
     await h.render();
+    await h.click('Back');
     await act(async () => { h.captured.fields.Calories.onChangeText('140'); });
     await h.click('Save changes');
     expect(h.captured.guard).toMatchObject({ on: true, busy: true });
@@ -1368,6 +1412,7 @@ describe('food writes invalidate old reminder totals', () => {
       expect(h.back).toHaveBeenCalledOnce();
     } else {
       if (path === 'log') await h.tab('manual');
+      if (path === 'edit') await h.click('Back');
       await act(async () => { h.captured.fields.Name.onChangeText('Milk'); });
       await h.click(path === 'edit' ? 'Save changes' : 'Log entry');
       expect(h.saveFood).toHaveBeenCalledOnce();

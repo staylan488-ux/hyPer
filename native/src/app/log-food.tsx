@@ -9,6 +9,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated from 'react-native-reanimated';
 
 import { toLocalTimeInput } from '@/lib/foodLoggerUtils';
+import { getCompatibleMeasurementUnits } from '@/lib/foodUnits';
 import {
   clearMealDraft,
   decodeMealComposition,
@@ -226,7 +227,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   }, [storeGroups, selectedKey, snapAt]);
 
   const [tab, setTab] = useState<Tab>(editing ? 'manual' : startCamera ? 'photo' : 'recent');
-  const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(null);
+  const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(() =>
+    editing?.food && !decodeMealComposition(editing.food.description) && getCompatibleMeasurementUnits(editing.food.serving_unit).length > 1
+      ? { food: editing.food, meta: null, servings: editing.servings }
+      : null,
+  );
   const [manual, setManual] = useState<ManualDraft>(() =>
     editing?.food ? { ...emptyManual, fields: manualFromFood(editing.food), servings: String(editing.servings) } : emptyManual,
   );
@@ -831,7 +836,14 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             }}
           />
         ) : chosen ? (
-          <FoodReview food={chosen.food} meta={chosen.meta} servings={chosen.servings} />
+          <FoodReview
+            food={chosen.food}
+            meta={chosen.meta}
+            servings={chosen.servings}
+            onAmountChange={editing?.food?.id === chosen.food.id
+              ? (servings) => setManual((draft) => ({ ...draft, servings: servings === null ? '' : String(servings) }))
+              : undefined}
+          />
         ) : (
           <View key={captureKey}>
             {buildMeal}

@@ -7,6 +7,7 @@ import * as runDisplay from '@/lib/runDisplay';
 import * as runTracker from '@/lib/runTracker';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import * as launchLink from '../native/src/lib/launchLink';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -83,6 +84,7 @@ async function renderRunScreen() {
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { error: vi.fn(), select: vi.fn(), success: vi.fn(), tap: vi.fn() } },
     '~/lib/history': { loadHistoryMonth },
+    '~/lib/launchLink': launchLink,
     '~/platform/previewFlag': { isPreviewActive: () => false },
     '~/theme/blanc': { space: { gutter: 16, inset: 16 }, useBlanc: () => ({}) },
   });
@@ -121,6 +123,12 @@ describe('starting a run asks for location', () => {
     expect(host.textContent).toContain('Location is approximate for hyPer. Allow it, with Precise Location, to track runs.');
     await act(async () => { button('Open Settings')!.click(); });
     expect(openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds widget links for this screen’s lifetime', () => {
+    expect(launchLink.blocksRunLink('/fuel')).toBe(true);
+    act(() => root.unmount());
+    expect(launchLink.blocksRunLink('/fuel')).toBe(false);
   });
 
   it('still says location is off when it is refused', async () => {

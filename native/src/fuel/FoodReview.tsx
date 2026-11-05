@@ -41,7 +41,7 @@ import { WhenBlock } from './WhenBlock';
  * from Recent opens at its usual amount, in its own unit when it is weighed or
  * measured (150 g rather than 1.5 servings). The header's back chevron changes the food.
  */
-export function FoodReview({ food, meta, servings: usual }: { food: Food; meta: ChosenMeta; servings?: number }) {
+export function FoodReview({ food, meta, servings: usual, onAmountChange }: { food: Food; meta: ChosenMeta; servings?: number; onAmountChange?: (servings: number | null) => void }) {
   const logger = useLogger();
   const large = useLargeText();
   const units = getCompatibleMeasurementUnits(food.serving_unit);
@@ -98,12 +98,13 @@ export function FoodReview({ food, meta, servings: usual }: { food: Food; meta: 
     setError(null);
     const release = logger.beginSave();
     try {
-      const foodId = await ensureFoodRow(food);
+      const original = logger.editing?.food?.id === food.id ? logger.editing : null;
+      const foodId = original ? original.food_id : await ensureFoodRow(food);
       if (!foodId) throw new Error(SAVE_FAILED);
       await saveFoodEntry({
         foodId,
         servings,
-        source: chosenFoodLogSource(food, meta?.provider ?? null),
+        source: original?.source ?? chosenFoodLogSource(food, meta?.provider ?? null),
         when: logger.when,
         groups: logger.groups,
         editingId: logger.editing?.id,
@@ -141,7 +142,10 @@ export function FoodReview({ food, meta, servings: usual }: { food: Food; meta: 
           <FieldRow
             label="Amount"
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(value) => {
+              setAmount(value);
+              onAmountChange?.(servingsForAmount(food, value, unit));
+            }}
             keyboardType="decimal-pad"
             selectTextOnFocus
             unit={amountUnit}
@@ -166,6 +170,7 @@ export function FoodReview({ food, meta, servings: usual }: { food: Food; meta: 
           onApply={(next) => {
             setUnit('serving');
             setAmount(String(next));
+            onAmountChange?.(next);
           }}
         />
       </View>
@@ -208,4 +213,3 @@ export function FoodReview({ food, meta, servings: usual }: { food: Food; meta: 
     </View>
   );
 }
-

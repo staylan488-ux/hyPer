@@ -106,6 +106,7 @@ const defaultsInFlight = new Map<string, Promise<void>>();
 const copyIds = new Map<string, string[]>();
 // Today's month as the phone's copy (launchCache.ts), until a real read replaces it.
 let monthFromCopy = false;
+const deletedEntries = new Map<string, Promise<boolean>>();
 
 export const useFuelStore = create<FuelState>((set, get) => {
   const loadMonth = async (month: string) => {
@@ -136,7 +137,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
       set({ status: get().loadedMonth === month ? 'ready' : 'error' });
       return;
     }
-    const logs = logsResult.data as FoodLog[];
+    const logs = (logsResult.data as FoodLog[]).filter((log) => !deletedEntries.has(log.id));
     const { todayKey } = get();
     monthFromCopy = false;
     set({
@@ -234,7 +235,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
         FOOD_COLUMNS,
       );
       if (!error && data && get().todayKey === key && isCurrent() && request === todayRequest) {
-        set({ todayTotals: sumMacros(data), todayLoadedForUserId: userId, todayLoadedKey: key, todayCopyKey: null, totalsNeedRefresh: false });
+        set({ todayTotals: sumMacros(data.filter((log) => !deletedEntries.has(log.id))), todayLoadedForUserId: userId, todayLoadedKey: key, todayCopyKey: null, totalsNeedRefresh: false });
       }
     },
 
@@ -262,15 +263,26 @@ export const useFuelStore = create<FuelState>((set, get) => {
     },
 
     deleteEntry: editsCopy(async (id: string) => {
+      const existing = deletedEntries.get(id);
+      if (existing) return existing;
+      const isCurrent = captureAccountScope();
       const removed = get().logs.find((log) => log.id === id);
+      const deletion = deleteNutritionEntry(id).catch(() => false);
+      deletedEntries.set(id, deletion);
       // gone at once, back if the delete fails (no confirm, as on the web);
       // Today and the widgets follow at once too
       set({ logs: get().logs.filter((log) => log.id !== id) });
       syncTodayTotals();
-      const ok = await deleteNutritionEntry(id);
-      if (!ok && removed && !get().logs.some((log) => log.id === id)) {
-        set({ logs: [...get().logs, removed] });
-        syncTodayTotals();
+      const ok = await deletion;
+      if (!isCurrent() || deletedEntries.get(id) !== deletion) return ok;
+      if (!ok) {
+        deletedEntries.delete(id);
+        if (removed && get().loadedMonth === monthOf(removed.date) && !get().logs.some((log) => log.id === id)) {
+          set({ logs: [...get().logs, removed] });
+          syncTodayTotals();
+        } else if (removed?.date === get().todayKey) {
+          void get().loadToday();
+        }
       }
       return ok;
     }),
@@ -451,6 +463,7 @@ export function resetFuel() {
   defaultsFailed.clear();
   defaultsInFlight.clear();
   copyIds.clear();
+  deletedEntries.clear();
   const key = today();
   useFuelStore.setState({
     selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key,

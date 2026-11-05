@@ -34,6 +34,40 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
 
 ## Open items
 
+- 2026-11-04: pre-TestFlight reliability fixes prepared on
+  `fix/pre-testflight-reliability`. The owner requested fixing these before
+  merging, shipping through Discord, and normal use for 24 hours. Not merged
+  or released yet: GitHub CLI's stored token is invalid; browser sign-in is
+  needed before the requested GitHub merge.
+  - Editing a weighed or measured entry opens the existing amount editor
+    (grams or millilitres), not Manual's servings. Saving keeps the original
+    food row, source, date and time. Amount changes participate in the leave
+    guard and carry back to Manual if the person goes back to edit macros.
+  - Fuel keeps pending and confirmed deletions out of late month/day reads,
+    including today's totals. Failed deletions restore only into the same
+    account and month; repeated deletes share one request.
+  - Native launch presses use a per-app App Group file with a file lock,
+    shared across the module, app and extension. Taking a press cannot
+    remove a newer one written between read and removal. The existing
+    newest-pending-press-wins behavior stays.
+  - Warm widget and Live Activity links leave an open Run screen and any
+    sheet above it in place, including setup and an unsaved finished run.
+    Cold links and email-confirmation callbacks keep their existing paths.
+  - Verified: all 2,690 tests; final focused suite (110 tests); shared build,
+    native and test TypeScript; instruction checks; ESLint on this checkout.
+    Plain `npm run lint` also scanned unrelated historical worktrees under
+    `.claude/` and failed there. The equivalent checks passed with ESLint's
+    `--ignore-pattern '.claude/**' --ignore-pattern 'ios/**'`; no lint
+    configuration was changed.
+  - Built the Debug iOS app and widget extension. XCTest on iPhone 17 Pro
+    (sample data) saved a 200 g rice entry as 250 g and reopened it; a live
+    simulated run survived Fuel, Train, Targets and Run links and finished;
+    the real Home Screen Snap a meal quick action opened the camera fallback.
+    Food editing and run links also passed in dark mode at AX5 with Increase
+    Contrast. Swift checks exercised concurrent takes and cross-process
+    locking. Real camera, physical controls and real GPS remain phone checks.
+    No auth changes, database repair, phone installation or TestFlight upload.
+
 - 2026-11-04: review follow-ups, all on main.
   - #179, from a Codex review of #178: a saved food's barcode follows a
     retried edit whose first answer was lost, and the retry record survives a
@@ -48,9 +82,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     (`totalsNeedRefresh`); Snap a meal logs at the press's time (`atMs`,
     used when under 60 s old). Simulator (sample data): launch, Snap a meal
     into the AI tab, logging a set, Finish, Program and Log food.
-  - Left from that review: two native Snap a meal presses at the same moment
-    can lose one (`HyperLaunchStore.swift` reads then removes without a
-    lock); a reminder may be planned twice after travelling east
+  - Left from that review: the native Snap a meal read/remove race is
+    addressed in the pending reliability follow-up above; a reminder may
+    be planned twice after travelling east
     (`fuelReminderPlan.ts`, unconfirmed, check on a phone first).
 - 2026-11-04: End early (#180, the owner's ask). A movement with logged sets
   reads End early instead of Skip, and "Ended early · 2 of 3" once ended;
@@ -141,8 +175,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
     sign-out and an expired session leave nothing pending; You's Time row
     motion and its 5 PM to 11 PM limit; the calorie wording needs the owner's
     goal saved as Bulk or Lean bulk.
-  - Seen in passing, existing behaviour: a Fuel entry deleted during a
-    pull-to-refresh read can come back (fixed only while the copy is shown).
+  - Seen in passing: a Fuel entry deleted during a pull-to-refresh read
+    could come back (the pending reliability follow-up above covers normal
+    refreshes as well as the launch copy).
     The schedule editor's default day, also seen then, is fixed by #178 (the
     sheet waits for the plan's session up next).
   - Joined with #178 (bug hunt, accessibility, design review) by a merge:
@@ -194,9 +229,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   lint, build, native `tsc` and an iOS bundle export; not run in a simulator
   or on a phone. Left for the owner (they change sign-in or need a phone):
   sign-out offline can undo itself, a launch offline with an expired token
-  waits about 25 s, and a widget or lock-screen card tapped mid-run closes the
-  run screen. The unlikely ones are listed in the owner's doc "Hidden state
-  machines in hyPer".
+  waits about 25 s. The widget or lock-screen tap closing a run is addressed
+  in the pending reliability follow-up above. The unlikely ones are listed
+  in the owner's doc "Hidden state machines in hyPer".
 - 2026-11-03: PR #169 review follow-up, based on `b49cf40`, was prepared in
   `codex/pr169-state-fixes`; no merge or release was performed.
   Saved-recipe drafts and save targets are separate from logged entries;
@@ -244,9 +279,9 @@ day; Git history keeps the full record (this file at commit 2cd1fd2).
   web suite, lint, build, test types, native `tsc` and an iOS bundle export;
   not run in a simulator or on a phone (the intro from a widget, the
   widgets' Swift, drag and swipe feel, the disabled Log food tabs). Left for
-  the owner: editing a weighed entry (200 g) opens per-serving Manual with no
-  grams; products edited or deleted before this fix may still answer scans
-  with their old numbers (needs a one-time data repair); Recent keeps old
+  the owner: the weighed-entry editor is addressed in the pending reliability
+  follow-up above; products edited or deleted before this fix may still
+  answer scans with their old numbers (needs a one-time data repair); Recent keeps old
   numbers after a saved meal is edited; device surfaces are cleaned only when
   the tabs unmount (sign-in flow); Health sync and run state are per device,
   not per account; a pull to
