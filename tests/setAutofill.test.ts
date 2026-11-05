@@ -92,7 +92,7 @@ describe('setAutofill helpers', () => {
       setNumber: 2,
       currentExerciseSets: replacement,
       previousWorkoutSetsByExercise: previous,
-    })).toEqual({ weight: '95', reps: '9', rpe: '', source: 'previous_workout' });
+    })).toEqual({ weight: '100', reps: '10', rpe: '', source: 'previous_workout' });
     // A later set still waits for an earlier one this workout.
     expect(getSetAutofillValues({
       exerciseId: 'exercise-1',

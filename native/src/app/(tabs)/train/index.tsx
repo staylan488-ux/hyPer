@@ -8,7 +8,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { heldMovement, moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
-import { getSetAutofillValues, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import { getSetAutofillValues, previousSetTarget, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
@@ -217,7 +217,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const reps = draft ? parseNumber(draft.reps) : null;
   const ready = weight !== null && reps !== null;
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
-  const last = current ? previous[current.movement.exerciseId]?.[current.set.set_number] : undefined;
+  const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
   const lastLine = last ? formatSet(last.weight, last.reps, { unit: false }) : '';
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
@@ -252,7 +252,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const saved = await succeeds(async () => {
       await logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined);
       // Beating the same set last time gets a firmer haptic and a quiet line.
-      const gain = gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous);
+      const gain = gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous, current.movement.sets);
       if (gain) {
         haptics.beat();
         setBeat({ key: Date.now(), gain, fresh: true });

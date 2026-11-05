@@ -29,51 +29,41 @@ export function previousTargetRetrySignal(sets: ReadonlyArray<Pick<WorkoutSet, '
   return `${sets.length}:${completed}`;
 }
 
-/**
- * Keeps, for each exercise and set number, the set from the most recent
- * workout (lowest index in `workoutIds`, which is ordered newest first).
- */
+/** Keeps the newest logged target for each movement's 1-based set position. */
 export function buildPreviousSetTargets(workoutIds: string[], previousSets: PreviousSetSummary[]): PreviousWorkoutSetMap {
   const workoutRank = new Map(workoutIds.map((id, index) => [id, index]));
-  const bestByExerciseAndSet = new Map<string, PreviousSetSummary>();
-
+  const movements = new Map<string, PreviousSetSummary[]>();
   for (const set of previousSets) {
-    const key = `${set.exercise_id}:${set.set_number}`;
-    const currentBest = bestByExerciseAndSet.get(key);
-
-    if (!currentBest) {
-      bestByExerciseAndSet.set(key, set);
-      continue;
-    }
-
-    const currentRank = workoutRank.get(set.workout_id) ?? Number.MAX_SAFE_INTEGER;
-    const bestRank = workoutRank.get(currentBest.workout_id) ?? Number.MAX_SAFE_INTEGER;
-
-    if (currentRank < bestRank) {
-      bestByExerciseAndSet.set(key, set);
-    }
+    if (!Number.isFinite(Number(set.set_number))) continue;
+    const key = `${set.workout_id}:${set.exercise_id}`;
+    const sets = movements.get(key) ?? [];
+    sets.push(set);
+    movements.set(key, sets);
   }
-
   const groupedTargets: PreviousWorkoutSetMap = {};
-
-  for (const set of bestByExerciseAndSet.values()) {
-    const parsedSetNumber = typeof set.set_number === 'number'
-      ? set.set_number
-      : Number.parseInt(String(set.set_number), 10);
-
-    if (!Number.isFinite(parsedSetNumber)) continue;
-
-    if (!groupedTargets[set.exercise_id]) {
-      groupedTargets[set.exercise_id] = {};
+  const orderedMovements = [...movements.values()].sort((a, b) =>
+    (workoutRank.get(a[0].workout_id) ?? Number.MAX_SAFE_INTEGER)
+      - (workoutRank.get(b[0].workout_id) ?? Number.MAX_SAFE_INTEGER));
+  for (const sets of orderedMovements) {
+    // Superset swaps can start at round 2 or later; that is still this
+    // movement's first set. Keep unlogged slots in the count, but never use
+    // their values as targets. Never renumber the saved rows themselves.
+    sets.sort((a, b) => Number(a.set_number) - Number(b.set_number));
+    let position = 0;
+    let previousNumber: number | undefined;
+    for (const set of sets) {
+      const number = Number(set.set_number);
+      if (number !== previousNumber) position += 1;
+      previousNumber = number;
+      if (set.completed === false) continue;
+      const targets = groupedTargets[set.exercise_id] ??= {};
+      targets[position] ??= {
+        weight: toFiniteNumber(set.weight),
+        reps: toFiniteNumber(set.reps),
+        rpe: toFiniteNumber(set.rpe),
+      };
     }
-
-    groupedTargets[set.exercise_id][parsedSetNumber] = {
-      weight: toFiniteNumber(set.weight),
-      reps: toFiniteNumber(set.reps),
-      rpe: toFiniteNumber(set.rpe),
-    };
   }
-
   return groupedTargets;
 }
 
@@ -117,8 +107,7 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeC
     .from('sets')
     .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
     .in('workout_id', workoutIds)
-    .in('exercise_id', exerciseIds)
-    .eq('completed', true);
+    .in('exercise_id', exerciseIds);
 
   if (previousSetsError) {
     console.error('Error loading previous sets for target-to-beat:', previousSetsError);

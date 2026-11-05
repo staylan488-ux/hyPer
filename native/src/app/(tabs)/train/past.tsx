@@ -445,7 +445,7 @@ function SetRow({
   return (
     <SwipeRow name={name} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <LoggedSetRow number={number} set={set} rpeColumn={rpeColumn} gain={set.completed ? gainOnLastTime(set, previous) : null} onPress={edit} menu={menu} />
+        <LoggedSetRow number={number} set={set} rpeColumn={rpeColumn} gain={set.completed ? gainOnLastTime(set, previous, movement.sets) : null} onPress={edit} menu={menu} />
       </View>
     </SwipeRow>
   );

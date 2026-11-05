@@ -221,7 +221,7 @@ function MovementDetail({
                   <LoggedSetRow
                     set={set}
                     number={index + 1}
-                    gain={gainOnLastTime(set, previous)}
+                    gain={gainOnLastTime(set, previous, movement.sets)}
                     rpeColumn={rpeColumn}
                     disabled={editing !== null}
                     onPress={() => setEditing(set.id)}

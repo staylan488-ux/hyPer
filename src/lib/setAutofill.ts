@@ -7,7 +7,22 @@ export interface AutofillSetValues {
   source: 'current_workout' | 'previous_workout';
 }
 
+/** Targets keyed by exercise and its 1-based set position, not superset round. */
 export type PreviousWorkoutSetMap = Record<string, Record<number, Pick<WorkoutSet, 'weight' | 'reps' | 'rpe'>>>;
+
+type SetPosition = Pick<WorkoutSet, 'exercise_id' | 'set_number'>;
+
+/** A swap keeps its superset round in storage; compare by this movement's set position. */
+export function previousSetTarget<T>(
+  set: SetPosition,
+  currentSets: readonly SetPosition[],
+  previous: Record<string, Record<number, T | undefined> | undefined>,
+): T | undefined {
+  const earlier = new Set(currentSets
+    .filter((candidate) => candidate.exercise_id === set.exercise_id && candidate.set_number < set.set_number)
+    .map((candidate) => candidate.set_number));
+  return previous[set.exercise_id]?.[earlier.size + 1];
+}
 
 function toInputValue(value: number | null): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
@@ -33,7 +48,7 @@ export function getSetAutofillValues({
   // A movement's first set here starts from last time. A superset swap's sets
   // keep the round they took over, so its first can be past 1.
   if (setNumber <= 1 || !currentExerciseSets.some((set) => set.set_number < setNumber)) {
-    const previousWorkoutSet = previousWorkoutSetsByExercise[exerciseId]?.[setNumber];
+    const previousWorkoutSet = previousSetTarget({ exercise_id: exerciseId, set_number: setNumber }, currentExerciseSets, previousWorkoutSetsByExercise);
     if (!hasAnyValue(previousWorkoutSet)) return null;
 
     return {
