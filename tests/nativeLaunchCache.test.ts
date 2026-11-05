@@ -208,7 +208,8 @@ describe('restoring the copy at launch', () => {
     });
     expect(await actions.deleteProgram(cached)).toBe(false);
     expect(deleteSplit).not.toHaveBeenCalled();
-  });
+    // This first test loads the account stores and transpiles the native guard.
+  }, 15_000);
 
   it('fills the stores inside the same sign-in update, with no loaded marker', async () => {
     const modules = await load();
