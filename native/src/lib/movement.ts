@@ -93,7 +93,11 @@ function showPendingSkip(workoutId: string, exerciseId: string, skipped: boolean
  * save puts the movement back as it was and says so. Resolves to whether it
  * saved.
  */
-export async function setSkipped(workoutId: string, movement: { exerciseId: string; name: string }, skipped: boolean): Promise<boolean> {
+export async function setSkipped(
+  workoutId: string,
+  movement: { exerciseId: string; name: string; done?: number },
+  skipped: boolean,
+): Promise<boolean> {
   const { exerciseId } = movement;
   const turn = ++skipCount;
   latestSkip.set(exerciseId, turn);
@@ -113,7 +117,8 @@ export async function setSkipped(workoutId: string, movement: { exerciseId: stri
     if (latestSkip.get(exerciseId) === turn && useAppStore.getState().currentWorkout?.id === workoutId) {
       haptics.error();
       Alert.alert(
-        skipped ? `${movement.name} not skipped` : `${movement.name} not brought back`,
+        // A movement with sets logged ends early rather than being skipped.
+        skipped ? `${movement.name} not ${movement.done ? 'ended early' : 'skipped'}` : `${movement.name} not brought back`,
         errorMessage(error, 'Check your connection and try again.'),
       );
     }

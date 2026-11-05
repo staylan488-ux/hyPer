@@ -179,7 +179,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     return () => clearTimeout(timer);
   }, [beat]);
   // The latest skip, to take back from the bar at the foot for a few seconds.
-  const [undo, setUndo] = useState<{ key: number; exerciseId: string; name: string; wasCurrent: boolean } | null>(null);
+  const [undo, setUndo] = useState<{ key: number; exerciseId: string; name: string; wasCurrent: boolean; endedEarly: boolean } | null>(null);
   useEffect(() => {
     if (!undo) return;
     const timer = setTimeout(
@@ -299,12 +299,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
   // Skip a movement for this workout only: the next one in turn comes up at
   // once, and Undo (or a tap on its row) brings it back. Callers give the tap.
+  // With a set logged it ends early instead: the logged sets stay and count,
+  // the rest are dropped when the workout finishes.
   const skip = (movement: Movement) => {
     Keyboard.dismiss();
     const wasCurrent = movement.exerciseId === current?.movement.exerciseId;
     const key = nextSkipKey();
-    // The Undo bar announces "<name> skipped" as it appears.
-    setUndo({ key, exerciseId: movement.exerciseId, name: movement.name, wasCurrent });
+    // The Undo bar announces "<name> skipped" (or "ended early") as it appears.
+    setUndo({ key, exerciseId: movement.exerciseId, name: movement.name, wasCurrent, endedEarly: movement.done > 0 });
     void setSkipped(session.workoutId, movement, true).then((saved) => {
       if (saved) return;
       setUndo((latest) => (latest?.key === key ? null : latest));
@@ -429,13 +431,15 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const lastSet = previous[movement.exerciseId]?.[1];
     const lastLine = lastSet ? formatSet(lastSet.weight, lastSet.reps, { unit: false }) : '';
     const hasSetsLeft = movement.sets.some((set) => !set.completed);
+    // Skipping a movement part way through ends it early.
+    const skipLabel = movement.done > 0 ? 'End early' : 'Skip';
     // Swipe to swap or skip a movement with sets to go and, in a flexible
     // session, to take it out (asks first).
     const swipe: SwipeAction[] = [
       ...(hasSetsLeft
         ? [{ label: 'Swap', onPress: () => router.push({ pathname: '/swap', params: { id: movement.exerciseId, from: 'train' } }) }]
         : []),
-      ...(hasSetsLeft && !movement.skipped ? [{ label: 'Skip', onPress: () => skip(movement) }] : []),
+      ...(hasSetsLeft && !movement.skipped ? [{ label: skipLabel, onPress: () => skip(movement) }] : []),
       ...(session.flexible
         ? [{ label: 'Remove', destructive: true, onPress: () => confirmRemoveMovement(session.workoutId, movement) }]
         : []),
@@ -443,7 +447,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     // What a hold, a swipe and a drag do, for VoiceOver.
     const actions = [
       { label: 'Sets, note and swap', run: () => openMovement(movement.exerciseId) },
-      ...(hasSetsLeft && !movement.skipped ? [{ label: 'Skip for this workout', run: () => skip(movement) }] : []),
+      ...(hasSetsLeft && !movement.skipped ? [{ label: `${skipLabel} for this workout`, run: () => skip(movement) }] : []),
       ...(blockIndex > 0
         ? [{ label: 'Move up', run: () => void moveBlock(blocks[blockIndex][0], blockIndex - 1, `${movement.name} moved up`) }]
         : []),
@@ -478,18 +482,34 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         ]
           .filter(Boolean)
           .join(' · ');
-    const row = movement.skipped ? (
+    const row = movement.endedEarly ? (
+      // Ended early: done with the sets logged, which stay and count. A tap
+      // brings the rest back as the one up now.
+      <Row
+        quiet
+        title={movement.name}
+        value={`Ended early · ${movement.done} of ${movement.sets.length}`}
+        leading={
+          <Lead>
+            <SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />
+          </Lead>
+        }
+        accessibilityLabel={`${movement.name}, ended early, ${movement.done} of ${movement.sets.length} sets logged. Bring back`}
+        onPress={() => bringBack(movement, true)}
+        actions={actions}
+      />
+    ) : movement.skipped ? (
       // Skipped for this workout; a tap brings it back as the one up now.
       <Row
         quiet
         title={movement.name}
-        value={movement.done ? `Skipped · ${movement.done} of ${movement.sets.length}` : 'Skipped'}
+        value="Skipped"
         leading={
           <Lead>
             <SymbolView name="forward.end" size={13} weight="semibold" tintColor={c.graphite} />
           </Lead>
         }
-        accessibilityLabel={`${movement.name}, skipped${movement.done ? `, ${movement.done} sets logged` : ''}. Bring back`}
+        accessibilityLabel={`${movement.name}, skipped. Bring back`}
         onPress={() => bringBack(movement, true)}
         actions={actions}
       />
@@ -705,9 +725,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   onPress={pickRpe}
                 />
                 {/* For this workout only; the program keeps it. */}
+                {/* With a set logged it ends the movement early, keeping those sets. */}
                 <Chip
-                  label="Skip"
-                  accessibilityLabel={`Skip ${current.movement.name}`}
+                  label={current.movement.done > 0 ? 'End early' : 'Skip'}
+                  accessibilityLabel={
+                    current.movement.done > 0
+                      ? `End ${current.movement.name} early, keeping ${current.movement.done} of ${current.movement.sets.length} sets`
+                      : `Skip ${current.movement.name}`
+                  }
                   accessibilityHint="For this workout only. Undo brings it back."
                   haptic={false}
                   onPress={() => {
@@ -785,7 +810,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       </TabScroll>
 
       <UndoBar
-        label={undo && !closing ? `${undo.name} skipped` : null}
+        label={undo && !closing ? `${undo.name} ${undo.endedEarly ? 'ended early' : 'skipped'}` : null}
         bottom={tabBarCover(true) + 8}
         onUndo={() => {
           if (undo) bringBack(undo, undo.wasCurrent);
