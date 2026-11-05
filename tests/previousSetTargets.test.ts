@@ -63,6 +63,7 @@ import {
   previousTargetExerciseKey,
   previousTargetRetrySignal,
 } from '@/lib/previousSetTargets';
+import { previousSetTarget } from '@/lib/setAutofill';
 import type { PreviousSetSummary } from '@/lib/workoutProgress';
 
 const set = (exercise_id: string) => ({ exercise_id });
@@ -118,6 +119,36 @@ describe('previousTargetRetrySignal', () => {
 });
 
 describe('buildPreviousSetTargets', () => {
+  it('numbers each movement from its first set even when last time was a swapped superset', () => {
+    const targets = buildPreviousSetTargets(['new', 'old'], [
+      row({ workout_id: 'new', set_number: 3, weight: 175 }),
+      row({ workout_id: 'old', set_number: 1, weight: 100 }),
+      row({ workout_id: 'new', set_number: 2, weight: 185 }),
+      row({ workout_id: 'old', set_number: 2, weight: 95 }),
+      row({ workout_id: 'new', exercise_id: 'row', set_number: 1, weight: 135 }),
+    ]);
+    expect(targets.bench).toEqual({
+      1: { weight: 185, reps: 8, rpe: 8 },
+      2: { weight: 175, reps: 8, rpe: 8 },
+    });
+    expect(targets.row[1].weight).toBe(135);
+  });
+
+  it('uses the same positions for duplicate set numbers in history and the current session', () => {
+    const sets = [
+      row({ workout_id: 'w1', set_number: 2, weight: 185 }),
+      row({ workout_id: 'w1', set_number: 2, weight: 185 }),
+      row({ workout_id: 'w1', set_number: 3, weight: 175 }),
+    ];
+    const targets = buildPreviousSetTargets(['w1'], sets);
+    expect(targets.bench).toEqual({
+      1: { weight: 185, reps: 8, rpe: 8 },
+      2: { weight: 175, reps: 8, rpe: 8 },
+    });
+    const current = sets.map((set) => ({ ...set, set_number: Number(set.set_number) }));
+    expect(previousSetTarget(current[2], current, targets)?.weight).toBe(175);
+  });
+
   it('keeps the most recent workout for each exercise and set number', () => {
     const targets = buildPreviousSetTargets(['newest', 'middle', 'oldest'], [
       row({ workout_id: 'oldest', weight: 175 }),
@@ -142,7 +173,7 @@ describe('buildPreviousSetTargets', () => {
       row({ workout_id: 'w1', set_number: 'warmup', weight: 95 }),
     ]);
 
-    expect(targets).toEqual({ bench: { 3: { weight: 200, reps: 8, rpe: 8 } } });
+    expect(targets).toEqual({ bench: { 1: { weight: 200, reps: 8, rpe: 8 } } });
   });
 
   it('normalizes string, null and NaN metrics to a number or null', () => {
@@ -217,6 +248,17 @@ describe('fetchPreviousSetTargets', () => {
     expect(targets?.bench[1].weight).toBe(180);
   });
 
+  it('keeps unlogged slots in position without using their values as targets', async () => {
+    database.state.results.workouts = { data: [{ id: 'w1' }], error: null };
+    database.state.results.sets = { data: [
+      { ...row({ workout_id: 'w1', set_number: 2, weight: 200 }), completed: false },
+      { ...row({ workout_id: 'w1', set_number: 3, weight: 185 }), completed: true },
+    ], error: null };
+    await expect(fetchPreviousSetTargets(params)).resolves.toEqual({ bench: {
+      2: { weight: 185, reps: 8, rpe: 8 },
+    } });
+  });
+
   it('keeps the query shape and groups the returned sets', async () => {
     database.state.results.workouts = { data: [{ id: 'w2' }, { id: 'w1' }], error: null };
     database.state.results.sets = {
@@ -248,7 +290,6 @@ describe('fetchPreviousSetTargets', () => {
           ['select', 'workout_id, exercise_id, set_number, weight, reps, rpe, completed'],
           ['in', 'workout_id', ['w2', 'w1']],
           ['in', 'exercise_id', ['bench', 'row']],
-          ['eq', 'completed', true],
         ],
       },
     ]);

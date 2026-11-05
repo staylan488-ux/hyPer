@@ -37,12 +37,14 @@ useFuelStore.subscribe((state, previous) => {
   }, 1500);
 });
 
-/** Two reads of the log say the same thing (same entries in the same order). */
+/** Same entries and food snapshots: the rows and quick-add both use the food. */
 const sameLogs = (a: RecentLog[], b: RecentLog[]) =>
   a.length === b.length &&
   a.every((log, index) => {
     const other = b[index];
-    return log.food_id === other.food_id && log.servings === other.servings && log.date === other.date && log.logged_at === other.logged_at && log.created_at === other.created_at;
+    return log.food_id === other.food_id && log.servings === other.servings && log.source === other.source
+      && log.date === other.date && log.logged_at === other.logged_at && log.created_at === other.created_at
+      && JSON.stringify(log.food) === JSON.stringify(other.food);
   });
 
 /**

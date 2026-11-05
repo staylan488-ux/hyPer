@@ -110,7 +110,7 @@ afterEach(async () => {
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions }: {
+function loggerHarness({ editing = false, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent }: {
   editing?: boolean;
   worker?: boolean;
   savedMeal?: boolean;
@@ -125,6 +125,8 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
   realAi?: boolean;
   /** The real Recent, Saved and Search lists, saving through the real food logger. */
   realLists?: boolean;
+  /** Runs the real Recent cache against this data-read boundary. */
+  readRecent?: typeof recentFoods.loadRecentLogs;
   realClock?: boolean;
   fuelActions?: { refresh: () => Promise<void>; refreshAfterWrite: () => Promise<void>; invalidateTotals: () => void };
 } = {}) {
@@ -379,7 +381,11 @@ function loggerHarness({ editing = false, worker = false, savedMeal = false, par
       ...listImports,
       './FoodLists': lists,
       '@/lib/recentFoods': recentFoods,
-      './recent': {
+      './recent': readRecent ? loadNativeModule('fuel/recent.ts', {
+        '@/lib/recentFoods': { ...recentFoods, loadRecentLogs: readRecent },
+        '@/stores/authStore': { useAuthStore: zustand.create(() => ({ user: { id: 'user-a' } })) },
+        '~/lib/fuel': { useFuelStore: zustand.create(() => fuel) },
+      }) : {
         useRecentLogs: () => ({ logs: [{ ...loggedMilk, food_id: milk.id }], failed: false, version: 0, settle: noop, retry: noop }),
         useHiddenRecentFoods: () => ({ hidden: {}, hide: noop }),
       },
@@ -1275,6 +1281,26 @@ describe('Snap a meal over a quick add that was not confirmed', () => {
 });
 
 describe('real Recent and Saved quick-add', () => {
+  it('refreshes the shown food and quick-add after its nutrition changes without a log changing', async () => {
+    const oldLog = { ...loggedMilk, food_id: milk.id };
+    const editedFood = { ...milk, calories: 180, protein: 12, carbs: 18, fat: 7 };
+    const readRecent = vi.fn<typeof recentFoods.loadRecentLogs>()
+      .mockResolvedValueOnce({ logs: [oldLog], error: null })
+      .mockResolvedValue({ logs: [{ ...oldLog, food: editedFood }], error: null });
+    const h = loggerHarness({ realLists: true, readRecent });
+    await h.render();
+    expect(h.text()).toContain('120');
+    await h.close();
+    await h.render();
+    expect(readRecent).toHaveBeenCalledTimes(2);
+    expect(h.text()).toContain('180');
+    expect(h.text()).not.toContain('120');
+    await h.press('Add Milk');
+    expect(h.ensureFood).toHaveBeenCalledWith(editedFood);
+    expect(h.persistEntry).toHaveBeenCalledWith(expect.objectContaining({ food_id: 'food-row', servings: 1 }), undefined, expect.any(String));
+    expect(oldLog.food.calories).toBe(120);
+  });
+
   it.each(['recent', 'saved'])('holds %s while writing and preserves a failed retry across tabs', async (tab) => {
     const h = loggerHarness({ realLists: true });
     const response = deferred<void>();

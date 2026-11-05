@@ -2555,6 +2555,44 @@ describe('session-only exercise substitution', () => {
   const fetchPlan = useAppStore.getState().fetchWorkoutDayPlanByWorkoutId;
   const lastPlanWrite = (chain: Chain) => (chain.update.mock.calls.at(-1)?.[0] as { items: FlexiblePlanItem[] }).items;
 
+  it.each([true, false])('waits for a set save before swapping (save succeeds: %s)', async (succeeds) => {
+    const second = { ...original, id: 'second', set_number: 2 };
+    const logged = { ...original, weight: 120, reps: 8, rpe: 8, completed: true, completed_at: '2026-11-04T12:00:00Z' };
+    useAppStore.setState({ currentWorkout: { ...makeWorkoutWithSet(original), sets: [original, second] } });
+    let finishSave!: (result: { data: WorkoutSet | null; error: { message: string } | null; status: number }) => void;
+    const response = new Promise<{ data: WorkoutSet | null; error: { message: string } | null; status: number }>((resolve) => { finishSave = resolve; });
+    const chain = createChain({ single: vi.fn(() => response) });
+    supabaseMock.from.mockReturnValue(chain);
+
+    // Exercise the real logSet/saveWorkoutSet and substitution actions; only
+    // the network response is held while the person opens Swap.
+    const saving = useAppStore.getState().logSet(original.id, 120, 8, 8).catch(() => undefined);
+    const swapping = useAppStore.getState().substituteWorkoutExercise('original', replacement).catch((error: unknown) => error);
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+    const insertsWhileSaving = chain.insert.mock.calls.length;
+    const deletesWhileSaving = chain.delete.mock.calls.length;
+    finishSave(succeeds ? { data: logged, error: null, status: 200 } : { data: null, error: { message: 'rejected' }, status: 400 });
+    await saving;
+    const swapResult = await swapping;
+
+    expect(insertsWhileSaving).toBe(0);
+    expect(deletesWhileSaving).toBe(0);
+    const sets = useAppStore.getState().currentWorkout!.sets;
+    expect(sets).toHaveLength(2);
+    if (succeeds) {
+      expect(swapResult).toBeUndefined();
+      expect(sets.find((row) => row.id === original.id)).toEqual(logged);
+      expect(sets.filter((row) => row.exercise_id === replacement.id)).toHaveLength(1);
+      expect(chain.insert.mock.calls[0][0]).toHaveLength(1);
+      expect(chain.eq).toHaveBeenCalledWith('completed', false);
+    } else {
+      expect(swapResult).toBeInstanceOf(Error);
+      expect(sets).toEqual([original, second]);
+      expect(chain.insert).not.toHaveBeenCalled();
+      expect(chain.delete).not.toHaveBeenCalled();
+    }
+  });
+
   it('moves only the unfinished sets, with fresh loads, and never touches the program', async () => {
     const chain = createChain();
     supabaseMock.from.mockReturnValue(chain);

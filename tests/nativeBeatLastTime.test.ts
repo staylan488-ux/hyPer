@@ -86,21 +86,48 @@ const lastTime: PreviousWorkoutSetMap = {
   },
 };
 
+const allPositions = [bench, lever].flatMap((row) => [1, 2, 3].map((number) => set(row, number, null, null, false)));
+
 describe('gainOnLastTime', () => {
+  it.each(['A', 'B'] as const)('matches a swapped superset in role %s by the movement’s set position', (role) => {
+    // The replacement starts in round 2, after its original movement logged round 1.
+    const sets = [set(bench, 2, 190, 8, true), set(bench, 3, 180, 8, true)];
+    const previous = { bench: {
+      1: { weight: 185, reps: 8, rpe: null },
+      2: { weight: 200, reps: 8, rpe: null },
+    } };
+    expect(gainOnLastTime(sets[0], previous, sets)).toBe('+5 lb');
+    expect(gainOnLastTime(sets[1], previous, sets)).toBeNull();
+    expect(countBeats(sets, previous)).toBe(1);
+    const pairedSplit = { ...split, days: split.days.map((day) => ({
+      ...day,
+      exercises: day.exercises.map((planned) => ({
+        ...planned,
+        superset_group_id: 'pair',
+        exercise_order: (planned.exercise_id === bench.id) === (role === 'A') ? 1 : 2,
+      })),
+    })) };
+    const session = buildSessionModel(workout([...sets, set(lever, 1, 0, 2, true)]), { split: pairedSplit }, null);
+    if (!session) throw new Error('no session');
+    expect(session.pairings.get(bench.id)?.role).toBe(role);
+    expect(summarize(session, previous).beat).toBe(1);
+    expect(sets.map((entry) => entry.set_number)).toEqual([2, 3]);
+  });
+
   it('describes a set that beat the same set last time', () => {
-    expect(gainOnLastTime(set(bench, 1, 190, 8, true), lastTime)).toBe('+5 lb');
-    expect(gainOnLastTime(set(bench, 3, 185, 9, true), lastTime)).toBe('+2 reps');
+    expect(gainOnLastTime(set(bench, 1, 190, 8, true), lastTime, allPositions)).toBe('+5 lb');
+    expect(gainOnLastTime(set(bench, 3, 185, 9, true), lastTime, allPositions)).toBe('+2 reps');
   });
 
   it('counts a first rep on a bodyweight hold that failed last time', () => {
-    expect(gainOnLastTime(set(lever, 1, 0, 1, true), lastTime)).toBe('+1 rep');
+    expect(gainOnLastTime(set(lever, 1, 0, 1, true), lastTime, allPositions)).toBe('+1 rep');
   });
 
   it('is null for a matched or lower set, or one with no last time', () => {
-    expect(gainOnLastTime(set(bench, 2, 185, 8, true), lastTime)).toBeNull();
-    expect(gainOnLastTime(set(bench, 2, 185, 6, true), lastTime)).toBeNull();
-    expect(gainOnLastTime(set(lever, 3, 0, 5, true), lastTime)).toBeNull();
-    expect(gainOnLastTime(set(bench, 1, 225, 8, true), {})).toBeNull();
+    expect(gainOnLastTime(set(bench, 2, 185, 8, true), lastTime, allPositions)).toBeNull();
+    expect(gainOnLastTime(set(bench, 2, 185, 6, true), lastTime, allPositions)).toBeNull();
+    expect(gainOnLastTime(set(lever, 3, 0, 5, true), lastTime, allPositions)).toBeNull();
+    expect(gainOnLastTime(set(bench, 1, 225, 8, true), {}, allPositions)).toBeNull();
   });
 });
 

@@ -1,3 +1,5 @@
+import { previousSetTarget } from '@/lib/setAutofill';
+
 export interface SetPerformanceInput {
   weight: number | string | null | undefined;
   reps: number | string | null | undefined;
@@ -9,6 +11,7 @@ export interface PreviousWorkoutSummary {
 
 export interface PreviousSetSummary {
   workout_id: string;
+  completed?: boolean;
   exercise_id: string;
   set_number: number | string;
   weight: number | string | null;
@@ -163,7 +166,7 @@ export interface SessionGain {
 
 /**
  * Every completed set in a session that beat the same set last workout, in
- * the order given. `previous` is keyed by exercise id, then set number.
+ * the order given. `previous` is keyed by exercise id, then set position.
  */
 export function collectSessionGains(
   sets: Array<SetPerformanceInput & { exercise_id: string; set_number: number; completed?: boolean | null }>,
@@ -172,7 +175,7 @@ export function collectSessionGains(
   const gains: SessionGain[] = [];
   for (const set of sets) {
     if (!set.completed) continue;
-    const target = previous[set.exercise_id]?.[set.set_number];
+    const target = previousSetTarget(set, sets, previous);
     if (!target) continue;
     const gain = describeSetGain(set, target);
     if (gain) gains.push({ exerciseId: set.exercise_id, setNumber: set.set_number, gain });
