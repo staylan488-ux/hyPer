@@ -23,7 +23,8 @@ import * as requestGate from '@/lib/requestGate';
 import { assertComposedMealOptions } from '@/lib/saveMealComposition';
 import { filterSavedMeals, foodValuesMatch, savedMealSuggestions } from '@/lib/savedMeals';
 import * as timeout from '@/lib/withTimeout';
-import type { Food } from '@/types';
+import * as groupRules from '@/lib/nutritionGroups';
+import type { Food, NutritionGroup } from '@/types';
 import type * as LaunchActions from '../native/src/lib/launchActions';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { nativeFuelStore } from './helpers/nativeFuelStore';
@@ -72,7 +73,7 @@ type Field = { label: string; value?: string; onChangeText: (text: string) => vo
 type Press = { children?: ReactNode | ((state: { pressed: boolean }) => ReactNode); onPress?: () => void; accessibilityLabel?: string; accessibilityValue?: { text?: string }; disabled?: boolean };
 type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
 type AlertButton = { text: string; onPress?: () => void };
-type Input = { accessibilityLabel?: string; onChangeText?: (text: string) => void; onFocus?: () => void };
+type Input = { accessibilityLabel?: string; value?: string; editable?: boolean; onChangeText?: (text: string) => void; onFocus?: () => void };
 type Context = { beginBusy: () => () => void; beginRead: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null } };
 type ReviewProps = {
   draft: composition.MealDraft;
@@ -114,7 +115,7 @@ afterEach(async () => {
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent }: {
+function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent, dayGroups = [], fuelDay = '2026-11-03', sameDay = true }: {
   editing?: boolean;
   entry?: typeof loggedMilk;
   worker?: boolean;
@@ -134,6 +135,12 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   readRecent?: typeof recentFoods.loadRecentLogs;
   realClock?: boolean;
   fuelActions?: { refresh: () => Promise<void>; refreshAfterWrite: () => Promise<void>; invalidateTotals: () => void };
+  /** The day's meals as Fuel's store holds them. */
+  dayGroups?: NutritionGroup[];
+  /** The day Fuel shows, where its addGroup makes a meal. */
+  fuelDay?: string;
+  /** False: When's date has left the sheet's day, so its meals don't apply. */
+  sameDay?: boolean;
 } = {}) {
   const captured: {
     buttons: Record<string, Button>;
@@ -160,6 +167,8 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     choices?: Choices;
     /** The camera screen's live preview, while it shows one. */
     viewfinder?: Viewfinder;
+    /** Search's results, for the words in the field. */
+    search?: { query: string };
   } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {} };
   Object.defineProperty(captured, 'picker', {
     get: () => {
@@ -245,7 +254,13 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   });
   const cameraBack = vi.fn(closeCameraRoot);
   const openSettings = vi.fn();
-  const fuel = { logs: [entry], groups: [], refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, ...fuelActions };
+  const dismissKeyboard = vi.fn();
+  // Fuel's addGroup: a new unlabelled meal or snack on the day Fuel shows, or a failure.
+  const addGroup = vi.fn(async (kind: 'meal' | 'snack') => {
+    fuel.groups = [...fuel.groups, { id: `new-${kind}`, user_id: 'user-a', date: fuel.selected, kind, label: null, sort_order: fuel.groups.length }];
+    return true;
+  });
+  const fuel = { selected: fuelDay, logs: [entry], groups: dayGroups, refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, addGroup, ...fuelActions };
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
   const imports: Record<string, unknown> = {
     'date-fns': dates,
@@ -255,7 +270,10 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
         const tags = Children.toArray(props.children).flatMap((child) =>
           isValidElement<{ modifiers?: Array<{ tag?: string }> }>(child) ? (child.props.modifiers ?? []).map((modifier) => modifier?.tag).filter((tag): tag is string => Boolean(tag)) : [],
         );
-        captured.segments = { ...props, tags, disabled: props.modifiers?.some((modifier) => (modifier as { disabled?: boolean } | undefined)?.disabled === true) };
+        const drawn = { ...props, tags, disabled: props.modifiers?.some((modifier) => (modifier as { disabled?: boolean } | undefined)?.disabled === true) };
+        captured.segments = drawn;
+        // forgotten once off screen (Search hides them)
+        useEffect(() => () => { if (captured.segments === drawn) captured.segments = undefined; });
         return Wrap(props);
       },
       Text: Wrap,
@@ -294,7 +312,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
       ScrollView: Wrap,
       Text: Wrap,
       TextInput: (props: Input) => { if (props.accessibilityLabel) captured.inputs[props.accessibilityLabel] = props; return null; },
-      Keyboard: { dismiss: noop },
+      Keyboard: { dismiss: dismissKeyboard },
       ActivityIndicator: Empty,
       Linking: { openSettings },
       Image: {},
@@ -305,7 +323,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '@/lib/decimalText': decimalText,
     '@/lib/mealComposition': composition,
     '@/lib/foodTrial': { getFoodAnalysisMode: () => worker ? 'worker' : 'gemini' },
-    '@/lib/nutritionGroups': { nutritionGroupLabel: () => '' },
+    '@/lib/nutritionGroups': { nutritionGroupLabel: groupRules.nutritionGroupLabel, nutritionGroupTitle: groupRules.nutritionGroupTitle, NO_MEAL: groupRules.NO_MEAL },
     '@/lib/savedFoodsCache': { readSavedFoodsCache: () => savedFoods, writeSavedFoodsCache: noop },
     '@/lib/savedMealFromLog': { mealFromLoggedFoods: noop, savedMealNamed: () => undefined },
     '@/lib/savedMeals': { loadSavedMeals: loadSaved, filterSavedMeals, foodValuesMatch, savedMealSuggestions, replaceSavedMeal: replaceSimple },
@@ -341,9 +359,9 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/lib/format': { formatWhole: String },
     // VoiceOver and the text size are device services: silent, standard size (announcements recorded).
     '~/lib/accessibility': { announce, useAnnounce: noop, useLargeText: () => false, useScreenReader: () => false, useIncreaseContrast: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
-    '~/lib/foodLogger': { initialWhen: when, usesDayGroups: () => true, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
+    '~/lib/foodLogger': { initialWhen: when, usesDayGroups: () => sameDay, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
     './fuel': { useFuelStore },
-    '~/lib/fuel': { groupsForDay: () => [], loadDayGroups: async () => [], suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
+    '~/lib/fuel': { groupsForDay: (key: string) => fuel.groups.filter((group) => group.date === key), loadDayGroups: async (key: string) => fuel.groups.filter((group) => group.date === key), suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
     '~/lib/launchActions': launchActions,
     '~/lib/launch': { refusePress },
@@ -355,10 +373,22 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     './context': { useLogger },
     './WhenBlock': { WhenBlock: Empty },
     './FoodLists': { spokenMacros: () => '' },
-    '~/fuel/FoodLists': { Empty: ({ text }: { text: string }) => text, SearchTab: Empty, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
+    '~/fuel/FoodLists': {
+      Empty: ({ text }: { text: string }) => text,
+      // Search foods, kept by its placeholder as VoiceOver names it.
+      SearchField: (props: { value: string; placeholder: string; editable?: boolean; onChange: (text: string) => void; onFocus?: () => void }) => {
+        captured.inputs[props.placeholder] = { accessibilityLabel: props.placeholder, value: props.value, editable: props.editable, onChangeText: props.onChange, onFocus: props.onFocus };
+        return null;
+      },
+      SearchTab: (props: { query: string }) => { captured.search = props; return null; },
+      SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
     '~/fuel/FoodReview': { FoodReview: (props: { food: Food }) => { captured.foodReview = props; return null; } },
     '~/fuel/RecentTab': { RecentTab: Empty },
-    '~/fuel/EntryMethods': { EntryMethods: (props: NonNullable<typeof captured.methods>) => { captured.methods = props; return null; } },
+    '~/fuel/EntryMethods': { EntryMethods: (props: NonNullable<typeof captured.methods>) => {
+      captured.methods = props;
+      useEffect(() => () => { if (captured.methods === props) captured.methods = undefined; });
+      return null;
+    } },
     '~/fuel/AiTab': {
       emptyAi: () => ({ hint: '', answer: '', photos: [], result: null, items: [] }),
       aiHasDraft: (draft: { hint: string; photos: unknown[]; result: unknown }) => Boolean(draft.hint) || draft.photos.length > 0 || draft.result !== null,
@@ -507,6 +537,13 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     expect(captured.buttons[name].disabled).not.toBe(true);
     await act(async () => { captured.buttons[name].onPress(); });
   };
+  /** Focuses Search foods (and types into it), as a tap on the field does. */
+  const search = async (words?: string) => {
+    const field = captured.inputs['Search foods'];
+    expect(field).toBeDefined();
+    await act(async () => { field.onFocus!(); });
+    if (words !== undefined) await act(async () => { captured.inputs['Search foods'].onChangeText!(words); });
+  };
   const startPhoto = async () => {
     await tab('photo');
     await act(async () => { captured.photo!.setDraft((draft) => ({ ...draft, photos: { top: { uri: 'test', width: 10, height: 10 } } })); });
@@ -540,9 +577,9 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   // Snap a meal pressed while this sheet is on top (lib/launch.ts hands it over).
   const ask = (atMs?: number) => act(async () => { launchActions.askLoggerCamera(atMs); });
   return {
-    captured, imports, render, close, text, tab, click, press, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
+    captured, imports, render, close, text, tab, click, press, search, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
     token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push,
-    refusePress, announce, when, permission, readAccess, shutter, library, openCamera, cameraBack, cameraText, cameraUp, shoot, flush, openSettings,
+    refusePress, announce, when, addGroup, dismissKeyboard, permission, readAccess, shutter, library, openCamera, cameraBack, cameraText, cameraUp, shoot, flush, openSettings,
   };
 }
 
@@ -700,7 +737,11 @@ describe('native food logger transitions', () => {
     const h = loggerHarness();
     await h.render();
     expect(h.captured.buttons['Build a meal']).toBeDefined();
-    for (const name of ['search', 'scan', 'manual', 'photo']) {
+    delete h.captured.buttons['Build a meal'];
+    await h.search();
+    expect(h.captured.buttons['Build a meal']).toBeUndefined();
+    await h.press('Cancel');
+    for (const name of ['scan', 'manual', 'photo']) {
       delete h.captured.buttons['Build a meal'];
       await h.tab(name);
       expect(h.captured.buttons['Build a meal']).toBeUndefined();
@@ -712,7 +753,8 @@ describe('native food logger transitions', () => {
   it('splits the lists (segmented) from the entry methods, and never shows a list as chosen over a method', async () => {
     const h = loggerHarness();
     await h.render();
-    expect(h.captured.segments!.tags).toEqual(['recent', 'saved', 'search']);
+    // Search is the field above them, not a segment.
+    expect(h.captured.segments!.tags).toEqual(['recent', 'saved']);
     expect(h.captured.methods).toMatchObject({ selected: null, gemini: true, photoWaiting: false, disabled: false });
     for (const method of ['scan', 'manual', 'photo', 'describe']) {
       await act(async () => { h.captured.methods!.onSelect(method); });
@@ -875,6 +917,181 @@ describe('native food logger transitions', () => {
     await h.close();
     await act(async () => { access.resolve('test'); });
     expect(h.analyze).not.toHaveBeenCalled();
+  });
+});
+
+describe('Log food: Search foods takes the sheet over', () => {
+  it('hides the segments and entry methods for results under the field, and Cancel goes back to the list that showed', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.tab('saved');
+    expect(h.captured.pressables.Cancel).toBeUndefined();
+    await h.search('oats');
+    // results sit right under the field
+    expect(h.captured.segments).toBeUndefined();
+    expect(h.captured.methods).toBeUndefined();
+    expect(h.captured.search).toEqual({ query: 'oats' });
+    expect(h.captured.inputs['Search foods'].value).toBe('oats');
+    await h.press('Cancel');
+    expect(h.dismissKeyboard).toHaveBeenCalledOnce();
+    expect(h.captured.inputs['Search foods'].value).toBe('');
+    expect(h.captured.segments!.selection).toBe('saved');
+    expect(h.captured.methods!.selected).toBeNull();
+    expect(h.captured.pressables.Cancel).toBeUndefined();
+  });
+
+  it('goes back to an entry method with its work kept, and no segment claims it', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.tab('manual');
+    await act(async () => { h.captured.manual!.setDraft((draft) => ({ ...draft, fields: { ...draft.fields, name: 'Toast' } })); });
+    await h.search();
+    expect(h.captured.methods).toBeUndefined();
+    await h.press('Cancel');
+    expect(h.captured.methods!.selected).toBe('manual');
+    expect(h.captured.segments!.selection).toBe('none');
+    expect(h.captured.manual!.draft.fields.name).toBe('Toast');
+  });
+
+  it('keeps the words through a food’s review', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.search('oats');
+    await act(async () => { h.captured.context!.chooseFood(milk); });
+    expect(h.captured.foodReview!.food).toEqual(milk);
+    // a review is its own view: no field over it
+    expect(h.captured.pressables.Cancel).toBeUndefined();
+    h.captured.search = undefined;
+    await h.click('Back');
+    expect(h.captured.search).toEqual({ query: 'oats' });
+    expect(h.captured.pressables.Cancel).toBeDefined();
+  });
+
+  it('holds still while a save runs', async () => {
+    const h = loggerHarness();
+    await h.render();
+    let release!: () => void;
+    await act(async () => { release = h.captured.context!.beginSave(); });
+    expect(h.captured.inputs['Search foods'].editable).toBe(false);
+    await h.search();
+    expect(h.captured.pressables.Cancel).toBeUndefined();
+    expect(h.captured.segments!.selection).toBe('recent');
+    await act(async () => { release(); });
+    expect(h.captured.inputs['Search foods'].editable).toBe(true);
+    // A quick add from the results leaves the field live (the keyboard stays up); only Cancel waits.
+    await h.search('oats');
+    await act(async () => { release = h.captured.context!.beginSave(); });
+    expect(h.captured.inputs['Search foods'].editable).toBe(true);
+    expect(h.captured.pressables.Cancel.disabled).toBe(true);
+    await act(async () => { release(); });
+    expect(h.captured.pressables.Cancel.disabled).toBe(false);
+  });
+
+  it('empties the field and puts the keyboard away when Snap a meal takes the sheet', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.appear();
+    await h.search('oats');
+    await h.ask();
+    expect(h.captured.methods!.selected).toBe('photo');
+    expect(h.captured.ai!.cameraRequest).toBe(1);
+    expect(h.captured.inputs['Search foods'].value).toBe('');
+    expect(h.dismissKeyboard).toHaveBeenCalledOnce();
+    expect(h.captured.pressables.Cancel).toBeUndefined();
+  });
+});
+
+describe('Log food: where the food goes', () => {
+  const lunch: NutritionGroup = { id: 'lunch', user_id: 'user-a', date: '2026-11-03', kind: 'meal', label: 'lunch', sort_order: 1 };
+  const nov2 = { date: new Date('2026-11-02T00:00:00'), time: '00:00', groupId: null };
+
+  it.each([
+    ['today with no meal', {}, null, 'Adds to today'],
+    ['another day with no meal', { params: { day: '2026-11-02' } }, nov2, 'Adds to Nov 2'],
+    ['a meal', { dayGroups: [lunch], params: { group: 'lunch' } }, { date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: 'lunch' }, 'Adds to Lunch'],
+  ] as const)('says it positively for %s, as a button that changes it', async (_case, options, when, line) => {
+    const h = loggerHarness('dayGroups' in options ? { ...options, dayGroups: [...options.dayGroups] } : options);
+    if (when) h.when.mockReturnValue(when);
+    await h.render();
+    expect(h.text()).toContain(line);
+    expect(h.text()).not.toContain('no meal');
+    expect(h.captured.pressables[`${line}. Change`]).toBeDefined();
+  });
+
+  it('names the meal an edited entry is in, or No meal', async () => {
+    const h = loggerHarness({ editing: true, dayGroups: [lunch] });
+    await h.render();
+    expect(h.text()).toContain('No meal');
+    await h.press('No meal. Change');
+    await act(async () => { await h.captured.choices!.callback(1); });
+    expect(h.text()).toContain('In Lunch');
+  });
+
+  it('names the day, not a meal, once When has left the sheet’s day', async () => {
+    const h = loggerHarness({ sameDay: false });
+    h.when.mockReturnValue(nov2);
+    await h.render();
+    expect(h.text()).toContain('Adds to Nov 2');
+    expect(h.text()).not.toContain('Unassigned');
+    expect(h.captured.pressables['Adds to Nov 2'].disabled).toBe(true);
+    const edit = loggerHarness({ editing: true, sameDay: false });
+    edit.when.mockReturnValue(nov2);
+    await edit.render();
+    expect(edit.text()).toContain('Moves to Nov 2');
+  });
+
+  it('offers No meal, the day’s meals, then New meal and New snack, and goes to the one made', async () => {
+    const h = loggerHarness({ dayGroups: [lunch] });
+    await h.render();
+    await h.press('Adds to today. Change');
+    expect(h.captured.choices!.options.options).toEqual(['No meal', 'Lunch', 'New meal', 'New snack', 'Cancel']);
+    await act(async () => { await h.captured.choices!.callback(2); });
+    await h.flush();
+    expect(h.addGroup).toHaveBeenCalledWith('meal');
+    expect(h.success).toHaveBeenCalledOnce();
+    expect(h.captured.context!.when.groupId).toBe('new-meal');
+    // named as Fuel's rules number it: the day's second meal after Lunch
+    expect(h.text()).toContain('Adds to Meal 2');
+    expect(h.announce).toHaveBeenCalledWith('Adds to Meal 2');
+    // listed with the day's meals from then on; No meal takes it out again
+    await h.press('Adds to Meal 2. Change');
+    expect(h.captured.choices!.options.options).toEqual(['No meal', 'Lunch', 'Meal 2', 'New meal', 'New snack', 'Cancel']);
+    await act(async () => { await h.captured.choices!.callback(0); });
+    expect(h.captured.context!.when.groupId).toBeNull();
+    expect(h.text()).toContain('Adds to today');
+  });
+
+  it('makes a snack the same way', async () => {
+    const h = loggerHarness({ dayGroups: [lunch] });
+    await h.render();
+    await h.press('Adds to today. Change');
+    await act(async () => { await h.captured.choices!.callback(3); });
+    await h.flush();
+    expect(h.addGroup).toHaveBeenCalledWith('snack');
+    expect(h.captured.context!.when.groupId).toBe('new-snack');
+    // A lone snack is "Snack", as Fuel's list names it.
+    expect(h.text()).toContain('Adds to Snack');
+    expect(h.text()).not.toContain('Snack 1');
+  });
+
+  it('says so when the new meal was not made, and keeps the destination', async () => {
+    const h = loggerHarness({ dayGroups: [lunch] });
+    h.addGroup.mockResolvedValueOnce(false);
+    await h.render();
+    await h.press('Adds to today. Change');
+    await act(async () => { await h.captured.choices!.callback(2); });
+    await h.flush();
+    expect(h.error).toHaveBeenCalledOnce();
+    expect(h.alert).toHaveBeenCalledWith('Not added', 'Check your connection and try again.');
+    expect(h.captured.context!.when.groupId).toBeNull();
+    expect(h.text()).toContain('Adds to today');
+  });
+
+  it('offers no new meal for a day Fuel is not showing, where Fuel would make it', async () => {
+    const h = loggerHarness({ dayGroups: [lunch], fuelDay: '2026-11-02' });
+    await h.render();
+    await h.press('Adds to today. Change');
+    expect(h.captured.choices!.options.options).toEqual(['No meal', 'Lunch', 'Cancel']);
   });
 });
 
@@ -1248,6 +1465,19 @@ describe('native food logger: Snap a meal', () => {
     expect(h.analyze).not.toHaveBeenCalled();
   });
 
+  it('puts Choose from library right under the words when there is no camera, beside the library button', async () => {
+    const h = loggerHarness({ worker: true, device: false, params: { start: 'camera' } });
+    await h.render();
+    await h.appear();
+    await settle();
+    expect(h.captured.pressables['Photo library']).toBeDefined();
+    await h.press('Choose from library');
+    await h.flush();
+    expect(h.library).toHaveBeenCalledOnce();
+    expect(h.cameraUp()).toBe(false);
+    expect(h.captured.photo!.draft.photos).toEqual({ top: { uri: 'lib', width: 12, height: 9 } });
+  });
+
   it('picks from the library on the simulator, and analyzes that photo', async () => {
     const h = loggerHarness({ worker: true, device: false, params: { start: 'camera' } });
     await h.render();
@@ -1270,6 +1500,7 @@ describe('native food logger: Snap a meal', () => {
     expect(h.captured.viewfinder).toBeUndefined();
     expect(h.cameraText()).toContain('Camera access is off');
     expect(h.captured.pressables['Photo library']).toBeDefined();
+    expect(h.captured.pressables['Choose from library']).toBeDefined();
     expect(h.captured.pressables['Take photo'].disabled).toBe(true);
     await h.press('Open Settings');
     expect(h.openSettings).toHaveBeenCalledOnce();
@@ -1414,6 +1645,7 @@ describe('native food logger amounts and replacements', () => {
 
     localStorage.setItem(photoReview.COMBINE_MEAL_KEY, '1');
     await h.render();
+    await h.click('Back');
     await h.tab('photo');
     await act(async () => { h.captured.photo!.setDraft((draft) => ({ ...draft, items: plate })); });
     expect(h.captured.buttons['Log 1 meal'].disabled).not.toBe(true);

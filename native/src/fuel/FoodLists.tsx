@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, TextInput, View, type ViewStyle } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -96,43 +96,53 @@ export function spokenMacros(
   return speak(`${round(totals.calories)} kcal · protein ${round(totals.protein)} g · carbs ${round(totals.carbs)} g · fat ${round(totals.fat)} g`);
 }
 
-/** A search or filter field in the quiet fill capsule. */
-export function SearchField({ value, onChange, placeholder, onSubmit, autoFocus }: {
+/**
+ * A search or filter field in the quiet fill capsule, iOS 26's rounded search
+ * field. `style` places it (it sits 16 points in and 12 down by default).
+ */
+export function SearchField({ value, onChange, placeholder, onSubmit, onFocus, editable, style }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   onSubmit?: () => void;
-  /** Picking the tab means typing next. */
-  autoFocus?: boolean;
+  onFocus?: () => void;
+  editable?: boolean;
+  style?: ViewStyle;
 }) {
   const c = useBlanc();
   const large = useLargeText();
   return (
     <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        // The field's text grows at the accessibility sizes; the capsule grows with it.
-        ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
-        marginHorizontal: 16,
-        marginTop: 12,
-        paddingHorizontal: 14,
-        borderRadius: 22,
-        borderCurve: 'continuous',
-        backgroundColor: c.fill,
-      }}>
+      style={[
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          // The field's text grows at the accessibility sizes; the capsule grows with it.
+          ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
+          marginHorizontal: 16,
+          marginTop: 12,
+          paddingHorizontal: 14,
+          borderRadius: 22,
+          borderCurve: 'continuous',
+          backgroundColor: c.fill,
+          opacity: editable === false ? 0.4 : 1,
+        },
+        style,
+      ]}>
       <SymbolView name="magnifyingglass" size={16} weight="medium" tintColor={c.graphite} />
       <TextInput
         value={value}
         onChangeText={onChange}
         onSubmitEditing={onSubmit}
-        autoFocus={autoFocus}
+        onFocus={onFocus}
+        editable={editable}
         placeholder={placeholder}
         placeholderTextColor={c.graphite}
         returnKeyType="search"
         clearButtonMode="while-editing"
         autoCorrect={false}
+        accessibilityRole="search"
         accessibilityLabel={placeholder}
         lineBreakModeIOS="tail"
         style={[typeScale.field, { flex: 1, color: c.ink, padding: 0 }]}
@@ -577,10 +587,13 @@ function TextAction({ title, onPress }: { title: string; onPress: () => void }) 
   );
 }
 
-/** USDA search: results as you type (two letters or more), with Retry on failure. */
-export function SearchTab() {
+/**
+ * USDA search results for the words in Log food's Search foods field (two
+ * letters or more), with Retry on failure. The sheet owns the field and its
+ * words, so they outlast a food's review and an ingredient added.
+ */
+export function SearchTab({ query }: { query: string }) {
   const logger = useLogger();
-  const [query, setQuery] = useState('');
   const [results, setResults] = useState<Food[] | null>(null);
   const [state, setState] = useState<'idle' | 'searching' | 'error'>('idle');
   const [attempt, setAttempt] = useState(0);
@@ -644,9 +657,9 @@ export function SearchTab() {
 
   return (
     <View>
-      <SearchField value={query} onChange={setQuery} placeholder="Search USDA foods" autoFocus />
       {results && results.length > 0 ? (
-        <Label style={{ marginTop: 14, overflow: 'hidden' }}>
+        // 14 points under the field, past the sheet header's own 8.
+        <Label style={{ marginTop: 6, overflow: 'hidden' }}>
           {results.map((food, index) => {
             const key = food.fdc_id || food.id;
             return (

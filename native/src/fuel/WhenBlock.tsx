@@ -1,7 +1,7 @@
 import { endOfDay, format, parseISO } from 'date-fns';
 import { ActionSheetIOS, View } from 'react-native';
 
-import { nutritionGroupLabel } from '@/lib/nutritionGroups';
+import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
 import { FormNote, PickerRow } from '~/components/Form';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { Label } from '~/components/Label';
@@ -23,7 +23,7 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
   const group = sameDay ? groups.find((candidate) => candidate.id === when.groupId) ?? null : null;
 
   const chooseGroup = () => {
-    const options = ['Unassigned', ...groups.map((candidate) => nutritionGroupLabel(candidate, groups)), 'Cancel'];
+    const options = [NO_MEAL, ...groups.map((candidate) => nutritionGroupTitle(candidate, groups)), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: 'Add to', options, cancelButtonIndex: options.length - 1 }, (index) => {
       if (index === options.length - 1) return;
       haptics.select();
@@ -44,7 +44,7 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
             const day = new Date(date);
             day.setHours(12, 0, 0, 0);
             const moved = format(day, 'yyyy-MM-dd') !== format(when.date, 'yyyy-MM-dd');
-            // groups belong to the page's day; another day logs Unassigned
+            // groups belong to the page's day; another day logs to no meal
             setWhen({ ...when, date: day, groupId: moved && format(day, 'yyyy-MM-dd') !== selectedKey ? null : when.groupId });
           }}
         />
@@ -61,13 +61,13 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
           <Row
             form
             title="Add to"
-            value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'}
+            value={group ? nutritionGroupTitle(group, groups) : NO_MEAL}
             chevron={!disabled}
             onPress={disabled ? undefined : chooseGroup}
           />
         ) : (
           <View>
-            <Row form title="Add to" value={`Unassigned on ${format(when.date, 'MMM d')}`} />
+            <Row form title="Add to" value={`${NO_MEAL} on ${format(when.date, 'MMM d')}`} />
           </View>
         )}
       </Label>

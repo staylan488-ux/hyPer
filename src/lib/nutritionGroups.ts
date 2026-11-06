@@ -105,6 +105,20 @@ export function nutritionGroupLabel(group: NutritionGroup, groups: NutritionGrou
   return `${group.kind === 'snack' ? 'Snack' : 'Meal'} ${ordinal}`;
 }
 
+/**
+ * A group's name as screens show it: a lone unnamed meal or snack is just
+ * "Meal" or "Snack"; with more than one they are numbered.
+ */
+export function nutritionGroupTitle(group: NutritionGroup, groups: NutritionGroup[]): string {
+  const label = nutritionGroupLabel(group, groups);
+  if (group.label) return label;
+  const sameKind = groups.filter((candidate) => !candidate.label && candidate.kind === group.kind).length;
+  return sameKind === 1 ? label.replace(/ 1$/, '') : label;
+}
+
+/** What a food with no meal is filed under, in menus, rows and Fuel's list. */
+export const NO_MEAL = 'No meal';
+
 export function legacyMealTypeForGroup(group: NutritionGroup | null): 'breakfast' | 'lunch' | 'dinner' | 'snack' | null {
   if (!group) return null;
   if (group.label) return group.label;

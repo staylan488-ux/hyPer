@@ -12,7 +12,7 @@ import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { decodeMealComposition } from '@/lib/mealComposition';
 import { weekDays } from '@/lib/nutritionCalendar';
 import { canReorderNutritionGroup, offersMoveToPreviousDay } from '@/lib/nutritionDay';
-import { nutritionGroupLabel } from '@/lib/nutritionGroups';
+import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
 import { alreadyOnDay } from '@/lib/repeatEntries';
@@ -41,6 +41,12 @@ import { useYouMealsStore } from '~/lib/you';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
+
+/** The month sheet, from the date under the title. */
+const openMonth = () => {
+  haptics.tap();
+  router.push('/fuel-month');
+};
 
 const CHECK_CONNECTION = 'Check your connection and try again.';
 
@@ -149,6 +155,9 @@ export default function FuelScreen() {
   const grown = useWindowDimensions().fontScale > 1;
   const loadFailed = status === 'error' && !loaded;
   useAnnounce(loadFailed ? "This day's food could not load. Pull down to try again." : null);
+  const c = useBlanc();
+  // Today reads as on the Today tab; other days keep Fuel's own title.
+  const dayLine = live ? format(selectedDate, 'EEEE, MMMM d') : fuelDayTitle(selectedDate);
 
   // The day's groups in order, Unassigned first when it has entries. Empty
   // named meals stay out of the way; a meal or snack added by hand stays.
@@ -173,16 +182,8 @@ export default function FuelScreen() {
       <Stack.Screen
         options={{
           title: 'Fuel',
+          // The date under the title opens the month, so + stands alone.
           unstable_headerRightItems: () => [
-            {
-              type: 'button',
-              label: 'Calendar',
-              icon: { type: 'sfSymbol', name: 'calendar' },
-              onPress: () => {
-                haptics.tap();
-                router.push('/fuel-month');
-              },
-            },
             {
               type: 'button',
               label: 'Log food',
@@ -196,10 +197,22 @@ export default function FuelScreen() {
         }}
       />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {/* Today reads as on the Today tab; other days keep Fuel's own title. */}
-          {live ? format(selectedDate, 'EEEE, MMMM d') : fuelDayTitle(selectedDate)}
-        </BlancText>
+        {/* The date under the large title is the month's button, with the
+            small chevron Log food's destination line has. It stays in the
+            page, so the native large title keeps its collapse. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={dayLine}
+          accessibilityHint="Opens the month"
+          // a 15-point line, 44 points to touch
+          hitSlop={{ top: 12, bottom: 12, left: space.gutter, right: 16 }}
+          onPress={openMonth}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginHorizontal: space.gutter, marginTop: 2, opacity: pressed ? 0.5 : 1 })}>
+          <BlancText variant="secondary" tone="graphite" style={{ flexShrink: 1 }}>
+            {dayLine}
+          </BlancText>
+          <SymbolView name="chevron.down" size={11} weight="semibold" tintColor={c.graphite} style={{ marginLeft: 4 }} />
+        </Pressable>
 
         <WeekStrip selected={selectedDate} dayKcal={dayKcal} target={kcalTarget} goal={goal} todayKey={todayKey} />
 
@@ -266,12 +279,12 @@ export default function FuelScreen() {
           <View>
             {unassigned.length > 0 ? (
               <Animated.View key="unassigned" entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
+                <MealSection title={NO_MEAL} logs={unassigned} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ) : null}
             {sections.map(({ group, logs: entries }) => (
               <Animated.View key={group.id} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title={mealTitle(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
+                <MealSection title={nutritionGroupTitle(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ))}
 
@@ -282,10 +295,10 @@ export default function FuelScreen() {
               </Animated.View>
             ) : null}
 
-            {/* Another meal is for a day that has begun. */}
+            {/* More food for a day that has begun; a new meal or snack is made in Log food's destination menu. */}
             {loaded && logs.length > 0 ? (
               <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
-                <Capsule title="Add meal or snack" variant="quiet" onPress={() => addMealOrSnack()} style={{ alignSelf: 'center' }} />
+                <Capsule title="Log food" variant="quiet" onPress={() => logFood(selected)} style={{ alignSelf: 'center' }} />
               </Animated.View>
             ) : null}
           </View>
@@ -299,13 +312,6 @@ export default function FuelScreen() {
       </TabScroll>
     </>
   );
-}
-
-function addMealOrSnack() {
-  ActionSheetIOS.showActionSheetWithOptions({ title: 'Add a meal or snack', options: ['Meal', 'Snack', 'Cancel'], cancelButtonIndex: 2 }, (index) => {
-    if (index === 2) return;
-    report(useFuelStore.getState().addGroup(index === 0 ? 'meal' : 'snack'), 'Not added');
-  });
 }
 
 /**
@@ -453,7 +459,7 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
     ActionSheetIOS.showActionSheetWithOptions(
       {
         title,
-        message: !group.label ? 'Deleting it moves its foods to Unassigned.' : undefined,
+        message: !group.label ? 'Its foods stay on the day, in no meal.' : undefined,
         options,
         cancelButtonIndex: actions.length,
         destructiveButtonIndex: destructive >= 0 ? destructive : undefined,
@@ -525,8 +531,8 @@ function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: 
   // Move to opens the day's other meals; the hold menu, the swipe's More
   // and VoiceOver all offer the same list.
   const targets: { id: string | null; label: string }[] = [
-    { id: null, label: 'Unassigned' },
-    ...groups.map((group) => ({ id: group.id, label: mealTitle(group, groups) })),
+    { id: null, label: NO_MEAL },
+    ...groups.map((group) => ({ id: group.id, label: nutritionGroupTitle(group, groups) })),
   ].filter((targetGroup) => targetGroup.id !== (log.group_id ?? null));
   const menu: MenuAction[] = [
     { title: 'Edit', symbol: 'pencil', run: edit },
@@ -662,9 +668,3 @@ function MacroColumn({ macro, value, target, loaded, goal, edge }: {
 }
 
 /** A meal's name on Fuel: "Snack" while it is the day's only snack, "Snack 2" once there are more. */
-function mealTitle(group: NutritionGroup, groups: NutritionGroup[]): string {
-  const label = nutritionGroupLabel(group, groups);
-  if (group.label) return label;
-  const sameKind = groups.filter((candidate) => !candidate.label && candidate.kind === group.kind).length;
-  return sameKind === 1 ? label.replace(/ 1$/, '') : label;
-}

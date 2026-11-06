@@ -30,9 +30,7 @@ let serial = 0;
 let milk: Food;
 
 type Press = { accessibilityLabel?: string; onPress?: () => void };
-type Input = { accessibilityLabel?: string; onChangeText: (text: string) => void };
 const pressables: Press[] = [];
-const inputs: Record<string, Input> = {};
 let detail = deferred<Food>();
 const release = vi.fn();
 const beginRead = vi.fn(() => release);
@@ -44,7 +42,7 @@ const logger = {
   quickAddStates: {}, setQuickAddStates: noop, pendingQuickAdds: new Map(),
 };
 
-const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType }>('fuel/FoodLists.tsx', {
+const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: string }> }>('fuel/FoodLists.tsx', {
   'expo-symbols': { SymbolView: Empty },
   'react-native': {
     ActivityIndicator: Empty,
@@ -53,10 +51,8 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType }>('fuel/FoodL
       pressables.push(props);
       return Wrap(props);
     },
-    TextInput: (props: Input) => {
-      if (props.accessibilityLabel) inputs[props.accessibilityLabel] = props;
-      return null;
-    },
+    // the field is the sheet's (Search foods); SearchTab shows its results
+    TextInput: Empty,
     View: Wrap,
   },
   'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
@@ -104,10 +100,10 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-/** Searches for milk and taps its result, whose portion read then waits on `detail`. */
+/** Searches for milk (typed into Log food's Search foods field) and taps its result, whose portion read then waits on `detail`. */
 async function openResult() {
-  await act(async () => { root.render(createElement(SearchTab)); });
-  await act(async () => { inputs['Search USDA foods'].onChangeText(milk.name); });
+  await act(async () => { root.render(createElement(SearchTab, { query: '' })); });
+  await act(async () => { root.render(createElement(SearchTab, { query: milk.name })); });
   await act(async () => { await vi.advanceTimersByTimeAsync(350); });
   const row = [...pressables].reverse().find((props) => props.accessibilityLabel?.startsWith(`${milk.name}, `));
   expect(row).toBeDefined();

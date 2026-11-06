@@ -19,7 +19,8 @@ import { paletteFor, type Palette } from '~/theme/blanc';
  * cameras are. The shutter is centred at the foot and the photo library sits
  * bottom left, so an existing photo is one tap away instead of a choice asked
  * first. A shot shows for Retake or Use Photo. Without camera access (or a
- * camera: the simulator) it says so and the library still works.
+ * camera: the simulator) it says so, with Choose from library right under
+ * the words (and Open Settings when access is off); the library button stays.
  */
 export default function FoodCamera() {
   const insets = useSafeAreaInsets();
@@ -146,19 +147,20 @@ export default function FoodCamera() {
               <Text {...textSizing('secondary')} style={[blancTextStyle(c, 'secondary', 'graphite'), { textAlign: 'center' }]}>
                 {state === 'off' ? 'Allow Camera for hyPer in Settings, or choose a photo from your library.' : 'Choose a photo from your library instead.'}
               </Text>
-              {state === 'off' ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    haptics.tap();
-                    void Linking.openSettings();
-                  }}
-                  style={({ pressed }) => ({ marginTop: 12, minHeight: 44, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 22, borderCurve: 'continuous', justifyContent: 'center', backgroundColor: c.fill, opacity: pressed ? 0.7 : 1 })}>
-                  <Text {...textSizing('headline')} style={blancTextStyle(c, 'headline')}>
-                    Open Settings
-                  </Text>
-                </Pressable>
-              ) : null}
+              {/* The way on, right under the words that name it; the library button bottom left stays. */}
+              <View style={{ marginTop: 12, alignItems: 'center', gap: 10 }}>
+                {state === 'off' ? (
+                  <QuietCapsule
+                    c={c}
+                    title="Open Settings"
+                    onPress={() => {
+                      haptics.tap();
+                      void Linking.openSettings();
+                    }}
+                  />
+                ) : null}
+                <QuietCapsule c={c} title="Choose from library" disabled={choosing} onPress={() => void library()} />
+              </View>
             </View>
           ) : null}
         </View>
@@ -225,6 +227,26 @@ function RoundButton({ c, symbol, label, value, onPress }: { c: Palette; symbol:
       onPress={onPress}
       style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill, opacity: pressed ? 0.6 : 1 })}>
       <SymbolView name={symbol} size={17} weight="semibold" tintColor={c.ink} />
+    </Pressable>
+  );
+}
+
+/**
+ * A quiet capsule on the camera's black: Capsule's quiet shape (44 points,
+ * round ends, 16-point headline), drawn in the dark palette the camera's
+ * chrome keeps in either appearance (Capsule itself follows the system's).
+ */
+function QuietCapsule({ c, title, disabled, onPress }: { c: Palette; title: string; disabled?: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={disabled ? { disabled: true } : undefined}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 22, borderCurve: 'continuous', justifyContent: 'center', backgroundColor: c.fill, opacity: disabled ? 0.4 : pressed ? 0.7 : 1 })}>
+      <Text {...textSizing('headline')} style={[blancTextStyle(c, 'headline'), { fontSize: 16, lineHeight: 20, textAlign: 'center' }]}>
+        {title}
+      </Text>
     </Pressable>
   );
 }
