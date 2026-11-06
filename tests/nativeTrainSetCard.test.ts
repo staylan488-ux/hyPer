@@ -18,7 +18,9 @@ import * as format from '../native/src/lib/format';
 // figure is written under each field only while it says something new: "last
 // 80" under an 80 only repeats the figure, so it hides (keeping its line, so
 // the card doesn't move) and comes back once the field is edited away from it.
-// The card's notes sit at one quiet level with the set line above them.
+// The card's notes sit at one quiet level with the set line above them. Its
+// quiet action names what it ends ("Skip last set" with one set to go), and
+// the Movements row up now reads as current: a medium title over "Now".
 
 type Props = Record<string, unknown> & { children?: ReactNode };
 
@@ -29,6 +31,8 @@ const flatten = (style: unknown): Record<string, unknown> =>
 // An animated view says when it is the one that fades with the scroll (its opacity driven by a shared value).
 const AnimatedView = ({ children, style }: Props) =>
   createElement('div', { 'data-fades': 'opacity' in flatten(style) ? 'true' : undefined }, children);
+// A pressable keeps what VoiceOver hears.
+const Pressable = ({ children, accessibilityLabel }: Props) => createElement('div', { 'data-pressable': 'true', 'aria-label': accessibilityLabel as string | undefined }, children);
 const Text = ({ children, variant, tone, accessibilityLabel, accessibilityElementsHidden, style }: Props) =>
   createElement(
     'span',
@@ -55,10 +59,11 @@ let previous: setAutofill.PreviousWorkoutSetMap;
 let notes: Record<string, { note: string }>;
 let note: string | null;
 let session: Record<string, unknown>;
+let total: number;
 
-/** Barbell Row, set 3 of 3: two logged at 80 × 8, the third filled in from them. */
-function liveSession() {
-  const sets = [set('s1', 1, true, 80, 8), set('s2', 2, true, 80, 8), set('s3', 3, false)];
+/** Barbell Row, set 3 of 3 (or of `total`): two logged at 80 × 8, the third filled in from them. */
+function liveSession(total = 3) {
+  const sets = [set('s1', 1, true, 80, 8), set('s2', 2, true, 80, 8), ...Array.from({ length: total - 2 }, (_, index) => set(`s${index + 3}`, index + 3, false))];
   const movement = {
     exerciseId: 'row',
     name: 'Barbell Row',
@@ -89,11 +94,23 @@ const setEntry = loadNativeModule<Record<string, unknown>>('lib/setEntry.ts', {
   './haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
 });
 
+// The real list row, so the Movements list's type is the row's own.
+const { Row } = loadNativeModule<{ Row: (props: Props) => ReactNode }>('components/Row.tsx', {
+  'expo-symbols': { SymbolView: Empty },
+  'react-native': { Pressable, StyleSheet: { hairlineWidth: 0.5 }, View: Box },
+  '~/lib/accessibility': silentAccessibility,
+  '~/lib/haptics': { haptics: { select: vi.fn(), tap: vi.fn() } },
+  '~/theme/blanc': { useBlanc: () => ({}) },
+  './BlancText': { BlancText: Text },
+  './HoldMenu': { HoldMenu: Box, hasHoldMenu: false, menuAccessibility: () => null, showActionSheet: vi.fn() },
+  './SwipeRow': { closeOpenSwipeRow: () => false, useSwipeActions: () => null },
+});
+
 let root: Root;
 let host: HTMLDivElement;
 
 async function open() {
-  session = liveSession();
+  session = liveSession(total);
   const { default: TrainScreen } = loadNativeModule<{ default: () => ReactNode }>(
     'app/(tabs)/train/index.tsx',
     {
@@ -103,7 +120,7 @@ async function open() {
       'react-native': {
         Alert: { alert: vi.fn(), prompt: vi.fn() },
         Keyboard: { dismiss: vi.fn() },
-        Pressable: Box,
+        Pressable,
         RefreshControl: Empty,
         ScrollView: Box,
         StyleSheet: { hairlineWidth: 0.5 },
@@ -133,7 +150,7 @@ async function open() {
       '~/components/Label': { Label: Box },
       '~/components/LiveClock': { LiveClock: Empty },
       '~/components/PlanCard': { PlanCard: Empty },
-      '~/components/Row': { Hairline: Empty, Row: Empty },
+      '~/components/Row': { Hairline: Empty, Row },
       '~/components/Section': { Section: Box },
       '~/components/SwipeRow': { SwipeRow: Box },
       '~/components/TabScroll': { scrolledFromRest: (offset: number) => offset + 165, TabScroll: Box, tabBarCover: () => 83 },
@@ -190,6 +207,7 @@ const type = async (field: 'Weight in pounds' | 'Reps', text: string) => {
 const textNamed = (words: string) => [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent === words);
 
 beforeEach(() => {
+  total = 3;
   note = null;
   notes = {};
   previous = { row: { 1: { weight: 80, reps: 8, rpe: null }, 2: { weight: 80, reps: 8, rpe: null }, 3: { weight: 80, reps: 8, rpe: null } } };
@@ -263,5 +281,34 @@ describe('the set card\'s type', () => {
       const shown = textNamed(words)!;
       expect({ variant: shown.dataset.variant, tone: shown.dataset.tone }).toEqual({ variant: line.dataset.variant, tone: line.dataset.tone });
     }
+  });
+});
+
+describe('the set card\'s quiet action', () => {
+  const action = () => [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => /^(Skip|End) /.test(pressable.getAttribute('aria-label') ?? ''))!;
+
+  it('says "Skip last set" with one set of the movement to go, and names what it keeps', async () => {
+    await open();
+    expect(action().textContent).toBe('Skip last set');
+    expect(action().getAttribute('aria-label')).toBe('Skip the last set of Barbell Row, keeping 2 of 3 sets');
+  });
+
+  it('keeps "End early" with more than one set to go', async () => {
+    total = 4;
+    await open();
+    expect(action().textContent).toBe('End early');
+    expect(action().getAttribute('aria-label')).toBe('End Barbell Row early, keeping 2 of 4 sets');
+  });
+});
+
+describe('the Movements row up now', () => {
+  it('reads as current: a medium title, as a row with a detail line has, over "Now" alone', async () => {
+    await open();
+    const row = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row, Now'))!;
+    expect(row.getAttribute('aria-label')).toBe('Barbell Row, Now, 2 of 3 sets done');
+    const [title, detail, ...more] = [...row.querySelectorAll<HTMLElement>('span')];
+    expect({ text: title.textContent, variant: title.dataset.variant, tone: title.dataset.tone }).toEqual({ text: 'Barbell Row', variant: 'bodyStrong', tone: 'ink' });
+    expect({ text: detail.textContent, variant: detail.dataset.variant, tone: detail.dataset.tone }).toEqual({ text: 'Now', variant: 'secondary', tone: 'graphite' });
+    expect(more).toEqual([]);
   });
 });

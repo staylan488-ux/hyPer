@@ -217,6 +217,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // and it comes back as soon as the field is edited away from last time's.
   const lastWeight = lastLoad !== null && draft && differsFromLast(draft.weight, lastLoad) ? formatLoad(lastLoad) : null;
   const lastReps = lastRepCount !== null && draft && differsFromLast(draft.reps, lastRepCount) ? lastRepCount : null;
+  // Ending a movement early with one set to go only skips that set: the quiet action says so.
+  const lastSetLeft = current ? current.movement.sets.length - current.movement.done === 1 : false;
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
   const cardLine = current
     ? [
@@ -788,13 +790,16 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 haptic={false}
                 onPress={pickRpe}
               />
-              {/* For this workout only; the program keeps it. With a set logged it ends the movement early, keeping those sets. */}
+              {/* For this workout only; the program keeps it. With a set logged it ends the movement early, keeping those
+                  sets; with one set left, that set is all it drops, so it says so. */}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
-                  current.movement.done > 0
-                    ? `End ${current.movement.name} early, keeping ${current.movement.done} of ${current.movement.sets.length} sets`
-                    : `Skip ${current.movement.name}`
+                  current.movement.done === 0
+                    ? `Skip ${current.movement.name}`
+                    : lastSetLeft
+                      ? `Skip the last set of ${current.movement.name}, keeping ${current.movement.done} of ${current.movement.sets.length} sets`
+                      : `End ${current.movement.name} early, keeping ${current.movement.done} of ${current.movement.sets.length} sets`
                 }
                 accessibilityHint="For this workout only. Undo brings it back."
                 hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
@@ -804,7 +809,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 }}
                 style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
                 <BlancText variant="footnote" tone="graphite">
-                  {current.movement.done > 0 ? 'End early' : 'Skip movement'}
+                  {current.movement.done === 0 ? 'Skip movement' : lastSetLeft ? 'Skip last set' : 'End early'}
                 </BlancText>
               </Pressable>
             </View>

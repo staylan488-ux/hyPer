@@ -22,7 +22,7 @@ import {
   useRestStore,
 } from '~/lib/rest';
 import { useNow, useSessionModel } from '~/lib/session';
-import { figureLead, space, useBlanc } from '~/theme/blanc';
+import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
 /**
  * The lengths offered on the track, the 90 s default among them; anything
@@ -36,6 +36,13 @@ const PRESETS = [60, 90, 120, 180, 300];
  * line on the narrowest iPhone, 375 pt.
  */
 const TRACK_CHIP = { flexGrow: 1, minWidth: 44, paddingHorizontal: 8 };
+
+/**
+ * The clear band above and below the track's fill: 34 pt chips on a 2 pt
+ * pad make a 38 pt fill, and 3 pt more each way makes the 44 pt a chip's
+ * hitSlop needs to reach inside the track's bounds.
+ */
+const TRACK_REACH = 3;
 
 /** Seconds left on the rest just after a button changed it. */
 function restLeftNow(): number {
@@ -97,7 +104,9 @@ export default function RestSheet() {
     );
   };
 
-  const figure = running || paused ? left : length;
+  // No rest under way: the time shown is the length, at rest. Paused keeps the countdown's digits, so Pause and Resume don't reflow it.
+  const idle = !running && !paused;
+  const figure = idle ? length : left;
   // Stopped, the time is the length and needs no word; the line stays, so starting a rest doesn't resize the sheet.
   const caption = running ? 'left' : paused ? 'paused' : null;
 
@@ -162,9 +171,14 @@ export default function RestSheet() {
               : `Rest length, ${spokenClock(figure)}`
         }
         style={{ alignItems: 'center', marginTop: 18 }}>
-        {/* Counts down like the Clock app's timer: each second rolls. */}
+        {/* Counts down like the Clock app's timer: each second rolls, on tabular digits so they don't jitter. With
+            no rest under way the length rests in proportional digits, so its "1" leaves no gap ("1 :30"). */}
         {/* Centred by its ink: a tabular "1" would otherwise sit the time off to the right. */}
-        <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center', marginLeft: figureLead(formatClock(figure), 84) }}>
+        <RollingText
+          variant="figure"
+          size={84}
+          tone={paused ? 'graphite' : 'ink'}
+          style={{ ...(idle ? restingFigure : null), letterSpacing: -2, textAlign: 'center', marginLeft: figureLead(formatClock(figure), 84, { tabular: !idle }) }}>
           {formatClock(figure)}
         </RollingText>
         <BlancText variant="secondary" tone="graphite" style={caption ? undefined : { opacity: 0 }}>
@@ -174,19 +188,33 @@ export default function RestSheet() {
 
       {/* The lengths share one track, as a segmented control's choices do, so the chosen one reads at a glance;
           Custom, last, types any other and reads as chosen while the length is none of the presets. The track
-          spans the sheet's inset like Start rest below, and wraps only when its lengths outgrow one line. */}
+          spans the sheet's inset like Start rest below, and wraps only when its lengths outgrow one line.
+          A chip's reach (its hitSlop) ends at the track's edge, so the track is a clear 44 pt band around the
+          fill it draws, and its margins take the band back out: it looks and sits as the 38 pt fill alone. */}
       <View
         style={{
           flexDirection: 'row',
           flexWrap: 'wrap',
           gap: 2,
-          marginTop: 22,
+          marginTop: 22 - TRACK_REACH,
+          marginBottom: -TRACK_REACH,
           marginHorizontal: space.inset,
-          padding: 2,
-          borderRadius: 19,
-          borderCurve: 'continuous',
-          backgroundColor: c.fill,
+          paddingHorizontal: 2,
+          paddingVertical: 2 + TRACK_REACH,
         }}>
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: TRACK_REACH,
+            bottom: TRACK_REACH,
+            left: 0,
+            right: 0,
+            borderRadius: 19,
+            borderCurve: 'continuous',
+            backgroundColor: c.fill,
+          }}
+        />
         {PRESETS.map((seconds) => (
           <Chip
             key={seconds}
