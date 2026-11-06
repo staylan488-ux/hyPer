@@ -130,7 +130,8 @@ export function SearchField({ value, onChange, placeholder, onSubmit, onFocus, e
         },
         style,
       ]}>
-      <SymbolView name="magnifyingglass" size={16} weight="medium" tintColor={c.graphite} />
+      {/* The field is named for VoiceOver; the glyph is only its look. */}
+      <SymbolView name="magnifyingglass" size={16} weight="medium" tintColor={c.graphite} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
       <TextInput
         value={value}
         onChangeText={onChange}
@@ -404,7 +405,6 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
 }) {
   const logger = useLogger();
   const large = useLargeText();
-  const [filter, setFilter] = useState('');
   const [managing, setManaging] = useState(false);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const meals = logger.savedMeals;
@@ -446,7 +446,8 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     ]);
   };
 
-  const visible = filterSavedMeals(meals ?? [], filter).filter((meal) => !hidden.has(meal.id));
+  // The sheet's Search foods field finds saved meals as well, so this list has no filter of its own.
+  const visible = (meals ?? []).filter((meal) => !hidden.has(meal.id));
   const canManage = Boolean(meals && meals.length > 0) && logger.purpose === 'log';
   const canCreate = logger.purpose === 'log' && !logger.editing;
   const rows = visible.map((meal, index) => (
@@ -470,7 +471,6 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   return (
     <LayoutAnimationConfig skipEntering skipExiting>
       <View>
-        <SearchField value={filter} onChange={setFilter} placeholder="Filter saved meals" />
         {canManage || canCreate ? (
           <View
             style={{
@@ -488,8 +488,8 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
             {canCreate ? <TextAction title="New" onPress={onNewSavedMeal} /> : null}
           </View>
         ) : null}
-        {/* A new filter swaps the rows without motion; a deleted meal slides away. */}
-        <LayoutAnimationConfig key={filter} skipEntering skipExiting>
+        {/* Only a deleted meal slides away. */}
+        <LayoutAnimationConfig skipEntering skipExiting>
           <View>
             {visible.length > 0 ? (
               <Label style={{ marginTop: canManage || canCreate ? 4 : 14, overflow: 'hidden' }} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
@@ -499,7 +499,7 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
             {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
             {meals !== null && visible.length === 0 ? (
               <Animated.View entering={rowEnter} layout={rowLayout}>
-                <Empty text={filter.trim() ? 'No saved meals match.' : 'No saved meals yet.'} />
+                <Empty text="No saved meals yet." />
               </Animated.View>
             ) : null}
           </View>
@@ -646,6 +646,13 @@ export function SearchTab({ query }: { query: string }) {
     };
   }, [trimmed, attempt]);
 
+  // Your own saved meals that match come first, found as you type; USDA's follow.
+  const saved = trimmed.length >= 2 ? filterSavedMeals(logger.savedMeals ?? [], trimmed) : [];
+  const openSaved = (meal: Food) => {
+    if (logger.purpose === 'log' && decodeMealComposition(meal.description)) logger.composeMeal(meal);
+    else logger.chooseFood(meal);
+  };
+
   const open = async (food: Food) => {
     if (opening) return;
     setOpening(food.fdc_id || food.id);
@@ -655,8 +662,33 @@ export function SearchTab({ query }: { query: string }) {
   };
   const add = (key: string, food: Food) => void quickAdd(key, food);
 
+  // Named only while both kinds show, so a list of one kind carries no heading.
+  const both = saved.length > 0 && Boolean(results && results.length > 0);
   return (
     <View>
+      {saved.length > 0 ? (
+        <>
+          {both ? <GroupCaption>Saved</GroupCaption> : null}
+          <Label style={{ marginTop: 6, overflow: 'hidden' }}>
+            {saved.map((meal, index) => {
+              const composed = Boolean(decodeMealComposition(meal.description));
+              return (
+                <View key={meal.id}>
+                  {index > 0 ? <Hairline /> : null}
+                  <FoodRow
+                    food={meal}
+                    composed={composed}
+                    state={added[meal.id]}
+                    onOpen={() => openSaved(meal)}
+                    onAdd={enabled && !composed ? () => add(meal.id, meal) : undefined}
+                  />
+                </View>
+              );
+            })}
+          </Label>
+        </>
+      ) : null}
+      {both ? <GroupCaption>Foods</GroupCaption> : null}
       {results && results.length > 0 ? (
         // 14 points under the field, past the sheet header's own 8.
         <Label style={{ marginTop: 6, overflow: 'hidden' }}>
@@ -681,7 +713,7 @@ export function SearchTab({ query }: { query: string }) {
       ) : null}
       {state === 'searching' ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
       {state === 'idle' && trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
-      {state === 'idle' && results !== null && results.length === 0 ? <Empty text="No USDA matches." /> : null}
+      {state === 'idle' && results !== null && results.length === 0 && saved.length === 0 ? <Empty text="No USDA matches." /> : null}
       {state === 'error' ? (
         <View style={{ alignItems: 'center', gap: 14, marginTop: 32 }}>
           <BlancText variant="secondary" tone="graphite">
@@ -691,6 +723,15 @@ export function SearchTab({ query }: { query: string }) {
         </View>
       ) : null}
     </View>
+  );
+}
+
+/** The small heading over saved matches and USDA's, in the sheet's column-label style. */
+function GroupCaption({ children }: { children: string }) {
+  return (
+    <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 14, marginHorizontal: 20 }}>
+      {children}
+    </BlancText>
   );
 }
 

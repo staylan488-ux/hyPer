@@ -144,9 +144,12 @@ export default function FoodCamera() {
               <Text {...textSizing('headline')} accessibilityRole="header" style={[blancTextStyle(c, 'headline'), { textAlign: 'center' }]}>
                 {state === 'off' ? 'Camera access is off' : CAMERA_UNAVAILABLE}
               </Text>
-              <Text {...textSizing('secondary')} style={[blancTextStyle(c, 'secondary', 'graphite'), { textAlign: 'center' }]}>
-                {state === 'off' ? 'Allow Camera for hyPer in Settings, or choose a photo from your library.' : 'Choose a photo from your library instead.'}
-              </Text>
+              {/* Choose from library says the other way itself; only Settings needs a word. */}
+              {state === 'off' ? (
+                <Text {...textSizing('secondary')} style={[blancTextStyle(c, 'secondary', 'graphite'), { textAlign: 'center' }]}>
+                  Allow Camera for hyPer in Settings.
+                </Text>
+              ) : null}
               {/* The way on, right under the words that name it; the library button bottom left stays. */}
               <View style={{ marginTop: 12, alignItems: 'center', gap: 10 }}>
                 {state === 'off' ? (

@@ -33,11 +33,12 @@ const View = ({
   children,
   style,
   accessibilityLabel,
-}: PropsWithChildren<{ style?: { height?: number | string; bottom?: number | string; alignItems?: string; backgroundColor?: string }; accessibilityLabel?: string }>) =>
+}: PropsWithChildren<{ style?: { height?: number | string; width?: number | string; bottom?: number | string; alignItems?: string; backgroundColor?: string }; accessibilityLabel?: string }>) =>
   createElement(
     'div',
     {
       ...(style?.height !== undefined ? { 'data-height': String(style.height) } : null),
+      ...(style?.width !== undefined ? { 'data-width': String(style.width) } : null),
       ...(style?.bottom !== undefined ? { 'data-bottom': String(style.bottom) } : null),
       ...(style?.alignItems !== undefined ? { 'data-align': style.alignItems } : null),
       ...(style?.backgroundColor !== undefined ? { 'data-fill': style.backgroundColor } : null),
@@ -399,7 +400,7 @@ describe("Progress's scale and target figures", () => {
     appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
     await open();
     // 90 minutes this week puts the chart's top at 2 hours.
-    for (const text of ['2 h', '2600 target', '190 target']) {
+    for (const text of ['2 h', '2600', '190']) {
       const label = figure(text);
       expect(label, text).toBeDefined();
       // iOS shrank a figure that could shrink to fit a box of no height to nothing.
@@ -408,19 +409,25 @@ describe("Progress's scale and target figures", () => {
     }
   });
 
-  it('keeps a target figure on its own line when the last days run past it, moving to the clear end', async () => {
-    // The last three days well past 2,600; the first days clear.
-    nutrition = weekBefore({ 1: 3400, 2: 3300, 3: 3200 }).map((day) => ({ ...day, protein: 0 }));
+  it('keeps a target figure at its line, in a column of its own beside the bars, when days run past it', async () => {
+    // Days at both ends well past 2,600, so no end of the line is clear.
+    nutrition = weekBefore({ 1: 3400, 2: 3300, 7: 3200, 6: 3100 }).map((day) => ({ ...day, protein: 0 }));
     appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
     await open();
-    const label = figure('2600 target');
+    const label = figure('2600');
     expect(label).toBeDefined();
-    // the box that places it: at the target's own height, on the left end
+    // the box that places it: at the target's own height...
     let box = label?.parentElement;
     while (box && box.dataset.bottom === undefined) box = box.parentElement;
     const max = Math.max(1, 2600 * 1.3, 3400);
     expect(box?.dataset.bottom).toBe(`${(2600 / max) * 100}%`);
-    expect(box?.dataset.align).toBe('flex-start');
+    // ...inside the figure column, which holds no bars.
+    let column = box?.parentElement;
+    while (column && column.dataset.width === undefined) column = column.parentElement;
+    expect(Number(column?.dataset.width)).toBeGreaterThanOrEqual(50);
+    expect(column?.querySelector('[data-fill="mark"], [data-fill="live"]')).toBeNull();
+    // The dashed line is named once, in the key under both charts.
+    expect(shown()).toContain('Target');
   });
 
   it('names no target while none is set', async () => {

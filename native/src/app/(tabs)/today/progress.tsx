@@ -450,7 +450,7 @@ const SCALE_BOX = 26;
  * stacked charts line up. `bottom` is its line; `above` lifts it to sit just
  * above `bottom` instead, where a bar would run into it on the line.
  */
-function ScaleLabel({ bottom, above = false, side = 'right', children }: { bottom: `${number}%`; above?: boolean; side?: 'right' | 'left'; children: string }) {
+function ScaleLabel({ bottom, above = false, children }: { bottom: `${number}%`; above?: boolean; children: string }) {
   const c = useBlanc();
   return (
     <View
@@ -461,12 +461,12 @@ function ScaleLabel({ bottom, above = false, side = 'right', children }: { botto
         right: 0,
         bottom,
         height: SCALE_BOX,
-        alignItems: side === 'right' ? 'flex-end' : 'flex-start',
+        alignItems: 'flex-end',
         // Centred on the line, or resting just above it.
         ...(above ? { marginBottom: 3, justifyContent: 'flex-end' } : { marginBottom: -SCALE_BOX / 2, justifyContent: 'center' }),
       }}>
       {/* Sized to the figure, never shrunk to fit. */}
-      <View style={side === 'right' ? { paddingLeft: SCALE_GAP, backgroundColor: c.label } : { paddingRight: SCALE_GAP, backgroundColor: c.label }}>
+      <View style={{ paddingLeft: SCALE_GAP, backgroundColor: c.label }}>
         <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={1.3} style={{ fontVariant: ['tabular-nums'] }}>
           {children}
         </BlancText>
@@ -529,6 +529,29 @@ function NothingMark({ onPlot = true }: { onPlot?: boolean }) {
         borderColor: c.mark,
       }}
     />
+  );
+}
+
+/**
+ * The nutrition targets' figures sit in a column of their own at the plot's
+ * right, as the body-weight chart sets its scale, so a bar that runs past
+ * its target never meets the figure. Wide enough for "2,600" at the largest
+ * size the figure grows to.
+ */
+const TARGET_COLUMN = 56;
+
+/** What the dashed line means, once under the nutrition charts. */
+function TargetKey() {
+  const c = useBlanc();
+  return (
+    <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
+      <Svg width={14} height={1}>
+        <Line x1="0" y1="0.5" x2="14" y2="0.5" stroke={c.mark} strokeWidth={1} strokeDasharray={DASH} />
+      </Svg>
+      <BlancText variant="footnote" tone="graphite">
+        Target
+      </BlancText>
+    </View>
   );
 }
 
@@ -690,7 +713,10 @@ function NutritionSection({ todayKey }: { todayKey: string }) {
               <MacroBars days={weeklyNutrition} span={week.spoken} macro="calories" label="Calories" unit="kcal" target={target?.calories ?? 0} warnOver={warnsOverTarget('calories', goal)} />
               <MacroBars days={weeklyNutrition} span={week.spoken} macro="protein" label="Protein" unit="g" target={target?.protein ?? 0} warnOver={warnsOverTarget('protein', goal)} />
             </View>
-            {weeklyNutrition.some((day) => day.calories <= 0 || day.protein <= 0) ? <NothingKey>No entry</NothingKey> : null}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 16 }}>
+              {(target?.calories ?? 0) > 0 || (target?.protein ?? 0) > 0 ? <TargetKey /> : null}
+              {weeklyNutrition.some((day) => day.calories <= 0 || day.protein <= 0) ? <NothingKey>No entry</NothingKey> : null}
+            </View>
           </View>
         )}
       </Label>
@@ -742,13 +768,9 @@ function MacroBars({
       : `none logged, ${span}`;
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
-  // The target's figure always sits on its own line, so it names the right
-  // height. It takes the line's right end unless the last few days' bars
-  // reach up under it there; then the left end, where the first days' bars
-  // are clear; with both ends crowded it stays at the right, drawn over the bar.
-  const crowds = (days3: DailyNutrition[]) =>
-    (Math.max(0, ...days3.map((day) => day[macro])) / max) * MACRO_PLOT > (target / max) * MACRO_PLOT - SCALE_CLEAR;
-  const labelSide: 'right' | 'left' = crowds(days.slice(-3)) && !crowds(days.slice(0, 3)) ? 'left' : 'right';
+  // The target's figure sits at its line's height in the column at the
+  // plot's right, so it names the right height and no bar can reach it.
+  const column = target > 0 ? TARGET_COLUMN : 0;
   return (
     <View
       accessible
@@ -784,38 +806,39 @@ function MacroBars({
           </BlancText>
         )}
       </View>
-      <View style={{ height: MACRO_PLOT, marginTop: MACRO_GAP }}>
-        {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
-        {/* The target in `mark`, at full strength: read, but never ahead of the bars. */}
-        {target > 0 ? <DashedLine bottom={`${(target / max) * 100}%`} color={c.mark} /> : null}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%' }}>
-          {days.map((day) => (
-            <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
-              {day[macro] > 0 ? (
-                <View
-                  style={{
-                    height: `${(day[macro] / max) * 100}%`,
-                    minHeight: MIN_BAR,
-                    borderRadius: 3,
-                    borderCurve: 'continuous',
-                    backgroundColor: isOver(day) ? c.live : c.mark,
-                  }}
-                />
-              ) : (
-                <NothingMark />
-              )}
-            </View>
-          ))}
+      <View style={{ height: MACRO_PLOT, marginTop: MACRO_GAP, flexDirection: 'row' }}>
+        <View style={{ flex: 1 }}>
+          {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
+          {/* The target in `mark`, at full strength: read, but never ahead of the bars. */}
+          {target > 0 ? <DashedLine bottom={`${(target / max) * 100}%`} color={c.mark} /> : null}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%' }}>
+            {days.map((day) => (
+              <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+                {day[macro] > 0 ? (
+                  <View
+                    style={{
+                      height: `${(day[macro] / max) * 100}%`,
+                      minHeight: MIN_BAR,
+                      borderRadius: 3,
+                      borderCurve: 'continuous',
+                      backgroundColor: isOver(day) ? c.live : c.mark,
+                    }}
+                  />
+                ) : (
+                  <NothingMark />
+                )}
+              </View>
+            ))}
+          </View>
         </View>
-        {/* Over the bars, so a bar never covers it. */}
         {target > 0 ? (
-          <ScaleLabel bottom={`${(target / max) * 100}%`} side={labelSide}>
-            {`${formatWhole(target)} target`}
-          </ScaleLabel>
+          <View style={{ width: column }}>
+            <ScaleLabel bottom={`${(target / max) * 100}%`}>{formatWhole(target)}</ScaleLabel>
+          </View>
         ) : null}
       </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, marginRight: column }}>
         {days.map((day) => (
           <BlancText key={day.date} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {format(parseISO(day.date), 'EEEEE')}

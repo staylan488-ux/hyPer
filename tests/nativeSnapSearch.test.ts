@@ -36,8 +36,9 @@ const release = vi.fn();
 const beginRead = vi.fn(() => release);
 const beginBusy = vi.fn(() => release);
 const chooseFood = vi.fn();
-const logger = {
-  purpose: 'log', editing: null, beginBusy, beginRead, beginSave: () => noop, chooseFood, addIngredients: noop, groups: [], when: {},
+const composeMeal = vi.fn();
+const logger: Record<string, unknown> = {
+  purpose: 'log', editing: null, beginBusy, beginRead, beginSave: () => noop, chooseFood, composeMeal, addIngredients: noop, groups: [], when: {}, savedMeals: [] as Food[],
   // Quick adds live on the sheet (#179), so a list keeps them across tabs.
   quickAddStates: {}, setQuickAddStates: noop, pendingQuickAdds: new Map(),
 };
@@ -62,10 +63,13 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: strin
   '@/lib/nutritionLedger': { servingLabel: () => '' },
   '@/lib/pendingEntryId': { createPendingEntryId: noop },
   '@/lib/saveNutritionEntry': { chosenFoodLogSource: noop },
-  '@/lib/savedMeals': { filterSavedMeals: () => [], retireSavedMeal: vi.fn() },
+  '@/lib/savedMeals': {
+    filterSavedMeals: (meals: Food[], filter: string) => meals.filter((meal) => meal.name.toLowerCase().includes(filter.trim().toLowerCase())),
+    retireSavedMeal: vi.fn(),
+  },
   '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
   '@/lib/usdaClient': { searchUsdaFoodsSecureStrict: async () => [milk], withUsdaPortion: () => detail.promise },
-  '~/components/BlancText': { BlancText: Wrap },
+  '~/components/BlancText': { BlancText: ({ children }: PropsWithChildren) => createElement('span', null, children) },
   '~/components/Capsule': { Capsule: Empty },
   '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => null, showActionSheet: noop },
   '~/components/Label': { Label: Wrap },
@@ -136,5 +140,44 @@ describe('Search: a result being opened claims the sheet', () => {
     await act(async () => root.unmount());
     expect(release).toHaveBeenCalledOnce();
     root = createRoot(document.createElement('div'));
+  });
+});
+
+describe('Search: one field for saved meals and USDA', () => {
+  // Search keeps results for the session, so each case types its own milk.
+  const shakeFor = (name: string): Food => ({
+    id: 'saved-shake', user_id: 'user-a', name: `${name} shake, mine`, calories: 410, protein: 40, carbs: 30, fat: 12,
+    serving_size: 1, serving_unit: 'serving', source: 'custom', fdc_id: null,
+  });
+  afterEach(() => { logger.savedMeals = []; });
+
+  it('lists matching saved meals first, under Saved, then USDA under Foods', async () => {
+    const shake = shakeFor(milk.name);
+    logger.savedMeals = [shake];
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(SearchTab, { query: milk.name })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    const text = host.textContent ?? '';
+    expect(text.indexOf('Saved')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf(shake.name)).toBeGreaterThan(text.indexOf('Saved'));
+    expect(text.indexOf('Foods')).toBeGreaterThan(text.indexOf(shake.name));
+    expect(text.lastIndexOf(milk.name)).toBeGreaterThan(text.indexOf('Foods'));
+    // a saved meal opens as the Saved list opens it
+    const row = [...pressables].reverse().find((props) => props.accessibilityLabel?.startsWith(`${shake.name}, `));
+    await act(async () => { row!.onPress!(); });
+    expect(chooseFood).toHaveBeenCalledWith(shake);
+  });
+
+  it('names no groups while only one kind matches', async () => {
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(SearchTab, { query: milk.name })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).toContain(milk.name);
+    expect(host.textContent).not.toContain('Saved');
+    expect(host.textContent).not.toContain('Foods');
   });
 });
