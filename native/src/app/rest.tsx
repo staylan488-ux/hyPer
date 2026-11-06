@@ -23,7 +23,7 @@ import {
   useRestStore,
 } from '~/lib/rest';
 import { useNow, useSessionModel } from '~/lib/session';
-import { space, useBlanc } from '~/theme/blanc';
+import { figureLead, space, useBlanc } from '~/theme/blanc';
 
 /** The web app's presets; anything else is a custom length. */
 const PRESETS = [60, 120, 180, 300];
@@ -93,7 +93,7 @@ export default function RestSheet() {
   };
 
   const figure = running || paused ? left : length;
-  const caption = running ? 'left' : paused ? 'paused' : 'rest length';
+  const caption = running ? 'left' : paused ? 'paused' : 'Change length';
 
   // The buttons' results, for VoiceOver: the figure changes, or the buttons
   // change under its focus, without a word.
@@ -159,14 +159,12 @@ export default function RestSheet() {
               : `Rest length, ${spokenClock(figure)}`
         }>
         {/* Counts down like the Clock app's timer: each second rolls. */}
-        {/* Before it starts, the length carries the ruled line of a figure that can be written in, as Train's weight and reps do. */}
-        <View style={{ borderBottomWidth: running || paused ? 0 : 1, borderBottomColor: c.mark, paddingHorizontal: 6 }}>
-          <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center' }}>
-            {formatClock(figure)}
-          </RollingText>
-        </View>
-        {/* Stopped, the caption sits under the ruled line in the small Menlo of Train's captions. */}
-        <BlancText variant={running || paused ? 'secondary' : 'meta'} tone="graphite" style={{ marginTop: running || paused ? 0 : 5 }}>
+        {/* Centred by its ink: a tabular "1" would otherwise sit the time off to the right. */}
+        <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center', marginLeft: figureLead(formatClock(figure), 84) }}>
+          {formatClock(figure)}
+        </RollingText>
+        {/* Stopped, the caption says what a tap does: the length opens to type another. */}
+        <BlancText variant="secondary" weight={running || paused ? undefined : '500'} tone={running || paused ? 'graphite' : 'ink'}>
           {caption}
         </BlancText>
       </Pressable>

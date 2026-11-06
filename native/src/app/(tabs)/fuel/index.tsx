@@ -38,7 +38,7 @@ import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey,
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useYouMealsStore } from '~/lib/you';
-import { figureLead, space, useBlanc } from '~/theme/blanc';
+import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
 
@@ -221,7 +221,7 @@ export default function FuelScreen() {
           style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 12, opacity: pressed ? 0.55 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
             {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
-            <RollingText variant="figure" size={56} style={{ letterSpacing: -1.25, marginLeft: figureLead(loaded ? formatWhole(totals.calories) : '–', 56) }}>
+            <RollingText variant="figure" size={56} style={{ ...restingFigure, letterSpacing: -1.25, marginLeft: figureLead(loaded ? formatWhole(totals.calories) : '–', 56, { tabular: false }) }}>
               {loaded ? formatWhole(totals.calories) : '–'}
             </RollingText>
             <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>

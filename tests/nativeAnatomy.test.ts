@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 import { MUSCLE_PARTS } from '@/lib/maquette';
 import { distanceToPolygon, FIGURE, insidePolygon, REGIONS, regionAt, SILHOUETTE, SILHOUETTE_POINTS, type Pt, type ViewSide } from '../native/src/lib/anatomy';
-import { BAND_STRENGTH, MUSCLE_TONES } from '../native/src/theme/muscleTones';
+import { MUSCLE_TONES } from '../native/src/theme/muscleTones';
 
 const SIDES: ViewSide[] = ['front', 'back'];
 /** Progress draws the figure this tall (MuscleFigure's height), in points. */
-const FIGURE_POINTS = 170;
+const FIGURE_POINTS = 150;
 const pointsPerUnit = FIGURE_POINTS / (FIGURE.bottom - FIGURE.top);
 
 /** How far a point inside a polygon is from its edge. */
@@ -156,26 +156,32 @@ function palette(name: string): Record<string, string> {
 
 describe('Progress\'s in-range tone', () => {
   for (const name of Object.keys(MUSCLE_TONES) as Array<keyof typeof MUSCLE_TONES>) {
-    it(`draws the rail's band as the figure's in-range tone over the card, clear of the track (${name})`, () => {
+    it(`draws the rail's band in the figure's in-range tone, clear of the track (${name})`, () => {
       const tones = MUSCLE_TONES[name];
-      const { label, track } = palette(name);
-      expect(label, name).toBeDefined();
-      // The band is the in-range tone at BAND_STRENGTH over the card, to the nearest step.
-      const mixed = rgb(tones.in).map((value, i) => rgb(label)[i] + (value - rgb(label)[i]) * BAND_STRENGTH);
-      rgb(tones.band).forEach((value, i) => expect(Math.abs(value - mixed[i]), name).toBeLessThanOrEqual(1));
-      expect(contrast(tones.band, track), name).toBeGreaterThanOrEqual(2);
-      // The best range, at full strength, stands out from the band.
-      expect(contrast(tones.in, tones.band), name).toBeGreaterThanOrEqual(2);
+      const { track } = palette(name);
+      expect(track, name).toBeDefined();
+      expect(contrast(tones.in, track), name).toBeGreaterThanOrEqual(2);
+      // The best range, a deeper step of the same tone, stands out from the band.
+      expect(contrast(tones.best, tones.in), name).toBeGreaterThanOrEqual(2);
     });
 
     it(`outlines a muscle below range clearly, against the body and its own light fill (${name})`, () => {
       const tones = MUSCLE_TONES[name];
       expect(contrast(tones.belowEdge, tones.body), name).toBeGreaterThanOrEqual(4.5);
       expect(contrast(tones.belowEdge, tones.below), name).toBeGreaterThanOrEqual(4.5);
-      // In range is the strong solid fill.
-      expect(contrast(tones.in, tones.body), name).toBeGreaterThanOrEqual(4.5);
+      // In range is clearly a fill, but quieter than the outline, so below range leads.
+      expect(contrast(tones.in, tones.body), name).toBeGreaterThanOrEqual(3);
+      expect(contrast(tones.belowEdge, tones.body), name).toBeGreaterThan(contrast(tones.in, tones.body));
     });
   }
+
+  it('keeps in range a mid-tone on the dark cards, never the brightest thing on screen', () => {
+    for (const name of ['dark', 'darkContrast'] as const) {
+      const tones = MUSCLE_TONES[name];
+      // Quieter against the card than the dark palette's ink, the screen's own text.
+      expect(contrast(tones.in, palette(name).label), name).toBeLessThan(contrast(palette(name).ink, palette(name).label) / 2);
+    }
+  });
 
   it("keeps the body's edge readable on the dark cards", () => {
     for (const name of ['dark', 'darkContrast'] as const) {

@@ -4,7 +4,7 @@ import Svg, { ClipPath, Defs, Ellipse, G, Path } from 'react-native-svg';
 
 import { mixRgb, parseColor, rgbToCss, shadeMuscles, type MuscleShade, type Rgb } from '@/lib/maquette';
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
-import { FIGURE, HEAD, MUSCLE_EDGES, pathOf, REGIONS, regionAt, SILHOUETTE, SILHOUETTE_POINTS, type ViewSide } from '~/lib/anatomy';
+import { FIGURE, HEAD, MUSCLE_EDGES, pathOf, REGIONS, regionAt, SILHOUETTE, type ViewSide } from '~/lib/anatomy';
 import { useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { useBlanc } from '~/theme/blanc';
 import { muscleTonesFor } from '~/theme/muscleTones';
@@ -26,13 +26,8 @@ const REACH = 12;
  */
 const SEAM = 1;
 const DARK_SEAM = 1.35;
-/** Between a Front or Back label and its figure's feet, in points. */
-const LABEL_GAP = 10;
-/** How far the feet reach out from each figure's box edge, in figure units: the label sits beside them. */
-const FOOT_INSET = (() => {
-  const low = SILHOUETTE_POINTS.filter(([, y]) => y > FIGURE.bottom - 24);
-  return 50 - Math.max(...low.map(([x]) => Math.abs(x - 50))) - FIGURE.left;
-})();
+/** Between the caption above and the figures' heads, in points: the caption's baseline sits about 14 pt above them. */
+const HEAD_ROOM = 8;
 
 /**
  * The contour's width in figure units; half of it shows outside the body,
@@ -111,8 +106,9 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
 /**
  * This week's volume on a flat front and back muscle figure: the bare body
  * where untrained; below range, the muscle to act on, a light fill held by a
- * dark outline; a solid fill in range, and red past the recoverable ceiling,
- * with the key under it. The shading is the web app's
+ * dark outline, the most legible mark; a quieter mid-tone fill in range, and
+ * red past the recoverable ceiling. Front and Back are named under their
+ * figures, with the key under them. The shading is the web app's
  * (`src/lib/maquette.ts`); the drawing is the app's own (`lib/anatomy.ts`).
  * Tap a muscle to choose it (a near miss counts; small ones like the side
  * delts reach a fingertip); the others quiet down. Tapping it again, or away
@@ -120,7 +116,7 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * element: swiping up and down steps through this week's muscles (the rows
  * of the list below it), and down past the first clears the choice.
  */
-export function MuscleFigure({ volume, selected, onPick, height = 170 }: {
+export function MuscleFigure({ volume, selected, onPick, height = 150 }: {
   volume: MuscleVolume[];
   selected: MuscleGroup | null;
   onPick: (muscle: MuscleGroup | null) => void;
@@ -136,8 +132,8 @@ export function MuscleFigure({ volume, selected, onPick, height = 170 }: {
     () => ({
       untrained: parseColor(tones.body, [0.96, 0.96, 0.95]),
       below: parseColor(tones.below, [0.89, 0.89, 0.86]),
-      // In range reads strongest without the full weight of ink, which made the figure a silhouette.
-      in: parseColor(tones.in, [0.29, 0.29, 0.27]),
+      // In range is a fill that recedes, so below range's outline, the state to act on, leads.
+      in: parseColor(tones.in, [0.52, 0.52, 0.5]),
       over: parseColor(c.live, [0.82, 0.23, 0.18]),
     }),
     [tones, c.live],
@@ -171,7 +167,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 170 }: {
     // The others quiet down toward the bare body (red going grey, so the chosen one leads).
     if (selected !== null && !chosen) return rgbToCss(mixRgb(palette[state === 'over' ? 'in' : state], palette.untrained, 0.72));
     // A chosen muscle with nothing this week still shows where it is.
-    if (chosen && state === 'untrained') return rgbToCss(mixRgb(palette.untrained, palette.in, 0.2));
+    if (chosen && state === 'untrained') return rgbToCss(mixRgb(palette.untrained, palette.in, 0.3));
     return rgbToCss(palette[state]);
   };
   // Below range also draws its outline, quieted with the rest while another muscle is chosen.
@@ -212,7 +208,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 170 }: {
       {/* One touch area for the figure: the shapes themselves are too small to aim at. */}
       <Pressable
         accessible={false}
-        style={{ marginTop: 2 }}
+        style={{ marginTop: HEAD_ROOM }}
         onLayout={(event) => setSize({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height })}
         onPress={(event) => pick(event.nativeEvent.locationX, event.nativeEvent.locationY)}>
         <Svg
@@ -275,52 +271,26 @@ export function MuscleFigure({ volume, selected, onPick, height = 170 }: {
           ))}
         </Svg>
       </Pressable>
-      {/*
-        Front and Back. Beside each figure's feet, on its outer side, where
-        the card is otherwise empty, so the figure takes the line's height;
-        at the accessibility text sizes, which no longer fit there, centred
-        under their figures.
-      */}
-      {large ? (
-        <View style={{ flexDirection: 'row', marginTop: 2, paddingLeft: placed?.left ?? 0 }}>
-          {SIDES.map((side, index) => (
-            <BlancText
-              key={side}
-              variant="footnote"
-              tone="graphite"
-              style={{
-                width: placed ? FIGURE_WIDTH * placed.scale : undefined,
-                flex: placed ? undefined : 1,
-                marginLeft: placed && index > 0 ? GAP * placed.scale : 0,
-                textAlign: 'center',
-              }}>
-              {side === 'front' ? 'Front' : 'Back'}
-            </BlancText>
-          ))}
-        </View>
-      ) : placed ? (
-        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 2 + placed.top, height: BOX.height * placed.scale }}>
-          {SIDES.map((side) => (
-            <BlancText
-              key={side}
-              variant="footnote"
-              tone="graphite"
-              numberOfLines={1}
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                width: placed.left + FOOT_INSET * placed.scale - LABEL_GAP,
-                ...(side === 'front'
-                  ? { left: 0, textAlign: 'right' }
-                  : { right: 0, textAlign: 'left' }),
-              }}>
-              {side === 'front' ? 'Front' : 'Back'}
-            </BlancText>
-          ))}
-        </View>
-      ) : null}
+      {/* Front and Back, centred under their figures. */}
+      <View style={{ flexDirection: 'row', marginTop: 2, paddingLeft: placed?.left ?? 0 }}>
+        {SIDES.map((side, index) => (
+          <BlancText
+            key={side}
+            variant="footnote"
+            tone="graphite"
+            numberOfLines={large ? undefined : 1}
+            style={{
+              width: placed ? FIGURE_WIDTH * placed.scale : undefined,
+              flex: placed ? undefined : 1,
+              marginLeft: placed && index > 0 ? GAP * placed.scale : 0,
+              textAlign: 'center',
+            }}>
+            {side === 'front' ? 'Front' : 'Back'}
+          </BlancText>
+        ))}
+      </View>
       {/* What the shades mean. Inside the one adjustable element, so VoiceOver reads the rows below instead. */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 16, rowGap: 4, marginTop: large ? 10 : 8 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 16, rowGap: 4, marginTop: large ? 8 : 6 }}>
         {key.map((item) => (
           <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View

@@ -94,29 +94,32 @@ export default function YouScreen() {
 
         <WeightCard />
 
-        <Label layout={rowLayout} style={{ marginTop: space.section }}>
-          <Row
-            title="Targets"
-            value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : targetKnown ? 'Not set' : undefined}
-            chevron
-            onPress={() => router.push('/you/targets')}
-          />
-          <Hairline />
-          <Row
-            title="Saved meals"
-            chevron
-            onPress={() => router.push('/you/meals')}
-          />
-          <Hairline />
-          <Row
-            title="Food analysis"
-            value={analysis === 'gemini' ? 'Gemini' : 'Your Mac'}
-            chevron
-            onPress={() => router.push('/you/analysis')}
-          />
-        </Label>
-
-        <FuelReminderSetting />
+        {/* Food: targets, saved meals, analysis and the evening reminder, one group. */}
+        <FuelReminderSetting
+          rows={
+            <>
+              <Row
+                title="Targets"
+                value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : targetKnown ? 'Not set' : undefined}
+                chevron
+                onPress={() => router.push('/you/targets')}
+              />
+              <Hairline />
+              <Row
+                title="Saved meals"
+                chevron
+                onPress={() => router.push('/you/meals')}
+              />
+              <Hairline />
+              <Row
+                title="Food analysis"
+                value={analysis === 'gemini' ? 'Gemini' : 'Your Mac'}
+                chevron
+                onPress={() => router.push('/you/analysis')}
+              />
+            </>
+          }
+        />
 
         {/* Food, then training, then the app itself. */}
         <SchedulingSetting />

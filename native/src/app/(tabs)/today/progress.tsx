@@ -108,7 +108,7 @@ export default function ProgressScreen() {
             ) : null
           ) : (
             <>
-              <Label style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 }}>
+              <Label style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 15 }}>
                 {/*
                   One line either way, so a tap on a muscle never moves the figure
                   (at the accessibility text sizes it wraps). No announcement when
@@ -125,20 +125,20 @@ export default function ProgressScreen() {
                 <MuscleFigure volume={volume} selected={open} onPick={pick} />
               </Label>
 
-              {/* Each muscle's sets against its range; a tap opens its landmarks. */}
+              {/* Each muscle's sets against its range, under the rails' key; a tap opens its landmarks. */}
               <Label style={{ overflow: 'hidden', marginTop: 12 }}>
+                {coached.some(({ mv }) => mv.landmark) ? (
+                  <>
+                    <RailKey />
+                    <Hairline />
+                  </>
+                ) : null}
                 {coached.map(({ mv, call }, index) => (
                   <Animated.View key={mv.muscle_group} layout={LinearTransition.duration(220)}>
                     {index > 0 ? <Hairline /> : null}
                     <MuscleRow mv={mv} call={call} open={open === mv.muscle_group} onToggle={() => pick(open === mv.muscle_group ? null : mv.muscle_group)} />
                   </Animated.View>
                 ))}
-                {coached.some(({ mv }) => mv.landmark) ? (
-                  <Animated.View layout={LinearTransition.duration(220)}>
-                    <Hairline />
-                    <RailKey />
-                  </Animated.View>
-                ) : null}
               </Label>
             </>
           )}
@@ -260,8 +260,9 @@ function Tick({ hot }: { hot: boolean }) {
 }
 
 /**
- * The one key for every rail, at the foot of the list: the band is the
- * range, the tick this week's sets. Each row already says both to VoiceOver.
+ * The one key for every rail, at the head of the list so the marks are known
+ * before the first row: the band is the range, the tick this week's sets.
+ * Each row already says both to VoiceOver.
  */
 function RailKey() {
   const tones = useMuscleTones();
@@ -269,9 +270,9 @@ function RailKey() {
     <View
       importantForAccessibility="no-hide-descendants"
       accessibilityElementsHidden
-      style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 4, paddingLeft: 18, paddingRight: 16, paddingVertical: 10 }}>
+      style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 4, paddingLeft: 18, paddingRight: 16, paddingTop: 12, paddingBottom: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <View style={{ width: BAND.width, height: BAND.height, borderRadius: BAND.height / 2, backgroundColor: tones.band }} />
+        <View style={{ width: BAND.width, height: BAND.height, borderRadius: BAND.height / 2, backgroundColor: tones.in }} />
         <BlancText variant="footnote" tone="graphite">
           In range
         </BlancText>
@@ -289,11 +290,11 @@ function RailKey() {
 /**
  * Weekly sets on a line from zero past the ceiling. The band is in range
  * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
- * "in range" counts it, in the figure's in-range tone at reduced strength
- * (at least 2:1 against the track in every palette). An open row adds the
- * band's middle, the best range, at that tone's full strength, and names the
- * marks under the rail. The tick is this week's reading, in ink (red over);
- * the list's foot keys both once.
+ * "in range" counts it, in the figure's in-range tone (at least 2:1 against
+ * the track in every palette). An open row adds the band's middle, the best
+ * range, in a deeper step of that tone, and names the marks under the rail.
+ * The tick is this week's reading, in ink (red over); the list's head keys
+ * both once.
  */
 function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean; open: boolean }) {
   const c = useBlanc();
@@ -313,7 +314,7 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
             width: span(landmark.mev, landmark.mrv),
             height: 5,
             borderRadius: 2.5,
-            backgroundColor: tones.band,
+            backgroundColor: tones.in,
           }}
         />
         {open ? (
@@ -325,7 +326,7 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
               width: span(landmark.mav_low, landmark.mav_high),
               height: 5,
               borderRadius: 2.5,
-              backgroundColor: tones.in,
+              backgroundColor: tones.best,
             }}
           />
         ) : null}
@@ -382,31 +383,51 @@ function FigureWithUnits({ text }: { text: string }) {
 /** Training time as VoiceOver says it: "1 hour 20 minutes", or "none". */
 const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'none');
 
+/** Between a scale figure and the line it names, as the body-weight chart leaves it. */
+const SCALE_GAP = 8;
+/**
+ * How far a bar's top stays from a line whose figure sits on it, in points:
+ * half the figure's line at its largest text size, and a little room.
+ */
+const SCALE_CLEAR = 12;
+
 /**
  * A chart's scale or target figure, in Menlo like Train's numeric details:
- * just above the line it names, at the plot's right end, so every plot runs
- * the card's full width and stacked charts line up. `bottom` is where it
- * sits, normally its line.
+ * at the right end of the line it names, centred on it as the body-weight
+ * chart sets its scale. The card shows behind it, so the line stops just
+ * short of the figure while every plot still runs the card's full width and
+ * stacked charts line up. `bottom` is its line; `above` lifts it to sit just
+ * above `bottom` instead, where a bar would run into it on the line.
  */
-function ScaleLabel({ bottom, children }: { bottom: `${number}%`; children: string }) {
+function ScaleLabel({ bottom, above = false, children }: { bottom: `${number}%`; above?: boolean; children: string }) {
+  const c = useBlanc();
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom, marginBottom: 3 }}>
-      <BlancText
-        variant="meta"
-        tone="graphite"
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        maxFontSizeMultiplier={1.3}
-        style={{ textAlign: 'right' }}>
-        {children}
-      </BlancText>
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom,
+        alignItems: 'flex-end',
+        // A box of no height on the line, so the figure centres on it.
+        ...(above ? { marginBottom: 3 } : { height: 0, justifyContent: 'center' }),
+      }}>
+      <View style={{ paddingLeft: SCALE_GAP, backgroundColor: c.label }}>
+        <BlancText variant="meta" tone="graphite" numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.3} style={{ textAlign: 'right' }}>
+          {children}
+        </BlancText>
+      </View>
     </View>
   );
 }
 
-/** Between a chart's header line and its plot: room for the figure above the plot's top line. */
-const HOURS_GAP = 24;
+/** Between a chart's header line and its plot: room for a figure lifted above the plot's top line. */
+const HOURS_GAP = 20;
 const MACRO_GAP = 20;
+/** The plots' heights, in points. */
+const HOURS_PLOT = 110;
+const MACRO_PLOT = 72;
 
 /** The width the training chart's middle date centres in. */
 const MIDDLE_TICK = 64;
@@ -464,6 +485,9 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   const contrast = useIncreaseContrast();
   const top = hoursScale(Math.max(0, ...points.map((point) => point.totalMinutes)));
   const current = points[points.length - 1];
+  // The scale's figure sits on its line over the last two weeks' bars; one
+  // that reaches up under it lifts it above the line.
+  const lifted = (Math.max(0, ...points.slice(-2).map((point) => point.totalMinutes)) / top) * HOURS_PLOT > HOURS_PLOT - SCALE_CLEAR;
   // At the accessibility text sizes a line that no longer fits wraps; the right-hand words stay right.
   const wrap = large ? ({ flexWrap: 'wrap', columnGap: 12 } as const) : null;
   const right = large ? ({ flexGrow: 1, textAlign: 'right' } as const) : undefined;
@@ -484,11 +508,10 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
           <FigureWithUnits text={formatMinutes(current?.totalMinutes ?? 0)} />
         </BlancText>
       </View>
-      <View style={{ height: 110, marginTop: HOURS_GAP }}>
-        {/* The scale's top, named above its right end, and the zero line; a week without training draws the ring for nothing recorded. */}
+      <View style={{ height: HOURS_PLOT, marginTop: HOURS_GAP }}>
+        {/* The scale's top, named at its right end, and the zero line; a week without training draws the ring for nothing recorded. */}
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: c.hairline }} />
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
-        <ScaleLabel bottom="100%">{formatMinutes(top)}</ScaleLabel>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: '100%' }}>
           {points.map((point, index) => (
             <View key={point.weekStart} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
@@ -509,6 +532,10 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
             </View>
           ))}
         </View>
+        {/* Over the bars, so a bar never covers it. */}
+        <ScaleLabel bottom="100%" above={lifted}>
+          {formatMinutes(top)}
+        </ScaleLabel>
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, ...wrap }}>
         <BlancText variant="meta" tone="graphite">
@@ -585,7 +612,7 @@ function NutritionSection() {
 
 /**
  * One macro across the last seven days, against its daily target (dashed,
- * named above its right end, "2,600 target"); today in ink, as in the
+ * named at its right end, "2,600 target"); today in ink, as in the
  * training chart, and a day with nothing logged marked by the same ring as
  * an empty training week. A day well past target is red only where that is
  * a warning for the goal. The header is the daily average of the logged
@@ -626,10 +653,12 @@ function MacroBars({
   const single = counted === 1;
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
-  // The target's figure sits above its line at the plot's right end, or just
-  // above the last few days' bars where one stands past the line, so a bar
-  // never runs into it.
-  const targetLabelAt = Math.max(target, ...days.slice(-3).map((day) => day[macro]));
+  // The target's figure sits on its line at the plot's right end, over the
+  // last few days' bars; where one reaches up under it, the figure sits just
+  // above the line and that bar instead, so a bar never runs into it.
+  const reach = Math.max(0, ...days.slice(-3).map((day) => day[macro]));
+  const lifted = (reach / max) * MACRO_PLOT > (target / max) * MACRO_PLOT - SCALE_CLEAR;
+  const targetLabelAt = lifted ? Math.max(target, reach) : target;
   return (
     <View
       accessible
@@ -664,25 +693,22 @@ function MacroBars({
           </BlancText>
         )}
       </View>
-      <View style={{ height: 72, marginTop: MACRO_GAP }}>
+      <View style={{ height: MACRO_PLOT, marginTop: MACRO_GAP }}>
         {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
         {target > 0 ? (
-          <>
-            <View
-              style={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: `${(target / max) * 100}%`,
-                borderTopWidth: 1,
-                borderStyle: 'dashed',
-                borderColor: c.graphite,
-                opacity: contrast ? 1 : 0.6,
-              }}
-            />
-            <ScaleLabel bottom={`${(targetLabelAt / max) * 100}%`}>{`${formatWhole(target)} target`}</ScaleLabel>
-          </>
+          <View
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: `${(target / max) * 100}%`,
+              borderTopWidth: 1,
+              borderStyle: 'dashed',
+              borderColor: c.graphite,
+              opacity: contrast ? 1 : 0.6,
+            }}
+          />
         ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%' }}>
           {days.map((day) => {
@@ -708,6 +734,12 @@ function MacroBars({
             );
           })}
         </View>
+        {/* Over the bars, so a bar never covers it. */}
+        {target > 0 ? (
+          <ScaleLabel bottom={`${(targetLabelAt / max) * 100}%`} above={lifted}>
+            {`${formatWhole(target)} target`}
+          </ScaleLabel>
+        ) : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
         {days.map((day) => (

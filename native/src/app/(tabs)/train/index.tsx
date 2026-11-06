@@ -112,9 +112,13 @@ export default function TrainScreen() {
 
 /** The session clock; ticks on its own so the screen around it stays still. */
 function Elapsed({ startedAt }: { startedAt: Date }) {
+  const c = useBlanc();
   const now = useNow(1000);
   const elapsed = Math.max(0, (now - startedAt.getTime()) / 1000);
   return (
+    // Behind the live dot, as on Today's card and the workout bar.
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
     <BlancText
       variant="secondary"
       tone="graphite"
@@ -124,6 +128,7 @@ function Elapsed({ startedAt }: { startedAt: Date }) {
       {/* Minutes, as Today's card says it: a ticking m:ss here read like a time of day. */}
       {formatMinutes(Math.floor(elapsed / 60))}
     </BlancText>
+    </View>
   );
 }
 

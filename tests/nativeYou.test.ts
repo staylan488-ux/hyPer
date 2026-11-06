@@ -644,7 +644,7 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '~/lib/weightRate': weightRate,
     '~/lib/weightTrendLine': weightTrendLine,
     '~/lib/you': you,
-    '~/theme/blanc': { space: { gutter: 20, inset: 16, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
+    '~/theme/blanc': { space: { gutter: 20, inset: 16, section: 32 }, useBlanc: () => ({ label: '#fff' }), figureLead: () => 0, restingFigure: {} },
   };
 }
 

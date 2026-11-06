@@ -32,7 +32,7 @@ import { figureLayout, rowLayout } from '~/lib/motion';
 import { summaryRateLabel } from '~/lib/weightRate';
 import { centredTrendLine } from '~/lib/weightTrendLine';
 import { loadWeights, setWeightUnit, useAllWeighIns, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
-import { space } from '~/theme/blanc';
+import { figureLead, restingFigure, space } from '~/theme/blanc';
 
 const RECENT = 6;
 
@@ -129,7 +129,7 @@ export default function WeightScreen() {
               style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
               {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                <RollingText variant="figure" size={64}>
+                <RollingText variant="figure" size={64} style={{ ...restingFigure, marginLeft: figureLead(formatWeight(Number(latest.kilograms), unit), 64, { tabular: false }) }}>
                   {formatWeight(Number(latest.kilograms), unit)}
                 </RollingText>
                 <Animated.View layout={figureLayout}>

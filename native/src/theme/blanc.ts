@@ -121,17 +121,6 @@ export const dynamicInk =
       })
     : palettes.light.ink;
 
-/** Graphite for native chrome: the tab bar's unselected items, so the chosen tab reads in ink without an accent. */
-export const dynamicGraphite =
-  Platform.OS === 'ios'
-    ? DynamicColorIOS({
-        light: palettes.light.graphite,
-        dark: palettes.dark.graphite,
-        highContrastLight: palettes.lightContrast.graphite,
-        highContrastDark: palettes.darkContrast.graphite,
-      })
-    : palettes.light.graphite;
-
 /**
  * Every text field names its own letter spacing. React Native reuses a text
  * field's native view, and iOS draws the new placeholder with the spacing of
@@ -182,8 +171,17 @@ export const radius = {
  * (about an eighth of the size on either side); other digits carry a little
  * side bearing too.
  */
-export function figureLead(text: string, size: number): number {
+export function figureLead(text: string, size: number, opts?: { tabular?: boolean }): number {
   const first = text.trim().charAt(0);
   if (!/[0-9]/.test(first)) return 0;
-  return -Math.round(size * (first === '1' ? 0.12 : 0.04));
+  // Proportional digits (a hero that only rolls now and then) keep the "1" narrow, with a small bearing like the rest.
+  const tabular = opts?.tabular ?? true;
+  return -Math.round(size * (tabular && first === '1' ? 0.12 : 0.04));
 }
+
+/**
+ * Figures shown at rest rather than counting: proportional digits, so a "1"
+ * doesn't leave a gap before the next digit ("1 ,342"). Counting figures
+ * (clocks, fields being typed in) keep the figure role's tabular digits.
+ */
+export const restingFigure = { fontVariant: [] as TextStyle['fontVariant'] };

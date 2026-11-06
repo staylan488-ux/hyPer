@@ -93,17 +93,7 @@ export default function ProgramScreen() {
           </BlancText>
         ) : null}
 
-        {live ? (
-          // Locked during a workout: the mode as a plain row that reads clearly, and why it can't change.
-          <>
-            <Label style={{ marginTop: 18 }}>
-              <Row title="Training mode" quiet value={mode === 'flexible' ? 'Flexible' : 'Program days'} accessibilityLabel={`Training mode, ${mode === 'flexible' ? 'Flexible' : 'Program days'}, locked during a workout`} />
-            </Label>
-            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
-              Finish the current workout to switch.
-            </BlancText>
-          </>
-        ) : (
+        {live ? null : (
           <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18 }}>
             <Picker
               selection={mode}
@@ -116,6 +106,18 @@ export default function ProgramScreen() {
         )}
 
         {flexible ? <QuickStarts /> : <Programs splits={splits} />}
+
+        {/* During a workout the programs lead; the mode, locked for now, follows with why. */}
+        {live ? (
+          <>
+            <Label style={{ marginTop: space.section }}>
+              <Row title="Training mode" quiet value={mode === 'flexible' ? 'Flexible' : 'Program days'} accessibilityLabel={`Training mode, ${mode === 'flexible' ? 'Flexible' : 'Program days'}, locked during a workout`} />
+            </Label>
+            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
+              Finish the current workout to switch.
+            </BlancText>
+          </>
+        ) : null}
       </TabScroll>
     </>
   );

@@ -251,6 +251,16 @@ describe("Progress's muscle rows", () => {
     expect(shown()).not.toContain('a little.');
   });
 
+  it("keys the rails once, above the first muscle's row", async () => {
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 24, landmark, status: 'above_mrv' }] });
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    await open();
+    const text = shown();
+    expect(text.split('This week').length - 1).toBe(1);
+    expect(text.indexOf('In range')).toBeGreaterThan(-1);
+    expect(text.indexOf('In range')).toBeLessThan(text.indexOf('Side delts'));
+  });
+
   it('keeps the shared coaching line as it is written', async () => {
     appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 5, landmark, status: 'below_mev' }] });
     calculateWeeklyVolume.mockImplementation(async () => {});
