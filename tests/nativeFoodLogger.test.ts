@@ -71,7 +71,16 @@ function deferred<T>() {
 
 type Button = { title: string; disabled?: boolean; onPress: () => void };
 type Field = { label: string; value?: string; onChangeText: (text: string) => void };
-type Press = { children?: ReactNode | ((state: { pressed: boolean }) => ReactNode); onPress?: () => void; accessibilityLabel?: string; accessibilityValue?: { text?: string }; disabled?: boolean };
+type Press = {
+  children?: ReactNode | ((state: { pressed: boolean }) => ReactNode);
+  onPress?: () => void;
+  accessibilityLabel?: string;
+  accessibilityValue?: { text?: string };
+  disabled?: boolean;
+  accessibilityActions?: Array<{ name: string; label: string }>;
+  onAccessibilityAction?: (event: { nativeEvent: { actionName: string } }) => void;
+};
+type SwipeAction = { label: string; destructive?: boolean; onPress: () => void };
 type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
 type AlertButton = { text: string; onPress?: () => void };
 type Input = { accessibilityLabel?: string; value?: string; editable?: boolean; onChangeText?: (text: string) => void; onFocus?: () => void };
@@ -116,7 +125,7 @@ afterEach(async () => {
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
-function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent, dayGroups = [], fuelDay = '2026-11-03', sameDay = true }: {
+function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent, dayGroups = [], fuelDay = '2026-11-03', sameDay = true, large = false, rowActions = false }: {
   editing?: boolean;
   entry?: typeof loggedMilk;
   worker?: boolean;
@@ -142,6 +151,10 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   fuelDay?: string;
   /** False: When's date has left the sheet's day, so its meals don't apply. */
   sameDay?: boolean;
+  /** The accessibility text sizes. */
+  large?: boolean;
+  /** Rows offer their swipe and hold actions to VoiceOver: SwipeRow hands its actions to the row inside, and the real HoldMenu names the menu's. */
+  rowActions?: boolean;
 } = {}) {
   const captured: {
     buttons: Record<string, Button>;
@@ -170,6 +183,8 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     viewfinder?: Viewfinder;
     /** Search's results, for the words in the field. */
     search?: { query: string };
+    /** The sheet's scroll view as last drawn: its children and which of them stay pinned. */
+    scroll?: PropsWithChildren<{ stickyHeaderIndices?: number[] }>;
   } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {} };
   Object.defineProperty(captured, 'picker', {
     get: () => {
@@ -211,6 +226,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     entries.set(retryId, payload);
   });
   const ensureFood = vi.fn(async () => 'food-row');
+  const retire = vi.fn(async (): Promise<{ error: unknown }> => ({ error: null }));
   const resolveFood = vi.fn(async () => ({ foodId: savedMilk.id }));
   let savedFoods = [recipe, savedMilk];
   const mealsState: { meals: Food[] | null } = { meals: [recipe] };
@@ -318,7 +334,9 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
       Linking: { openSettings },
       Image: {},
     },
-    'react-native-keyboard-controller': { KeyboardAwareScrollView: Wrap },
+    'react-native-keyboard-controller': {
+      KeyboardAwareScrollView: (props: NonNullable<typeof captured.scroll>) => { captured.scroll = props; return Wrap(props); },
+    },
     'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
     '@/lib/foodLoggerUtils': { toLocalTimeInput: () => '10:00' },
     '@/lib/decimalText': decimalText,
@@ -327,7 +345,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '@/lib/nutritionGroups': { nutritionGroupLabel: groupRules.nutritionGroupLabel, nutritionGroupTitle: groupRules.nutritionGroupTitle, NO_MEAL: groupRules.NO_MEAL },
     '@/lib/savedFoodsCache': { readSavedFoodsCache: () => savedFoods, writeSavedFoodsCache: noop },
     '@/lib/savedMealFromLog': { mealFromLoggedFoods: noop, savedMealNamed: () => undefined },
-    '@/lib/savedMeals': { loadSavedMeals: loadSaved, filterSavedMeals, foodValuesMatch, savedMealSuggestions, replaceSavedMeal: replaceSimple },
+    '@/lib/savedMeals': { loadSavedMeals: loadSaved, filterSavedMeals, foodValuesMatch, savedMealSuggestions, replaceSavedMeal: replaceSimple, retireSavedMeal: retire },
     '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
     '@/stores/authStore': { useAuthStore: Object.assign((select: (state: { user: { id: string } }) => unknown) => select({ user: { id: 'user-a' } }), { getState: () => ({ user: { id: 'user-a' } }) }) },
     '@/lib/foodDescription': {},
@@ -359,7 +377,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/components/Stepper': { Stepper: Empty },
     '~/lib/format': { formatWhole: String },
     // VoiceOver and the text size are device services: silent, standard size (announcements recorded).
-    '~/lib/accessibility': { announce, useAnnounce: noop, useLargeText: () => false, useScreenReader: () => false, useIncreaseContrast: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
+    '~/lib/accessibility': { announce, useAnnounce: noop, useLargeText: () => large, useScreenReader: () => false, useIncreaseContrast: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
     '~/lib/foodLogger': { initialWhen: when, usesDayGroups: () => sameDay, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
     './fuel': { useFuelStore },
     '~/lib/fuel': { groupsForDay: (key: string) => fuel.groups.filter((group) => group.date === key), loadDayGroups: async (key: string) => fuel.groups.filter((group) => group.date === key), suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
@@ -398,6 +416,24 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     },
     '~/theme/blanc': { useBlanc: () => ({}), paletteFor: () => ({}), space: { gutter: 20 }, type: {} },
   };
+  if (rowActions) {
+    // As SwipeRow does: the row inside (the element VoiceOver focuses) takes the swipe actions as its own.
+    const SwipeActions = createContext<SwipeAction[] | null>(null);
+    const swipeRow = {
+      dismissOpenSwipeRow: noop,
+      closeOpenSwipeRow: () => false,
+      SwipeRow: ({ actions, children }: PropsWithChildren<{ actions: SwipeAction[] }>) => createElement(SwipeActions.Provider, { value: actions }, children),
+      useSwipeActions: () => useContext(SwipeActions),
+    };
+    imports['~/components/SwipeRow'] = swipeRow;
+    imports['~/components/HoldMenu'] = loadNativeModule('components/HoldMenu.tsx', {
+      'react-native': imports['react-native'],
+      '../../modules/hyper-menu': { HyperMenuView: Wrap, hasHyperMenu: true },
+      '~/lib/menu': loadNativeModule('lib/menu.ts', {}),
+      '~/theme/blanc': { radius: {}, useBlanc: () => ({}) },
+      './SwipeRow': swipeRow,
+    });
+  }
   const manualModule = loadNativeModule<NativeModule>('fuel/ManualTab.tsx', imports);
   imports['~/fuel/ManualTab'] = { ...manualModule, ManualTab: (props: ManualProps) => {
     captured.manual = props;
@@ -579,7 +615,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   const ask = (atMs?: number) => act(async () => { launchActions.askLoggerCamera(atMs); });
   return {
     captured, imports, render, close, text, tab, click, press, search, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
-    token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, loadSaved, mealsState, back, push,
+    token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, retire, loadSaved, mealsState, back, push,
     refusePress, announce, when, addGroup, dismissKeyboard, permission, readAccess, shutter, library, openCamera, cameraBack, cameraText, cameraUp, shoot, flush, openSettings,
   };
 }
@@ -2043,14 +2079,120 @@ describe('Log food lists: one header each, no column label', () => {
     expect(h.text()).not.toContain('kcal');
   });
 
-  it('gives Saved one text action, Edit, as its header, and no New', async () => {
+  it('gives Saved no Edit mode: the list, then New saved meal', async () => {
     const h = loggerHarness({ realLists: true });
     await h.render();
     await h.tab('saved');
-    expect(h.captured.pressables.Edit).toBeDefined();
-    expect(h.captured.pressables.New).toBeUndefined();
-    await h.press('Edit');
-    expect(h.captured.pressables.Done).toBeDefined();
+    expect(h.text()).toContain('Protein shake');
+    expect(h.text()).toContain('Milk');
+    for (const name of ['Edit', 'Done', 'New', 'Delete Milk', 'Delete Protein shake']) expect(h.captured.pressables[name]).toBeUndefined();
+    expect(h.text()).not.toContain('Edit');
+    expect(h.captured.buttons['New saved meal']).toBeDefined();
+    // a tap on a meal opens it to log, never to edit
+    await act(async () => { savedRow(h, 'Milk')[1].onPress!(); });
+    expect(h.captured.foodReview?.food.id).toBe(savedMilk.id);
+    expect(h.push).not.toHaveBeenCalled();
+  });
+
+  it('still offers each saved meal’s Edit and Delete to VoiceOver, as its swipe and hold do', async () => {
+    const h = loggerHarness({ realLists: true, rowActions: true });
+    await h.render();
+    await h.tab('saved');
+    for (const meal of ['Milk', 'Protein shake']) {
+      const labels = (savedRow(h, meal)[1].accessibilityActions ?? []).map((action) => action.label);
+      // the hold menu's items, and the swipe's Edit (its Delete is the menu's)
+      expect(labels).toEqual(expect.arrayContaining(['Review and log', 'Edit saved meal', 'Delete', 'Edit']));
+      expect(labels.filter((label) => label === 'Delete')).toHaveLength(1);
+    }
+    const act11y = (meal: string, label: string) => {
+      const [, row] = savedRow(h, meal);
+      const action = row.accessibilityActions!.find((candidate) => candidate.label === label)!;
+      return act(async () => { row.onAccessibilityAction!({ nativeEvent: { actionName: action.name } }); });
+    };
+    // Edit opens the saved food's own editor; a built meal opens in its builder
+    await act11y('Milk', 'Edit');
+    expect(h.push).toHaveBeenCalledWith({ pathname: '/saved-meal', params: { id: savedMilk.id } });
+    await act11y('Milk', 'Edit saved meal');
+    expect(h.push).toHaveBeenCalledTimes(2);
+    // Delete takes the meal out at once, as a swipe does
+    await act11y('Milk', 'Delete');
+    await h.flush();
+    expect(h.retire).toHaveBeenCalledWith('user-a', savedMilk.id);
+    expect(h.alert).not.toHaveBeenCalled();
+    expect(savedRow(h, 'Milk', false)).toBeUndefined();
+    await act11y('Protein shake', 'Edit');
+    expect(h.text()).toContain('Edit saved meal');
+  });
+});
+
+/** A saved meal's row as VoiceOver names it ("Milk, 240 ml · 8 g protein, 120 kcal"). */
+function savedRow(h: ReturnType<typeof loggerHarness>, meal: string, present = true): [string, Press] {
+  const found = Object.entries(h.captured.pressables).find(([name]) => name.startsWith(`${meal}, `));
+  if (present) expect(found).toBeDefined();
+  return found!;
+}
+
+describe('Log food: the pinned head', () => {
+  /** Whether an element tree holds a component of this type. */
+  const holds = (node: ReactNode, type: unknown): boolean =>
+    Children.toArray(node).some((child) => isValidElement<PropsWithChildren>(child) && (child.type === type || holds(child.props.children, type)));
+  /** The scroll view's children as React Native lays them out (empty ones dropped), and the one it pins. */
+  const head = (h: ReturnType<typeof loggerHarness>) => {
+    const scroll = h.captured.scroll!;
+    const children = Children.toArray(scroll.children);
+    expect(scroll.stickyHeaderIndices).toEqual([0]);
+    const parts = (node: ReactNode) => ({
+      search: holds(node, (h.imports['~/fuel/FoodLists'] as NativeModule).SearchField),
+      segments: holds(node, (h.imports['@expo/ui/swift-ui'] as NativeModule).Picker),
+      methods: holds(node, (h.imports['~/fuel/EntryMethods'] as NativeModule).EntryMethods),
+      reviewMeal: holds(node, (h.imports['~/components/Capsule'] as NativeModule).Capsule),
+    });
+    return { pinned: parts(children[0]), title: textOf(children[0]), next: parts(children[1]) };
+  };
+
+  it('pins the title, Search foods, Recent | Saved and the entry methods at the standard sizes', async () => {
+    const h = loggerHarness();
+    await h.render();
+    const { pinned, title, next } = head(h);
+    expect(title).toContain('Log food');
+    expect(title).toContain('Adds to today');
+    expect(pinned).toEqual({ search: true, segments: true, methods: true, reviewMeal: false });
+    expect(next).toEqual({ search: false, segments: false, methods: false, reviewMeal: false });
+    await h.click('Build a meal');
+    expect(head(h).pinned).toEqual({ search: true, segments: true, methods: true, reviewMeal: true });
+  });
+
+  it('pins only the title and Search foods at the accessibility sizes; the lists, methods and meal line scroll', async () => {
+    const h = loggerHarness({ large: true });
+    await h.render();
+    const { pinned, title, next } = head(h);
+    expect(title).toContain('Log food');
+    expect(title).toContain('Adds to today');
+    expect(title).not.toContain('Recent');
+    expect(pinned).toEqual({ search: true, segments: false, methods: false, reviewMeal: false });
+    // right under the pinned head, before the list they open
+    expect(next).toEqual({ search: false, segments: true, methods: true, reviewMeal: false });
+    // they still work from there
+    await h.tab('manual');
+    expect(h.captured.manual).toBeDefined();
+    await h.tab('recent');
+    await h.click('Build a meal');
+    expect(head(h).pinned).toEqual({ search: true, segments: false, methods: false, reviewMeal: false });
+    expect(head(h).next).toEqual({ search: false, segments: true, methods: true, reviewMeal: true });
+    // while searching only the field shows, still pinned, with the meal line under it
+    await h.search('milk');
+    expect(head(h).pinned).toEqual({ search: true, segments: false, methods: false, reviewMeal: false });
+    expect(head(h).next).toEqual({ search: false, segments: false, methods: false, reviewMeal: true });
+  });
+
+  it('adds no unpinned head at the accessibility sizes when nothing goes in it', async () => {
+    const h = loggerHarness({ large: true });
+    await h.render();
+    await h.search('milk');
+    const children = Children.toArray(h.captured.scroll!.children);
+    expect(holds(children[0], (h.imports['~/fuel/FoodLists'] as NativeModule).SearchField)).toBe(true);
+    // the results come straight after the pinned head
+    expect(holds(children[1], (h.imports['~/fuel/FoodLists'] as NativeModule).SearchTab)).toBe(true);
   });
 });
 

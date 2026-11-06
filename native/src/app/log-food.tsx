@@ -779,6 +779,99 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     />
   ) : null;
 
+  // ── The sheet's head: Search foods, then the lists and the entry methods ──
+  // Search foods, as iOS's search field: focusing it or typing takes the
+  // sheet over, with Cancel beside it to go back.
+  const picking = !chosen && !(meal && mealReview && !paused);
+  const searchRow = picking ? (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <SearchField
+        value={query}
+        onChange={(text) => {
+          setQuery(text);
+          startSearch();
+        }}
+        onFocus={startSearch}
+        // A save holds the tabs still, so the field can't start a search
+        // then; while searching it stays live (a quick add keeps the keyboard up).
+        editable={!saving || searching}
+        placeholder="Search foods"
+        style={{ flex: 1, marginHorizontal: 0, marginTop: 0 }}
+      />
+      {searching ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Ends the search"
+          disabled={saving}
+          hitSlop={8}
+          onPress={cancelSearch}
+          style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: saving ? 0.4 : pressed ? 0.45 : 1 })}>
+          {/* Capped like a bar button, so the field keeps its room. */}
+          <BlancText variant="body" maxFontSizeMultiplier={1.3} numberOfLines={1}>
+            Cancel
+          </BlancText>
+        </Pressable>
+      ) : null}
+    </View>
+  ) : null;
+  // While searching, the results sit right under the field.
+  const lists = picking && !searching ? (
+    <>
+      {/* The lists to pick from. While an entry method is on screen no
+          segment is chosen, so the control never claims a list that
+          isn't showing; a tap on one goes back to it. */}
+      <Host matchContents={{ vertical: true }}>
+        {/* Keep a save's result visible on its original tab. */}
+        <Picker
+          selection={isBrowse(tab) ? tab : NO_LIST}
+          onSelectionChange={(value: BrowseTab | typeof NO_LIST) => {
+            if (value !== NO_LIST) openTab(value);
+          }}
+          modifiers={[pickerStyle('segmented'), disabled(saving)]}>
+          <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
+          <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
+        </Picker>
+      </Host>
+      {/* The ways to enter a food that isn't listed. */}
+      <EntryMethods
+        selected={isList(tab) ? null : tab === 'photo' && gemini ? door : tab}
+        gemini={gemini}
+        photoWaiting={photoWaiting}
+        disabled={saving}
+        onSelect={chooseMethod}
+      />
+    </>
+  ) : null;
+  const mealLine = capturing && meal && mealTotals && !chosen ? (
+    <View
+      style={
+        // At the accessibility sizes Review meal goes under the count instead of squeezing it.
+        large ? { alignItems: 'flex-start', gap: 8, marginHorizontal: 20, marginTop: 12 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }
+      }>
+      {/* The total rolls on one line; at the accessibility sizes it wraps instead. */}
+      {large ? (
+        <BlancText variant="secondary" tone="graphite">
+          {mealCount}
+        </BlancText>
+      ) : (
+        <RollingText variant="secondary" tone="graphite" style={{ flex: 1 }}>
+          {mealCount}
+        </RollingText>
+      )}
+      <Capsule title="Review meal" disabled={meal.ingredients.length === 0 || busy} onPress={() => setMealReview(true)} />
+    </View>
+  ) : null;
+  const errorLine = mealError ? (
+    <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 20, marginTop: 8 }}>
+      {mealError}
+    </BlancText>
+  ) : null;
+  // At the accessibility sizes the segments and the four methods (stacked as
+  // rows) would pin most of the sheet, leaving little for a list, a meal or
+  // results under the keyboard. Only the title and Search foods stay pinned
+  // then; the rest scrolls with what it opens, spaced as when pinned.
+  const scrollsWithContent = large && Boolean(lists || mealLine || errorLine);
+
   return (
     <LoggerContext.Provider value={context}>
       <KeyboardAwareScrollView
@@ -849,95 +942,24 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             )}
           </View>
 
-          {!chosen && !(meal && mealReview && !paused) ? (
+          {searchRow ? (
             <View style={{ marginHorizontal: 16, marginTop: 14, gap: 10 }}>
-              {/* Search foods, as iOS's search field: focusing it or typing
-                  takes the sheet over, with Cancel beside it to go back. */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <SearchField
-                  value={query}
-                  onChange={(text) => {
-                    setQuery(text);
-                    startSearch();
-                  }}
-                  onFocus={startSearch}
-                  // A save holds the tabs still, so the field can't start a search
-                  // then; while searching it stays live (a quick add keeps the keyboard up).
-                  editable={!saving || searching}
-                  placeholder="Search foods"
-                  style={{ flex: 1, marginHorizontal: 0, marginTop: 0 }}
-                />
-                {searching ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityHint="Ends the search"
-                    disabled={saving}
-                    hitSlop={8}
-                    onPress={cancelSearch}
-                    style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: saving ? 0.4 : pressed ? 0.45 : 1 })}>
-                    {/* Capped like a bar button, so the field keeps its room. */}
-                    <BlancText variant="body" maxFontSizeMultiplier={1.3} numberOfLines={1}>
-                      Cancel
-                    </BlancText>
-                  </Pressable>
-                ) : null}
-              </View>
-              {/* While searching, the results sit right under the field. */}
-              {searching ? null : (
-                <>
-                  {/* The lists to pick from. While an entry method is on screen no
-                      segment is chosen, so the control never claims a list that
-                      isn't showing; a tap on one goes back to it. */}
-                  <Host matchContents={{ vertical: true }}>
-                    {/* Keep a save's result visible on its original tab. */}
-                    <Picker
-                      selection={isBrowse(tab) ? tab : NO_LIST}
-                      onSelectionChange={(value: BrowseTab | typeof NO_LIST) => {
-                        if (value !== NO_LIST) openTab(value);
-                      }}
-                      modifiers={[pickerStyle('segmented'), disabled(saving)]}>
-                      <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
-                      <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
-                    </Picker>
-                  </Host>
-                  {/* The ways to enter a food that isn't listed. */}
-                  <EntryMethods
-                    selected={isList(tab) ? null : tab === 'photo' && gemini ? door : tab}
-                    gemini={gemini}
-                    photoWaiting={photoWaiting}
-                    disabled={saving}
-                    onSelect={chooseMethod}
-                  />
-                </>
-              )}
+              {searchRow}
+              {large ? null : lists}
             </View>
           ) : null}
-
-          {capturing && meal && mealTotals && !chosen ? (
-            <View
-              style={
-                // At the accessibility sizes Review meal goes under the count instead of squeezing it.
-                large ? { alignItems: 'flex-start', gap: 8, marginHorizontal: 20, marginTop: 12 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }
-              }>
-              {/* The total rolls on one line; at the accessibility sizes it wraps instead. */}
-              {large ? (
-                <BlancText variant="secondary" tone="graphite">
-                  {mealCount}
-                </BlancText>
-              ) : (
-                <RollingText variant="secondary" tone="graphite" style={{ flex: 1 }}>
-                  {mealCount}
-                </RollingText>
-              )}
-              <Capsule title="Review meal" disabled={meal.ingredients.length === 0 || busy} onPress={() => setMealReview(true)} />
-            </View>
-          ) : null}
-          {mealError ? (
-            <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 20, marginTop: 8 }}>
-              {mealError}
-            </BlancText>
-          ) : null}
+          {large ? null : mealLine}
+          {large ? null : errorLine}
         </View>
+        {/* Unpinned at the accessibility sizes. The negative margin gives back
+            the pinned head's 8-point foot, so each part keeps its pinned spacing. */}
+        {scrollsWithContent ? (
+          <View style={{ marginTop: -8, paddingBottom: 8 }}>
+            {lists ? <View style={{ marginHorizontal: 16, marginTop: 10, gap: 10 }}>{lists}</View> : null}
+            {mealLine}
+            {errorLine}
+          </View>
+        ) : null}
 
         {meal && mealReview && !paused ? (
           <MealReview

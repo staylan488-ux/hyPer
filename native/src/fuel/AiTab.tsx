@@ -354,9 +354,10 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
             })}>
             {/* Named by the button around it. */}
             <Image source={{ uri: photo.uri }} accessible={false} style={{ width: 96, height: 96 }} contentFit="cover" />
-            {/* The whole photo is the button (96 pt); the cross only marks it as removable. */}
+            {/* The whole photo is the button (96 pt), and a press opens its menu:
+                the ellipsis only says it has options, as iOS's More does. */}
             <View style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)' }}>
-              <SymbolView name="xmark" size={10} weight="bold" tintColor="#FFFFFF" />
+              <SymbolView name="ellipsis" size={12} weight="bold" tintColor="#FFFFFF" />
             </View>
           </Pressable>
           </HoldMenu>

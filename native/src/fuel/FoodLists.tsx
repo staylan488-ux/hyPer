@@ -170,7 +170,7 @@ export function foodLine(food: Food, servings = 1, amount?: string | null, compo
 }
 
 /** One food: tap to review it; the round button logs it at once (one serving unless `servings` says). */
-export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
+export function FoodRow({ food, state, opening, onOpen, onAdd, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
   food: Food;
   state?: AddState;
   /** A built meal, when the list has already decoded it. */
@@ -185,10 +185,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
   showBasis?: boolean;
   onOpen: () => void;
   onAdd?: () => void;
-  editing?: boolean;
-  onEdit?: () => void;
-  onDelete?: () => void;
-  /** What a hold offers, as iOS's context menu (not while editing). */
+  /** What a hold offers, as iOS's context menu. */
   menu?: MenuAction[];
   onLongPress?: () => void;
 }) {
@@ -196,14 +193,14 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
   const large = useLargeText();
   // VoiceOver offers the hold menu's items (or the long-press action) and
   // the swipe actions the menu does not cover as the row's own.
-  const held = menu && menu.length > 0 && !editing ? menuAccessibility(menu) : null;
+  const held = menu && menu.length > 0 ? menuAccessibility(menu) : null;
   const heldLabels = new Set(held ? ['More', ...held.actions.map((action) => action.label)] : []);
   const swipe = (useSwipeActions() ?? []).filter((action) => !heldLabels.has(action.label));
   const actions = [
-    ...(held ? held.actions : onLongPress && !editing ? [{ name: 'longpress', label: 'More actions' }] : []),
+    ...(held ? held.actions : onLongPress ? [{ name: 'longpress', label: 'More actions' }] : []),
     ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
   ];
-  const longPress = held ? (hasHoldMenu ? undefined : () => showActionSheet(food.name, menu ?? [])) : editing ? undefined : onLongPress;
+  const longPress = held ? (hasHoldMenu ? undefined : () => showActionSheet(food.name, menu ?? [])) : onLongPress;
   const kcal = formatWhole(food.calories * servings);
   // The highlight takes the whole row, the round button's end too, as an iOS cell's does.
   const [pressed, setPressed] = useState(false);
@@ -236,7 +233,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           // a tap while another row stands open only closes that row, as in Mail
           if (closeOpenSwipeRow()) return;
           haptics.tap();
-          (editing ? onEdit : onOpen)?.();
+          onOpen();
         }}
         onLongPress={
           longPress
@@ -257,7 +254,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           paddingVertical: 10,
           paddingLeft: 18,
           // with no round button the row keeps its 32 points, so kcal stays in its column
-          paddingRight: editing || onAdd || opening ? 12 : 44,
+          paddingRight: onAdd || opening ? 12 : 44,
         }}>
         {/* At the accessibility sizes the lines wrap and the kcal goes under them instead of squeezing them. */}
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -282,9 +279,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           </BlancText>
         )}
       </Pressable>
-      {editing ? (
-        <RoundButton symbol="trash" label={`Delete ${food.name}`} onPress={() => onDelete?.()} />
-      ) : onAdd || opening ? (
+      {onAdd || opening ? (
         <RoundButton
           symbol={state === 'done' ? 'checkmark' : 'plus'}
           label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added` : `Add ${food.name}`}
@@ -306,7 +301,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
 
 /** A quiet disc with an ink mark; the food just logged gets the ink disc and its tick. */
 function RoundButton({ symbol, label, busy, done, onPress }: {
-  symbol: 'plus' | 'checkmark' | 'trash';
+  symbol: 'plus' | 'checkmark';
   label: string;
   busy?: boolean;
   /** Already logged: the tick stays put so a second tap can't log it twice. */
@@ -426,12 +421,12 @@ export function useQuickAdd() {
 }
 
 /**
- * Saved meals: review, quick add; Edit to change or delete them. A new saved
- * meal is the sheet's row under the list, as Build a meal is under Recent.
+ * Saved meals: review, quick add; each meal swipes (or holds) for Edit and
+ * Delete, which VoiceOver offers as the row's own actions. A new saved meal is
+ * the sheet's row under the list, as Build a meal is under Recent.
  */
 export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) => void }) {
   const logger = useLogger();
-  const [managing, setManaging] = useState(false);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const meals = logger.savedMeals;
 
@@ -464,17 +459,9 @@ export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) =>
     await logger.reloadSavedMeals();
   };
   const remove = (meal: Food) => void retire(meal);
-  // The Edit list's small trash button is one tap with no swipe behind it, so it asks.
-  const confirmRetire = (meal: Food) => {
-    Alert.alert(`Delete ${meal.name}?`, 'It leaves your saved meals. Past logged entries stay unchanged.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void retire(meal) },
-    ]);
-  };
 
   // The sheet's Search foods field finds saved meals as well, so this list has no filter of its own.
   const visible = (meals ?? []).filter((meal) => !hidden.has(meal.id));
-  const canManage = Boolean(meals && meals.length > 0) && logger.purpose === 'log';
   const rows = visible.map((meal, index) => (
     <SavedRow
       key={meal.id}
@@ -483,12 +470,10 @@ export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) =>
       state={added[meal.id]}
       purpose={logger.purpose}
       quickAdd={enabled}
-      managing={managing}
       onOpen={open}
       onAdd={add}
       onEdit={onEditSavedMeal}
       onRemove={remove}
-      onConfirmRemove={confirmRetire}
     />
   ));
 
@@ -496,48 +481,34 @@ export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) =>
   return (
     <LayoutAnimationConfig skipEntering skipExiting>
       <View>
-        {/* The list's one text action, as its header: a 44-point row whose word
-            ends on the card's right edge (its 16-point inset) and sits 14 points
-            down, where Recent's card starts. */}
-        {canManage ? (
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', minHeight: 44, paddingHorizontal: 16 }}>
-            <TextAction title={managing ? 'Done' : 'Edit'} onPress={() => setManaging(!managing)} />
-          </View>
+        {visible.length > 0 ? (
+          // 14 points down, where Recent's card starts.
+          <Label style={{ marginTop: 14, overflow: 'hidden' }} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
+            {rows}
+          </Label>
         ) : null}
-        {/* Only a deleted meal slides away. */}
-        <LayoutAnimationConfig skipEntering skipExiting>
-          <View>
-            {visible.length > 0 ? (
-              <Label style={{ marginTop: canManage ? 0 : 14, overflow: 'hidden' }} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                {rows}
-              </Label>
-            ) : null}
-            {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
-            {meals !== null && visible.length === 0 ? (
-              <Animated.View entering={rowEnter} layout={rowLayout}>
-                <Empty text="No saved meals yet." />
-              </Animated.View>
-            ) : null}
-          </View>
-        </LayoutAnimationConfig>
+        {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
+        {meals !== null && visible.length === 0 ? (
+          <Animated.View entering={rowEnter} layout={rowLayout}>
+            <Empty text="No saved meals yet." />
+          </Animated.View>
+        ) : null}
       </View>
     </LayoutAnimationConfig>
   );
 }
 
-/** One saved meal; drawn again only when its own meal, state or the list's mode changes. */
-function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, onAdd, onEdit, onRemove, onConfirmRemove }: {
+/** One saved meal; drawn again only when its own meal or state changes. */
+function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onEdit, onRemove }: {
   meal: Food;
   divided: boolean;
   state?: AddState;
   purpose: 'log' | 'ingredients';
   quickAdd: boolean;
-  managing: boolean;
   onOpen: (meal: Food) => void;
   onAdd: (meal: Food) => void;
   onEdit: (meal: Food) => void;
   onRemove: (meal: Food) => void;
-  onConfirmRemove: (meal: Food) => void;
 }) {
   // Decoded once for the quick add, the menu and the row's line.
   const composed = Boolean(decodeMealComposition(meal.description));
@@ -561,16 +532,13 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, o
       state={state}
       onOpen={() => onOpen(meal)}
       onAdd={canQuickAdd ? () => onAdd(meal) : undefined}
-      editing={managing}
-      onEdit={() => onEdit(meal)}
-      onDelete={() => onConfirmRemove(meal)}
       menu={menu}
     />
   );
   return (
     <Animated.View entering={rowEnter} exiting={rowExit} layout={rowLayout}>
       {divided ? <Hairline /> : null}
-      {purpose === 'log' && !managing ? (
+      {purpose === 'log' ? (
         <SwipeRow
           name={meal.name}
           actions={[
@@ -583,23 +551,6 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, o
         row
       )}
     </Animated.View>
-  );
-}
-
-function TextAction({ title, onPress }: { title: string; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      hitSlop={10}
-      onPress={() => {
-        haptics.tap();
-        onPress();
-      }}
-      style={({ pressed }) => ({ opacity: pressed ? 0.45 : 1, minHeight: 44, justifyContent: 'center' })}>
-      <BlancText variant="bodyStrong" size={15}>
-        {title}
-      </BlancText>
-    </Pressable>
   );
 }
 

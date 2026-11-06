@@ -32,8 +32,10 @@ type TabProps = { draft: Draft; setDraft: (update: (draft: Draft) => Draft) => v
 type AnalyzeRequest = { images: unknown[]; hint: string };
 
 const capsules: Record<string, Button> = {};
-const pressables: Record<string, { onPress: () => void }> = {};
+type Press = PropsWithChildren<{ accessibilityLabel?: string; accessibilityHint?: string; accessibilityActions?: Array<{ name: string; label: string }>; onPress: () => void }>;
+const pressables: Record<string, Press> = {};
 let sheet: ((index: number) => Promise<void> | void) | undefined;
+let sheetOptions: { options: string[] } | undefined;
 let up = false;
 const pick = vi.fn<(source: 'camera' | 'library') => Promise<Photo | null>>();
 let analysis = deferred<unknown>();
@@ -47,13 +49,14 @@ const logger = { purpose: 'log', editing: null, beginBusy: () => noop, beginSave
 
 const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; emptyAi: (hint?: string) => Draft }>('fuel/AiTab.tsx', {
   'expo-image': { Image: Empty },
-  'expo-symbols': { SymbolView: Empty },
+  // Each symbol by its name, inside the pressable VoiceOver names.
+  'expo-symbols': { SymbolView: ({ name }: { name: string }) => createElement('i', { 'data-symbol': name }) },
   'react-native': {
     Alert: { alert: vi.fn() },
     Linking: { openSettings },
-    Pressable: (props: PropsWithChildren<{ accessibilityLabel?: string; onPress: () => void }>) => {
+    Pressable: (props: Press) => {
       if (props.accessibilityLabel) pressables[props.accessibilityLabel] = props;
-      return Wrap(props);
+      return createElement('div', { 'data-label': props.accessibilityLabel }, props.children);
     },
     TextInput: Empty,
     View: Wrap,
@@ -104,7 +107,7 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
     pickFoodPhoto: pick,
     foodPickerUp: () => up,
     // a photo's menu (PhotoTab holds it as up until it answers)
-    showPhotoChoices: (_options: unknown, callback: (index: number) => Promise<void>) => { sheet = callback; },
+    showPhotoChoices: (options: { options: string[] }, callback: (index: number) => Promise<void>) => { sheetOptions = options; sheet = callback; },
     dropPhotoChoices: noop,
   },
   './WhenBlock': { WhenBlock: Empty },
@@ -130,6 +133,8 @@ const hasCapsule = (title: string) => host.querySelector(`button[data-title="${t
 beforeEach(() => {
   up = false;
   sheet = undefined;
+  sheetOptions = undefined;
+  for (const key of Object.keys(pressables)) delete pressables[key];
   analysis = deferred();
   pick.mockReset();
   for (const key of Object.keys(capsules)) delete capsules[key];
@@ -265,5 +270,25 @@ describe('AI tab: Snap a meal', () => {
     await settle();
     expect(current.photos).toEqual([shot]);
     expect(analyze).not.toHaveBeenCalled();
+  });
+});
+
+describe('AI tab: a photo added', () => {
+  it('marks the photo with an ellipsis, not a cross, since a press opens its menu', async () => {
+    await render(0, { ...emptyAi(), photos: [shot] });
+    const tile = host.querySelector('[data-label="Meal photo 1"]');
+    expect(tile).not.toBeNull();
+    expect([...tile!.querySelectorAll('[data-symbol]')].map((symbol) => symbol.getAttribute('data-symbol'))).toEqual(['ellipsis']);
+    expect(host.querySelector('[data-symbol="xmark"]')).toBeNull();
+    // the whole tile is the button, named for VoiceOver, with Remove photo as its own action
+    expect(pressables['Meal photo 1']).toMatchObject({ accessibilityHint: 'Offers to remove it', accessibilityActions: [{ name: 'remove', label: 'Remove photo' }] });
+    await act(async () => { pressables['Meal photo 1'].onPress(); });
+    expect(sheetOptions!.options).toEqual(['Remove photo', 'Cancel']);
+    await act(async () => { await sheet!(1); });
+    expect(current.photos).toEqual([shot]);
+    await act(async () => { pressables['Meal photo 1'].onPress(); });
+    await act(async () => { await sheet!(0); });
+    expect(current.photos).toEqual([]);
+    expect(host.querySelector('[data-label="Meal photo 1"]')).toBeNull();
   });
 });
