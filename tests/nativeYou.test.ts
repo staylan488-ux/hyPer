@@ -564,7 +564,7 @@ describe('Food analysis after the Mac worker is saved', () => {
 const clock = { key: '' };
 const clockKey = () => clock.key || dateFns.format(new Date(), 'yyyy-MM-dd');
 
-type ChartProps = { calendar?: weightHistory.WeightChartWindow; summary?: string; span?: string };
+type ChartProps = { calendar?: weightHistory.WeightChartWindow; summary?: string; span?: string; points?: weightTrend.WeightTrendPoint[]; compact?: boolean };
 type RowSeen = { title: string; detail?: string; value?: string; quiet?: boolean; accessibilityLabel?: string; onPress?: () => void };
 type Seen = {
   charts?: ChartProps[];
@@ -650,6 +650,37 @@ function weightScreenImports(you: YouModule, seen: Seen) {
 
 function loadWeightScreen(you: YouModule, seen: Seen, options: { compile?: boolean } = {}) {
   return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/weight.tsx', weightScreenImports(you, seen), options).default;
+}
+
+/** You itself, over the same lib/you.ts as Body weight; `pressed` collects the weight card's VoiceOver label. */
+function loadYouScreen(you: YouModule, seen: Seen, harness: ReturnType<typeof youHarness>, pressed: string[], options: { compile?: boolean } = {}) {
+  const imports = {
+    ...weightScreenImports(you, seen),
+    '@expo/ui/swift-ui': { HStack: Wrap, Host: Wrap, Image: () => null, Menu: () => null, Text: Wrap, Toggle: () => null },
+    '@expo/ui/swift-ui/modifiers': {
+      accessibilityHidden: () => null,
+      accessibilityLabel: () => null,
+      accessibilityValue: () => null,
+      font: () => null,
+      foregroundStyle: () => null,
+    },
+    'expo-symbols': { SymbolView: () => null },
+    'react-native': {
+      Pressable: (props: PropsWithChildren<{ accessibilityLabel?: string }>) => {
+        if (props.accessibilityLabel) pressed.push(props.accessibilityLabel);
+        return createElement(Fragment, null, props.children);
+      },
+      RefreshControl: () => null,
+      useWindowDimensions: () => ({ fontScale: 1 }),
+      View: Wrap,
+    },
+    '@/stores/appStore': { useAppStore: harness.useAppStore },
+    '@/stores/authStore': { useAuthStore: harness.useAuthStore },
+    '~/components/FuelReminderSetting': { FuelReminderSetting: () => null },
+    '~/lib/format': { formatWhole: String },
+    '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd') },
+  };
+  return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/index.tsx', imports, options).default;
 }
 
 function loadWeighInsScreen(you: YouModule, seen: Seen) {
@@ -901,6 +932,128 @@ describe('Reading every weigh-in', () => {
   });
 });
 
+describe("Body weight's Recent", () => {
+  afterEach(() => { clock.key = ''; });
+
+  const at = (date: number, hour: number) => new Date(2026, 10, date, hour).toISOString();
+  const spoken = (kilograms: number, when: string) => `${weightDisplayCore.formatWeight(kilograms, 'lb')} lb, ${when}`;
+  // The weigh-in rows drawn, by what VoiceOver hears.
+  const listed = (rows: RowSeen[]) => [...new Set(rows.filter((row) => row.accessibilityLabel?.includes(' lb, ')).map((row) => row.accessibilityLabel))];
+  const three = () => [weighIn('w3', 81, at(5, 8)), weighIn('w2', 80.5, at(4, 8)), weighIn('w1', 80, at(3, 8))];
+
+  async function open(entries: ReturnType<typeof weighIn>[]) {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue(entries);
+    const rows: RowSeen[] = [];
+    const sections: NonNullable<Seen['sections']> = [];
+    const Screen = loadWeightScreen(you, { rows, sections });
+    const page = await mount(createElement(Screen));
+    rows.length = 0;
+    sections.length = 0;
+    await act(async () => { root!.render(createElement(Screen)); });
+    return { you, rows, sections, page };
+  }
+
+  it('starts at the weigh-in before the figure’s, and still leads to every one', async () => {
+    const { rows, sections, page } = await open(three());
+    // The figure says the latest weigh-in…
+    expect(page.textContent).toContain('Today, 8:00 AM');
+    // …so Recent begins with the one before it.
+    expect(listed(rows)).toEqual([spoken(80.5, 'Nov 4, 8:00 AM'), spoken(80, 'Nov 3, 8:00 AM')]);
+    expect(sections.map((section) => section.title)).toContain('Recent');
+    // Everything fits in Recent, but the latest weigh-in's row (and its Delete) is in All weigh-ins.
+    expect(rows.some((row) => row.title === 'All weigh-ins')).toBe(true);
+  });
+
+  it('is left out with only one weigh-in, while All weigh-ins still opens it', async () => {
+    const { rows, sections, page } = await open([weighIn('w1', 81, at(5, 8))]);
+    expect(page.textContent).toContain('Today, 8:00 AM');
+    expect(sections.map((section) => section.title)).not.toContain('Recent');
+    expect(listed(rows)).toEqual([]);
+    expect(rows.some((row) => row.title === 'All weigh-ins')).toBe(true);
+  });
+
+  it('moves the figure and the list on when the latest weigh-in is deleted elsewhere', async () => {
+    const entries = three();
+    const { you, rows, sections, page } = await open(entries);
+
+    rows.length = 0;
+    await act(async () => { await (you as YouWeights).deleteWeighIn(entries[0]); });
+    expect(page.textContent).toContain('Nov 4, 8:00 AM');
+    expect(page.textContent).not.toContain('Today, 8:00 AM');
+    expect(listed(rows)).toEqual([spoken(80, 'Nov 3, 8:00 AM')]);
+
+    // Down to one: Recent goes, All weigh-ins stays.
+    rows.length = 0;
+    sections.length = 0;
+    await act(async () => { await (you as YouWeights).deleteWeighIn(entries[1]); });
+    expect(page.textContent).toContain('Nov 3, 8:00 AM');
+    expect(sections.map((section) => section.title)).not.toContain('Recent');
+    expect(listed(rows)).toEqual([]);
+    expect(rows.some((row) => row.title === 'All weigh-ins')).toBe(true);
+  });
+});
+
+describe("You's weight card", () => {
+  afterEach(() => { clock.key = ''; });
+
+  // Every other morning from `first` to Nov 4, gaining steadily.
+  const gaining = (first: Date) => {
+    const entries: ReturnType<typeof weighIn>[] = [];
+    for (let date = first, index = 0; date <= new Date(2026, 10, 4, 23); date = dateFns.addDays(date, 2), index += 1) {
+      entries.unshift(weighIn(`w${index}`, 78 + index * 0.03, date.toISOString()));
+    }
+    return entries;
+  };
+
+  /** Body weight at its default range, then You over the same weigh-ins. */
+  async function detailThenCard(entries: ReturnType<typeof weighIn>[], options: { compile?: boolean } = {}) {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue(entries);
+    const detailCharts: ChartProps[] = [];
+    await mount(createElement(loadWeightScreen(you, { charts: detailCharts })));
+    const detail = detailCharts.at(-1)!;
+    await act(async () => { root!.unmount(); });
+    root = null;
+
+    const cardCharts: ChartProps[] = [];
+    const pressed: string[] = [];
+    const page = await mount(createElement(loadYouScreen(you, { charts: cardCharts }, harness, pressed, options)));
+    await act(async () => {});
+    // "+4.1 lb since Aug 8 · +0.3 lb/wk": the change, then the rate.
+    const [change, rate] = detail.summary!.split('\u00a0· ');
+    return { detail, since: change.slice(change.indexOf('since')), rate, card: cardCharts.at(-1)!, page, pressed };
+  }
+
+  it('says the rate and the span Body weight says for its default range', async () => {
+    const { detail, since, rate, card, page, pressed } = await detailThenCard(gaining(new Date(2026, 5, 1, 8)), { compile: true });
+    expect(since).toBe('since Aug\u00a08');
+    expect(rate).toMatch(/^\+\d+\.\d lb\/wk$/);
+    expect(page.textContent).toContain(`${rate} ${since}`);
+    expect(page.textContent).not.toContain('over 3 weeks');
+    // VoiceOver hears the rate as words, the date's no-break space as a space.
+    expect(pressed.find((label) => label.startsWith('Body weight'))).toContain(`a week ${since.replace('\u00a0', ' ')}`);
+    // Its line is drawn over the same days, edge to edge.
+    expect(card.compact).toBe(true);
+    expect(card.points!.map((point) => point.date)).toEqual(detail.calendar!.series.map((point) => point.date));
+  });
+
+  it('says the same shorter span when the weigh-ins start inside the range', async () => {
+    const { since, rate, page } = await detailThenCard(gaining(new Date(2026, 9, 1, 8)));
+    expect(since).toBe('since Oct\u00a01');
+    expect(page.textContent).toContain(`${rate} ${since}`);
+  });
+
+  it('has no Training group: Adaptive scheduling sits with the training mode on Program', async () => {
+    const { page } = await detailThenCard(gaining(new Date(2026, 9, 1, 8)));
+    expect(page.textContent).toContain('App');
+    expect(page.textContent).not.toContain('Training');
+    expect(page.textContent).not.toContain('Adaptive scheduling');
+  });
+});
+
 describe("Body weight's recent weigh-ins, as the app compiles it", () => {
   afterEach(() => { clock.key = ''; });
 
@@ -909,7 +1062,13 @@ describe("Body weight's recent weigh-ins, as the app compiles it", () => {
     const you = loadNativeModule<YouModule>('lib/you.ts', { ...harness.imports, '@/lib/bodyWeightSummary': bodyWeightSummary });
     const weighedAt = new Date();
     weighedAt.setHours(7, 0, 0, 0);
-    harness.getAllBodyWeights.mockResolvedValue([{ id: 'w1', kilograms: 81, measured_at: weighedAt.toISOString(), source: 'manual' }]);
+    // The figure shows the later one; Recent lists the 7:00 AM weigh-in under it.
+    const later = new Date(weighedAt);
+    later.setHours(8);
+    harness.getAllBodyWeights.mockResolvedValue([
+      { id: 'w2', kilograms: 81.2, measured_at: later.toISOString(), source: 'manual' },
+      { id: 'w1', kilograms: 81, measured_at: weighedAt.toISOString(), source: 'manual' },
+    ]);
     clock.key = dateFns.format(weighedAt, 'yyyy-MM-dd');
     const rows: RowSeen[] = [];
     const Screen = loadWeightScreen(you, { rows }, { compile: true });

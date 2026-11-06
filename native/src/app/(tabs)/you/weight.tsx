@@ -6,16 +6,7 @@ import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native
 import Animated from 'react-native-reanimated';
 
 import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
-import {
-  DEFAULT_WEIGHT_RANGE,
-  WEIGHT_RANGES,
-  weightChangeLabel,
-  weightChartWindow,
-  weightRange,
-  weightHistoryTrend,
-  weightRangeKgPerWeek,
-  type WeightRangeKey,
-} from '@/lib/weightHistory';
+import { DEFAULT_WEIGHT_RANGE, WEIGHT_RANGES, weightRange, type WeightRangeKey } from '@/lib/weightHistory';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
@@ -29,8 +20,7 @@ import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { figureLayout, rowLayout } from '~/lib/motion';
-import { summaryRateLabel } from '~/lib/weightRate';
-import { centredTrendLine } from '~/lib/weightTrendLine';
+import { bodyWeightLine, weightRangeSummary } from '~/lib/weightRate';
 import { loadWeights, setWeightUnit, useAllWeighIns, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
 import { figureLead, restingFigure, space } from '~/theme/blanc';
 
@@ -40,8 +30,8 @@ const readAll = () => loadWeights({ all: true });
 
 /**
  * Body weight: the latest weigh-in, the smoothed trend over a month, three
- * months, six, a year or everything, and the recent log, which leads to
- * every weigh-in.
+ * months, six, a year or everything, and the weigh-ins before the latest,
+ * which lead to every one.
  */
 export default function WeightScreen() {
   const history = useWeightStore((state) => state.history);
@@ -51,25 +41,27 @@ export default function WeightScreen() {
   const health = useHealthStore((state) => state.enabled);
   // Every weigh-in once the full read lands; the recent ones until then.
   const everything = useAllWeighIns();
-  const allRead = useWeightStore((state) => state.all !== null);
   // The full read failed before one ever landed: only the recent weigh-ins are here.
   const olderMissing = useWeightStore((state) => state.allFailed && state.all === null);
   const entries = everything ?? history;
-  const trend = useMemo(() => weightHistoryTrend(entries), [entries]);
   // The line drawn looks both ways from each day, so it runs through the
   // weigh-ins instead of trailing them; the change above it reads the same line.
-  const line = useMemo(() => centredTrendLine(trend.points), [trend.points]);
+  const { trend, line } = useMemo(() => bodyWeightLine(entries), [entries]);
   const latest = entries[0] ?? null;
+  // The figure is the latest weigh-in, so Recent starts at the one before it.
+  const recent = entries.slice(1, 1 + RECENT);
   const [rangeKey, setRangeKey] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
   const range = weightRange(rangeKey);
   // Handed to the rows and the chart, so "Today" and the range move on at midnight.
   const todayKey = useCurrentDayKey();
-  const calendar = useMemo(() => weightChartWindow(line, range.days, todayKey), [line, range.days, todayKey]);
-  // The chart's resting line: "+4.1 lb since Aug 7 · +0.3 lb/wk", the
-  // rate averaged over the same days, at a summary's one decimal (as You's card). Gaining reads like losing, in ink:
+  // The chart's resting line: "+4.1 lb since Aug 7 · +0.3 lb/wk", the rate
+  // averaged over the same days, at a summary's one decimal. You's card reads
+  // the default range the same way. Gaining reads like losing, in ink:
   // whether it's good is the goal's to say.
-  const change = weightChangeLabel(calendar.series, unit);
-  const rateLabel = summaryRateLabel(weightRangeKgPerWeek(calendar.series), unit);
+  const { calendar, change, rate: rateLabel } = useMemo(
+    () => weightRangeSummary(line, range.days, todayKey, unit),
+    [line, range.days, todayKey, unit],
+  );
   const trendLine = change
     ? // The dot stays with the words before it when the line wraps at the largest text sizes.
       [change, rateLabel].filter(Boolean).join('\u00a0· ')
@@ -202,22 +194,24 @@ export default function WeightScreen() {
           </View>
         ) : null}
 
-        {entries.length > 0 ? (
+        {/* All weigh-ins is always offered: the latest one's row, and its Delete, are there now. Row plays the tap's haptic itself. */}
+        {latest ? (
           <Animated.View layout={rowLayout}>
-            <Section title="Recent">
-              <WeighInRows
-                entries={entries.slice(0, RECENT)}
-                unit={unit}
-                todayKey={todayKey}
-                footer={
-                  // Until every weigh-in is read, there may be more than these.
-                  !allRead || entries.length > RECENT ? (
-                    // Row plays the tap's haptic itself.
-                    <Row title="All weigh-ins" chevron onPress={() => router.push('/you/weigh-ins')} />
-                  ) : undefined
-                }
-              />
-            </Section>
+            {recent.length > 0 ? (
+              <Section title="Recent">
+                <WeighInRows
+                  entries={recent}
+                  unit={unit}
+                  todayKey={todayKey}
+                  footer={<Row title="All weigh-ins" chevron onPress={() => router.push('/you/weigh-ins')} />}
+                />
+              </Section>
+            ) : (
+              // One weigh-in: the figure above is all Recent would list.
+              <Label style={{ marginTop: space.section }}>
+                <Row title="All weigh-ins" chevron onPress={() => router.push('/you/weigh-ins')} />
+              </Label>
+            )}
           </Animated.View>
         ) : null}
 

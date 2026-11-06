@@ -287,7 +287,7 @@ describe('fuelReminderNote', () => {
   it('says what counts on the saved goal', () => {
     expect(fuelReminderNote('bulk', true)).toContain('calories or protein');
     expect(fuelReminderNote('lean_bulk', true)).toContain('calories or protein');
-    expect(fuelReminderNote('cut', true)).toBe('A reminder when you’re well short of protein for the day. Never sent once you’ve hit it.');
+    expect(fuelReminderNote('cut', true)).toBe('Reminds you when protein is well below today’s target. Stops once you reach it.');
     expect(fuelReminderNote(null, true)).not.toContain('calories');
     expect(fuelReminderNote('bulk', false)).toBe('Set your targets to get this reminder.');
   });

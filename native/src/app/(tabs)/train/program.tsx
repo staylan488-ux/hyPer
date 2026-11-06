@@ -5,11 +5,15 @@ import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Alert, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
+import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
 import { exerciseTotal, plural, shownActiveProgram, visibleTemplateItems } from '@/lib/programSummary';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import type { FlexDayTemplate, Split } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { FormNote, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
@@ -24,7 +28,8 @@ import { space, useBlanc } from '~/theme/blanc';
 
 /**
  * Program: how Train works (program days or flexible sessions), the programs
- * to choose from, or the quick starts kept from flexible sessions.
+ * to choose from, or the quick starts kept from flexible sessions. Program
+ * days end with Adaptive scheduling, which decides how those days move.
  */
 export default function ProgramScreen() {
   const splits = useAppStore((state) => state.splits);
@@ -118,8 +123,51 @@ export default function ProgramScreen() {
             </BlancText>
           </>
         ) : null}
+
+        {/* Only program days are scheduled; with no program there is nothing yet to move. */}
+        {flexible || splits.length === 0 ? null : <SchedulingSetting />}
       </TabScroll>
     </>
+  );
+}
+
+/**
+ * Adaptive scheduling: a switch saved to the account, with the reason under
+ * it. Not locked during a workout: it changes the days ahead, not this one.
+ */
+function SchedulingSetting() {
+  const enabled = useAdaptiveSplitScheduling();
+  const userId = useAuthStore((state) => state.user?.id);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const toggle = async (next: boolean) => {
+    if (saving || !userId) return;
+    setSaving(true);
+    setFailed(false);
+    try {
+      await saveAdaptiveSplitScheduling(next);
+      haptics.success();
+    } catch {
+      haptics.error();
+      setFailed(true);
+    }
+    // After the try, not in a finally, which the React Compiler can't
+    // compile; nothing in the catch throws.
+    setSaving(false);
+  };
+
+  return (
+    <Animated.View layout={rowLayout}>
+      <Label style={{ marginTop: space.section }}>
+        <ToggleRow list label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
+      </Label>
+      <FormNote alert={failed}>
+        {failed
+          ? 'Couldn’t save this setting. Your previous choice is still active.'
+          : 'Upcoming workouts follow the program days you complete. Off uses your saved schedule.'}
+      </FormNote>
+    </Animated.View>
   );
 }
 

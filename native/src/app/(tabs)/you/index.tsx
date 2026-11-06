@@ -3,18 +3,15 @@ import { accessibilityHidden, accessibilityLabel, accessibilityValue, font, fore
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
-import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
-import { bodyWeightTrends } from '@/lib/bodyWeightSummary';
 import { formatWeight } from '@/lib/weightDisplayCore';
+import { DEFAULT_WEIGHT_RANGE, weightRange } from '@/lib/weightHistory';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
-import { FormNote, ToggleRow } from '~/components/Form';
 import { FuelReminderSetting } from '~/components/FuelReminderSetting';
 import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
@@ -36,12 +33,12 @@ import {
   useAppearanceStore,
   useHealthStore,
   usePullRefresh,
+  useAllWeighIns,
   useTargetsStore,
   useWeightStore,
   type AppearanceChoice,
 } from '~/lib/you';
-import { centredTrendLine } from '~/lib/weightTrendLine';
-import { summaryRateLabel } from '~/lib/weightRate';
+import { bodyWeightLine, weightRangeSummary } from '~/lib/weightRate';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
 /**
@@ -123,10 +120,7 @@ export default function YouScreen() {
           }
         />
 
-        {/* Food, then training, then the app itself. */}
-        <GroupHeading>Training</GroupHeading>
-        <SchedulingSetting />
-
+        {/* Food, then the app itself. Adaptive scheduling is on Program, beside the training mode. */}
         <GroupHeading>App</GroupHeading>
         <Label layout={rowLayout}>
           <Row title="Connections" value={connections} chevron onPress={() => router.push('/you/connections')} />
@@ -152,7 +146,13 @@ function Initials({ text }: { text: string }) {
   );
 }
 
-/** The latest weigh-in, its three-week rate and a 30-day line; Log adds one. */
+/** Body weight's default range: the card says what its chart line says. */
+const CARD_RANGE_DAYS = weightRange(DEFAULT_WEIGHT_RANGE).days;
+
+/**
+ * The latest weigh-in, its weekly rate over Body weight's default range and
+ * that range's line; Log adds one.
+ */
 function WeightCard() {
   const c = useBlanc();
   const history = useWeightStore((state) => state.history);
@@ -160,14 +160,18 @@ function WeightCard() {
   const failed = useWeightStore((state) => state.failed);
   const unit = useWeightStore((state) => state.unit);
   const large = useLargeText();
-  const { trend, rate } = useMemo(() => bodyWeightTrends(history), [history]);
-  const latest = history[0] ?? null;
-  // One decimal, as Body weight's chart line rounds it.
-  const rateLabel = summaryRateLabel(rate.kgPerWeek, unit);
-  const latestDate = latest ? new Date(latest.measured_at) : null;
+  // The weigh-ins Body weight reads (every one once the full read lands), so
+  // the rate and its span match its chart line: "+0.3 lb/wk since Aug 8",
+  // from where the weigh-ins start when they don't go back that far.
+  const everything = useAllWeighIns();
+  const entries = everything ?? history;
+  const { trend, line: trendLine } = useMemo(() => bodyWeightLine(entries), [entries]);
   const todayKey = useCurrentDayKey();
-  const line = rateLabel
-    ? `${rateLabel} over 3 weeks`
+  const { calendar, since, rate } = useMemo(() => weightRangeSummary(trendLine, CARD_RANGE_DAYS, todayKey, unit), [trendLine, todayKey, unit]);
+  const latest = entries[0] ?? null;
+  const latestDate = latest ? new Date(latest.measured_at) : null;
+  const line = rate && since
+    ? `${rate} ${since}`
     : latestDate
       ? dayKey(latestDate) === todayKey
         ? 'Today'
@@ -215,9 +219,10 @@ function WeightCard() {
                   {line}
                 </BlancText>
               ) : null}
-              {trend.fittedDayCount >= 2 ? (
+              {/* The same days the rate covers, edge to edge. */}
+              {trend.fittedDayCount >= 2 && calendar.series.length >= 2 ? (
                 <View style={{ marginTop: 6 }} pointerEvents="none">
-                  <WeightChart points={centredTrendLine(trend.points)} days={21} unit={unit} height={32} compact />
+                  <WeightChart points={calendar.series} unit={unit} height={32} compact />
                 </View>
               ) : null}
             </>
@@ -289,43 +294,6 @@ function AppearanceRow() {
         </Menu>
       </Host>
     </View>
-  );
-}
-
-/** Adaptive scheduling: a switch saved to the account, with the reason under it. */
-function SchedulingSetting() {
-  const enabled = useAdaptiveSplitScheduling();
-  const userId = useAuthStore((state) => state.user?.id);
-  const [saving, setSaving] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  const toggle = async (next: boolean) => {
-    if (saving || !userId) return;
-    setSaving(true);
-    setFailed(false);
-    try {
-      await saveAdaptiveSplitScheduling(next);
-      haptics.success();
-    } catch {
-      haptics.error();
-      setFailed(true);
-    }
-    // After the try, not in a finally, which the React Compiler can't
-    // compile; nothing in the catch throws.
-    setSaving(false);
-  };
-
-  return (
-    <Animated.View layout={rowLayout}>
-      <Label>
-        <ToggleRow list label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
-      </Label>
-      <FormNote alert={failed}>
-        {failed
-          ? 'Couldn’t save this setting. Your previous choice is still active.'
-          : 'Upcoming workouts and rest days follow the program days you complete. Off keeps your saved schedule.'}
-      </FormNote>
-    </Animated.View>
   );
 }
 
