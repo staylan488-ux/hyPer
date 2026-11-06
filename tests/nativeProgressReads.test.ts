@@ -47,6 +47,16 @@ const trained = () => workoutSessions.buildWeeklyTrainingHours([
   { date: dates.format(new Date(), 'yyyy-MM-dd'), completed: true, created_at: new Date(Date.now() - 90 * 60_000).toISOString(), completed_at: new Date().toISOString() },
 ]);
 
+// The last seven days of eating the screen reads; none by default.
+type Day = { date: string; calories: number; protein: number };
+let nutrition: Day[] = [];
+const averageLoggedDays = (days: Day[], key: 'calories' | 'protein') => {
+  const logged = days.filter((day) => day[key] > 0);
+  return logged.length ? logged.reduce((sum, day) => sum + day[key], 0) / logged.length : 0;
+};
+const lastWeek = (eaten: Record<number, number>): Day[] =>
+  [6, 5, 4, 3, 2, 1, 0].map((ago) => ({ date: dates.format(dates.subDays(new Date(), ago), 'yyyy-MM-dd'), calories: eaten[ago] ?? 0, protein: 0 }));
+
 let root: Root;
 let host: HTMLDivElement;
 const shown = () => host.textContent ?? '';
@@ -55,6 +65,7 @@ async function open() {
   const { default: ProgressScreen } = loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/today/progress.tsx', {
     'date-fns': dates,
     'expo-router': { router: { navigate: noop }, Stack: { Screen: Empty } },
+    'expo-symbols': { SymbolView: Empty },
     'react-native': {
       Pressable: Wrap,
       RefreshControl: ({ onRefresh }: { onRefresh: () => void }) => {
@@ -63,9 +74,15 @@ async function open() {
       },
       View: Wrap,
     },
-    'react-native-reanimated': { default: { View: Wrap }, FadeIn: { duration: () => undefined }, LinearTransition: { duration: () => undefined } },
+    'react-native-reanimated': {
+      default: { View: Wrap },
+      FadeIn: { duration: () => undefined },
+      LinearTransition: { duration: () => undefined },
+      useAnimatedStyle: () => ({}),
+      withTiming: (value: unknown) => value,
+    },
     '@/lib/todayModel': todayModel,
-    '@/hooks/useWeeklyNutrition': { averageLoggedDays: () => 0, useWeeklyNutrition: () => ({ weeklyNutrition: [], loading: false, error: null }) },
+    '@/hooks/useWeeklyNutrition': { averageLoggedDays, useWeeklyNutrition: () => ({ weeklyNutrition: nutrition, loading: false, error: null }) },
     '@/lib/fuelSummary': fuelSummary,
     '@/lib/trainingHours': { fetchTrainingHours },
     '@/lib/volumeCoaching': volumeCoaching,
@@ -78,7 +95,10 @@ async function open() {
     '~/components/Label': { Label: Wrap },
     '~/components/MuscleFigure': { MuscleFigure: Empty },
     '~/components/Row': { Hairline: Empty },
-    '~/components/Section': { Section: Wrap },
+    // A section shows its title and the span it covers.
+    '~/components/Section': {
+      Section: ({ title, note, children }: PropsWithChildren<{ title: string; note?: string }>) => createElement(Fragment, null, createElement('h2', null, title, note ? ` ${note}` : ''), children),
+    },
     '~/components/TabScroll': { TabScroll: ({ children, refreshControl }: { children: ReactNode; refreshControl: ReactNode }) => createElement(Fragment, null, refreshControl, children) },
     '~/lib/accountData': { useAccountDay: accountDay, useCurrentDayKey: () => accountDay.getState().dayKey },
     '~/lib/format': { formatMinutes, formatWhole: (value: number) => String(Math.round(value)) },
@@ -91,6 +111,7 @@ async function open() {
 const refresh = () => act(async () => { pull(); });
 
 beforeEach(() => {
+  nutrition = [];
   accountDay.setState({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') });
   appStore.setState({ weeklyVolume: initialAppData.weeklyVolume });
   fetchTrainingHours.mockReset().mockResolvedValue(trained());
@@ -109,18 +130,19 @@ afterEach(() => {
 describe('Progress after a failed read', () => {
   it('keeps the training time chart when a pull to refresh cannot read it', async () => {
     await open();
+    expect(shown()).toContain('Week to date');
     expect(shown()).toContain('1 h 30 min');
 
     fetchTrainingHours.mockResolvedValueOnce(null);
     await refresh();
     expect(shown()).toContain('1 h 30 min');
-    expect(shown()).not.toContain('This week0 min');
+    expect(shown()).not.toContain('Week to date0 min');
   });
 
   it('draws no chart of empty weeks when the first read fails', async () => {
     fetchTrainingHours.mockResolvedValueOnce(null);
     await open();
-    expect(shown()).not.toContain('This week');
+    expect(shown()).not.toContain('Week to date');
   });
 
   it('never says nothing was trained when this week’s volume could not be read', async () => {
@@ -165,5 +187,27 @@ describe("Progress's week", () => {
     // Monday's refresh, the screen still on top
     await act(async () => { accountDay.setState({ dayKey: '2026-11-09' }); });
     expect(shown()).toContain('Week of November 9');
+  });
+});
+
+describe("Progress's nutrition header", () => {
+  it('averages the logged days before today and says how many while some are missing', async () => {
+    nutrition = lastWeek({ 0: 800, 1: 2000, 3: 2400 });
+    await open();
+    expect(shown()).toContain('Avg 2200 kcal over 2 days');
+    expect(shown()).not.toContain('today');
+  });
+
+  it("uses today's figure while today is the only day logged", async () => {
+    nutrition = lastWeek({ 0: 1342 });
+    await open();
+    expect(shown()).toContain('Avg 1342 kcal over 1 day');
+  });
+
+  it('names no count once every earlier day is logged', async () => {
+    nutrition = lastWeek({ 0: 500, 1: 2000, 2: 2000, 3: 2000, 4: 2000, 5: 2000, 6: 2000 });
+    await open();
+    expect(shown()).toContain('Avg 2000 kcal');
+    expect(shown()).not.toContain('kcal over');
   });
 });

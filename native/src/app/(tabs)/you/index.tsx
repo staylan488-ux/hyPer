@@ -73,7 +73,8 @@ export default function YouScreen() {
     .toUpperCase();
   // Two steps: the React Compiler can't yet compile a ternary inside `||`.
   const connected = [whoop ? 'WHOOP' : null, health ? 'Health' : null].filter(Boolean).join(', ');
-  const connections = connected || 'None';
+  // Nothing connected shows no value: a placeholder "None" says nothing the row doesn't.
+  const connections = connected || undefined;
 
   return (
     <>
@@ -116,15 +117,14 @@ export default function YouScreen() {
 
         <FuelReminderSetting />
 
+        {/* Food, then training, then the app itself. */}
+        <SchedulingSetting />
+
         <Label layout={rowLayout} style={{ marginTop: space.section }}>
           <Row title="Connections" value={connections} chevron onPress={() => router.push('/you/connections')} />
           <Hairline />
           <AppearanceRow />
-        </Label>
-
-        <SchedulingSetting />
-
-        <Label layout={rowLayout} style={{ marginTop: space.section }}>
+          <Hairline />
           <Row title="About" chevron onPress={() => router.push('/you/about')} />
         </Label>
       </TabScroll>
@@ -166,7 +166,7 @@ function WeightCard() {
       : null;
 
   return (
-    <Section title="Body weight" action={{ title: 'Log', onPress: () => router.push('/log-weight') }}>
+    <Section title="Body weight" action={{ title: 'Log', symbol: 'plus', onPress: () => router.push('/log-weight') }}>
       <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
         <Pressable
           accessibilityRole="button"

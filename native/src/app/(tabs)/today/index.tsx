@@ -80,13 +80,13 @@ export default function TodayScreen() {
 
           {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
 
-          <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
+          <Section title="Fuel" action={{ title: 'Log food', symbol: 'plus', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (
               // The day's figures open Fuel, where they come from.
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={speak(
-                  `${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Eaten ${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal · protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
+                  `${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal eaten, ${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
                 )}
                 accessibilityHint="Opens Fuel"
                 onPress={() => {
@@ -97,15 +97,15 @@ export default function TodayScreen() {
                 {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
                   <RollingText variant="figure" size={64} style={{ letterSpacing: -1.5 }}>
-                    {formatWhole(Math.abs(kcalLeft))}
+                    {formatWhole(totals.calories)}
                   </RollingText>
                   <Animated.View layout={figureLayout}>
                     <BlancText variant="secondary" tone="graphite">
-                      {kcalLeft >= 0 ? 'kcal left' : `kcal ${over}`}
+                      of {formatWhole(target.calories)} kcal
                     </BlancText>
                   </Animated.View>
                 </View>
-                {/* The figure says what is left; the line under it shows how far the day has come, as on Fuel. */}
+                {/* The day's food as Fuel shows it: the figure eaten, the line filling toward the target. */}
                 <View style={{ marginTop: 10 }}>
                   <Track progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
                 </View>
@@ -134,7 +134,8 @@ export default function TodayScreen() {
             )}
           </Section>
 
-          <Section title="This week" action={{ title: 'Progress', onPress: () => router.push('/today/progress') }}>
+          {/* The muscles row opens Progress; before a set is logged this week, the header does. */}
+          <Section title="This week" action={week.trained > 0 ? undefined : { title: 'Progress', onPress: () => router.push('/today/progress') }}>
             <Label>
               <Row
                 title="Sessions"

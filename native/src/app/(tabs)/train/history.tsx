@@ -125,9 +125,10 @@ export default function HistoryScreen() {
             ...(syncAvailable
               ? [
                   {
+                    // Words, not a circular-arrows icon, which reads as a plain refresh.
                     type: 'button' as const,
-                    label: syncing ? 'Syncing…' : 'Sync WHOOP',
-                    icon: { type: 'sfSymbol' as const, name: 'arrow.triangle.2.circlepath' as const },
+                    label: syncing ? 'Syncing…' : 'Sync',
+                    accessibilityLabel: syncing ? 'Syncing WHOOP' : 'Sync WHOOP',
                     disabled: syncing,
                     onPress: () => {
                       haptics.tap();
@@ -429,7 +430,8 @@ function DayCell({
           {number}
         </BlancText>
       </View>
-      <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 1 }}>
+      {/* About 4 points under the 34-point disc, so the dot stays clear of a chosen day's ink. */}
+      <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 4 }}>
         {/* One mark for a day with anything in it; the day's list says what. */}
         {(lift || other) && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: lift ? c.ink : c.graphite }} /> : null}
       </View>
@@ -518,13 +520,12 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   );
 }
 
-/** "7:05 AM · 45 min · 3.10 mi · Strain 12.3"; Row speaks it in words. */
+/** "7:05 AM · 45 min · 3.10 mi"; Row speaks it in words. Strain and the rest are on the activity's own screen. */
 function activityDetail(activity: ActivitySession): string {
   return [
     formatActivityStartTime(activity.started_at),
     lengthOf((activity.duration_seconds ?? 0) * 1000),
     formatDistanceMi(activity.distance_m),
-    activity.strain != null ? `Strain ${activity.strain.toFixed(1)}` : null,
   ]
     .filter(Boolean)
     .join(' · ');

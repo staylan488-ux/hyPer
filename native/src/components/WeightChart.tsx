@@ -103,7 +103,8 @@ export function WeightChart({
   }, [points, days, calendar]);
   const ticks = useMemo(() => (calendar && !compact ? weightChartTicks(calendar.startDay, calendar.slots) : []), [calendar, compact]);
 
-  const padX = compact ? 0 : PAD_X;
+  // The sparkline keeps room for its end dot, so the dot is never cut in half.
+  const padX = compact ? 4 : PAD_X;
   // The full chart keeps a column on the right for its scale.
   const plotRight = compact ? width : width - SCALE_COLUMN - SCALE_GAP;
   const plotWidth = Math.max(1, plotRight - 2 * padX);

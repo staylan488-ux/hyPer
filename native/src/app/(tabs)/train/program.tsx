@@ -16,7 +16,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { announce, useLargeText, useScreenReader } from '~/lib/accessibility';
+import { announce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteProgram, editProgram, newProgram, planTarget, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
@@ -33,7 +33,6 @@ export default function ProgramScreen() {
   const setWorkoutMode = useAppStore((state) => state.setWorkoutMode);
   const flexible = mode === 'flexible';
   const active = shownActiveProgram(splits, mode);
-  const screenReader = useScreenReader();
   // Only what the rows below do not already say: the picker names the mode,
   // the active program's row says Active, and the empty card says there is none.
   const subtitle = flexible ? 'Build each session as you go' : !active && splits.length > 0 ? 'None active' : null;
@@ -94,13 +93,13 @@ export default function ProgramScreen() {
           </BlancText>
         ) : null}
 
-        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18, opacity: live ? 0.72 : 1 }} pointerEvents={live ? 'none' : 'auto'}>
+        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18 }} pointerEvents={live ? 'none' : 'auto'}>
           <Picker
             selection={mode}
             onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
-            // VoiceOver acts without touches, so pointerEvents alone would let it
-            // switch during a workout; SwiftUI's disabled holds it (and says dimmed).
-            modifiers={[pickerStyle('segmented'), ...(live && screenReader ? [swiftDisabled(true)] : [])]}>
+            // Locked during a workout in SwiftUI's own disabled look (VoiceOver says dimmed);
+            // pointerEvents holds it for touch while SwiftUI catches up.
+            modifiers={[pickerStyle('segmented'), ...(live ? [swiftDisabled(true)] : [])]}>
             <SwiftText modifiers={[tag('split')]}>Program days</SwiftText>
             <SwiftText modifiers={[tag('flexible')]}>Flexible</SwiftText>
           </Picker>

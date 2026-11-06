@@ -159,10 +159,13 @@ export default function RestSheet() {
               : `Rest length, ${spokenClock(figure)}`
         }>
         {/* Counts down like the Clock app's timer: each second rolls. */}
-        <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center' }}>
-          {formatClock(figure)}
-        </RollingText>
-        <BlancText variant="secondary" tone="graphite">
+        {/* Before it starts, the length carries the ruled line of a figure that can be written in, as Train's weight and reps do. */}
+        <View style={{ borderBottomWidth: running || paused ? 0 : 1.5, borderBottomColor: c.mark, paddingHorizontal: 6 }}>
+          <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center' }}>
+            {formatClock(figure)}
+          </RollingText>
+        </View>
+        <BlancText variant="secondary" tone="graphite" style={{ marginTop: running || paused ? 0 : 6 }}>
           {caption}
         </BlancText>
       </Pressable>

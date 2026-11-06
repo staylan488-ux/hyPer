@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, useColorScheme, View } from 'react-native';
 import Svg, { Ellipse, G, Path } from 'react-native-svg';
 
-import { mixRgb, muscleColor, parseColor, rgbToCss, shadeMuscles, type MaquettePalette } from '@/lib/maquette';
+import { mixRgb, parseColor, rgbToCss, shadeMuscles, type MuscleShade, type Rgb } from '@/lib/maquette';
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
 import { AB_LINES, BODY, FIGURE, HEAD, REGIONS, regionAt, smoothPath, type ViewSide } from '~/lib/anatomy';
-import { useLargeText } from '~/lib/accessibility';
+import { useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
@@ -16,8 +16,31 @@ const GAP = 26;
 const BOX = { width: FIGURE_WIDTH * 2 + GAP, height: FIGURE.bottom - FIGURE.top };
 /** A muscle reaches at least this far from its edge to the finger, in points. */
 const REACH = 12;
-/** The seams between muscles, in the card's colour, in figure units (about a point). */
+/** The seams between muscles, in the card's colour, in figure units (about a point); a little wider on the dark card. */
 const SEAM = 0.8;
+const DARK_SEAM = 1.05;
+
+/**
+ * The figure's three greys, set by hand for each card so the states stay
+ * apart: the bare body (untrained), one light-mid grey (below range) and
+ * ink (in range); over is the live red. Each step is at least about 1.4:1
+ * from the card and 1.8:1 from its neighbour, more with Increase Contrast.
+ */
+const TONES = {
+  light: { body: '#E4E3DE', below: '#B9B8B2', in: '#4A4A45' },
+  lightContrast: { body: '#D3D2CC', below: '#8A8983', in: '#26261F' },
+  dark: { body: '#343432', below: '#6E6E69', in: '#C4C4BE' },
+  darkContrast: { body: '#4A4A47', below: '#98988F', in: '#E6E6E0' },
+} as const;
+
+type FigureState = 'untrained' | 'below' | 'in' | 'over';
+
+/** A muscle's state on the figure; the best range shows only on the rows' bars. */
+function stateOf(shade: MuscleShade | undefined): FigureState {
+  if (!shade || shade.ink === 0) return 'untrained';
+  if (shade.hot) return 'over';
+  return shade.status === 'mev_mav' || shade.status === 'mav' || shade.status === 'approaching_mrv' ? 'in' : 'below';
+}
 const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
 /** Muscles chest to calves, the order VoiceOver steps through them. */
@@ -52,7 +75,7 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
 
 /**
  * This week's volume on a flat front and back muscle figure: bare where
- * untrained, darker the further into the range, red past the recoverable
+ * untrained, light grey below range, ink in range, red past the recoverable
  * ceiling, with the key under it. The shading is the web app's
  * (`src/lib/maquette.ts`); the drawing is the app's own (`lib/anatomy.ts`).
  * Tap a muscle to choose it (a near miss counts; small ones like the side
@@ -61,7 +84,7 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * element: swiping up and down steps through this week's muscles (the rows
  * of the list below it), and down past the first clears the choice.
  */
-export function MuscleFigure({ volume, selected, onPick, height = 232 }: {
+export function MuscleFigure({ volume, selected, onPick, height = 200 }: {
   volume: MuscleVolume[];
   selected: MuscleGroup | null;
   onPick: (muscle: MuscleGroup | null) => void;
@@ -69,13 +92,22 @@ export function MuscleFigure({ volume, selected, onPick, height = 232 }: {
 }) {
   const c = useBlanc();
   const large = useLargeText();
+  const dark = useColorScheme() === 'dark';
+  const contrast = useIncreaseContrast();
   const shades = useMemo(() => shadeMuscles(volume), [volume]);
-  const palette = useMemo<MaquettePalette>(() => {
-    const ground = parseColor(c.ground, [0.95, 0.95, 0.93]);
-    const ink = parseColor(c.ink, [0.04, 0.04, 0.04]);
-    return { body: mixRgb(ground, ink, c.ground === '#000000' ? 0.16 : 0.09), ink, accent: parseColor(c.live, [0.82, 0.23, 0.18]) };
-  }, [c.ground, c.ink, c.live]);
-  const body = rgbToCss(palette.body);
+  const tones = TONES[`${dark ? 'dark' : 'light'}${contrast ? 'Contrast' : ''}`];
+  const palette = useMemo<Record<FigureState, Rgb>>(
+    () => ({
+      untrained: parseColor(tones.body, [0.89, 0.88, 0.86]),
+      below: parseColor(tones.below, [0.66, 0.66, 0.64]),
+      // In range reads strongest without the full weight of ink, which made the figure a silhouette.
+      in: parseColor(tones.in, [0.29, 0.29, 0.27]),
+      over: parseColor(c.live, [0.82, 0.23, 0.18]),
+    }),
+    [tones, c.live],
+  );
+  const body = tones.body;
+  const seam = dark ? DARK_SEAM : SEAM;
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   const pick = (x: number, y: number) => {
@@ -96,20 +128,19 @@ export function MuscleFigure({ volume, selected, onPick, height = 232 }: {
     : 'None chosen';
 
   const colorOf = (muscle: MuscleGroup) => {
-    const shade = shades.get(muscle);
+    const state = stateOf(shades.get(muscle));
     const chosen = isChosen(selected, muscle);
-    const quieted = selected !== null && !chosen;
-    let color = quieted && shade?.hot ? mixRgb(palette.body, palette.ink, shade.ink) : muscleColor(shade, palette);
-    if (quieted) color = mixRgb(color, palette.body, 0.72);
-    else if (chosen && (!shade || shade.ink === 0)) color = mixRgb(palette.body, palette.ink, 0.45);
-    return rgbToCss(color);
+    // The others quiet down toward the bare body (red going grey, so the chosen one leads).
+    if (selected !== null && !chosen) return rgbToCss(mixRgb(palette[state === 'over' ? 'in' : state], palette.untrained, 0.72));
+    // A chosen muscle with nothing this week still shows where it is.
+    if (chosen && state === 'untrained') return rgbToCss(mixRgb(palette.untrained, palette.below, 0.5));
+    return rgbToCss(palette[state]);
   };
-  // The key's swatches: the shades a muscle below, in and over its range takes (sharing src/lib/maquette's ramp).
-  const tone = (ink: number) => rgbToCss(mixRgb(palette.body, palette.ink, ink));
-  const key: Array<{ label: string; swatches: string[] }> = [
-    { label: 'Below range', swatches: [tone(0.2)] },
-    { label: 'In range', swatches: [tone(0.4), tone(0.62), tone(0.84)] },
-    { label: 'Over', swatches: [rgbToCss(palette.accent)] },
+  // The key: one swatch for each state a trained muscle takes.
+  const key: Array<{ label: string; swatch: string }> = [
+    { label: 'Below range', swatch: rgbToCss(palette.below) },
+    { label: 'In range', swatch: rgbToCss(palette.in) },
+    { label: 'Over', swatch: rgbToCss(palette.over) },
   ];
   const placed = size.width > 0 ? fit(size.width, size.height) : null;
 
@@ -146,11 +177,11 @@ export function MuscleFigure({ volume, selected, onPick, height = 232 }: {
                 <Path key={`b${i}`} d={smoothPath(outline)} fill={body} />
               ))}
               {REGIONS[side].map((region, i) => (
-                <Path key={`m${i}`} d={smoothPath(region.points)} fill={colorOf(region.muscle)} stroke={c.label} strokeWidth={SEAM} strokeLinejoin="round" />
+                <Path key={`m${i}`} d={smoothPath(region.points)} fill={colorOf(region.muscle)} stroke={c.label} strokeWidth={seam} strokeLinejoin="round" />
               ))}
               {side === 'front'
                 ? AB_LINES.map(([from, to], i) => (
-                    <Path key={`a${i}`} d={`M${from[0]} ${from[1]}L${to[0]} ${to[1]}`} stroke={c.label} strokeWidth={SEAM} />
+                    <Path key={`a${i}`} d={`M${from[0]} ${from[1]}L${to[0]} ${to[1]}`} stroke={c.label} strokeWidth={seam} />
                   ))
                 : null}
             </G>
@@ -178,11 +209,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 232 }: {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: 16, rowGap: 4, marginTop: large ? 10 : 8 }}>
         {key.map((item) => (
           <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ flexDirection: 'row', borderRadius: 2.5, borderCurve: 'continuous', overflow: 'hidden' }}>
-              {item.swatches.map((swatch) => (
-                <View key={swatch} style={{ width: item.swatches.length > 1 ? 6 : 10, height: 10, backgroundColor: swatch }} />
-              ))}
-            </View>
+            <View style={{ width: 10, height: 10, borderRadius: 2.5, borderCurve: 'continuous', backgroundColor: item.swatch }} />
             <BlancText variant="footnote" tone="graphite">
               {item.label}
             </BlancText>

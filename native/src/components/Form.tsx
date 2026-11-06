@@ -190,7 +190,7 @@ export function ToggleRow({ label, detail, value, onChange, disabled, list }: {
   return (
     <View style={[rowStyle, { paddingVertical: 10 }, list ? { minHeight: detail ? 60 : 52 } : null]}>
       <View style={{ flex: 1 }} {...spokenByControl}>
-        <BlancText variant={list ? 'bodyStrong' : 'body'}>{label}</BlancText>
+        <BlancText variant={list && detail ? 'bodyStrong' : 'body'}>{label}</BlancText>
         {detail ? (
           <BlancText variant={list ? 'secondary' : 'footnote'} tone="graphite" style={{ marginTop: list ? 1 : 2 }}>
             {detail}

@@ -1,8 +1,9 @@
 import { format, parseISO, startOfWeek } from 'date-fns';
 import { router, Stack } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import Animated, { FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { summarizeWeekVolume } from '@/lib/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
@@ -23,11 +24,14 @@ import { useAccountDay, useCurrentDayKey } from '~/lib/accountData';
 import { speak, spokenClock, useAnnounce, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
-import { space, useBlanc } from '~/theme/blanc';
+import { useBlanc } from '~/theme/blanc';
 
 const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
-/** Progress: this week's volume by muscle, training time over eight weeks, and the last week's eating. */
+/**
+ * Progress: this week's volume by muscle, training time over eight weeks, and
+ * the last seven days' eating. Each section names its own span, since they differ.
+ */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
   // The account's day, whose week the volume below was read for.
@@ -88,44 +92,41 @@ export default function ProgressScreen() {
     <>
       <Stack.Screen options={{ title: 'Progress' }} />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          Week of {format(startOfWeek(parseISO(dayKey), TRAINING_WEEK), 'MMMM d')}
-        </BlancText>
+        <Section title="Muscles" note={`Week of ${format(startOfWeek(parseISO(dayKey), TRAINING_WEEK), 'MMMM d')}`} style={{ marginTop: 6 }}>
+          {volume.length === 0 ? (
+            volumeRead ? (
+              <Label style={{ paddingHorizontal: 18, paddingVertical: 16, gap: 12 }}>
+                <BlancText variant="headline">Nothing trained yet this week</BlancText>
+                <BlancText variant="secondary" tone="graphite">
+                  Log a session and Progress tracks each muscle&apos;s weekly sets against its landmarks.
+                </BlancText>
+                <View style={{ alignSelf: 'flex-start' }}>
+                  <Capsule title="Start training" onPress={() => router.navigate('/train')} />
+                </View>
+              </Label>
+            ) : null
+          ) : (
+            <>
+              <Label style={{ paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 }}>
+                {/*
+                  One line either way, so a tap on a muscle never moves the figure
+                  (at the accessibility text sizes it wraps). No announcement when
+                  the choice changes: VoiceOver chooses on the figure (which speaks
+                  its new value) or on a muscle's row.
+                */}
+                <BlancText
+                  variant="secondary"
+                  tone="graphite"
+                  numberOfLines={large ? undefined : 1}
+                  style={{ paddingHorizontal: 6, minHeight: 20 }}
+                  accessibilityLabel={inWords(caption)}>
+                  {caption}
+                </BlancText>
+                <MuscleFigure volume={volume} selected={open} onPick={pick} />
+              </Label>
 
-        {volume.length === 0 ? (
-          volumeRead ? (
-            <Label style={{ marginTop: 18, paddingHorizontal: 18, paddingVertical: 16, gap: 12 }}>
-              <BlancText variant="headline">Nothing trained yet this week</BlancText>
-              <BlancText variant="secondary" tone="graphite">
-                Log a session and Progress tracks each muscle&apos;s weekly sets against its landmarks.
-              </BlancText>
-              <View style={{ alignSelf: 'flex-start' }}>
-                <Capsule title="Start training" onPress={() => router.navigate('/train')} />
-              </View>
-            </Label>
-          ) : null
-        ) : (
-          <>
-            <Label style={{ marginTop: 18, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 12 }}>
-              {/*
-                One line either way, so a tap on a muscle never moves the figure
-                (at the accessibility text sizes it wraps). No announcement when
-                the choice changes: VoiceOver chooses on the figure (which speaks
-                its new value) or on a muscle's row.
-              */}
-              <BlancText
-                variant="secondary"
-                tone="graphite"
-                numberOfLines={large ? undefined : 1}
-                style={{ paddingHorizontal: 6, minHeight: 20 }}
-                accessibilityLabel={inWords(caption)}>
-                {caption}
-              </BlancText>
-              <MuscleFigure volume={volume} selected={open} onPick={pick} />
-            </Label>
-
-            <Section title="By muscle">
-              <Label style={{ overflow: 'hidden' }}>
+              {/* Each muscle's sets against its range; a tap opens its landmarks. */}
+              <Label style={{ overflow: 'hidden', marginTop: 12 }}>
                 {coached.map(({ mv, call }, index) => (
                   <Animated.View key={mv.muscle_group} layout={LinearTransition.duration(220)}>
                     {index > 0 ? <Hairline /> : null}
@@ -133,14 +134,9 @@ export default function ProgressScreen() {
                   </Animated.View>
                 ))}
               </Label>
-              {coached.some(({ mv }) => mv.landmark) ? (
-                <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-                  The band is in range, its darker middle the best range.
-                </BlancText>
-              ) : null}
-            </Section>
-          </>
-        )}
+            </>
+          )}
+        </Section>
 
         <Section title="Training time" note="Last 8 weeks">
           <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>{hours ? <HoursChart points={hours} /> : <View style={{ height: 150 }} />}</Label>
@@ -183,9 +179,13 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
       style={({ pressed }) => ({ paddingLeft: 18, paddingRight: 16, paddingVertical: 12, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       {/* At the accessibility text sizes the sets wrap under a long name. */}
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-        <BlancText variant="bodyStrong" style={large ? { flexShrink: 1 } : { flex: 1 }} numberOfLines={large ? undefined : 1}>
-          {name}
-        </BlancText>
+        {/* The name with a small chevron that turns as the row opens, so the row reads as one that expands. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, ...(large ? { flexShrink: 1 } : { flex: 1 }) }}>
+          <BlancText variant="bodyStrong" style={{ flexShrink: 1 }} numberOfLines={large ? undefined : 1}>
+            {name}
+          </BlancText>
+          <Disclosure open={open} />
+        </View>
         <BlancText variant="secondary" weight="500" tone={hot ? 'live' : 'ink'} style={{ fontVariant: ['tabular-nums'] }}>
           {formatSets(mv.weekly_sets)}
         </BlancText>
@@ -207,59 +207,108 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
   );
 }
 
+/** A row's disclosure chevron: down while closed, turning up as the row opens (Reduce Motion: at once). */
+function Disclosure({ open }: { open: boolean }) {
+  const c = useBlanc();
+  // The turn follows `open` through a shared value: on native, Reanimated ignores a dependency list.
+  const angle = useSharedValue(open ? 180 : 0);
+  useEffect(() => {
+    angle.value = withTiming(open ? 180 : 0, { duration: 200 });
+  }, [open, angle]);
+  const turn = useAnimatedStyle(() => ({ transform: [{ rotate: `${angle.value}deg` }] }));
+  return (
+    <Animated.View style={turn} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <SymbolView name="chevron.down" size={11} weight="semibold" tintColor={c.graphite} />
+    </Animated.View>
+  );
+}
+
 /**
  * Weekly sets on a line from zero past the ceiling. The band is in range
  * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
- * "in range" counts it; its darker middle is the best range.
+ * "in range" counts it, with those two set counts under its ends; its darker
+ * middle is the best range.
  */
 function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean }) {
   const c = useBlanc();
   // Increase Contrast draws the quiet marks at full strength.
   const contrast = useIncreaseContrast();
+  const large = useLargeText();
   const max = Math.max(landmark.mrv * 1.1, sets, 1);
-  const at = (value: number) => `${Math.min(100, (value / max) * 100)}%` as const;
+  const share = (value: number) => Math.min(100, (value / max) * 100);
+  const at = (value: number) => `${share(value)}%` as const;
   const span = (from: number, to: number) => `${Math.max(0, ((Math.min(to, max) - from) / max) * 100)}%` as const;
+  // A count centred under its end of the band; one at the very start sits flush left.
+  const end = (which: string, value: number) => (
+    <BlancText
+      key={which}
+      variant="meta"
+      tone="graphite"
+      size={11}
+      maxFontSizeMultiplier={1.4}
+      numberOfLines={1}
+      style={{
+        position: 'absolute',
+        left: at(value),
+        width: END_WIDTH,
+        marginLeft: share(value) < 6 ? 0 : -END_WIDTH / 2,
+        textAlign: share(value) < 6 ? 'left' : 'center',
+        fontVariant: ['tabular-nums'],
+      }}>
+      {formatWhole(value)}
+    </BlancText>
+  );
   return (
-    <View style={{ height: 10, marginTop: 10, justifyContent: 'center' }} importantForAccessibility="no-hide-descendants">
-      <View style={{ height: 3, borderRadius: 1.5, backgroundColor: c.track }} />
-      <View
-        style={{
-          position: 'absolute',
-          left: at(landmark.mev),
-          width: span(landmark.mev, landmark.mrv),
-          height: 5,
-          borderRadius: 2.5,
-          backgroundColor: c.graphite,
-          opacity: contrast ? 0.45 : 0.28,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: at(landmark.mav_low),
-          width: span(landmark.mav_low, landmark.mav_high),
-          height: 5,
-          borderRadius: 2.5,
-          backgroundColor: c.graphite,
-          opacity: contrast ? 1 : 0.7,
-        }}
-      />
-      <View
-        style={{
-          position: 'absolute',
-          left: at(sets),
-          marginLeft: -5,
-          width: 10,
-          height: 10,
-          borderRadius: 5,
-          backgroundColor: hot ? c.live : c.ink,
-          borderWidth: 2,
-          borderColor: c.label,
-        }}
-      />
+    <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={{ height: 10, marginTop: 10, justifyContent: 'center' }}>
+        <View style={{ height: 3, borderRadius: 1.5, backgroundColor: c.track }} />
+        <View
+          style={{
+            position: 'absolute',
+            left: at(landmark.mev),
+            width: span(landmark.mev, landmark.mrv),
+            height: 5,
+            borderRadius: 2.5,
+            backgroundColor: c.graphite,
+            opacity: contrast ? 0.45 : 0.28,
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            left: at(landmark.mav_low),
+            width: span(landmark.mav_low, landmark.mav_high),
+            height: 5,
+            borderRadius: 2.5,
+            backgroundColor: c.graphite,
+            opacity: contrast ? 1 : 0.7,
+          }}
+        />
+        <View
+          style={{
+            position: 'absolute',
+            left: at(sets),
+            marginLeft: -5,
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            backgroundColor: hot ? c.live : c.ink,
+            borderWidth: 2,
+            borderColor: c.label,
+          }}
+        />
+      </View>
+      {/* The counts sit out of the flow; the accessibility sizes give them a taller line. */}
+      <View style={{ height: large ? 20 : 14, marginTop: 3 }}>
+        {end('mev', landmark.mev)}
+        {end('mrv', landmark.mrv)}
+      </View>
     </View>
   );
 }
+
+/** The width each end count of a range bar centres in. */
+const END_WIDTH = 32;
 
 /**
  * Shorthand in words for VoiceOver, with the coaching lines' "~2 sets" as
@@ -310,12 +359,13 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   return (
     <View
       accessible
-      accessibilityLabel={`Training time, last 8 weeks. This week ${spokenMinutes(current?.totalMinutes ?? 0)}. ${points
+      accessibilityLabel={`Training time, last 8 weeks. Week to date ${spokenMinutes(current?.totalMinutes ?? 0)}. ${points
         .map((point) => `Week of ${format(parseISO(point.weekStart), 'MMMM d')}, ${spokenMinutes(point.totalMinutes)}`)
         .join('; ')}`}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', ...wrap }}>
+        {/* This week is still under way. */}
         <BlancText variant="secondary" tone="graphite">
-          This week
+          Week to date
         </BlancText>
         <BlancText variant="secondary" weight="500" style={[{ fontVariant: ['tabular-nums'] }, right]}>
           {formatMinutes(current?.totalMinutes ?? 0)}
@@ -391,7 +441,9 @@ function NutritionSection() {
  * One macro across the last seven days, against its daily target (dashed,
  * its figure beside it); today in ink, as in the training chart, and a day
  * with nothing logged left empty. A day well past target is red only where
- * that is a warning for the goal.
+ * that is a warning for the goal. The header is the daily average of the
+ * logged days (Fuel already shows today), with how many days it covers
+ * while some of the week is missing.
  */
 function MacroBars({
   days,
@@ -416,18 +468,21 @@ function MacroBars({
   const todayKey = useCurrentDayKey();
   // Today is still being eaten: the average is of the days before it, or
   // today's own figure while it is the only day logged.
-  const pastAverage = averageLoggedDays(days.filter((day) => day.date !== todayKey), macro);
+  const earlier = days.filter((day) => day.date !== todayKey);
+  const pastAverage = averageLoggedDays(earlier, macro);
   const todayOnly = pastAverage === 0 && averageLoggedDays(days, macro) > 0;
   const average = todayOnly ? averageLoggedDays(days, macro) : pastAverage;
+  // The days the average is of; named while any earlier day is missing.
+  const counted = todayOnly ? 1 : earlier.filter((day) => day[macro] > 0).length;
+  const coverage = counted > 0 && (todayOnly || counted < earlier.length) ? `over ${counted} ${counted === 1 ? 'day' : 'days'}` : null;
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
-  const share = target > 0 && average > 0 ? ` · ${Math.round((average / target) * 100)}%` : '';
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
   return (
     <View
       accessible
       accessibilityLabel={speak(
-        `${label}, ${todayOnly ? 'today' : 'daily average'} ${formatWhole(average)} ${unit}${share}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
-          .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${formatWhole(day[macro])}${isOver(day) ? ', over' : ''}`)
+        `${label}, ${counted > 0 ? `daily average ${formatWhole(average)} ${unit}${coverage ? ` ${coverage}` : ''}` : 'none logged'}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
+          .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${day[macro] > 0 ? formatWhole(day[macro]) : 'nothing logged'}${isOver(day) ? ', over' : ''}`)
           .join('; ')}`,
       )}>
       {/* At the accessibility text sizes the average wraps under the name. */}
@@ -435,12 +490,20 @@ function MacroBars({
         <BlancText variant="secondary" tone="graphite">
           {label}
         </BlancText>
-        <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-          <BlancText variant="secondary" weight="500">
-            {formatWhole(average)}
-          </BlancText>{' '}
-          {unit} {todayOnly ? 'today' : 'a day'}{share}
-        </BlancText>
+        {counted > 0 ? (
+          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            Avg{' '}
+            <BlancText variant="secondary" weight="500">
+              {formatWhole(average)}
+            </BlancText>{' '}
+            {unit}
+            {coverage ? ` ${coverage}` : ''}
+          </BlancText>
+        ) : (
+          <BlancText variant="secondary" tone="graphite">
+            None logged
+          </BlancText>
+        )}
       </View>
       <View style={{ height: 72, marginTop: 12 }}>
         {/* The zero line: a day with nothing logged draws nothing on it. */}

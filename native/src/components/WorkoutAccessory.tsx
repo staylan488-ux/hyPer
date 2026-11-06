@@ -68,9 +68,22 @@ export function WorkoutAccessory() {
       }}
       style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 }}>
       {placement === 'inline' ? (
-        <BlancText variant="footnote" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
-          {(resting || paused) && left !== null ? formatClock(left) : session.dayName}
-        </BlancText>
+        // Beside the shrunk tab bar there is room for one line: what's up now (or the rest), and the clock.
+        <>
+          <BlancText
+            variant="footnote"
+            weight="600"
+            numberOfLines={1}
+            maxFontSizeMultiplier={ACCESSORY_MAX_SCALE}
+            style={{ flex: 1, minWidth: 0, fontVariant: ['tabular-nums'] }}>
+            {resting || paused || !session.current ? status : `${session.current.movement.name} · Set ${session.current.setNumber}`}
+          </BlancText>
+          {resting || paused ? null : (
+            <BlancText variant="footnote" tone="graphite" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
+              {formatClock(Math.max(0, (now - session.startedAt.getTime()) / 1000))}
+            </BlancText>
+          )}
+        </>
       ) : (
         <>
           <View style={{ flex: 1, minWidth: 0 }}>

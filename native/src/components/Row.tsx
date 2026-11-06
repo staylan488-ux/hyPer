@@ -80,7 +80,8 @@ export function Row({ title, detail, detailMark, value, leading, trailing, chevr
     <>
       {leading}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <BlancText variant={quiet || form ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={large ? undefined : 1}>
+        {/* One-line rows read in regular weight, as iOS's lists do; a row with a detail line leads with a medium title. */}
+        <BlancText variant={quiet || form || !detail ? 'body' : 'bodyStrong'} tone={destructive ? 'live' : quiet ? 'graphite' : 'ink'} numberOfLines={large ? undefined : 1}>
           {title}
         </BlancText>
         {detail && detailMark ? (
@@ -102,7 +103,11 @@ export function Row({ title, detail, detailMark, value, leading, trailing, chevr
         ) : null}
       </View>
       {value && !large ? (
-        <BlancText variant={form ? 'body' : 'secondary'} tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+        // Beside a two-line row the value sits on the title's line, so a column of values reads down with the names.
+        <BlancText
+          variant={form ? 'body' : 'secondary'}
+          tone="graphite"
+          style={[{ fontVariant: ['tabular-nums'] }, detail ? { alignSelf: 'flex-start', marginTop: 2 } : null]}>
           {value}
         </BlancText>
       ) : null}

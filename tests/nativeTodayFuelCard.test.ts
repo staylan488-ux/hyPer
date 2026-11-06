@@ -102,8 +102,8 @@ describe('Today’s Fuel card', () => {
     await act(async () => {
       appStore.setState({ macroTarget: { calories: 2000, protein: 150, carbs: 200, fat: 60 } as MacroTarget, macroTargetLoadedForUserId: 'user-1' });
     });
-    expect(shown()).toContain('800');
-    expect(shown()).toContain('kcal left');
+    expect(shown()).toContain('1200');
+    expect(shown()).toContain('of 2000 kcal');
     expect(shown()).not.toContain(ASK);
   });
 
@@ -126,8 +126,8 @@ describe('Today’s Fuel card', () => {
     await open();
 
     const card = host.querySelector('[aria-label*="calories left"]');
-    expect(card?.getAttribute('aria-label')).toBe('2000 calories left. Eaten 0 of 2000 calories, protein 0 of 150 grams');
-    expect(shown()).toContain('2000kcal left');
+    expect(card?.getAttribute('aria-label')).toBe('0 of 2000 calories eaten, 2000 calories left. Protein 0 of 150 grams');
+    expect(shown()).toContain('0of 2000 kcal');
     // Today shows the calories left and the protein meter; nothing of yesterday's 40 g.
     expect(shown()).toContain('Protein0 / 150 g');
   });

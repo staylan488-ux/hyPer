@@ -197,7 +197,8 @@ export default function FuelScreen() {
       />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {fuelDayTitle(selectedDate)}
+          {/* Today reads as on the Today tab; other days keep Fuel's own title. */}
+          {live ? format(selectedDate, 'EEEE, MMMM d') : fuelDayTitle(selectedDate)}
         </BlancText>
 
         <WeekStrip selected={selectedDate} dayKcal={dayKcal} target={kcalTarget} goal={goal} todayKey={todayKey} />
@@ -632,7 +633,9 @@ function MacroColumn({ macro, value, target, loaded, goal, edge }: {
       onPress={() => editTarget(macro)}
       style={({ pressed }) => ({
         flex: 1,
-        paddingHorizontal: 14,
+        // The first column's words start where the meal cards' do.
+        paddingLeft: 18,
+        paddingRight: 12,
         paddingTop: 13,
         paddingBottom: 15,
         backgroundColor: pressed ? c.pressed : 'transparent',
