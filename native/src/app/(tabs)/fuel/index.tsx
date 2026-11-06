@@ -393,9 +393,9 @@ function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
                   {format(day, 'd')}
                 </BlancText>
               </View>
-              {/* Clear of the selection disc, so the day's food and the chosen day read as two things. */}
+              {/* Other days show their food under the date; the chosen day's is the figure just below the strip. */}
               <View style={{ marginTop: 3 }}>
-                <DayMark logged={kcal !== undefined} kcal={kcal} target={target} goal={goal} />
+                <DayMark logged={kcal !== undefined && !isSelected} kcal={kcal} target={target} goal={goal} />
               </View>
             </Pressable>
           );

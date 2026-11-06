@@ -15,7 +15,7 @@ import { Label } from '~/components/Label';
 import { PlanCard } from '~/components/PlanCard';
 import { RollingText } from '~/components/RollingText';
 import { Tally } from '~/components/Tally';
-import { Hairline, Row } from '~/components/Row';
+import { Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { scrolledFromRest, TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
@@ -136,31 +136,22 @@ export default function TodayScreen() {
           </Section>
 
           {/* The muscles row opens Progress; before a set is logged this week, the header does. */}
-          <Section title="This week" action={week.trained > 0 ? undefined : { title: 'Progress', onPress: () => router.push('/today/progress') }}>
-            <Label>
-              <Row
-                title="Sessions"
-                value={
-                  plan.weekDone === null
-                    ? undefined
-                    : plan.weekTarget
-                      ? `${plan.weekDone} of ${plan.weekTarget}`
-                      : String(plan.weekDone)
-                }
-              />
-              {week.trained > 0 ? (
-                <>
-                  <Hairline />
-                  <Row
-                    title={`${week.inRange} of ${week.trained} trained muscles in range`}
-                    // Every exception the week has, by name: what Progress opens on.
-                    detail={weekExceptions(weekly) ?? (insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over))}
-                    chevron
-                    onPress={() => router.push('/today/progress')}
-                  />
-                </>
-              ) : null}
-            </Label>
+          {/* The week's sessions ride on the heading; the card holds the one row that leads somewhere. */}
+          <Section
+            title="This week"
+            note={plan.weekDone === null ? undefined : plan.weekTarget ? `${plan.weekDone} of ${plan.weekTarget} sessions` : `${plan.weekDone} ${plan.weekDone === 1 ? 'session' : 'sessions'}`}
+            action={week.trained > 0 ? undefined : { title: 'Progress', onPress: () => router.push('/today/progress') }}>
+            {week.trained > 0 ? (
+              <Label>
+                <Row
+                  title={`${week.inRange} of ${week.trained} trained muscles in range`}
+                  // Every exception the week has, by name: what Progress opens on.
+                  detail={weekExceptions(weekly) ?? (insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over))}
+                  chevron
+                  onPress={() => router.push('/today/progress')}
+                />
+              </Label>
+            ) : null}
           </Section>
         </Animated.View>
       </TabScroll>

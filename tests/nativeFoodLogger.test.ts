@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import * as dates from 'date-fns';
-import { act, createContext, createElement, Fragment, isValidElement, useContext, useEffect, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
+import { act, Children, createContext, createElement, Fragment, isValidElement, useContext, useEffect, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as zustand from 'zustand';
@@ -137,7 +137,12 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     inputs: Record<string, Input>;
     pressables: Record<string, Press>;
     sections: Record<string, SectionProps>;
+    /** The tab on screen, across the segmented lists and the entry methods; a change goes to whichever holds the name. */
     picker?: { selection: string; onSelectionChange: (tab: string) => void; disabled?: boolean };
+    /** Recent | Saved | Search, as drawn. */
+    segments?: { selection: string; onSelectionChange: (tab: string) => void; disabled?: boolean; tags: string[] };
+    /** Scan, Manual and Describe/Photo, as drawn. */
+    methods?: { selected: string | null; gemini: boolean; photoWaiting: boolean; disabled: boolean; onSelect: (method: string) => void };
     saved?: { onEditSavedMeal: (food: Food) => void };
     review?: ReviewProps;
     foodReview?: { food: Food };
@@ -150,6 +155,22 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     focus?: () => void;
     choices?: Choices;
   } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {} };
+  Object.defineProperty(captured, 'picker', {
+    get: () => {
+      const { segments, methods } = captured;
+      if (!segments) return undefined;
+      return {
+        selection: methods?.selected ?? segments.selection,
+        // Both hold still together while a save runs.
+        disabled: Boolean(segments.disabled) && (!methods || methods.disabled),
+        onSelectionChange: (name: string) => {
+          if (segments.tags.includes(name)) segments.onSelectionChange(name);
+          // A disabled method button takes no press.
+          else if (!methods!.disabled) methods!.onSelect(name);
+        },
+      };
+    },
+  });
   const ContextProvider = createContext<Context | null>(null);
   const useLogger = () => useContext(ContextProvider)!;
   const Probe = () => {
@@ -208,13 +229,16 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     'date-fns': dates,
     '@expo/ui/swift-ui': {
       Host: Wrap,
-      Picker: (props: NonNullable<typeof captured.picker> & PropsWithChildren<{ modifiers?: unknown[] }>) => {
-        captured.picker = { ...props, disabled: props.modifiers?.some((modifier) => (modifier as { disabled?: boolean } | undefined)?.disabled === true) };
+      Picker: (props: Omit<NonNullable<typeof captured.segments>, 'tags'> & PropsWithChildren<{ modifiers?: unknown[] }>) => {
+        const tags = Children.toArray(props.children).flatMap((child) =>
+          isValidElement<{ modifiers?: Array<{ tag?: string }> }>(child) ? (child.props.modifiers ?? []).map((modifier) => modifier?.tag).filter((tag): tag is string => Boolean(tag)) : [],
+        );
+        captured.segments = { ...props, tags, disabled: props.modifiers?.some((modifier) => (modifier as { disabled?: boolean } | undefined)?.disabled === true) };
         return Wrap(props);
       },
       Text: Wrap,
     },
-    '@expo/ui/swift-ui/modifiers': { accessibilityLabel: noop, pickerStyle: noop, tag: noop, disabled: (disabled = true) => ({ disabled }) },
+    '@expo/ui/swift-ui/modifiers': { accessibilityLabel: noop, pickerStyle: noop, tag: (tag: string) => ({ tag }), disabled: (disabled = true) => ({ disabled }) },
     'expo-router': {
       router: { back, push },
       useLocalSearchParams: () => ({ ...(editing ? { entry: loggedMilk.id } : savedMeal ? { savedMeal: recipe.id } : {}), ...params }),
@@ -310,6 +334,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/fuel/FoodLists': { Empty: ({ text }: { text: string }) => text, SearchTab: Empty, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
     '~/fuel/FoodReview': { FoodReview: (props: { food: Food }) => { captured.foodReview = props; return null; } },
     '~/fuel/RecentTab': { RecentTab: Empty },
+    '~/fuel/EntryMethods': { EntryMethods: (props: NonNullable<typeof captured.methods>) => { captured.methods = props; return null; } },
     '~/fuel/AiTab': {
       emptyAi: () => ({ hint: '', answer: '', photos: [], result: null, items: [] }),
       aiHasDraft: (draft: { hint: string; photos: unknown[]; result: unknown }) => Boolean(draft.hint) || draft.photos.length > 0 || draft.result !== null,
@@ -619,6 +644,37 @@ describe('native food logger transitions', () => {
     }
     await h.tab('saved');
     expect(h.captured.buttons['Build a meal']).toBeDefined();
+  });
+
+  it('splits the lists (segmented) from the entry methods, and never shows a list as chosen over a method', async () => {
+    const h = loggerHarness();
+    await h.render();
+    expect(h.captured.segments!.tags).toEqual(['recent', 'saved', 'search']);
+    expect(h.captured.methods).toMatchObject({ selected: null, gemini: true, photoWaiting: false, disabled: false });
+    for (const method of ['scan', 'manual', 'photo']) {
+      await act(async () => { h.captured.methods!.onSelect(method); });
+      expect(h.captured.methods!.selected).toBe(method);
+      // No segment carries this value, so none is drawn as chosen.
+      expect(h.captured.segments!.selection).toBe('none');
+      expect(h.captured.segments!.tags).not.toContain('none');
+    }
+    // A tap on a segment goes back to that list and clears the method.
+    await act(async () => { h.captured.segments!.onSelectionChange('saved'); });
+    expect(h.captured.segments!.selection).toBe('saved');
+    expect(h.captured.methods!.selected).toBeNull();
+  });
+
+  it('tells the entry methods when the worker’s photo estimate waits on another tab', async () => {
+    const h = loggerHarness({ worker: true });
+    await h.render();
+    expect(h.captured.methods).toMatchObject({ gemini: false, photoWaiting: false });
+    await h.tab('photo');
+    await act(async () => {
+      h.captured.photo!.setDraft((draft) => ({ ...draft, items: [photoItem] }));
+    });
+    expect(h.captured.methods!.photoWaiting).toBe(false);
+    await h.tab('recent');
+    expect(h.captured.methods!.photoWaiting).toBe(true);
   });
 
   it('closes freely while a Search result’s portion read runs, and holds for an analysis', async () => {

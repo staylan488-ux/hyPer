@@ -16,9 +16,13 @@ const GAP = 26;
 const BOX = { width: FIGURE_WIDTH * 2 + GAP, height: FIGURE.bottom - FIGURE.top };
 /** A muscle reaches at least this far from its edge to the finger, in points. */
 const REACH = 12;
-/** The seams between muscles, in the card's colour, in figure units (about a point); a little wider on the dark card. */
-const SEAM = 0.8;
-const DARK_SEAM = 1.05;
+/**
+ * The seams between muscles, in the card's colour, in figure units: about
+ * three quarters of a point at the figure's height; a little wider on the
+ * dark card.
+ */
+const SEAM = 1;
+const DARK_SEAM = 1.35;
 
 /**
  * The figure's tones, set by hand for each card. The body and any muscle
@@ -37,7 +41,7 @@ const TONES = {
   darkContrast: { body: '#2D2D2C', contour: '#5A5A56', below: '#6A6A64', in: '#F0F0EA' },
 } as const;
 /** The contour's width in figure units; half of it shows outside the body, about two thirds of a point. */
-const CONTOUR = 1.3;
+const CONTOUR = 1.6;
 
 type FigureState = 'untrained' | 'below' | 'in' | 'over';
 
@@ -90,7 +94,7 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * element: swiping up and down steps through this week's muscles (the rows
  * of the list below it), and down past the first clears the choice.
  */
-export function MuscleFigure({ volume, selected, onPick, height = 200 }: {
+export function MuscleFigure({ volume, selected, onPick, height = 164 }: {
   volume: MuscleVolume[];
   selected: MuscleGroup | null;
   onPick: (muscle: MuscleGroup | null) => void;

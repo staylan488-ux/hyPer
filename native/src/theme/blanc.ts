@@ -49,7 +49,7 @@ export const palettes = {
     /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
     switchOn: '#A3A39C',
     live: '#FF5A4C',
-    brand: '#E58477',
+    brand: '#CC5A4B',
   },
   // With Increase Contrast on (Settings, Accessibility, Display & Text Size),
   // as iOS's own colours do: the same chalk and labels, with darker (in dark,
@@ -92,7 +92,7 @@ export const palettes = {
     /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
     switchOn: '#C9C9C3',
     live: '#FF5A4C',
-    brand: '#E58477',
+    brand: '#CC5A4B',
   },
 } as const;
 
@@ -157,7 +157,7 @@ export const space = {
   /** Screen edge to a label card. */
   inset: 16,
   /** Between sections. */
-  section: 30,
+  section: 26,
 } as const;
 
 export const radius = {

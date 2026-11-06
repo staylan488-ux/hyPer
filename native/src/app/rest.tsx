@@ -236,7 +236,8 @@ export default function RestSheet() {
       {content}
     </ScrollView>
   ) : (
-    <View onMagicTap={magicTap} style={{ backgroundColor: c.ground, paddingBottom: 36 }}>
+    // The floating sheet keeps its own inset from the screen's foot: the button needs only its side margin below it.
+    <View onMagicTap={magicTap} style={{ backgroundColor: c.ground, paddingBottom: 16 }}>
       {content}
     </View>
   );

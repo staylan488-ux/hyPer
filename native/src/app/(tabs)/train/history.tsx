@@ -18,7 +18,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { announce, useAnnounce, useIncreaseContrast, useReduceMotion } from '~/lib/accessibility';
+import { announce, speak, useAnnounce, useLargeText, useReduceMotion } from '~/lib/accessibility';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
@@ -40,9 +40,6 @@ import { useBlanc, type Palette } from '~/theme/blanc';
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 /** A week's row in the month grid: a 44-point target holding the 34-point day, 4 points of clearance and its dot. */
 const DAY_ROW = 44;
-/** Days still to come, as Fuel's week strip dims them; Increase Contrast keeps them legible. */
-const FUTURE_OPACITY = 0.35;
-const FUTURE_CONTRAST_OPACITY = 0.55;
 
 /**
  * A length the way the rest of the app writes one ("48 min", "1 h 5 min"), or null without one.
@@ -130,14 +127,23 @@ export default function HistoryScreen() {
             ...(syncAvailable
               ? [
                   {
-                    // Words, not a circular-arrows icon, which reads as a plain refresh.
-                    type: 'button' as const,
-                    label: syncing ? 'Syncing…' : 'Sync',
-                    accessibilityLabel: syncing ? 'Syncing WHOOP' : 'Sync WHOOP',
-                    disabled: syncing,
-                    onPress: () => {
-                      haptics.tap();
-                      void sync();
+                    // Named for what it syncs: a pull down reloads History itself.
+                    type: 'menu' as const,
+                    label: 'History options',
+                    icon: { type: 'sfSymbol' as const, name: 'ellipsis' as const },
+                    menu: {
+                      items: [
+                        {
+                          type: 'action' as const,
+                          label: syncing ? 'Syncing…' : 'Sync WHOOP',
+                          icon: { type: 'sfSymbol' as const, name: 'arrow.triangle.2.circlepath' as const },
+                          disabled: syncing,
+                          onPress: () => {
+                            haptics.tap();
+                            void sync();
+                          },
+                        },
+                      ],
                     },
                   },
                 ]
@@ -336,7 +342,6 @@ function MonthGrid({
   interactive: boolean;
 }) {
   const c = useBlanc();
-  const contrast = useIncreaseContrast();
   // Each cell's date and words, worked out once per month.
   const cells = useMemo(
     () =>
@@ -366,7 +371,6 @@ function MonthGrid({
           future={cell.key > todayKey}
           lifts={marks.lifts.get(cell.key) ?? 0}
           activities={marks.other.get(cell.key)?.join(', ') ?? ''}
-          contrast={contrast}
           c={c}
         />
       ))}
@@ -385,7 +389,6 @@ function DayCell({
   future,
   lifts,
   activities,
-  contrast,
   c,
 }: {
   date: Date;
@@ -394,19 +397,21 @@ function DayCell({
   inMonth: boolean;
   selected: boolean;
   today: boolean;
-  /** After today: dimmed, still tappable. */
+  /** After today: in the quieter upcoming grey (4.5:1 or more), still tappable. */
   future: boolean;
   /** Workouts that day. */
   lifts: number;
   /** The day's activities by name ("Running, Cycling"), or empty. */
   activities: string;
-  contrast: boolean;
   c: Palette;
 }) {
+  // Another month's days leave their places empty, as Calendar's month view
+  // does, so the month visibly ends; the arrows and a swipe turn the page.
+  if (!inMonth) return <View style={{ width: `${100 / 7}%`, height: DAY_ROW }} />;
   const lift = lifts > 0;
   const other = activities.length > 0;
   // The date, then what the dots show: "Tuesday, November 4, today, workout, Running".
-  const spoken = [label, today ? 'today' : null, lift && inMonth ? (lifts > 1 ? `${lifts} workouts` : 'workout') : null, other && inMonth ? activities : null];
+  const spoken = [label, today ? 'today' : null, lift ? (lifts > 1 ? `${lifts} workouts` : 'workout') : null, other ? activities : null];
   return (
     <Pressable
       accessibilityRole="button"
@@ -424,20 +429,18 @@ function DayCell({
           borderRadius: 17,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: selected && inMonth ? c.ink : 'transparent',
+          backgroundColor: selected ? c.ink : 'transparent',
         }}>
         <BlancText
           variant="body"
-          weight={today || (selected && inMonth) ? '600' : undefined}
+          weight={today || selected ? '600' : undefined}
           // The grid's 34-point circles hold the number; the day's title
           // below carries the date at the full text size.
           maxFontSizeMultiplier={1.3}
           style={{
             fontVariant: ['tabular-nums'],
-            color: selected && inMonth ? c.label : inMonth ? c.ink : c.upcoming,
-            // Days to come dim (a chosen one stays on its disc); Increase
-            // Contrast keeps them and the neighbouring months' days legible.
-            opacity: selected && inMonth ? 1 : inMonth && future ? (contrast ? FUTURE_CONTRAST_OPACITY : FUTURE_OPACITY) : inMonth || contrast ? 1 : 0.55,
+            // Days to come read in the upcoming grey, still clear to tap (a chosen one stays on its disc).
+            color: selected ? c.label : future ? c.upcoming : c.ink,
           }}>
           {number}
         </BlancText>
@@ -445,7 +448,7 @@ function DayCell({
       {/* About 4 points under the 34-point disc, so the dot stays clear of a chosen day's ink. */}
       <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 4 }}>
         {/* One mark for a day with anything in it; the day's list says what. */}
-        {(lift || other) && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: lift ? c.ink : c.graphite }} /> : null}
+        {lift || other ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: lift ? c.ink : c.graphite }} /> : null}
       </View>
     </Pressable>
   );
@@ -491,21 +494,21 @@ function AddActivityButton({ day }: { day: string }) {
  */
 function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionModel | null }) {
   const c = useBlanc();
+  const large = useLargeText();
   const title = historyWorkoutTitle(workout);
   if (live) {
     const train = () => router.dismissTo('/train');
+    const detail =
+      live.sets.length > 0 ? `${live.doneCount} of ${live.sets.length} sets` : live.movements.length === 0 ? 'No movements yet' : undefined;
     return (
       <Row
         title={title}
-        detail={
-          live.sets.length > 0
-            ? `In progress · ${live.doneCount} of ${live.sets.length} sets`
-            : live.movements.length === 0
-              ? 'In progress · No movements yet'
-              : 'In progress'
-        }
-        // On the detail line, as Today writes live, so the title keeps the card's text edge.
-        detailMark={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />}
+        // At the accessibility sizes the state joins the detail line under the title, in words.
+        detail={large ? ['In progress', detail].filter(Boolean).join(' · ') : detail}
+        accessibilityLabel={speak([title, 'In progress', detail].filter(Boolean).join(', '))}
+        // As Today writes live: the dot before the state, on the right, so the
+        // title and its detail keep the card's text edge.
+        trailing={large ? undefined : <LiveState c={c} beside={Boolean(detail)} />}
         chevron
         onPress={train}
         menu={[{ title: 'Open', symbol: 'arrow.up.right.square', run: train }]}
@@ -529,6 +532,18 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
         <Row title={title} detail={detail} chevron onPress={open} menu={menu} />
       </View>
     </SwipeRow>
+  );
+}
+
+/** "● In progress" at a live row's right; beside a detail line it sits on the title's line, as a value does. */
+function LiveState({ c, beside }: { c: Palette; beside: boolean }) {
+  return (
+    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 7 }, beside ? { alignSelf: 'flex-start', marginTop: 2 } : null]}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
+      <BlancText variant="secondary" tone="graphite">
+        In progress
+      </BlancText>
+    </View>
   );
 }
 

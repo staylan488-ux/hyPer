@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { accessibilityLabel, disabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { disabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type NativeStackNavigationProp } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -51,6 +51,7 @@ import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, type ChosenMeta, type LoggerContextValue, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
+import { EntryMethods } from '~/fuel/EntryMethods';
 import { emptyManual, manualFromFood, manualHasChanges, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
 import { MealReview } from '~/fuel/MealReview';
 import { aiHasDraft, AiTab, aiTakesPhoto, emptyAi, type AiDraft } from '~/fuel/AiTab';
@@ -60,6 +61,11 @@ import { ScanTab } from '~/fuel/ScanTab';
 import { useBlanc } from '~/theme/blanc';
 
 type Tab = 'recent' | 'saved' | 'search' | 'scan' | 'manual' | 'photo';
+/** Recent, Saved and Search are lists to pick from; Scan, Manual and Photo/Describe are ways to enter a food. */
+type BrowseTab = 'recent' | 'saved' | 'search';
+const isBrowse = (tab: Tab): tab is BrowseTab => tab === 'recent' || tab === 'saved' || tab === 'search';
+/** The segmented control's value while an entry method shows: no segment has it, so none is chosen. */
+const NO_LIST = 'none';
 
 /** A meal's ingredients and amounts, to tell whether it changed. */
 const mealPartsKey = (draft: MealDraft) => draft.ingredients.map((part) => `${part.id}:${part.servings}`).join('|');
@@ -99,8 +105,9 @@ function useClaims(): [number, () => () => void] {
 }
 
 /**
- * Log food, or edit an entry: Recent, Saved, Search (USDA), Scan, Manual and Photo,
- * a review for a chosen food, and the meal builder, by the web logger's rules.
+ * Log food, or edit an entry: Recent, Saved and Search (USDA) to pick from; Scan,
+ * Manual and Describe (Photo on the worker) to enter a food; a review for a
+ * chosen food, and the meal builder, by the web logger's rules.
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
  * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
  * `saveEntries` (comma-separated logged entries to keep as a new saved meal),
@@ -766,22 +773,32 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
           </View>
 
           {!chosen && !(meal && mealReview && !paused) ? (
-            <Host matchContents={{ vertical: true }} style={{ marginHorizontal: 16, marginTop: 14 }}>
-              {/* Keep a save's result visible on its original tab. */}
-              <Picker
-                selection={tab}
-                onSelectionChange={(value: Tab) => openTab(value)}
-                modifiers={[pickerStyle('segmented'), disabled(saving)]}>
-                <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
-                <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
-                <SwiftText modifiers={[tag('search')]}>Search</SwiftText>
-                <SwiftText modifiers={[tag('scan')]}>Scan</SwiftText>
-                <SwiftText modifiers={[tag('manual')]}>Manual</SwiftText>
-                <SwiftText modifiers={[tag('photo'), ...(!gemini && photoWaiting ? [accessibilityLabel('Photo, estimate waiting')] : [])]}>
-                  {gemini ? 'AI' : photoWaiting ? 'Photo •' : 'Photo'}
-                </SwiftText>
-              </Picker>
-            </Host>
+            <View style={{ marginHorizontal: 16, marginTop: 14, gap: 10 }}>
+              {/* The lists to pick from. While an entry method is on screen no
+                  segment is chosen, so the control never claims a list that
+                  isn't showing; a tap on one goes back to it. */}
+              <Host matchContents={{ vertical: true }}>
+                {/* Keep a save's result visible on its original tab. */}
+                <Picker
+                  selection={isBrowse(tab) ? tab : NO_LIST}
+                  onSelectionChange={(value: BrowseTab | typeof NO_LIST) => {
+                    if (value !== NO_LIST) openTab(value);
+                  }}
+                  modifiers={[pickerStyle('segmented'), disabled(saving)]}>
+                  <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
+                  <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
+                  <SwiftText modifiers={[tag('search')]}>Search</SwiftText>
+                </Picker>
+              </Host>
+              {/* The ways to enter a food that isn't listed. */}
+              <EntryMethods
+                selected={isBrowse(tab) ? null : tab}
+                gemini={gemini}
+                photoWaiting={photoWaiting}
+                disabled={saving}
+                onSelect={openTab}
+              />
+            </View>
           ) : null}
 
           {capturing && meal && mealTotals && !chosen ? (

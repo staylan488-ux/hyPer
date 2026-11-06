@@ -208,7 +208,7 @@ function WeightCard() {
               ) : null}
               {trend.fittedDayCount >= 2 ? (
                 <View style={{ marginTop: 10 }} pointerEvents="none">
-                  <WeightChart points={centredTrendLine(trend.points)} days={30} unit={unit} height={44} compact />
+                  <WeightChart points={centredTrendLine(trend.points)} days={21} unit={unit} height={44} compact />
                 </View>
               ) : null}
             </>

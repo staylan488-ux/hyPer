@@ -8,6 +8,7 @@ import { useKeepAwakeWhile } from '@/lib/keepAwake';
 import { useAuthStore } from '@/stores/authStore';
 
 import { WorkoutAccessory } from '~/components/WorkoutAccessory';
+import { useWorkoutBarShown } from '~/lib/workoutBar';
 import { useAccountData, useAccountDay } from '~/lib/accountData';
 import { useFinishedStore } from '~/lib/finished';
 import { resetFuel } from '~/lib/fuel';
@@ -54,6 +55,10 @@ export default function TabsLayout() {
   const nextShowsWorkout = onTabRoot === null ? showsWorkout : onTabRoot && !(segments[1] === 'train' && resting);
   if (nextShowsWorkout !== showsWorkout) setShowsWorkout(nextShowsWorkout);
   const accessory = live && !nextShowsWorkout;
+  // Tab pages size their foot by the bar that is really there.
+  useEffect(() => {
+    useWorkoutBarShown.setState({ shown: accessory });
+  }, [accessory]);
   useRestLifecycle();
   useRestFinish();
   useRestPreferences();

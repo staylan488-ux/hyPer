@@ -760,7 +760,9 @@ describe('All weigh-ins', () => {
     const rows: RowSeen[] = [];
     await mount(createElement(loadWeightScreen(you, { rows })));
     const all = rows.filter((row) => row.title === 'All weigh-ins').at(-1);
-    expect(all?.value).toBe('9');
+    // The row leads on; its count would only repeat the list it opens.
+    expect(all).toBeDefined();
+    expect(all?.value).toBeUndefined();
     expect(rows.filter((row) => row.title.endsWith(' lb')).length).toBeGreaterThan(0);
   });
 

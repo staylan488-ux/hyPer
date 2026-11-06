@@ -4,17 +4,23 @@ import { useColorScheme, useWindowDimensions, View, type AccessibilityActionEven
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
-import { indexAtX, linearScale, monotonePath, paddedDomain, xAtIndex } from '@/lib/chartGeometry';
+import { indexAtX, linearScale, monotonePath, xAtIndex } from '@/lib/chartGeometry';
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import { weightChartTicks, type WeightChartPoint, type WeightChartWindow } from '@/lib/weightHistory';
 import type { WeightTrendPoint } from '@/lib/weightTrend';
 import { speak, spokenUnit, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
+import { sparklineDomain, weightScale } from '~/lib/weightChartScale';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 
+// The full chart's top scale line sits this far down, so its label draws whole.
 const PAD_Y = 8;
+// The sparkline's room above and below: its end dot's radius and a little more.
+const SPARK_PAD_Y = 4;
+// The weigh-in dots' largest radius; the lowest one keeps a little more than this above the axis.
+const DOT_RADIUS = 2;
 // The full chart's days start and end this far in, so the first and last
 // day's dots (and the chosen day's ring) draw whole: iOS clips the drawing
 // to its frame.
@@ -29,18 +35,6 @@ const AXIS_CHAR = 7.2;
 // The weight scale on the right: its column, and the room between it and the line.
 const SCALE_COLUMN = 34;
 const SCALE_GAP = 8;
-// Steps the weight scale can take, in pounds or kilograms.
-const SCALE_STEPS = [0.5, 1, 2, 5, 10, 20, 25, 50, 100];
-
-/** Two or three round weights inside the chart's range, for its scale. */
-function scaleTicks([low, high]: [number, number]): { values: number[]; step: number } {
-  for (const step of SCALE_STEPS) {
-    const values: number[] = [];
-    for (let value = Math.ceil(low / step) * step; value <= high; value += step) values.push(Number(value.toFixed(1)));
-    if (values.length <= 3) return { values, step };
-  }
-  return { values: [], step: 1 };
-}
 
 /**
  * The smoothed body-weight line with the day's weigh-ins as dots (a mis-read
@@ -50,9 +44,10 @@ function scaleTicks([low, high]: [number, number]): { values: number[]; step: nu
  * readout line above is hidden from it. Given a `calendar` (Body weight's
  * ranges), the days sit on a calendar axis with dates under it, so the line
  * starts where the weigh-ins do and stops at the last one. The compact one is
- * a quiet sparkline: the line alone, scaled to the line, so a slow trend
- * still shows, ending on a dot at the latest trend. The full chart has a
- * quiet weight scale on the right and a key under the dates.
+ * a quiet sparkline: the line alone, scaled tightly to the line, so a few
+ * weeks' trend shows its shape, ending on a dot at the latest trend. The
+ * full chart has a quiet weight scale on the right, round weights that
+ * enclose every dot with the lowest as the axis, and a key under the dates.
  */
 export function WeightChart({
   points,
@@ -117,11 +112,14 @@ export function WeightChart({
     ]);
     // At least 2 lb (1 kg) top to bottom, half that for the sparkline.
     const minSpan = (unit === 'lb' ? 2 : 1) / (compact ? 2 : 1);
-    const domain = paddedDomain(values, 0.14, minSpan);
-    const y = linearScale(domain, [height - PAD_Y, PAD_Y]);
+    // The full chart's lowest scale line is its axis, on the bottom edge.
+    const bottom = height - 0.5;
+    const scale = compact ? null : weightScale(values, { minSpan, plotHeight: bottom - PAD_Y, clearance: DOT_RADIUS + 1.5 });
+    const domain = scale ? scale.domain : sparklineDomain(values, minSpan);
+    const y = linearScale(domain, compact ? [height - SPARK_PAD_Y, SPARK_PAD_Y] : [bottom, PAD_Y]);
     const x = (slot: number) => padX + xAtIndex(slot, plotWidth, slots, 'point');
     // Dots shrink as the days crowd together, so a year reads as a band around the line.
-    const radius = Math.max(1.25, Math.min(2.5, (plotWidth / Math.max(1, slots)) * 0.9));
+    const radius = Math.max(1.25, Math.min(DOT_RADIUS, (plotWidth / Math.max(1, slots)) * 0.9));
     const line = series.map((point) => ({ x: x(point.slot), y: y(toUnit(point.ewmaKg)) }));
     const dots = compact
       ? []
@@ -129,8 +127,7 @@ export function WeightChart({
           point.observedKg == null ? [] : [{ index, x: line[index].x, y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
         );
     const axis = ticks.map((tick) => ({ ...tick, x: x(tick.slot) }));
-    const scale = compact ? null : scaleTicks(domain);
-    const grid = scale ? scale.values.map((value) => ({ value, y: y(value), label: value.toFixed(scale.step < 1 ? 1 : 0) })) : [];
+    const grid = scale ? scale.ticks.map((value, index) => ({ value, y: y(value), axis: index === 0, label: value.toFixed(scale.step < 1 ? 1 : 0) })) : [];
     return { line, path: monotonePath(line), dots, radius, axis, grid };
   }, [series, slots, width, plotWidth, padX, height, unit, compact, ticks]);
 
@@ -243,9 +240,10 @@ export function WeightChart({
           })}>
       {width > 0 ? (
         <Svg width={width} height={height} style={{ overflow: 'visible' }}>
-          {compact ? null : <Line x1={0} x2={plotRight} y1={height - 0.5} y2={height - 0.5} stroke={c.hairline} strokeWidth={1} />}
+          {/* The lowest scale line is the axis the dates hang from; a range with no weigh-ins keeps the axis alone. */}
+          {!compact && !geometry ? <Line x1={0} x2={plotRight} y1={height - 0.5} y2={height - 0.5} stroke={c.hairline} strokeWidth={1} /> : null}
           {geometry?.grid.map((tick) => (
-            <Line key={tick.value} x1={0} x2={plotRight} y1={tick.y} y2={tick.y} stroke={c.hairline} strokeWidth={0.5} />
+            <Line key={tick.value} x1={0} x2={plotRight} y1={tick.y} y2={tick.y} stroke={c.hairline} strokeWidth={tick.axis ? 1 : 0.5} />
           ))}
           {geometry?.dots.map((dot) => (
             <Circle
@@ -336,14 +334,14 @@ export function WeightChart({
             </BlancText>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.graphite, opacity: dotOpacity }} />
+            <View style={{ width: 2 * DOT_RADIUS, height: 2 * DOT_RADIUS, borderRadius: DOT_RADIUS, backgroundColor: c.graphite, opacity: dotOpacity }} />
             <BlancText variant="footnote" tone="graphite">
               Weigh-ins
             </BlancText>
           </View>
           {series.some((point) => point.isOutlier) ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 5, height: 5, borderRadius: 2.5, borderWidth: 1, borderColor: c.graphite, opacity: dotOpacity }} />
+              <View style={{ width: 2 * DOT_RADIUS + 1, height: 2 * DOT_RADIUS + 1, borderRadius: DOT_RADIUS + 0.5, borderWidth: 1, borderColor: c.graphite, opacity: dotOpacity }} />
               <BlancText variant="footnote" tone="graphite">
                 Mis-read
               </BlancText>

@@ -29,6 +29,7 @@ import { announce, screenReaderRunning, speak, spokenClock, useAnnounce, useLarg
 import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
+import { useWorkoutBarShown } from '~/lib/workoutBar';
 import { formatLoad, formatMinutes, formatRepRange, formatSet, formatTarget } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
@@ -92,7 +93,7 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
 }
 
 /** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
-const FIGURE_SIZE = 76;
+const FIGURE_SIZE = 72;
 
 /**
  * The weight and reps share one size, stepping down as their digits add up,
@@ -110,7 +111,7 @@ export default function TrainScreen() {
 }
 
 /** The session clock; ticks on its own so the screen around it stays still. */
-function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; total: number }) {
+function Elapsed({ startedAt }: { startedAt: Date }) {
   const now = useNow(1000);
   const elapsed = Math.max(0, (now - startedAt.getTime()) / 1000);
   return (
@@ -122,7 +123,6 @@ function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; to
       style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
       {/* Minutes, as Today's card says it: a ticking m:ss here read like a time of day. */}
       {formatMinutes(Math.floor(elapsed / 60))}
-      {total > 0 ? ` · ${done} of ${total} sets` : null}
     </BlancText>
   );
 }
@@ -218,6 +218,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
+  const lastWeight = last && typeof last.weight === 'number' && last.weight > 0 ? formatLoad(last.weight) : null;
+  const lastReps = last && typeof last.reps === 'number' && Number.isFinite(last.reps) ? last.reps : null;
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
   const cardLine = current
     ? [
@@ -226,11 +228,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           ? `superset with ${current.movement.superset.partnerName}`
           : current.movement.substitutesFor
             ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-            : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
+            : null,
       ]
         .filter(Boolean)
         .join(' · ')
     : '';
+
+  // The rep target sits under the reps figure, beside last time's reps: "8–10 · last 9".
+  const repTarget = current ? formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max) : null;
 
   const blocked = current?.blocked ?? null;
   // Why the set can't log yet (a superset's turn), as it appears.
@@ -320,6 +325,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     announce(`${movement.name} brought back${next ? ', up now' : ''}`);
   };
 
+  // The undo bar sits above whatever covers the foot: the workout bar only shows here during a rest.
+  const workoutBar = useWorkoutBarShown((state) => state.shown);
   const { finish, closing } = useFinishWorkout(session);
 
   // Magic Tap (a two-finger double tap) logs the set that's ready, exactly
@@ -460,8 +467,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const tally = (
       <Tally
         compact
-        // A finished movement's strokes recede with its name.
-        quiet={complete}
         marks={movement.sets.map((set) => set.completed)}
         current={isCurrent && current ? current.setNumber - 1 : null}
         accessibilityLabel={`${movement.done} of ${movement.sets.length} sets done`}
@@ -511,8 +516,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         quiet
         title={movement.name}
         trailing={tally}
-        // It opens its sets to correct: a disclosure says so, as the row no longer looks up next.
-        chevron
         accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
         onPress={() => openMovement(movement.exerciseId)}
         actions={actions}
@@ -611,7 +614,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           scrollOffset.current = event.nativeEvent.contentOffset.y;
           if (__DEV__ && devScrollTrace.enabled) console.log(`[scroll] ${event.nativeEvent.contentOffset.y.toFixed(1)}`);
         }}>
-        <Elapsed startedAt={session.startedAt} done={session.doneCount} total={session.sets.length} />
+        <Elapsed startedAt={session.startedAt} />
 
         {/* An empty session has no marks to draw. */}
         {session.sets.length > 0 ? (
@@ -692,8 +695,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   value={draft.weight}
                   unit="lb"
                   size={figure}
-                  last={last && Number.isFinite(last.weight ?? NaN) && (last.weight ?? 0) > 0 ? formatLoad(last.weight) : undefined}
-                  spokenLast={last && Number.isFinite(last.weight ?? NaN) && (last.weight ?? 0) > 0 ? `${formatLoad(last.weight)} pounds` : undefined}
+                  caption={lastWeight ? `last ${lastWeight}` : undefined}
+                  spokenCaption={lastWeight ? `Last time, ${lastWeight} pounds` : undefined}
                   accessibilityLabel="Weight in pounds"
                   onChange={(text) => setDraft({ ...draft, weight: text, touched: true })}
                   onFocus={() => setEditing('weight')}
@@ -707,8 +710,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   unit="reps"
                   size={figure}
                   integer
-                  last={last && Number.isFinite(last.reps ?? NaN) ? String(last.reps) : undefined}
-                  spokenLast={last && Number.isFinite(last.reps ?? NaN) ? `${last.reps} reps` : undefined}
+                  caption={[repTarget?.replace(/ reps?$/, ''), lastReps !== null ? `last ${lastReps}` : null].filter(Boolean).join(' · ') || undefined}
+                  spokenCaption={[repTarget ? `Target ${repTarget}` : null, lastReps !== null ? `last time ${lastReps} reps` : null].filter(Boolean).join(', ') || undefined}
                   accessibilityLabel="Reps"
                   onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
                   onFocus={() => setEditing('reps')}
@@ -798,7 +801,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
       <UndoBar
         label={undo && !closing ? `${undo.name} ${undo.endedEarly ? 'ended early' : 'skipped'}` : null}
-        bottom={tabBarCover(true) + 8}
+        bottom={tabBarCover(workoutBar) + 8}
         onUndo={() => {
           if (undo) bringBack(undo, undo.wasCurrent);
         }}
@@ -919,16 +922,16 @@ function BigValue({
   onBlur,
   accessibilityLabel,
   integer,
-  last,
-  spokenLast,
+  caption,
+  spokenCaption,
 }: {
   ref: Ref<TextField>;
   value: string;
   unit: string;
   size: number;
-  /** Last time's value, written small under the ruled line ("last 60"). */
-  last?: string;
-  spokenLast?: string;
+  /** Written small under the ruled line: last time's value, and for reps the target ("8–10 · last 9"). */
+  caption?: string;
+  spokenCaption?: string;
   onChange: (text: string) => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -982,11 +985,12 @@ function BigValue({
     <BlancText
       variant="meta"
       tone="graphite"
-      accessibilityLabel={spokenLast ? `Last time, ${spokenLast}` : undefined}
-      accessibilityElementsHidden={!last}
-      importantForAccessibility={last ? 'auto' : 'no-hide-descendants'}
-      style={{ marginTop: 5, minHeight: CAPTION_HEIGHT, opacity: last ? 1 : 0 }}>
-      {last ? `last ${last}` : ' '}
+      accessibilityLabel={spokenCaption}
+      accessibilityElementsHidden={!caption}
+      importantForAccessibility={caption ? 'auto' : 'no-hide-descendants'}
+      numberOfLines={1}
+      style={{ marginTop: 5, minHeight: CAPTION_HEIGHT, opacity: caption ? 1 : 0 }}>
+      {caption || ' '}
     </BlancText>
     </View>
   );

@@ -7,7 +7,7 @@ import { useBlanc } from '~/theme/blanc';
 import { BlancText } from './BlancText';
 
 /**
- * A choice capsule: ink when selected, quiet fill otherwise. Choosing ticks
+ * A choice capsule: an ink ring when selected, quiet fill otherwise. Choosing ticks
  * (a value change); a hold can offer more, as a VoiceOver action too. Without
  * `selected` it is a quiet action pill (Add RPE, Skip) in the same metrics.
  */
@@ -62,11 +62,14 @@ export function Chip({ label, selected, onPress, onLongPress, tabular, haptic = 
           borderRadius: 17,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.fill,
+          // Chosen is an ink ring on the label colour, so a sheet's one filled shape stays its main button.
+          backgroundColor: selected ? c.label : pressed ? c.pressed : c.fill,
+          borderWidth: 1.5,
+          borderColor: selected ? c.ink : 'transparent',
         },
         style,
       ]}>
-      <BlancText variant="footnote" weight="600" tone={selected ? 'onCapsule' : 'ink'} style={tabular ? { fontVariant: ['tabular-nums'] } : undefined}>
+      <BlancText variant="footnote" weight="600" tone="ink" style={tabular ? { fontVariant: ['tabular-nums'] } : undefined}>
         {label}
       </BlancText>
     </Pressable>

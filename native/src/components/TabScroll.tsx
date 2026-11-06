@@ -3,7 +3,7 @@ import { Platform, ScrollView, Settings, View, type ScrollViewProps } from 'reac
 import { initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { scrollRoomExtra } from '~/lib/scrollRoom';
-import { useHasLiveSession } from '~/lib/session';
+import { useWorkoutBarShown } from '~/lib/workoutBar';
 
 import { dismissOpenSwipeRow } from './SwipeRow';
 
@@ -40,7 +40,8 @@ type TabScrollProps = Omit<ScrollViewProps, 'contentContainerStyle'> & {
  * ([scroll room](../lib/scrollRoom.ts)); pages that fit are left alone.
  */
 export function TabScroll({ children, onLayout, ...props }: TabScrollProps) {
-  const accessory = useHasLiveSession();
+  // The workout bar's height counts only while it is showing (it steps aside on Today and Train).
+  const accessory = useWorkoutBarShown((state) => state.shown);
   const [viewport, setViewport] = useState(0);
   const [content, setContent] = useState(0);
   const extra =

@@ -115,10 +115,9 @@ export default function ProgressScreen() {
                   its new value) or on a muscle's row.
                 */}
                 <BlancText
-                  variant="secondary"
-                  tone="graphite"
+                  variant="headline"
                   numberOfLines={large ? undefined : 1}
-                  style={{ paddingHorizontal: 6, minHeight: 20 }}
+                  style={{ paddingHorizontal: 6, minHeight: 22 }}
                   accessibilityLabel={inWords(caption)}>
                   {caption}
                 </BlancText>
@@ -226,16 +225,18 @@ function Disclosure({ open }: { open: boolean }) {
   );
 }
 
+/** The rail's marker for this week's sets: a solid dot, a reading rather than a handle to drag. */
+const MARKER = 7;
+
 /**
  * Weekly sets on a line from zero past the ceiling. The band is in range
  * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
- * "in range" counts it. An open row adds the band's darker middle, the best
- * range, and names the marks under the rail.
+ * "in range" counts it, in the mark tone (at least 2:1 against the track in
+ * every palette). An open row adds the band's darker middle, the best range,
+ * and names the marks under the rail.
  */
 function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean; open: boolean }) {
   const c = useBlanc();
-  // Increase Contrast draws the quiet marks at full strength.
-  const contrast = useIncreaseContrast();
   const max = Math.max(landmark.mrv * 1.1, sets, 1);
   const share = (value: number) => Math.min(100, (value / max) * 100);
   const at = (value: number) => `${share(value)}%` as const;
@@ -251,8 +252,7 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
             width: span(landmark.mev, landmark.mrv),
             height: 5,
             borderRadius: 2.5,
-            backgroundColor: c.graphite,
-            opacity: contrast ? 0.45 : 0.28,
+            backgroundColor: c.mark,
           }}
         />
         {open ? (
@@ -265,7 +265,6 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
               height: 5,
               borderRadius: 2.5,
               backgroundColor: c.graphite,
-              opacity: contrast ? 1 : 0.7,
             }}
           />
         ) : null}
@@ -273,13 +272,11 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
           style={{
             position: 'absolute',
             left: at(sets),
-            marginLeft: -5,
-            width: 10,
-            height: 10,
-            borderRadius: 5,
+            marginLeft: -MARKER / 2,
+            width: MARKER,
+            height: MARKER,
+            borderRadius: MARKER / 2,
             backgroundColor: hot ? c.live : c.ink,
-            borderWidth: 2,
-            borderColor: c.label,
           }}
         />
       </View>
@@ -311,16 +308,39 @@ function inWords(text: string): string {
   return speak(text.replace(/~(?=\d)/g, 'about ').replace(/(\d)\/(\d)/g, '$1 of $2'));
 }
 
+/**
+ * A figure with its units, inside a graphite line: the numbers in ink, the
+ * units ("h", "min") left graphite, as "1,342 kcal" reads. One run of text,
+ * so VoiceOver and the line's wrapping treat it as the parent's.
+ */
+function FigureWithUnits({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(\d[\d,.]*)/).map((part, index) =>
+        index % 2 === 1 ? (
+          <BlancText key={index} variant="secondary" weight="500">
+            {part}
+          </BlancText>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 /** Training time as VoiceOver says it: "1 hour 20 minutes", or "none". */
 const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'none');
 
-/** The width beside a chart that holds its one scale figure. */
+/** The width beside the training chart that holds its one scale figure. */
 const SCALE_COLUMN = 44;
+/** The width beside a nutrition chart that holds its target ("2,600 target"). */
+const TARGET_COLUMN = 76;
 
 /** A chart's scale figure, beside the line it names. */
-function ScaleLabel({ bottom, children }: { bottom: `${number}%`; children: string }) {
+function ScaleLabel({ bottom, width = SCALE_COLUMN, children }: { bottom: `${number}%`; width?: number; children: string }) {
   return (
-    <View style={{ position: 'absolute', right: 0, width: SCALE_COLUMN, bottom, marginBottom: -8, height: 16, justifyContent: 'center' }}>
+    <View style={{ position: 'absolute', right: 0, width, bottom, marginBottom: -8, height: 16, justifyContent: 'center' }}>
       <BlancText
         variant="footnote"
         tone="graphite"
@@ -365,12 +385,12 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
         <BlancText variant="secondary" tone="graphite">
           Week to date
         </BlancText>
-        <BlancText variant="secondary" weight="500" style={[{ fontVariant: ['tabular-nums'] }, right]}>
-          {formatMinutes(current?.totalMinutes ?? 0)}
+        <BlancText variant="secondary" tone="graphite" style={[{ fontVariant: ['tabular-nums'] }, right]}>
+          <FigureWithUnits text={formatMinutes(current?.totalMinutes ?? 0)} />
         </BlancText>
       </View>
       <View style={{ height: 110, marginTop: 18 }}>
-        {/* The scale's top and the zero line; a week without training draws nothing on it. */}
+        {/* The scale's top and the zero line; a week without training draws a short tick on it, so it reads as none rather than missing. */}
         <View style={{ position: 'absolute', left: 0, right: SCALE_COLUMN + 6, top: 0, height: 1, backgroundColor: c.hairline }} />
         <View style={{ position: 'absolute', left: 0, right: SCALE_COLUMN + 6, bottom: 0, height: 1, backgroundColor: c.hairline }} />
         <ScaleLabel bottom="100%">{formatMinutes(top)}</ScaleLabel>
@@ -387,7 +407,9 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
                     opacity: contrast || index === points.length - 1 ? 1 : 0.5,
                   }}
                 />
-              ) : null}
+              ) : (
+                <View style={{ height: 2, borderRadius: 1, backgroundColor: c.track }} />
+              )}
             </View>
           ))}
         </View>
@@ -459,7 +481,7 @@ function NutritionSection() {
 
 /**
  * One macro across the last seven days, against its daily target (dashed,
- * its figure beside it); today in ink, as in the training chart, and a day
+ * named beside it, "2,600 target"); today in ink, as in the training chart, and a day
  * with nothing logged left empty. A day well past target is red only where
  * that is a warning for the goal. The header is the daily average of the
  * logged days (Fuel already shows today), with how many days it covers
@@ -536,14 +558,14 @@ function MacroBars({
       </View>
       <View style={{ height: 72, marginTop: 12 }}>
         {/* The zero line: a day with nothing logged draws nothing on it. */}
-        <View style={{ position: 'absolute', left: 0, right: SCALE_COLUMN + 6, bottom: 0, height: 1, backgroundColor: c.hairline }} />
+        <View style={{ position: 'absolute', left: 0, right: TARGET_COLUMN + 6, bottom: 0, height: 1, backgroundColor: c.hairline }} />
         {target > 0 ? (
           <>
             <View
               style={{
                 position: 'absolute',
                 left: 0,
-                right: SCALE_COLUMN + 6,
+                right: TARGET_COLUMN + 6,
                 bottom: `${(target / max) * 100}%`,
                 borderTopWidth: 1,
                 borderStyle: 'dashed',
@@ -551,10 +573,10 @@ function MacroBars({
                 opacity: contrast ? 1 : 0.6,
               }}
             />
-            <ScaleLabel bottom={`${(target / max) * 100}%`}>{formatWhole(target)}</ScaleLabel>
+            <ScaleLabel bottom={`${(target / max) * 100}%`} width={TARGET_COLUMN}>{`${formatWhole(target)} target`}</ScaleLabel>
           </>
         ) : null}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%', marginRight: SCALE_COLUMN + 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%', marginRight: TARGET_COLUMN + 6 }}>
           {days.map((day) => {
             const over = isOver(day);
             const current = day.date === todayKey;
@@ -576,7 +598,7 @@ function MacroBars({
           })}
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, marginRight: SCALE_COLUMN + 6 }}>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, marginRight: TARGET_COLUMN + 6 }}>
         {days.map((day) => (
           <BlancText key={day.date} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {format(parseISO(day.date), 'EEEEE')}

@@ -214,7 +214,6 @@ export default function WeightScreen() {
                   !allRead || entries.length > RECENT ? (
                     <Row
                       title="All weigh-ins"
-                      value={allRead ? String(entries.length) : undefined}
                       chevron
                       onPress={() => {
                         haptics.tap();
