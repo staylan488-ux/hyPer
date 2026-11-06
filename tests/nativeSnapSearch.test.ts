@@ -32,13 +32,17 @@ let milk: Food;
 type Press = { accessibilityLabel?: string; onPress?: () => void };
 const pressables: Press[] = [];
 let detail = deferred<Food>();
+/** USDA's answer for the words sent; milk for any words unless a case says otherwise. */
+let usda: (query: string) => Promise<Food[]> = async () => [milk];
+let retry: (() => void) | undefined;
 const release = vi.fn();
 const beginRead = vi.fn(() => release);
 const beginBusy = vi.fn(() => release);
 const chooseFood = vi.fn();
 const composeMeal = vi.fn();
 const logger: Record<string, unknown> = {
-  purpose: 'log', editing: null, beginBusy, beginRead, beginSave: () => noop, chooseFood, composeMeal, addIngredients: noop, groups: [], when: {}, savedMeals: [] as Food[],
+  purpose: 'log', editing: null, beginBusy, beginRead, beginSave: () => noop, chooseFood, composeMeal, addIngredients: noop, groups: [],
+  when: { date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: null }, savedMeals: [] as Food[],
   // Quick adds live on the sheet (#179), so a list keeps them across tabs.
   quickAddStates: {}, setQuickAddStates: noop, pendingQuickAdds: new Map(),
 };
@@ -46,7 +50,8 @@ const logger: Record<string, unknown> = {
 const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: string }> }>('fuel/FoodLists.tsx', {
   'expo-symbols': { SymbolView: Empty },
   'react-native': {
-    ActivityIndicator: Empty,
+    // drawn as a marker, so a case can see the spinner in place of results
+    ActivityIndicator: () => createElement('progress'),
     Alert: { alert: vi.fn() },
     Pressable: (props: PropsWithChildren<Press>) => {
       pressables.push(props);
@@ -68,9 +73,10 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: strin
     retireSavedMeal: vi.fn(),
   },
   '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
-  '@/lib/usdaClient': { searchUsdaFoodsSecureStrict: async () => [milk], withUsdaPortion: () => detail.promise },
+  '@/lib/usdaClient': { searchUsdaFoodsSecureStrict: (query: string) => usda(query), withUsdaPortion: () => detail.promise },
   '~/components/BlancText': { BlancText: ({ children }: PropsWithChildren) => createElement('span', null, children) },
-  '~/components/Capsule': { Capsule: Empty },
+  // Retry, kept so a case can press it
+  '~/components/Capsule': { Capsule: (props: { title: string; onPress: () => void }) => { if (props.title === 'Retry') retry = props.onPress; return null; } },
   '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => null, showActionSheet: noop },
   '~/components/Label': { Label: Wrap },
   '~/components/Row': { Hairline: Empty },
@@ -95,6 +101,8 @@ beforeEach(() => {
   };
   pressables.length = 0;
   detail = deferred();
+  usda = async () => [milk];
+  retry = undefined;
   release.mockClear();
   chooseFood.mockClear();
   root = createRoot(document.createElement('div'));
@@ -179,5 +187,68 @@ describe('Search: one field for saved meals and USDA', () => {
     expect(host.textContent).toContain(milk.name);
     expect(host.textContent).not.toContain('Saved');
     expect(host.textContent).not.toContain('Foods');
+  });
+});
+
+describe('Search: results belong to the words in the field', () => {
+  it('shows no result, or its +, from the last words while new words are looked up', async () => {
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(SearchTab, { query: milk.name })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).toContain(milk.name);
+    // New words: their lookup waits; milk's rows must not stay to be tapped or added.
+    const oats: Food = { ...milk, id: `oats-${serial}`, name: `Oats ${serial}`, fdc_id: `${5000 + serial}` };
+    const answer = deferred<Food[]>();
+    usda = () => answer.promise;
+    pressables.length = 0;
+    await act(async () => { root.render(createElement(SearchTab, { query: oats.name })); });
+    expect(host.textContent).not.toContain(milk.name);
+    expect(pressables.filter((props) => props.accessibilityLabel?.includes(milk.name))).toEqual([]);
+    expect(host.querySelector('progress')).not.toBeNull();
+    // still so once the pause after typing has passed and the lookup runs
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).not.toContain(milk.name);
+    expect(host.querySelector('progress')).not.toBeNull();
+    await act(async () => { answer.resolve([oats]); });
+    expect(host.textContent).toContain(oats.name);
+    expect(host.querySelector('progress')).toBeNull();
+    expect(pressables.some((props) => props.accessibilityLabel === `Add ${oats.name}`)).toBe(true);
+  });
+
+  it('drops an answer that lands for words no longer in the field', async () => {
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    const late = deferred<Food[]>();
+    usda = () => late.promise;
+    await act(async () => { root.render(createElement(SearchTab, { query: milk.name })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    // The words change before milk's answer lands.
+    const other = `Rice ${serial}`;
+    usda = () => new Promise(() => {});
+    await act(async () => { root.render(createElement(SearchTab, { query: other })); });
+    await act(async () => { late.resolve([milk]); });
+    expect(host.textContent).not.toContain(milk.name);
+    expect(host.querySelector('progress')).not.toBeNull();
+  });
+
+  it('shows the spinner, not the failure, while Retry tries again', async () => {
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    usda = async () => { throw new Error('offline'); };
+    await act(async () => { root.render(createElement(SearchTab, { query: milk.name })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).toContain('The search failed.');
+    expect(host.querySelector('progress')).toBeNull();
+    expect(retry).toBeDefined();
+    usda = async () => [milk];
+    await act(async () => { retry!(); });
+    expect(host.textContent).not.toContain('The search failed.');
+    expect(host.querySelector('progress')).not.toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).toContain(milk.name);
   });
 });

@@ -17,6 +17,7 @@ import * as pendingEntry from '@/lib/pendingEntryId';
 import * as recentFoods from '@/lib/recentFoods';
 import { usualAmountInput } from '@/lib/recentFoods';
 import * as nutritionLedger from '@/lib/nutritionLedger';
+import * as nutritionMacros from '@/lib/nutritionMacros';
 import * as saveNutrition from '@/lib/saveNutritionEntry';
 import * as photoReview from '@/lib/photoReview';
 import * as requestGate from '@/lib/requestGate';
@@ -53,7 +54,7 @@ const recipe: Food = {
   description: composition.encodeMealComposition([composition.createMealIngredient(milk, 1, 'milk-part')]),
 };
 const savedMilk: Food = { ...milk, id: 'saved-milk', user_id: 'user-a', source: 'saved_meal' };
-const loggedMilk = { id: 'log-milk', date: '2026-11-03', food_id: milk.id, food: milk, servings: 1, logged_at: '2026-11-03T17:00:00Z', group_id: null, source: 'barcode' as const };
+const loggedMilk = { id: 'log-milk', date: '2026-11-03', food_id: milk.id, food: milk, servings: 1, logged_at: '2026-11-03T17:00:00Z', group_id: null as string | null, source: 'barcode' as const };
 const photoResult = { items: [], provider: 'openai', model: 'test', summary: 'Fresh plate' };
 const photoItem: photoReview.PhotoReviewItem = {
   id: 'photo-milk', name: 'Milk', searchQuery: 'milk', amountGrams: 240, modelAmountGrams: 240,
@@ -260,7 +261,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     fuel.groups = [...fuel.groups, { id: `new-${kind}`, user_id: 'user-a', date: fuel.selected, kind, label: null, sort_order: fuel.groups.length }];
     return true;
   });
-  const fuel = { selected: fuelDay, logs: [entry], groups: dayGroups, refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, addGroup, ...fuelActions };
+  const fuel = { selected: fuelDay, loadedMonth: fuelDay.slice(0, 7), logs: [entry], groups: dayGroups, refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, addGroup, ...fuelActions };
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
   const imports: Record<string, unknown> = {
     'date-fns': dates,
@@ -349,7 +350,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/components/GlassButton': { GlassButton: (props: Button & { accessibilityLabel: string }) => { captured.buttons[props.accessibilityLabel] = props; return null; } },
     '~/components/Label': { Label: Wrap },
     '~/components/RollingText': { RollingText: Wrap },
-    '@/lib/nutritionMacros': { logMacro: () => null },
+    '@/lib/nutritionMacros': nutritionMacros,
     '~/components/Row': { Row: (props: Button) => { captured.buttons[props.title] = props; return null; }, Hairline: Empty },
     '~/components/SwipeRow': { dismissOpenSwipeRow: noop, closeOpenSwipeRow: () => false, SwipeRow: Wrap, useSwipeActions: () => [] },
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => ({ actions: [], run: () => false }) },
@@ -733,21 +734,40 @@ describe('native food logger transitions', () => {
     expect(h.busy()).toBe(false);
   });
 
-  it('offers Build a meal with the lists it is built from, Recent and Saved', async () => {
+  it('offers each list one way to make something: Build a meal under Recent, New saved meal under Saved', async () => {
     const h = loggerHarness();
+    // Rows stay recorded once drawn, so each check starts from none.
+    const forget = () => { delete h.captured.buttons['Build a meal']; delete h.captured.buttons['New saved meal']; };
     await h.render();
-    expect(h.captured.buttons['Build a meal']).toBeDefined();
-    delete h.captured.buttons['Build a meal'];
+    expect(h.captured.buttons['Build a meal']).toMatchObject({ detail: 'Combine several foods into one entry' });
+    expect(h.captured.buttons['New saved meal']).toBeUndefined();
+    forget();
     await h.search();
     expect(h.captured.buttons['Build a meal']).toBeUndefined();
+    expect(h.captured.buttons['New saved meal']).toBeUndefined();
     await h.press('Cancel');
     for (const name of ['scan', 'manual', 'photo']) {
-      delete h.captured.buttons['Build a meal'];
+      forget();
       await h.tab(name);
       expect(h.captured.buttons['Build a meal']).toBeUndefined();
+      expect(h.captured.buttons['New saved meal']).toBeUndefined();
     }
+    forget();
     await h.tab('saved');
-    expect(h.captured.buttons['Build a meal']).toBeDefined();
+    // Saved's own: a saved meal, named so it doesn't read as Build a meal.
+    expect(h.captured.buttons['Build a meal']).toBeUndefined();
+    expect(h.captured.buttons['New saved meal']).toMatchObject({ detail: 'Macros you enter once, to log in a tap' });
+    // It runs the new-saved-meal flow: Manual, kept as a saved meal.
+    await h.click('New saved meal');
+    expect(h.captured.picker!.selection).toBe('manual');
+    expect(h.captured.manual!.draft).toMatchObject({ saveAsReusable: true });
+  });
+
+  it('offers no new saved meal while an entry is edited', async () => {
+    const h = loggerHarness({ editing: true, entry: { ...loggedMilk, food: { ...milk, serving_size: 1, serving_unit: 'serving' } } });
+    await h.render();
+    await h.tab('saved');
+    expect(h.captured.buttons['New saved meal']).toBeUndefined();
   });
 
   it('splits the lists (segmented) from the entry methods, and never shows a list as chosen over a method', async () => {
@@ -1085,6 +1105,20 @@ describe('Log food: where the food goes', () => {
     expect(h.alert).toHaveBeenCalledWith('Not added', 'Check your connection and try again.');
     expect(h.captured.context!.when.groupId).toBeNull();
     expect(h.text()).toContain('Adds to today');
+  });
+
+  it('says only where food goes, with no running total, on a line 44 points tall to touch', async () => {
+    // Lunch already holds a 120 kcal entry in the month Fuel holds.
+    const h = loggerHarness({ dayGroups: [lunch], params: { group: 'lunch' }, entry: { ...loggedMilk, id: 'log-lunch', group_id: 'lunch' } });
+    h.when.mockReturnValue({ date: new Date('2026-11-03T10:00:00'), time: '10:00', groupId: 'lunch' });
+    await h.render();
+    expect(h.text()).toContain('Adds to Lunch');
+    expect(h.text()).not.toMatch(/kcal|120/);
+    const line = h.captured.pressables['Adds to Lunch. Change'] as Press & { hitSlop?: unknown; style: (state: { pressed: boolean }) => Record<string, unknown> };
+    // A real 44-point frame around the 18-point line, not a slop past a tight one;
+    // the negative margins give the room back, so nothing on screen moves.
+    expect(line.hitSlop).toBeUndefined();
+    expect(line.style({ pressed: false })).toMatchObject({ paddingVertical: 13, marginVertical: -13, paddingHorizontal: 16, marginHorizontal: -16 });
   });
 
   it('offers no new meal for a day Fuel is not showing, where Fuel would make it', async () => {
@@ -1841,12 +1875,12 @@ describe('Snap a meal over a quick add that was not confirmed', () => {
     await h.render();
     await h.appear();
     await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
-    expect(h.text()).toContain('Not saved. Tap + to try again.');
+    expect(h.text()).toContain("Couldn't confirm. Tap + to try again.");
     await h.ask();
     expect(h.refusePress).toHaveBeenCalledOnce();
     expect(h.captured.picker!.selection).toBe('recent');
     expect(h.captured.ai!.cameraRequest).toBe(0);
-    expect(h.text()).toContain('Not saved. Tap + to try again.');
+    expect(h.text()).toContain("Couldn't confirm. Tap + to try again.");
   });
 });
 
@@ -1885,7 +1919,8 @@ describe('real Recent and Saved quick-add', () => {
     expect(h.persistEntry).toHaveBeenCalledOnce();
     expect(h.captured.guard).toMatchObject({ on: true, busy: true });
     expect(h.captured.picker!.disabled).toBe(true);
-    expect(h.captured.buttons['Build a meal'].disabled).toBe(true);
+    // the list's way to make something holds still too
+    expect(h.captured.buttons[tab === 'saved' ? 'New saved meal' : 'Build a meal'].disabled).toBe(true);
     await act(async () => {
       h.captured.picker!.onSelectionChange('manual');
       h.captured.context!.chooseFood(milk);
@@ -1893,11 +1928,11 @@ describe('real Recent and Saved quick-add', () => {
     expect(h.captured.picker!.selection).toBe(tab);
     expect(h.captured.foodReview).toBeUndefined();
     await act(async () => { response.reject(new Error('response lost')); });
-    expect(h.text()).toContain('Not saved. Tap + to try again.');
+    expect(h.text()).toContain("Couldn't confirm. Tap + to try again.");
     expect(h.captured.guard).toMatchObject({ on: true, busy: false });
     await h.tab('manual');
     await h.tab(tab);
-    expect(h.text()).toContain('Not saved. Tap + to try again.');
+    expect(h.text()).toContain("Couldn't confirm. Tap + to try again.");
     await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
     expect(h.persistEntry).toHaveBeenCalledTimes(2);
     expect(h.persistEntry.mock.calls[1][2]).toBe(h.persistEntry.mock.calls[0][2]);
@@ -1906,11 +1941,116 @@ describe('real Recent and Saved quick-add', () => {
     expect(h.captured.guard).toMatchObject({ on: false, busy: false });
     expect(h.captured.picker!.disabled).toBe(false);
     // A confirmed log must not stop this food being added to a new meal.
+    if (tab === 'saved') await h.tab('recent');
     await h.click('Build a meal');
     expect(h.captured.pressables['Add Milk'].disabled).not.toBe(true);
     await act(async () => { h.captured.pressables['Add Milk'].onPress!(); });
     expect(h.text()).toContain('1 ingredient');
     expect(h.persistEntry).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('quick add: each food to the meal it went to', () => {
+  const lunch: NutritionGroup = { id: 'lunch', user_id: 'user-a', date: '2026-11-03', kind: 'meal', label: 'lunch', sort_order: 1 };
+  type Harness = ReturnType<typeof loggerHarness>;
+  /** Changes the destination from the line under the title: 0 is No meal, then the day's meals. */
+  const sendTo = async (h: Harness, line: string, index: number) => {
+    await h.press(`${line}. Change`);
+    await act(async () => { await h.captured.choices!.callback(index); });
+  };
+
+  it('ticks a food for the meal it went to only, and adds it to another meal as its own entry', async () => {
+    const h = loggerHarness({ realLists: true, dayGroups: [lunch] });
+    await h.render();
+    await h.press('Add Milk');
+    expect(h.captured.pressables['Milk added'].disabled).toBe(true);
+    await sendTo(h, 'Adds to today', 1);
+    expect(h.text()).toContain('Adds to Lunch');
+    expect(h.text()).not.toContain('Added');
+    expect(h.captured.pressables['Milk added']).toBeUndefined();
+    expect(h.captured.pressables['Add Milk'].disabled).not.toBe(true);
+    await h.press('Add Milk');
+    expect(h.persistEntry).toHaveBeenCalledTimes(2);
+    const [first, second] = h.persistEntry.mock.calls;
+    expect(first[0]).toMatchObject({ group_id: null });
+    expect(second[0]).toMatchObject({ group_id: 'lunch' });
+    expect(second[2]).not.toBe(first[2]);
+    expect(h.entries.size).toBe(2);
+    // Back where it first went: still done, and it can't go there twice.
+    await sendTo(h, 'Adds to Lunch', 0);
+    expect(h.captured.pressables['Milk added'].disabled).toBe(true);
+    expect(h.persistEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes one write for a second tap that lands before the row redraws', async () => {
+    const h = loggerHarness({ realLists: true });
+    const response = deferred<void>();
+    h.persistEntry.mockImplementationOnce(async (payload, _editingId, retryId) => {
+      h.entries.set(retryId!, payload);
+      await response.promise;
+    });
+    await h.render();
+    const plus = h.captured.pressables['Add Milk'];
+    await act(async () => { plus.onPress!(); plus.onPress!(); });
+    await h.flush();
+    expect(h.persistEntry).toHaveBeenCalledOnce();
+    await act(async () => { response.resolve(); });
+    expect(h.text()).toContain('Added');
+    expect(h.entries.size).toBe(1);
+  });
+
+  it('says only what is known after a failed add, and retries it as the entry it first sent', async () => {
+    const h = loggerHarness({ realLists: true, dayGroups: [lunch] });
+    h.persistEntry.mockImplementationOnce(async () => { throw new Error('response lost'); });
+    await h.render();
+    await h.press('Add Milk');
+    expect(h.text()).toContain("Couldn't confirm. Tap + to try again.");
+    expect(h.text()).not.toContain('Not saved');
+    expect(h.captured.pressables["Milk, Couldn't confirm. Use Add to try again., 120 kcal"]).toBeDefined();
+    expect(h.announce).toHaveBeenCalledWith("Couldn't confirm Milk");
+    // The way out says the same: it may be logged, and + tries again.
+    expect(h.captured.guard).toMatchObject({
+      on: true,
+      message: { title: 'Leave without confirming?', message: "A food couldn't be confirmed and may already be in your log. Tap its + to try again." },
+    });
+    // Another meal is a new add; the unconfirmed one waits under its own.
+    await sendTo(h, 'Adds to today', 1);
+    expect(h.text()).not.toContain("Couldn't confirm");
+    expect(h.captured.guard!.on).toBe(true);
+    await sendTo(h, 'Adds to Lunch', 0);
+    expect(h.text()).toContain("Couldn't confirm. Tap + to try again.");
+    // A time changed since doesn't move the entry the retry confirms.
+    const sheet = () => h.captured.context as unknown as { when: { date: Date; time: string; groupId: string | null }; setWhen: (when: object) => void };
+    await act(async () => { sheet().setWhen({ ...sheet().when, time: '12:30' }); });
+    await h.press('Add Milk');
+    expect(h.persistEntry).toHaveBeenCalledTimes(2);
+    const [first, retry] = h.persistEntry.mock.calls;
+    expect(retry[2]).toBe(first[2]);
+    expect(retry[0]).toEqual(first[0]);
+    expect(h.entries.size).toBe(1);
+    expect(h.text()).toContain('Added');
+    expect(h.captured.guard!.on).toBe(false);
+  });
+});
+
+describe('Log food lists: one header each, no column label', () => {
+  it('labels no kcal column over Recent', async () => {
+    const h = loggerHarness({ realLists: true });
+    await h.render();
+    expect(h.text()).toContain('Milk');
+    expect(h.text()).toContain('120');
+    expect(h.text()).not.toContain('kcal');
+  });
+
+  it('gives Saved one text action, Edit, as its header, and no New', async () => {
+    const h = loggerHarness({ realLists: true });
+    await h.render();
+    await h.tab('saved');
+    expect(h.captured.pressables.Edit).toBeDefined();
+    expect(h.captured.pressables.New).toBeUndefined();
+    await h.press('Edit');
+    expect(h.captured.pressables.Done).toBeDefined();
   });
 });
 

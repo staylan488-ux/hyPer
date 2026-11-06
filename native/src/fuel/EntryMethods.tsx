@@ -7,15 +7,18 @@ import { useBlanc } from '~/theme/blanc';
 
 export type EntryMethod = 'scan' | 'manual' | 'photo' | 'describe';
 
+/** A chosen Chip's lift (components/Chip.tsx), under the label colour and its hairline edge. */
+const LIFTED = { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } } as const;
+
 type Method = { id: EntryMethod; title: string; symbol: SFSymbol; spoken: string };
 
 /**
  * The ways to enter a food that isn't in a list yet, under Log food's
- * Recent | Saved | Search, each a small symbol over its name. The one on
- * screen sits on white like the segmented control's chosen segment; the
- * others are quiet. `gemini`: Photo and Describe are two doors into the one
- * meal view (a photo first, or words first; both can be combined before the
- * estimate). A device set to the worker gets Photo only, with a dot while an
+ * Recent | Saved segments, each a small symbol over its name. The one on
+ * screen is lifted as a chosen Chip is (the label colour, a hairline edge and
+ * a soft shadow behind its symbol and name); the others are quiet. `gemini`:
+ * Photo and Describe are two doors into the one meal view (a photo first, or
+ * words first; both can be combined before the estimate). A device set to the worker gets Photo only, with a dot while an
  * estimate waits. A press on the open door still reaches `onSelect`: Photo
  * then adds another photo and Describe returns to the words.
  */
@@ -69,10 +72,13 @@ export function EntryMethods({
               alignItems: 'center',
               justifyContent: 'center',
               gap: large ? 8 : 4,
-              // Actions, not a second segmented control: no fill at rest; the open one sits on the label colour.
+              // Actions, not a second segmented control: no fill at rest. The open
+              // one is lifted as a chosen Chip is: on chalk, white with only a
+              // hairline read as nothing chosen, so it takes the Chip's shadow too.
               backgroundColor: on ? c.label : pressed ? c.pressed : 'transparent',
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: on ? c.labelEdge : 'transparent',
+              ...(on ? LIFTED : null),
               opacity: disabled ? 0.4 : 1,
             })}>
             <SymbolView name={method.symbol} size={20} weight={on ? 'semibold' : 'medium'} tintColor={c.ink} />

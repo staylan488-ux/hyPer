@@ -6,7 +6,6 @@ import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Keyboard, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import Animated from 'react-native-reanimated';
 
 import { toLocalTimeInput } from '@/lib/foodLoggerUtils';
 import { getCompatibleMeasurementUnits } from '@/lib/foodUnits';
@@ -23,8 +22,6 @@ import {
 } from '@/lib/mealComposition';
 import { getFoodAnalysisMode } from '@/lib/foodTrial';
 import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
-import { logMacro } from '@/lib/nutritionMacros';
-import type { PendingEntryId } from '@/lib/pendingEntryId';
 import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { mealFromLoggedFoods } from '@/lib/savedMealFromLog';
 import { loadSavedMeals } from '@/lib/savedMeals';
@@ -38,7 +35,7 @@ import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Row } from '~/components/Row';
 import { dismissOpenSwipeRow } from '~/components/SwipeRow';
-import { announce, speak, useLargeText } from '~/lib/accessibility';
+import { announce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
@@ -46,9 +43,8 @@ import { haptics } from '~/lib/haptics';
 import { refusePress } from '~/lib/launch';
 import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
-import { figureLayout } from '~/lib/motion';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
-import { LoggerContext, type ChosenMeta, type LoggerContextValue, type QuickAddState } from '~/fuel/context';
+import { LoggerContext, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchField, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { EntryMethods, type EntryMethod } from '~/fuel/EntryMethods';
@@ -68,6 +64,9 @@ const isBrowse = (tab: Tab): tab is BrowseTab => tab === 'recent' || tab === 'sa
 const isList = (tab: Tab): tab is BrowseTab | 'search' => isBrowse(tab) || tab === 'search';
 /** The segmented control's value while an entry method shows: no segment has it, so none is chosen. */
 const NO_LIST = 'none';
+
+/** The destination line's reach past its 18-point footnote line: 44 points tall to touch, and 16 more each side. */
+const DESTINATION_REACH = { vertical: 13, horizontal: 16 } as const;
 
 /** Fuel's alert for a write that did not go through, as its own report() says it. */
 const CHECK_CONNECTION = 'Check your connection and try again.';
@@ -278,7 +277,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [saveClaims, beginSave] = useClaims();
   const saving = saveClaims > 0;
   const [quickAddStates, setQuickAddStates] = useState<Record<string, QuickAddState>>({});
-  const [pendingQuickAdds] = useState(() => new Map<string, PendingEntryId>());
+  const [pendingQuickAdds] = useState(() => new Map<string, PendingQuickAdd>());
   const quickAddFailed = Object.values(quickAddStates).some((state) => state === 'error');
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
@@ -491,7 +490,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   useLeaveGuard(
     (unsaved || saving) && !closing,
     quickAddFailed
-      ? { title: 'Leave this unconfirmed save?', message: 'The food may already be in your log. Retry its + button to confirm it, or check your log before adding it again.' }
+      ? { title: 'Leave without confirming?', message: "A food couldn't be confirmed and may already be in your log. Tap its + to try again." }
       : busy
         ? { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }
         : estimate
@@ -581,16 +580,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         : editing
           ? NO_MEAL
           : `Adds to ${dayWords(when.date)}`;
-  // The destination's running total, from the day Fuel holds: the meal's, or
-  // with no meal the day's, as the words name it. It rolls up as foods are logged.
-  const dayLogs = useFuelStore((state) => (state.loadedMonth === selectedKey.slice(0, 7) ? state.logs : null));
-  const mealKcal =
-    dayLogs && sameDay && !inMeal && !editing
-      ? dayLogs
-          .filter((log) => log.date === selectedKey && (!destination || log.group_id === destination.id))
-          .reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0)
-      : 0;
-  const spokenSubtitle = mealKcal > 0 ? `${subtitle}, ${speak(`${formatWhole(mealKcal)} kcal`)}` : subtitle;
+  // The line says only where food goes; a tap on it changes that.
+  const changesDestination = sameDay && !inMeal;
 
   // ── Search foods: the field above the segments takes the sheet over ──
   // Its words live here, so a food's review or an ingredient added keeps them.
@@ -704,28 +695,28 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const mealCount = meal && mealTotals ? `${meal.ingredients.length} ingredient${meal.ingredients.length === 1 ? '' : 's'} · ${formatWhole(mealTotals.calories)} kcal` : '';
 
   // Each tab is built on its own, so typing in one never rebuilds another.
-  // Starting a meal is offered with the foods it is built from; a pending meal shows on every tab.
-  const buildMeal = !editing && (meal ? paused : tab === 'recent' || tab === 'saved') ? (
+  // Each list offers one way to make something, under its foods: Recent builds
+  // a meal from them (several foods logged as one entry), Saved makes a new
+  // saved meal. A pending meal takes Recent's place and shows on every tab.
+  const listRow = (title: string, detail: string, onPress: () => void) => (
     <View style={{ marginTop: 14 }}>
       <Label>
-        <Row
-          title={paused ? 'Resume pending meal' : 'Build a meal'}
-          detail={paused ? 'Finish saving the meal you built' : 'Combine several foods into one entry'}
-          chevron
-          disabled={busy || saving}
-          onPress={() => (paused ? setPaused(false) : startMeal())}
-        />
+        <Row title={title} detail={detail} chevron disabled={busy || saving} onPress={onPress} />
       </Label>
     </View>
-  ) : null;
-  const recentTab = tab === 'recent' ? <RecentTab userId={userId} /> : null;
-  const savedTab = tab === 'saved' ? (
-    <SavedTab
-      onNewSavedMeal={() => {
+  );
+  const buildMeal = !editing && !meal && tab === 'recent' ? listRow('Build a meal', 'Combine several foods into one entry', () => startMeal()) : null;
+  const newSavedMeal = !editing && purpose === 'log' && tab === 'saved'
+    ? listRow('New saved meal', 'Macros you enter once, to log in a tap', () => {
         if (saving) return;
         loadManual({ ...emptyManual, saveAsReusable: true });
         setTab('manual');
-      }}
+      })
+    : null;
+  const pendingMeal = !editing && meal && paused ? listRow('Resume pending meal', 'Finish saving the meal you built', () => setPaused(false)) : null;
+  const recentTab = tab === 'recent' ? <RecentTab userId={userId} /> : null;
+  const savedTab = tab === 'saved' ? (
+    <SavedTab
       onEditSavedMeal={(saved) => {
         if (saving) return;
         if (decodeMealComposition(saved.description)) {
@@ -811,34 +802,28 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 {title}
               </BlancText>
               {subtitle ? (
-                // The line re-centres on the figure's spring when the total gains a digit.
-                <Animated.View layout={figureLayout}>
-                  <Pressable
-                    accessibilityRole={sameDay && !inMeal ? 'button' : 'text'}
-                    accessibilityLabel={sameDay && !inMeal ? `${spokenSubtitle}. Change` : spokenSubtitle ?? undefined}
-                    disabled={!sameDay || inMeal}
-                    // a 13-point line, 44 points to touch
-                    hitSlop={{ top: 13, bottom: 13, left: 16, right: 16 }}
-                    onPress={chooseDestination}
-                    style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', opacity: pressed ? 0.5 : 1 })}>
-                    <BlancText variant="footnote" tone="graphite">
-                      {subtitle}
-                    </BlancText>
-                    {mealKcal > 0 ? (
-                      <RollingText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-                        {` · ${formatWhole(mealKcal)}`}
-                      </RollingText>
-                    ) : null}
-                    <Animated.View layout={figureLayout} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      {mealKcal > 0 ? (
-                        <BlancText variant="footnote" tone="graphite">
-                          {' kcal'}
-                        </BlancText>
-                      ) : null}
-                      {sameDay && !inMeal ? <SymbolView name="chevron.down" size={10} weight="semibold" tintColor={c.graphite} style={{ marginLeft: 4 }} /> : null}
-                    </Animated.View>
-                  </Pressable>
-                </Animated.View>
+                <Pressable
+                  accessibilityRole={changesDestination ? 'button' : 'text'}
+                  accessibilityLabel={changesDestination ? `${subtitle}. Change` : subtitle}
+                  disabled={!changesDestination}
+                  onPress={chooseDestination}
+                  // The pressable itself is 44 points tall around the 18-point line
+                  // (and 16 wider each side); the negative margins give the room
+                  // back, so the line and the title stay where they sit.
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: DESTINATION_REACH.vertical,
+                    marginVertical: -DESTINATION_REACH.vertical,
+                    paddingHorizontal: DESTINATION_REACH.horizontal,
+                    marginHorizontal: -DESTINATION_REACH.horizontal,
+                    opacity: pressed ? 0.5 : 1,
+                  })}>
+                  <BlancText variant="footnote" tone="graphite">
+                    {subtitle}
+                  </BlancText>
+                  {changesDestination ? <SymbolView name="chevron.down" size={10} weight="semibold" tintColor={c.graphite} style={{ marginLeft: 4 }} /> : null}
+                </Pressable>
               ) : null}
             </View>
             {/* Save as meal has one way out: closing it cancels. */}
@@ -990,10 +975,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
           />
         ) : (
           <View key={captureKey}>
-            {/* The foods to repeat come first; building a meal from several follows them. */}
+            {/* The foods to repeat come first; the list's way to make something follows them. */}
             {recentTab}
             {savedTab}
             {buildMeal}
+            {newSavedMeal}
+            {pendingMeal}
             {searchTab}
             {scanTab}
             {manualTab}

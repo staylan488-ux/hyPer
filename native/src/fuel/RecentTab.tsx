@@ -11,7 +11,7 @@ import type { MenuAction } from '~/components/HoldMenu';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { SwipeRow } from '~/components/SwipeRow';
-import { useAnnounce, useLargeText } from '~/lib/accessibility';
+import { useAnnounce } from '~/lib/accessibility';
 import { today } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
@@ -37,7 +37,6 @@ export function RecentTab({ userId }: { userId: string }) {
   const { logs, failed, version, settle, retry } = useRecentLogs(userId);
   const { hidden, hide } = useHiddenRecentFoods(userId);
   const foods = useMemo(() => (logs ? rankRecentFoods(logs, today(), { hidden }) : null), [logs, hidden]);
-  const large = useLargeText();
   useAnnounce(!foods && failed ? 'Recent foods could not load.' : null);
 
   const composed = (recent: RecentFood) => Boolean(decodeMealComposition(recent.food.description));
@@ -73,19 +72,9 @@ export function RecentTab({ userId }: { userId: string }) {
   return (
     <LayoutAnimationConfig key={version} skipEntering skipExiting>
       <View>
-        {/* One quiet unit over the column of figures, instead of "kcal" on every row. */}
-        {foods.length > 0 && !large ? (
-          <BlancText
-            variant="footnote"
-            tone="graphite"
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-            style={{ alignSelf: 'flex-end', marginTop: 12, marginRight: KCAL_COLUMN_END }}>
-            kcal
-          </BlancText>
-        ) : null}
+        {/* The figures' column goes unlabelled, as in Fuel's lists; VoiceOver says calories on each row. */}
         {foods.length > 0 ? (
-          <Label style={{ marginTop: large ? 14 : 4, overflow: 'hidden' }} exiting={blockExit} layout={rowLayout}>
+          <Label style={{ marginTop: 14, overflow: 'hidden' }} exiting={blockExit} layout={rowLayout}>
             {foods.map((recent, index) => (
               <RecentRow
                 key={recent.key}
@@ -159,6 +148,3 @@ function RecentRow({ recent, divided, state, purpose, quickAdd, onAdd, onOpen, o
     </Animated.View>
   );
 }
-
-/** Where the kcal column ends, from the screen edge: the card's 16 pt inset, the row's 16, the + button's 32 and its 12 pt gap. */
-const KCAL_COLUMN_END = 16 + 16 + 32 + 12;
