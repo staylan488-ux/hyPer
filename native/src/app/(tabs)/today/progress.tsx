@@ -2,7 +2,8 @@ import { format, isSameMonth, parseISO, startOfWeek, subDays } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, RefreshControl, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Line } from 'react-native-svg';
 
@@ -186,7 +187,7 @@ export default function ProgressScreen() {
                 <Capsule title="Retry" variant="quiet" onPress={() => void retryHours()} />
               </View>
             ) : (
-              <View style={{ height: 150 }} />
+              <Waiting height={150} label="Loading training time" />
             )}
           </Label>
         </Section>
@@ -207,7 +208,7 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
   // Words only when something needs doing: under, over or near the ceiling.
   const words = call.priority <= 2;
   const name = MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group.replace('_', ' ');
-  const advice = asFragment(call.headline);
+  const advice = adviceFor(mv, call);
   // An open row names the rail's marks by what they mean.
   const marks = mv.landmark
     ? [`Minimum ${mv.landmark.mev}`, `Best ${mv.landmark.mav_low}–${mv.landmark.mav_high}`, `Ceiling ${mv.landmark.mrv}`]
@@ -383,9 +384,24 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
 }
 
 /**
+ * A row's quiet line. Over the ceiling it says by how much, in the shape of
+ * the line below range ("Add about 3 sets this week") and rounded up as that
+ * one is: "About 2 sets over its ceiling". Right at the ceiling, which the
+ * shared rule counts as over, there is nothing to count: "At its ceiling,
+ * pull back a little". Every other call is the shared shorthand as a fragment.
+ */
+function adviceFor(mv: MuscleVolume, call: CoachingCall): string {
+  if (mv.status === 'above_mrv' && mv.landmark) {
+    const over = Math.ceil(mv.weekly_sets - mv.landmark.mrv);
+    return over > 0 ? `About ${over} ${over === 1 ? 'set' : 'sets'} over its ceiling` : 'At its ceiling, pull back a little';
+  }
+  return asFragment(call.headline);
+}
+
+/**
  * Shared coaching shorthand as one quiet fragment, with no full stop, as iOS
- * writes a secondary line: "Over its ceiling · pull back" reads "Over its
- * ceiling, pull back a little". A single phrase stays as it is.
+ * writes a secondary line: "Near its ceiling · hold here" reads "Near its
+ * ceiling, hold here". A single phrase stays as it is.
  */
 function asFragment(headline: string): string {
   return FRAGMENTS[headline] ?? headline.split(' · ').join(', ');
@@ -424,8 +440,8 @@ function FigureWithUnits({ text }: { text: string }) {
   );
 }
 
-/** Training time as VoiceOver says it: "1 hour 20 minutes", or "none". */
-const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'none');
+/** Training time as VoiceOver says it: "1 hour 20 minutes", or "nothing logged", as a week read says it. */
+const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'nothing logged');
 
 /** Between a scale figure and the line it names, as the body-weight chart leaves it. */
 const SCALE_GAP = 8;
@@ -499,8 +515,9 @@ const MACRO_GAP = 20;
 const HOURS_PLOT = 110;
 const MACRO_PLOT = 72;
 
-/** The width the training chart's middle date centres in. */
-const MIDDLE_TICK = 64;
+/** Between bars, in points: the training chart's weeks and the nutrition charts' days. */
+const HOURS_BAR_GAP = 6;
+const MACRO_BAR_GAP = 8;
 
 /**
  * The shortest bar a chart draws for any amount, so a small day or week
@@ -516,7 +533,7 @@ const RING = 6;
  * a small hollow ring just above the zero line, so it never reads as a
  * recorded zero (a bar, however short, is something recorded).
  */
-function NothingMark({ onPlot = true }: { onPlot?: boolean }) {
+function NothingMark({ onPlot = true, read = false }: { onPlot?: boolean; read?: boolean }) {
   const c = useBlanc();
   return (
     <View
@@ -526,10 +543,97 @@ function NothingMark({ onPlot = true }: { onPlot?: boolean }) {
         height: RING,
         borderRadius: RING / 2,
         borderWidth: 1.25,
-        borderColor: c.mark,
+        // In ink while its column is the one read, as a read bar is.
+        borderColor: read ? c.ink : c.mark,
       }}
     />
   );
+}
+
+/**
+ * A read still running: one quiet spinner in the space the chart will take,
+ * so the card never sits blank. A read that fails says so in its own words.
+ */
+function Waiting({ height, label }: { height: number; label: string }) {
+  const c = useBlanc();
+  return (
+    <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator color={c.graphite} accessibilityLabel={label} />
+    </View>
+  );
+}
+
+/**
+ * Reading a bar chart one bar at a time, as Body weight's chart reads a day:
+ * tap a bar to read it (tap it again to let go), or hold and slide across the
+ * bars, and letting go puts the summary back. Sliding straight away is left
+ * to the page (scrolling, or iOS's swipe back). The bar read is the chart's
+ * value, which VoiceOver speaks as it changes: swiping up and down steps
+ * through the bars, the first swipe reading the latest. `keys` names the bars
+ * oldest first; `gap` is the room between them, so a finger picks the
+ * nearest bar, in a gap too.
+ */
+function useBarReading(keys: string[], gap: number) {
+  const [reading, setReading] = useState<string | null>(null);
+  // The bars' width, gaps included, as laid out.
+  const [width, setWidth] = useState(0);
+  const index = reading === null ? -1 : keys.indexOf(reading);
+  // Each bar owns its width and half the gap either side; past either end is the end bar.
+  const barAt = (x: number) => {
+    if (width <= 0 || keys.length === 0) return null;
+    return Math.min(keys.length - 1, Math.max(0, Math.floor(((x + gap / 2) * keys.length) / (width + gap))));
+  };
+  const select = (x: number) => {
+    const at = barAt(x);
+    if (at === null) return;
+    setReading((current) => {
+      if (current !== keys[at]) haptics.select();
+      return keys[at];
+    });
+  };
+  // A tap on the bar already read puts the summary back.
+  const tap = (x: number) => {
+    const at = barAt(x);
+    if (at === null) return;
+    haptics.select();
+    setReading((current) => (current === keys[at] ? null : keys[at]));
+  };
+  const step = (direction: 1 | -1) => {
+    if (keys.length === 0) return;
+    const last = keys.length - 1;
+    const next = index === -1 ? last : Math.min(last, Math.max(0, index + direction));
+    if (next !== index) haptics.select();
+    setReading(keys[next]);
+  };
+  const gesture = Gesture.Exclusive(
+    Gesture.Pan()
+      .activateAfterLongPress(160)
+      .runOnJS(true)
+      .onStart((event) => select(event.x))
+      .onUpdate((event) => select(event.x))
+      // End, not finalize: finalize also runs when a plain tap fails the
+      // hold, and would clear the bar the tap just chose.
+      .onEnd(() => setReading(null)),
+    Gesture.Tap()
+      .runOnJS(true)
+      .onEnd((event) => tap(event.x)),
+  );
+  return {
+    /** The bar read, or -1 while the chart shows its summary. */
+    index,
+    gesture,
+    /** For the view the bars are laid out in, from the first bar's left edge. */
+    onLayout: (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width),
+    /** For the chart's one accessible element. */
+    adjustable: {
+      accessibilityRole: 'adjustable' as const,
+      accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
+      onAccessibilityAction: (event: AccessibilityActionEvent) => {
+        if (event.nativeEvent.actionName === 'increment') step(1);
+        if (event.nativeEvent.actionName === 'decrement') step(-1);
+      },
+    },
+  };
 }
 
 /**
@@ -573,7 +677,9 @@ const hoursScale = (peak: number) => Math.max(60, Math.ceil(peak / 60) * 60);
 /**
  * Eight weeks of training time, against a scale in whole hours: this week in
  * ink, past weeks in `mark` (3:1 or more on the card in every palette), so
- * this week leads without the others going faint.
+ * this week leads without the others going faint. Any week reads in the
+ * header line (useBarReading), in ink while it is read; the dates under the
+ * plot are its two ends.
  */
 function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   const c = useBlanc();
@@ -586,51 +692,65 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   // At the accessibility text sizes a line that no longer fits wraps; the right-hand words stay right.
   const wrap = large ? ({ flexWrap: 'wrap', columnGap: 12 } as const) : null;
   const right = large ? ({ flexGrow: 1, textAlign: 'right' } as const) : undefined;
-  // One date between the first and last week's, the middle week's.
-  const middle = points.length >= 3 ? Math.floor(points.length / 2) : null;
+  const read = useBarReading(points.map((point) => point.weekStart), HOURS_BAR_GAP);
+  // The week read; with none, the header reads this week so far.
+  const chosen = read.index >= 0 ? points[read.index] : null;
+  // The one ink bar: the week read, or else this week.
+  const inked = chosen ? read.index : points.length - 1;
+  const spokenValue = chosen
+    ? `Week of ${format(parseISO(chosen.weekStart), 'MMMM d')}, ${spokenMinutes(chosen.totalMinutes)}`
+    : `Week to date, ${spokenMinutes(current?.totalMinutes ?? 0)}`;
   return (
     <View
       accessible
-      accessibilityLabel={`Training time, last 8 weeks. Week to date ${spokenMinutes(current?.totalMinutes ?? 0)}. ${points
-        .map((point) => `Week of ${format(parseISO(point.weekStart), 'MMMM d')}, ${spokenMinutes(point.totalMinutes)}`)
-        .join('; ')}`}>
+      accessibilityLabel="Training time, last 8 weeks"
+      accessibilityHint={points.length > 0 ? 'Swipe up or down to read a week.' : undefined}
+      accessibilityValue={{ text: spokenValue }}
+      {...read.adjustable}>
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', ...wrap }}>
-        {/* This week is still under way. */}
+        {/* This week is still under way; a week read is named by its Monday. */}
         <BlancText variant="secondary" tone="graphite">
-          Week to date
+          {chosen ? `Week of ${chosen.label}` : 'Week to date'}
         </BlancText>
         <BlancText variant="secondary" tone="graphite" style={[{ fontVariant: ['tabular-nums'] }, right]}>
-          <FigureWithUnits text={formatMinutes(current?.totalMinutes ?? 0)} />
+          {chosen && chosen.totalMinutes <= 0 ? 'Nothing logged' : <FigureWithUnits text={formatMinutes((chosen ?? current)?.totalMinutes ?? 0)} />}
         </BlancText>
       </View>
-      <View style={{ height: HOURS_PLOT, marginTop: HOURS_GAP }}>
-        {/* The scale's top, named at its right end, and the zero line; a week without training draws the ring for nothing recorded. */}
-        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: c.hairline }} />
-        <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: '100%' }}>
-          {points.map((point, index) => (
-            <View key={point.weekStart} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
-              {point.totalMinutes > 0 ? (
-                <View
-                  style={{
-                    height: `${(point.totalMinutes / top) * 100}%`,
-                    minHeight: MIN_BAR,
-                    borderRadius: 3,
-                    borderCurve: 'continuous',
-                    backgroundColor: index === points.length - 1 ? c.ink : c.mark,
-                  }}
-                />
-              ) : (
-                <NothingMark />
-              )}
-            </View>
-          ))}
+      <GestureDetector gesture={read.gesture}>
+        <View style={{ height: HOURS_PLOT, marginTop: HOURS_GAP }} onLayout={read.onLayout}>
+          {/* The scale's top, named at its right end, and the zero line; a week without training draws the ring for nothing recorded. */}
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: c.hairline }} />
+          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: HOURS_BAR_GAP, height: '100%' }}>
+            {points.map((point, index) => (
+              <View key={point.weekStart} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+                {point.totalMinutes > 0 ? (
+                  <View
+                    style={{
+                      height: `${(point.totalMinutes / top) * 100}%`,
+                      minHeight: MIN_BAR,
+                      borderRadius: 3,
+                      borderCurve: 'continuous',
+                      backgroundColor: index === inked ? c.ink : c.mark,
+                    }}
+                  />
+                ) : (
+                  <NothingMark read={index === read.index} />
+                )}
+              </View>
+            ))}
+          </View>
+          {/* Over the bars, so a bar never covers it. */}
+          <ScaleLabel bottom="100%" above={lifted}>
+            {formatMinutes(top)}
+          </ScaleLabel>
         </View>
-        {/* Over the bars, so a bar never covers it. */}
-        <ScaleLabel bottom="100%" above={lifted}>
-          {formatMinutes(top)}
-        </ScaleLabel>
-      </View>
+      </GestureDetector>
+      {/*
+        The first week's date and this week's, at the plot's two ends: one
+        even step that never runs together (at the accessibility text sizes
+        the two wrap). Any other week reads in the header.
+      */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, ...wrap }}>
         <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
           {points[0]?.label}
@@ -638,30 +758,8 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
         <BlancText variant="footnote" tone="graphite" style={[right, { fontVariant: ['tabular-nums'] }]}>
           {current?.label}
         </BlancText>
-        {/*
-          The middle week's date, centred under its bar in a row laid out as
-          the bars are. Left out at the accessibility text sizes, where the
-          three no longer fit on one line.
-        */}
-        {middle !== null && !large ? (
-          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row', gap: 6 }}>
-            {points.map((point, index) => (
-              <View key={point.weekStart} style={{ flex: 1 }}>
-                {index === middle ? (
-                  <BlancText
-                    variant="footnote"
-                    tone="graphite"
-                    numberOfLines={1}
-                    style={{ position: 'absolute', left: '50%', width: MIDDLE_TICK, marginLeft: -MIDDLE_TICK / 2, textAlign: 'center' }}>
-                    {point.label}
-                  </BlancText>
-                ) : null}
-              </View>
-            ))}
-          </View>
-        ) : null}
       </View>
-      {points.some((point) => point.totalMinutes <= 0) ? <NothingKey>No training logged</NothingKey> : null}
+      {points.some((point) => point.totalMinutes <= 0) ? <NothingKey>No entry</NothingKey> : null}
     </View>
   );
 }
@@ -697,7 +795,7 @@ function NutritionSection({ todayKey }: { todayKey: string }) {
     <Section title="Nutrition" note={note}>
       <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
         {loading ? (
-          <View style={{ height: 120 }} />
+          <Waiting height={120} label="Loading nutrition" />
         ) : error ? (
           <BlancText variant="secondary" tone="live">
             {failed}
@@ -733,7 +831,8 @@ function NutritionSection({ todayKey }: { todayKey: string }) {
  * header is the daily average of the logged days ("Avg 2,410 kcal"); a single
  * logged day is given as its figure, named by its date ("Nov 3 1,342 kcal"),
  * since an average of one day is no average. How many days are logged is
- * said once, in the section's note.
+ * said once, in the section's note. Any day reads in the header line
+ * (useBarReading), "Tue, Nov 3 · 2,410 kcal", its bar in ink while it is read.
  */
 function MacroBars({
   days,
@@ -771,20 +870,43 @@ function MacroBars({
   // The target's figure sits at its line's height in the column at the
   // plot's right, so it names the right height and no bar can reach it.
   const column = target > 0 ? TARGET_COLUMN : 0;
+  const read = useBarReading(days.map((day) => day.date), MACRO_BAR_GAP);
+  // The day read; with none, the header reads the average.
+  const chosen = read.index >= 0 ? days[read.index] : null;
+  const spokenValue = speak(
+    chosen
+      ? `${format(parseISO(chosen.date), 'EEEE, MMMM d')}, ${chosen[macro] > 0 ? `${formatWhole(chosen[macro])} ${unit}` : 'nothing logged'}${isOver(chosen) ? ', over' : ''}`
+      : `${headline}${target > 0 ? ` · target ${formatWhole(target)}` : ''}`,
+  );
   return (
     <View
       accessible
-      accessibilityLabel={speak(
-        `${label}, ${headline}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
-          .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${day[macro] > 0 ? formatWhole(day[macro]) : 'nothing logged'}${isOver(day) ? ', over' : ''}`)
-          .join('; ')}`,
-      )}>
+      accessibilityLabel={label}
+      accessibilityHint={days.length > 0 ? 'Swipe up or down to read a day.' : undefined}
+      accessibilityValue={{ text: spokenValue }}
+      {...read.adjustable}>
       {/* At the accessibility text sizes the average wraps under the name. */}
       <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null) }}>
         <BlancText variant="secondary" tone="graphite">
           {label}
         </BlancText>
-        {singleDay ? (
+        {chosen ? (
+          // The dot stays with the date when the line wraps at the largest text sizes.
+          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            {format(parseISO(chosen.date), 'EEE, MMM d')}
+            {'\u00a0· '}
+            {chosen[macro] > 0 ? (
+              <>
+                <BlancText variant="secondary" weight="500">
+                  {formatWhole(chosen[macro])}
+                </BlancText>{' '}
+                {unit}
+              </>
+            ) : (
+              'Nothing logged'
+            )}
+          </BlancText>
+        ) : singleDay ? (
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
             {format(parseISO(singleDay.date), 'MMM d')}{' '}
             <BlancText variant="secondary" weight="500">
@@ -806,39 +928,42 @@ function MacroBars({
           </BlancText>
         )}
       </View>
-      <View style={{ height: MACRO_PLOT, marginTop: MACRO_GAP, flexDirection: 'row' }}>
-        <View style={{ flex: 1 }}>
-          {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
-          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
-          {/* The target in `mark`, at full strength: read, but never ahead of the bars. */}
-          {target > 0 ? <DashedLine bottom={`${(target / max) * 100}%`} color={c.mark} /> : null}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%' }}>
-            {days.map((day) => (
-              <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
-                {day[macro] > 0 ? (
-                  <View
-                    style={{
-                      height: `${(day[macro] / max) * 100}%`,
-                      minHeight: MIN_BAR,
-                      borderRadius: 3,
-                      borderCurve: 'continuous',
-                      backgroundColor: isOver(day) ? c.live : c.mark,
-                    }}
-                  />
-                ) : (
-                  <NothingMark />
-                )}
-              </View>
-            ))}
+      <GestureDetector gesture={read.gesture}>
+        <View style={{ height: MACRO_PLOT, marginTop: MACRO_GAP, flexDirection: 'row' }}>
+          <View style={{ flex: 1 }} onLayout={read.onLayout}>
+            {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
+            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
+            {/* The target in `mark`, at full strength: read, but never ahead of the bars. */}
+            {target > 0 ? <DashedLine bottom={`${(target / max) * 100}%`} color={c.mark} /> : null}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: MACRO_BAR_GAP, height: '100%' }}>
+              {days.map((day, index) => (
+                <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+                  {day[macro] > 0 ? (
+                    <View
+                      style={{
+                        height: `${(day[macro] / max) * 100}%`,
+                        minHeight: MIN_BAR,
+                        borderRadius: 3,
+                        borderCurve: 'continuous',
+                        // The day read in ink, over target or not: the header says its figure.
+                        backgroundColor: index === read.index ? c.ink : isOver(day) ? c.live : c.mark,
+                      }}
+                    />
+                  ) : (
+                    <NothingMark read={index === read.index} />
+                  )}
+                </View>
+              ))}
+            </View>
           </View>
+          {target > 0 ? (
+            <View style={{ width: column }}>
+              <ScaleLabel bottom={`${(target / max) * 100}%`}>{formatWhole(target)}</ScaleLabel>
+            </View>
+          ) : null}
         </View>
-        {target > 0 ? (
-          <View style={{ width: column }}>
-            <ScaleLabel bottom={`${(target / max) * 100}%`}>{formatWhole(target)}</ScaleLabel>
-          </View>
-        ) : null}
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, marginRight: column }}>
+      </GestureDetector>
+      <View style={{ flexDirection: 'row', gap: MACRO_BAR_GAP, marginTop: 6, marginRight: column }}>
         {days.map((day) => (
           <BlancText key={day.date} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {format(parseISO(day.date), 'EEEEE')}

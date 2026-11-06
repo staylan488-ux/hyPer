@@ -81,10 +81,10 @@ const points: WeightTrendPoint[] = Array.from({ length: 10 }, (_, index) => ({
 let root: Root;
 let host: HTMLDivElement;
 
-async function draw(look: (typeof LOOKS)[number]) {
+async function draw(look: (typeof LOOKS)[number], props: Record<string, unknown> = { points, unit: 'kg', height: 160, summary: 'Down 0.4 kg' }, fontScale = 1) {
   const { WeightChart } = loadNativeModule<{ WeightChart: (props: Record<string, unknown>) => ReactNode }>('components/WeightChart.tsx', {
     'date-fns': dates,
-    'react-native': { View, useWindowDimensions: () => ({ fontScale: 1 }) },
+    'react-native': { View, useWindowDimensions: () => ({ fontScale }) },
     'react-native-gesture-handler': { Gesture: { Exclusive: () => ({}), Pan: gesture, Tap: gesture }, GestureDetector: Wrap },
     'react-native-svg': { default: Wrap, Circle, Line: () => null, Path: () => null },
     '@/lib/chartGeometry': chartGeometry,
@@ -96,7 +96,7 @@ async function draw(look: (typeof LOOKS)[number]) {
     '~/theme/blanc': { useBlanc: () => palette(look.name) },
     './BlancText': { BlancText: Text },
   });
-  await act(async () => { root.render(createElement(WeightChart, { points, unit: 'kg', height: 160, summary: 'Down 0.4 kg' })); });
+  await act(async () => { root.render(createElement(WeightChart, props)); });
 }
 
 beforeEach(() => {
@@ -133,4 +133,38 @@ describe("Body weight's marks", () => {
       expect(swatch('Trend')?.dataset.bg).toBe(c.ink);
     });
   }
+});
+
+describe("Body weight's date axis", () => {
+  /** A weigh-in every day for the 90 days ending `last`, about 80 kg, drawn on the 3M range. */
+  const threeMonths = (last: string) => {
+    const end = dates.parseISO(last);
+    const days: WeightTrendPoint[] = Array.from({ length: 90 }, (_, index) => ({
+      date: dates.format(dates.subDays(end, 89 - index), 'yyyy-MM-dd'),
+      dayIndex: index,
+      ewmaKg: 80 + index * 0.01,
+      observedKg: 80 + (index % 3) * 0.2,
+      isOutlier: false,
+    }));
+    const calendar = weightHistory.weightChartWindow(days, 90, last);
+    return { points: days, calendar, span: 'last 3 months', unit: 'kg', height: 168, summary: 'Up 0.9 kg' };
+  };
+  const labels = () => [...host.querySelectorAll('span')].map((span) => span.textContent ?? '').filter((text) => /^[A-Z][a-z]{2}$/.test(text));
+
+  it('names the month a range runs into when its label fits before the weight scale', async () => {
+    // Nov 1 sits five days before the end: its label runs on past the plot into the gap before the scale.
+    await draw(LOOKS[0], threeMonths('2026-11-06'));
+    expect(labels()).toEqual(['Sep', 'Oct', 'Nov']);
+  });
+
+  it('leaves the month out when its label would reach the weight scale', async () => {
+    // Nov 1 the day before the end: no room before the scale's column.
+    await draw(LOOKS[0], threeMonths('2026-11-02'));
+    expect(labels()).toEqual(['Sep', 'Oct']);
+    act(() => root.unmount());
+    root = createRoot(host);
+    // Nor at a larger text size, where the label is wider.
+    await draw(LOOKS[0], threeMonths('2026-11-06'), 1.3);
+    expect(labels()).toEqual(['Sep', 'Oct']);
+  });
 });

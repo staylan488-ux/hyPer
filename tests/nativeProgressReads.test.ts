@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import * as dates from 'date-fns';
-import { act, createElement, Fragment, type PropsWithChildren, type ReactNode } from 'react';
+import { act, createElement, Fragment, useEffect, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
@@ -25,16 +25,35 @@ const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, 
 const Empty = () => null;
 const noop = () => {};
 // Text and views keep what the checks read: whether text may shrink to fit,
-// a box's height and place, its fill (a palette token's name, below) and
-// what VoiceOver hears for it.
+// a box's height and place, its fill and edge (a palette token's name,
+// below) and what VoiceOver hears for it and can do with it. A view that
+// asks for its layout is told it is 320 pt wide.
 const Text = ({ children, adjustsFontSizeToFit }: PropsWithChildren<{ adjustsFontSizeToFit?: boolean }>) =>
   createElement('span', adjustsFontSizeToFit ? { 'data-shrinks': 'true' } : null, children);
+type AccessibilityAction = (event: { nativeEvent: { actionName: string } }) => void;
+/** Each adjustable view's increment and decrement, by its element. */
+const actions = new WeakMap<Element, AccessibilityAction>();
+const LAYOUT_WIDTH = 320;
 const View = ({
   children,
   style,
   accessibilityLabel,
-}: PropsWithChildren<{ style?: { height?: number | string; width?: number | string; bottom?: number | string; alignItems?: string; backgroundColor?: string }; accessibilityLabel?: string }>) =>
-  createElement(
+  accessibilityRole,
+  accessibilityValue,
+  onAccessibilityAction,
+  onLayout,
+}: PropsWithChildren<{
+  style?: { height?: number | string; width?: number | string; bottom?: number | string; alignItems?: string; backgroundColor?: string; borderColor?: string };
+  accessibilityLabel?: string;
+  accessibilityRole?: string;
+  accessibilityValue?: { text?: string };
+  onAccessibilityAction?: AccessibilityAction;
+  onLayout?: (event: { nativeEvent: { layout: { width: number; height: number } } }) => void;
+}>) => {
+  useEffect(() => {
+    onLayout?.({ nativeEvent: { layout: { width: LAYOUT_WIDTH, height: 100 } } });
+  }, [onLayout]);
+  return createElement(
     'div',
     {
       ...(style?.height !== undefined ? { 'data-height': String(style.height) } : null),
@@ -42,14 +61,52 @@ const View = ({
       ...(style?.bottom !== undefined ? { 'data-bottom': String(style.bottom) } : null),
       ...(style?.alignItems !== undefined ? { 'data-align': style.alignItems } : null),
       ...(style?.backgroundColor !== undefined ? { 'data-fill': style.backgroundColor } : null),
+      ...(style?.borderColor !== undefined ? { 'data-edge': style.borderColor } : null),
       ...(accessibilityLabel !== undefined ? { 'aria-label': accessibilityLabel } : null),
+      ...(accessibilityRole !== undefined ? { 'data-role': accessibilityRole } : null),
+      ...(accessibilityValue?.text !== undefined ? { 'data-value': accessibilityValue.text } : null),
+      ref: (element: Element | null) => {
+        if (element && onAccessibilityAction) actions.set(element, onAccessibilityAction);
+      },
     },
     children,
   );
+};
+// A gesture keeps its handlers, so a check can touch, slide and let go.
+type GestureEvent = { x: number };
+type Handlers = { start?: (event: GestureEvent) => void; update?: (event: GestureEvent) => void; end?: (event: GestureEvent) => void };
+const chain = () => {
+  const handlers: Handlers = {};
+  const self = {
+    handlers,
+    activateAfterLongPress: () => self,
+    runOnJS: () => self,
+    onStart: (fn: Handlers['start']) => ((handlers.start = fn), self),
+    onUpdate: (fn: Handlers['update']) => ((handlers.update = fn), self),
+    onEnd: (fn: Handlers['end']) => ((handlers.end = fn), self),
+  };
+  return self;
+};
+type BarGesture = { pan: ReturnType<typeof chain>; tap: ReturnType<typeof chain> };
+/** Each chart's latest gesture, by the element it was attached to. */
+const gestures = new WeakMap<Element, BarGesture>();
+const GestureDetector = ({ gesture, children }: PropsWithChildren<{ gesture: BarGesture }>) =>
+  createElement(
+    'section',
+    {
+      ref: (element: Element | null) => {
+        if (element) gestures.set(element, gesture);
+      },
+    },
+    children,
+  );
+const Spinner = ({ color, accessibilityLabel }: { color?: string; accessibilityLabel?: string }) =>
+  createElement('progress', { 'data-color': color, 'aria-label': accessibilityLabel });
 // The palette by token name, so a check reads which token a mark is drawn in.
 const palette = { label: 'label', graphite: 'graphite', ink: 'ink', mark: 'mark', live: 'live', fill: 'fill', track: 'track', hairline: 'hairline', pressed: 'pressed' };
 
 let pull: () => void;
+let nutritionLoading = false;
 const fetchTrainingHours = vi.fn();
 const calculateWeeklyVolume = vi.fn();
 // The store's never-read list; resetAppData puts this same array back.
@@ -92,6 +149,7 @@ async function open() {
     'expo-router': { router: { navigate: noop }, Stack: { Screen: Empty } },
     'expo-symbols': { SymbolView: Empty },
     'react-native': {
+      ActivityIndicator: Spinner,
       Pressable: Wrap,
       RefreshControl: ({ onRefresh }: { onRefresh: () => void }) => {
         pull = onRefresh;
@@ -99,6 +157,7 @@ async function open() {
       },
       View,
     },
+    'react-native-gesture-handler': { Gesture: { Exclusive: (pan: unknown, tap: unknown) => ({ pan, tap }), Pan: chain, Tap: chain }, GestureDetector },
     'react-native-svg': { default: Wrap, Line: Empty },
     'react-native-reanimated': {
       default: { View: Wrap },
@@ -113,7 +172,7 @@ async function open() {
       averageLoggedDays,
       useWeeklyNutrition: (lastDay?: string) => {
         askedFor.push(lastDay);
-        return { weeklyNutrition: nutrition, loading: false, error: null };
+        return { weeklyNutrition: nutritionLoading ? [] : nutrition, loading: nutritionLoading, error: null };
       },
     },
     '@/lib/fuelSummary': fuelSummary,
@@ -146,6 +205,7 @@ const refresh = () => act(async () => { pull(); });
 
 beforeEach(() => {
   nutrition = [];
+  nutritionLoading = false;
   askedFor = [];
   appStore.setState({ macroTarget: null });
   accountDay.setState({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') });
@@ -237,8 +297,11 @@ describe("Progress's week", () => {
 
 describe("Progress's nutrition window", () => {
   const count = (text: string) => shown().split(text).length - 1;
-  /** What VoiceOver hears for a macro's chart. */
-  const spoken = (macro: string) => [...host.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label') ?? '').find((label) => label.startsWith(`${macro}, `));
+  /** What VoiceOver hears for a macro's chart: its name, then its value. */
+  const spoken = (macro: string) => {
+    const chart = host.querySelector(`[aria-label="${macro}"]`);
+    return chart ? `${macro}, ${chart.getAttribute('data-value')}` : undefined;
+  };
 
   it('reads the seven days ending yesterday, and moves on with the day while the screen stays open', async () => {
     accountDay.setState({ dayKey: '2026-11-05' });
@@ -306,6 +369,8 @@ describe("Progress's nutrition window", () => {
   });
 
   it('keys the nothing-recorded mark once while a day is missing, and not when none is', async () => {
+    // Training time keys the same ring in the same words; left unread here, so only Nutrition's key shows.
+    fetchTrainingHours.mockResolvedValue(null);
     nutrition = weekBefore({ 1: 1342 });
     await open();
     expect(count('No entry')).toBe(1);
@@ -348,13 +413,28 @@ describe("Progress's chart marks", () => {
 describe("Progress's muscle rows", () => {
   const landmark = { id: 'side', user_id: 'me', muscle_group: 'side_delts' as const, mv: 6, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
 
-  it('writes the quiet line as one fragment with no full stop', async () => {
+  it('says how far over its ceiling a muscle is, as one fragment with no full stop', async () => {
     appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 24, landmark, status: 'above_mrv' }] });
     calculateWeeklyVolume.mockImplementation(async () => {});
     await open();
-    expect(shown()).toContain('Over its ceiling, pull back a little');
-    expect(shown()).not.toContain('Over its ceiling.');
-    expect(shown()).not.toContain('a little.');
+    // 24 sets against a ceiling of 22.
+    expect(shown()).toContain('About 2 sets over its ceiling');
+    expect(shown()).not.toContain('Over its ceiling, pull back');
+    expect(shown()).not.toContain('ceiling.');
+  });
+
+  it('rounds a part set over up to one, as the line below range does, and says when it is right at the ceiling', async () => {
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 22.5, landmark, status: 'above_mrv' }] });
+    await open();
+    expect(shown()).toContain('About 1 set over its ceiling');
+    act(() => root.unmount());
+    root = createRoot(host);
+    // The shared rule counts the ceiling itself as over; there is no set to count.
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 22, landmark, status: 'above_mrv' }] });
+    await open();
+    expect(shown()).toContain('At its ceiling, pull back a little');
+    expect(shown()).not.toContain('0 sets over');
   });
 
   it("keys the rails once, above the first muscle's row", async () => {
@@ -434,5 +514,144 @@ describe("Progress's scale and target figures", () => {
     nutrition = weekBefore({ 1: 1342 });
     await open();
     expect(shown()).not.toContain('target');
+  });
+});
+
+describe('Progress while it reads', () => {
+  const spinner = (label: string) => host.querySelector<HTMLElement>(`progress[aria-label="${label}"]`);
+
+  it('shows one quiet spinner in each chart’s space until its read arrives', async () => {
+    fetchTrainingHours.mockReturnValue(new Promise(() => {}));
+    nutritionLoading = true;
+    await open();
+    expect(host.querySelectorAll('progress').length).toBe(2);
+    expect(spinner('Loading training time')?.dataset.color).toBe('graphite');
+    expect(spinner('Loading nutrition')?.dataset.color).toBe('graphite');
+    // In the space the chart will take.
+    expect(spinner('Loading training time')?.parentElement?.dataset.height).toBe('150');
+    expect(spinner('Loading nutrition')?.parentElement?.dataset.height).toBe('120');
+  });
+
+  it('puts the failure and Retry in the spinner’s place when a read fails', async () => {
+    fetchTrainingHours.mockResolvedValueOnce(null);
+    await open();
+    expect(spinner('Loading training time')).toBeNull();
+    expect(shown()).toContain('Training time couldn’t load.');
+  });
+});
+
+describe("Progress's charts, one bar at a time", () => {
+  /** A chart's one accessible element, by what VoiceOver calls it. */
+  const chart = (name: string) => host.querySelector<HTMLElement>(`[aria-label="${name}"]`)!;
+  const gestureOf = (name: string) => gestures.get(chart(name).querySelector('section')!)!;
+  const fills = (within: Element, token: string) => within.querySelectorAll(`[data-fill="${token}"]`).length;
+  const step = (name: string, actionName: 'increment' | 'decrement') => act(() => { actions.get(chart(name))!({ nativeEvent: { actionName } }); });
+  /** The middle of bar `index` of `count`, `gap` apart, across the 320 pt the views are laid out in. */
+  const middle = (index: number, count: number, gap: number) => {
+    const pitch = (LAYOUT_WIDTH + gap) / count;
+    return index * pitch + (pitch - gap) / 2;
+  };
+  const weeks = () => {
+    const today = new Date();
+    const session = (daysAgo: number, minutes: number) => {
+      const day = dates.subDays(today, daysAgo);
+      return { date: dates.format(day, 'yyyy-MM-dd'), completed: true, created_at: new Date(day.getTime() - minutes * 60_000).toISOString(), completed_at: day.toISOString() };
+    };
+    return workoutSessions.buildWeeklyTrainingHours([session(0, 90), session(14, 60), session(21, 70)]);
+  };
+
+  it('reads the week under a finger in the header, in ink, while it holds and slides, and puts the summary back on letting go', async () => {
+    const points = weeks();
+    fetchTrainingHours.mockResolvedValue(points);
+    await open();
+    const hours = chart('Training time, last 8 weeks');
+    const { pan } = gestureOf('Training time, last 8 weeks');
+    expect(hours.textContent).toContain('Week to date');
+    // Three weeks ago: 1 h 10 min.
+    const third = points.findIndex((point) => point.totalMinutes === 70);
+    await act(async () => { pan.handlers.start!({ x: middle(third, 8, 6) }); });
+    expect(hours.textContent).toContain(`Week of ${points[third].label}1 h 10 min`);
+    expect(hours.textContent).not.toContain('Week to date');
+    // The week read is the one ink bar; this week goes to mark while it is read.
+    expect(fills(hours, 'ink')).toBe(1);
+    expect(fills(hours, 'mark')).toBe(2);
+    // Sliding on to an empty week says so, and its ring goes ink.
+    await act(async () => { pan.handlers.update!({ x: middle(0, 8, 6) }); });
+    expect(hours.textContent).toContain(`Week of ${points[0].label}Nothing logged`);
+    expect(fills(hours, 'ink')).toBe(0);
+    expect(hours.querySelectorAll('[data-edge="ink"]').length).toBe(1);
+    // In a gap, the nearest bar; past the end, the last.
+    await act(async () => { pan.handlers.update!({ x: LAYOUT_WIDTH + 40 }); });
+    expect(hours.textContent).toContain(`Week of ${points[7].label}1 h 30 min`);
+    await act(async () => { pan.handlers.end!({ x: 0 }); });
+    expect(hours.textContent).toContain('Week to date1 h 30 min');
+    expect(hours.querySelectorAll('[data-edge="ink"]').length).toBe(0);
+  });
+
+  it('reads a day on a tap and lets go on a second tap of the same day', async () => {
+    accountDay.setState({ dayKey: '2026-11-05' });
+    // Oct 29 to Nov 4: 2,400 on Monday, Nov 2.
+    nutrition = weekBefore({ 1: 2000, 3: 2400 });
+    appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
+    await open();
+    const calories = chart('Calories');
+    const { tap } = gestureOf('Calories');
+    expect(calories.textContent).toContain('Avg 2200 kcal');
+    await act(async () => { tap.handlers.end!({ x: middle(4, 7, 8) }); });
+    expect(calories.textContent).toContain('Mon, Nov 2\u00a0· 2400 kcal');
+    expect(calories.textContent).not.toContain('Avg');
+    expect(fills(calories, 'ink')).toBe(1);
+    expect(calories.dataset.value).toBe('Monday, November 2, 2400 calories');
+    // The other chart keeps its own summary.
+    expect(chart('Protein').textContent).toContain('None logged');
+    // A day with nothing logged says so.
+    await act(async () => { tap.handlers.end!({ x: middle(0, 7, 8) }); });
+    expect(calories.textContent).toContain('Thu, Oct 29\u00a0· Nothing logged');
+    expect(calories.dataset.value).toBe('Thursday, October 29, nothing logged');
+    await act(async () => { tap.handlers.end!({ x: middle(0, 7, 8) + 10 }); });
+    expect(calories.textContent).toContain('Avg 2200 kcal');
+    expect(calories.dataset.value).toBe('2200 calories, the daily average of the logged days, October 29 to November 4, target 2600');
+  });
+
+  it('lets VoiceOver swipe through the bars, the latest first, as Body weight reads its days', async () => {
+    const points = weeks();
+    fetchTrainingHours.mockResolvedValue(points);
+    accountDay.setState({ dayKey: '2026-11-05' });
+    nutrition = weekBefore({ 1: 2000, 3: 3400 });
+    appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
+    await open();
+    const name = 'Training time, last 8 weeks';
+    expect(chart(name).dataset.role).toBe('adjustable');
+    expect(chart(name).dataset.value).toBe('Week to date, 1 hour 30 minutes');
+    await step(name, 'decrement');
+    expect(chart(name).dataset.value).toBe(`Week of ${dates.format(dates.parseISO(points[7].weekStart), 'MMMM d')}, 1 hour 30 minutes`);
+    await step(name, 'decrement');
+    expect(chart(name).dataset.value).toBe(`Week of ${dates.format(dates.parseISO(points[6].weekStart), 'MMMM d')}, nothing logged`);
+    await step(name, 'increment');
+    await step(name, 'increment');
+    // It stops at this week.
+    expect(chart(name).dataset.value).toBe(`Week of ${dates.format(dates.parseISO(points[7].weekStart), 'MMMM d')}, 1 hour 30 minutes`);
+
+    expect(chart('Calories').dataset.role).toBe('adjustable');
+    await step('Calories', 'increment');
+    expect(chart('Calories').dataset.value).toBe('Wednesday, November 4, 2000 calories');
+    await step('Calories', 'decrement');
+    await step('Calories', 'decrement');
+    // Past target where that warns.
+    expect(chart('Calories').dataset.value).toBe('Monday, November 2, 3400 calories, over');
+  });
+
+  it('dates the training chart at its two ends only, and keys the ring as on Nutrition', async () => {
+    const points = weeks();
+    fetchTrainingHours.mockResolvedValue(points);
+    nutrition = weekBefore({ 1: 1342 });
+    await open();
+    const hours = chart('Training time, last 8 weeks');
+    const dated = [...hours.querySelectorAll('span')].filter((span) => points.some((point) => point.label === span.textContent)).map((span) => span.textContent);
+    expect(dated).toEqual([points[0].label, points[7].label]);
+    // One wording for the ring on both cards.
+    expect(hours.textContent).toContain('No entry');
+    expect(shown()).not.toContain('No training logged');
+    expect(shown().split('No entry').length - 1).toBe(2);
   });
 });

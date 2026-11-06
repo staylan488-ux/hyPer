@@ -16,9 +16,9 @@ import { silentAccessibility } from './helpers/silentAccessibility';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // The muscle figure (native/src/components/MuscleFigure.tsx) points at what
-// needs action: below range is outlined in ink, the strongest mark short of
-// red; in range is filled in `mark`, the quietest tone that still reads; over
-// is red. Its key matches, left-aligned with the card's title.
+// needs action: below range is outlined in graphite, calmer than the red over
+// the ceiling; in range is filled in `mark`, the quietest tone that still
+// reads; over is red. Its key matches, left-aligned with the card's title.
 
 /** A Blanc palette's solid colours, read from the theme's text (it imports React Native). */
 function palette(name: string): Record<string, string> {
@@ -105,19 +105,19 @@ afterEach(() => {
 
 describe('The muscle figure', () => {
   for (const look of PALETTES) {
-    it(`outlines below range in ink, fills in range with mark, and over in red (${look.name})`, async () => {
+    it(`outlines below range in graphite, fills in range with mark, and over in red (${look.name})`, async () => {
       const c = palette(look.name);
       const tones = muscleTones.muscleTonesFor(look.dark, look.contrast);
       await draw(look);
-      // Below range keeps its light fill, held by an ink outline about 1.5 pt wide as it shows.
+      // Below range keeps its light fill, held by a graphite outline 1.25 pt wide as it shows.
       expect(fillsOf('chest').length).toBeGreaterThan(0);
       expect(fillsOf('chest').every((fill) => fill === css(tones.below))).toBe(true);
       const outline = host.querySelector<HTMLElement>('b[data-clip="url(#below-front-chest)"]');
-      expect(outline?.dataset.stroke).toBe(css(c.ink));
-      const scale = 136 / (anatomy.FIGURE.bottom - anatomy.FIGURE.top);
+      expect(outline?.dataset.stroke).toBe(css(c.graphite));
+      const scale = 204 / (anatomy.FIGURE.bottom - anatomy.FIGURE.top);
       const seam = look.dark ? 1.35 : 1;
       // Stroked at twice its width and clipped to the muscle; the seam takes half a seam of it.
-      expect((Number(outline?.dataset.width) / 2 - seam / 2) * scale).toBeCloseTo(1.5, 5);
+      expect((Number(outline?.dataset.width) / 2 - seam / 2) * scale).toBeCloseTo(1.25, 5);
       // Only below range is outlined.
       expect(host.querySelectorAll('b[data-clip^="url(#below-"]').length).toBeGreaterThan(0);
       expect(host.querySelector('b[data-clip="url(#below-front-quads)"]')).toBeNull();
@@ -132,8 +132,8 @@ describe('The muscle figure', () => {
     const c = palette('light');
     await draw(PALETTES[0]);
     const swatch = (label: string) => [...host.querySelectorAll('span')].find((span) => span.textContent === label)?.previousElementSibling as HTMLElement | null;
-    expect(swatch('Below range')?.dataset.border).toBe(css(c.ink));
-    expect(swatch('Below range')?.dataset.borderWidth).toBe('1.5');
+    expect(swatch('Below range')?.dataset.border).toBe(css(c.graphite));
+    expect(swatch('Below range')?.dataset.borderWidth).toBe('1.25');
     expect(swatch('In range')?.dataset.bg).toBe(css(c.mark));
     expect(swatch('Over')?.dataset.bg).toBe(css(c.live));
     // The key's row: not centred under the figures, and in from the edge as far as the caption above.

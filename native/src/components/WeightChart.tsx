@@ -127,15 +127,19 @@ export function WeightChart({
     return { line, path: monotonePath(line), dots, radius, axis, grid };
   }, [series, slots, width, plotWidth, padX, height, unit, compact, ticks]);
 
-  // Labels that would run into the one before or past the plot's edge are left out.
+  // A label may run on past the plot's edge into the gap before the weight
+  // scale, so the month a range runs into (Nov 1 on a 3M range ending Nov 6)
+  // is named; one that would reach the scale's column, under its lowest
+  // figure, or run into the label before it is left out.
   const axisLabels = useMemo(() => {
     if (!geometry) return [];
     const char = AXIS_CHAR * Math.min(fontScale, AXIS_MAX_SCALE);
+    const room = plotRight + SCALE_GAP;
     const shown: Array<{ slot: number; label: string; x: number }> = [];
     let end = -Infinity;
     for (const tick of geometry.axis) {
       const right = tick.x + AXIS_GAP + tick.label.length * char;
-      if (tick.x < end + 8 || right > plotRight) continue;
+      if (tick.x < end + 8 || right > room) continue;
       shown.push(tick);
       end = right;
     }

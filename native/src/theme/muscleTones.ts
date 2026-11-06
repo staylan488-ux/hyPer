@@ -1,8 +1,9 @@
 // The body tones Progress's muscle figure draws on, and the deeper step an
 // open row's rail uses for its best range. The marks that carry a muscle's
 // state come from the palette instead, so they match the rest of the app:
-// below range is an ink outline over a light fill, in range is `mark` (3:1 or
-// more on the body and the card), over is the live red.
+// below range is a graphite outline over the light `below` fill (3:1 or more
+// against both), in range is `mark` (3:1 or more on the body and the card),
+// over is the live red.
 // The hook is in useMuscleTones.
 /**
  * Set by hand for each card. The body and any muscle not trained this week

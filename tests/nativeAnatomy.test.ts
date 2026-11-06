@@ -8,7 +8,7 @@ import { MUSCLE_TONES } from '../native/src/theme/muscleTones';
 
 const SIDES: ViewSide[] = ['front', 'back'];
 /** Progress draws the figure this tall (MuscleFigure's height), in points. */
-const FIGURE_POINTS = 136;
+const FIGURE_POINTS = 204;
 const pointsPerUnit = FIGURE_POINTS / (FIGURE.bottom - FIGURE.top);
 
 /** How far a point inside a polygon is from its edge. */
@@ -62,7 +62,8 @@ describe("Progress's muscle figure", () => {
     }
   });
 
-  it('never lays one muscle over another', () => {
+  // About 2 s of point tests alone; slower when the whole suite runs at once.
+  it('never lays one muscle over another', { timeout: 20_000 }, () => {
     for (const side of SIDES) {
       for (const [x, y] of grid(0.5)) {
         const under = REGIONS[side].filter((region) => insidePolygon(x, y, region.points));
@@ -134,6 +135,18 @@ describe("Progress's muscle figure", () => {
     // Each figure at least 70 pt wide at Progress's height.
     expect((FIGURE.right - FIGURE.left) * pointsPerUnit).toBeGreaterThanOrEqual(70);
   });
+
+  it('draws the pair across about 70% of Progress’s card', () => {
+    const source = readFileSync(path.join(__dirname, '../native/src/components/MuscleFigure.tsx'), 'utf8');
+    const gap = Number(source.match(/const GAP = (\d+);/)?.[1]);
+    expect(gap).toBeGreaterThan(0);
+    const pair = (2 * (FIGURE.right - FIGURE.left) + gap) * pointsPerUnit;
+    // The card on 393 pt and 402 pt wide iPhones, inside the 16 pt screen gutters.
+    for (const card of [393 - 32, 402 - 32]) {
+      expect(pair / card, `${card} pt card`).toBeGreaterThanOrEqual(0.66);
+      expect(pair / card, `${card} pt card`).toBeLessThanOrEqual(0.74);
+    }
+  });
 });
 
 const rgb = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
@@ -155,7 +168,7 @@ function palette(name: string): Record<string, string> {
 }
 
 // In range is the palette's `mark` on the figure, the key and the rails' band;
-// below range is outlined in the palette's ink.
+// below range is outlined in the palette's graphite.
 describe('Progress\'s in-range tone', () => {
   for (const name of Object.keys(MUSCLE_TONES) as Array<keyof typeof MUSCLE_TONES>) {
     it(`draws the rail's band in the figure's in-range tone, at 3:1 against its track and the card (${name})`, () => {
@@ -170,14 +183,14 @@ describe('Progress\'s in-range tone', () => {
       expect(contrast(tones.best, label), name).toBeGreaterThanOrEqual(3);
     });
 
-    it(`outlines a muscle below range in ink, against the body and its own light fill (${name})`, () => {
+    it(`outlines a muscle below range in graphite, at 3:1 or more against the body and its own light fill (${name})`, () => {
       const tones = MUSCLE_TONES[name];
-      const { ink, mark } = palette(name);
-      expect(contrast(ink, tones.body), name).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(ink, tones.below), name).toBeGreaterThanOrEqual(4.5);
-      // In range is clearly a fill, but quieter than the outline, so below range leads.
+      const { graphite, mark } = palette(name);
+      expect(contrast(graphite, tones.body), name).toBeGreaterThanOrEqual(3);
+      expect(contrast(graphite, tones.below), name).toBeGreaterThanOrEqual(3);
+      // In range is clearly a fill, and the thin outline still stands apart from it.
       expect(contrast(mark, tones.body), name).toBeGreaterThanOrEqual(3);
-      expect(contrast(ink, tones.body), name).toBeGreaterThan(contrast(mark, tones.body));
+      expect(contrast(graphite, tones.body), name).toBeGreaterThan(contrast(mark, tones.body));
     });
   }
 
@@ -194,8 +207,8 @@ describe('Progress\'s in-range tone', () => {
     const edge = rgb(graphite).map((value, i) => Math.round(0.3 * value + 0.7 * rgb(label)[i]));
     rgb(MUSCLE_TONES.light.contour).forEach((value, i) => expect(Math.abs(value - edge[i])).toBeLessThanOrEqual(3));
     expect(contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body)).toBeGreaterThanOrEqual(1.4);
-    // Quieter than below range's ink outline, so an outlined muscle never reads as the bare body.
-    expect(contrast(palette('light').ink, MUSCLE_TONES.light.body)).toBeGreaterThan(2 * contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body));
+    // Quieter than below range's graphite outline, so an outlined muscle never reads as the bare body.
+    expect(contrast(palette('light').graphite, MUSCLE_TONES.light.body)).toBeGreaterThan(2 * contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body));
     const source = readFileSync(path.join(__dirname, '../native/src/components/MuscleFigure.tsx'), 'utf8');
     expect(source).toContain('const BODY_EDGE = 1;');
   });

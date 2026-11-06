@@ -19,15 +19,14 @@ const BOX = { width: FIGURE_WIDTH * 2 + GAP, height: FIGURE.bottom - FIGURE.top 
 /** A muscle reaches at least this far from its edge to the finger, in points. */
 const REACH = 12;
 /**
- * The seams between muscles, in the card's colour, in figure units: about
- * seven tenths of a point at the figure's height; a little wider on the
- * dark card. Neighbouring muscles share one edge (lib/anatomy), so a seam
- * is this wide everywhere.
+ * The seams between muscles, in the card's colour, in figure units: about a
+ * point at the figure's height; a little wider on the dark card. Neighbouring
+ * muscles share one edge (lib/anatomy), so a seam is this wide everywhere.
  */
 const SEAM = 1;
 const DARK_SEAM = 1.35;
-/** Between the caption above and the figures' heads, in points: the caption's baseline sits about 14 pt above them. */
-const HEAD_ROOM = 8;
+/** Between the caption above and the figures' heads, in points: the caption's baseline sits about 12 pt above them. */
+const HEAD_ROOM = 6;
 
 /**
  * The body's edge on the light cards, in points as it shows: half the
@@ -38,10 +37,12 @@ const HEAD_ROOM = 8;
 const BODY_EDGE = 1;
 const DARK_CONTOUR = 2.8;
 /**
- * The ink outline that marks a muscle below range, in points as it shows:
- * drawn inside the muscle only, so it never spills onto a neighbour or past the body.
+ * The graphite outline that marks a muscle below range, in points as it
+ * shows: drawn inside the muscle only, so it never spills onto a neighbour or
+ * past the body. Graphite, not ink, so it reads at 3:1 or more on the body
+ * and on its own light fill without outshouting the red past the ceiling.
  */
-const BELOW_OUTLINE = 1.5;
+const BELOW_OUTLINE = 1.25;
 /** The key sits in from the figure's edge as far as the card's title above it does (Progress's caption). */
 const KEY_INSET = 6;
 
@@ -109,10 +110,11 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
 /**
  * This week's volume on a flat front and back muscle figure, pointing at what
  * needs action: the bare body where untrained; below range, the muscle to act
- * on, a light fill held by an ink outline, the strongest mark short of red; in
- * range a `mark` fill, the quietest tone that still reads at 3:1 on the body;
- * and red past the recoverable ceiling. Front and Back are named under their
- * figures, with the key under them, on the card title's left edge. The shading is the web app's
+ * on, a light fill held by a graphite outline; in range a `mark` fill, the
+ * quietest tone that still reads at 3:1 on the body; and red past the
+ * recoverable ceiling. The pair fills about 70% of Progress's card across.
+ * Front and Back are named just under their figures, with the key close under
+ * them, on the card title's left edge. The shading is the web app's
  * (`src/lib/maquette.ts`); the drawing is the app's own (`lib/anatomy.ts`).
  * Tap a muscle to choose it (a near miss counts; small ones like the side
  * delts reach a fingertip); the others quiet down. Tapping it again, or away
@@ -120,7 +122,7 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * element: swiping up and down steps through this week's muscles (the rows
  * of the list below it), and down past the first clears the choice.
  */
-export function MuscleFigure({ volume, selected, onPick, height = 136 }: {
+export function MuscleFigure({ volume, selected, onPick, height = 204 }: {
   volume: MuscleVolume[];
   selected: MuscleGroup | null;
   onPick: (muscle: MuscleGroup | null) => void;
@@ -142,7 +144,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 136 }: {
     }),
     [tones, c.mark, c.live],
   );
-  const belowEdge = useMemo(() => parseColor(c.ink, [0.04, 0.04, 0.04]), [c.ink]);
+  const belowEdge = useMemo(() => parseColor(c.graphite, [0.4, 0.4, 0.37]), [c.graphite]);
   const body = tones.body;
   const seam = dark ? DARK_SEAM : SEAM;
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -276,8 +278,8 @@ export function MuscleFigure({ volume, selected, onPick, height = 136 }: {
           ))}
         </Svg>
       </Pressable>
-      {/* Front and Back, centred under their figures. */}
-      <View style={{ flexDirection: 'row', marginTop: 2, paddingLeft: placed?.left ?? 0 }}>
+      {/* Front and Back, centred just under their figures. */}
+      <View style={{ flexDirection: 'row', paddingLeft: placed?.left ?? 0 }}>
         {SIDES.map((side, index) => (
           <BlancText
             key={side}
@@ -298,7 +300,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 136 }: {
         What the shades mean, left-aligned with the card's title as every chart key is.
         Inside the one adjustable element, so VoiceOver reads the rows below instead.
       */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, rowGap: 4, marginTop: large ? 8 : 6, paddingHorizontal: KEY_INSET }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, rowGap: 4, marginTop: large ? 6 : 4, paddingHorizontal: KEY_INSET }}>
         {key.map((item) => (
           <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View
