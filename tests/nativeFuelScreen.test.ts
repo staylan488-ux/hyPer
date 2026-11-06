@@ -140,10 +140,19 @@ describe("Fuel's date under the title", () => {
     expect(push).toHaveBeenLastCalledWith({ pathname: '/log-food', params: { day: TODAY } });
   });
 
-  it('names another day as Fuel titles it', async () => {
+  it('names another day the way Today writes its date', async () => {
     await renderFuel({ day: '2026-11-03' });
-    await act(async () => { pressables['Tuesday, Nov 3'].onPress!(); });
+    await act(async () => { pressables['Tuesday, November 3'].onPress!(); });
     expect(push).toHaveBeenCalledWith('/fuel-month');
+  });
+});
+
+describe('Fuel on a day with nothing logged', () => {
+  it('shows no zero figures, only Nothing logged and Log food', async () => {
+    await renderFuel({ day: '2026-11-03', logged: false });
+    const figure = Object.values(pressables).find((press) => press.accessibilityHint === 'Edits your calorie target' || press.accessibilityHint === 'Sets your calorie target');
+    expect(figure).toBeUndefined();
+    expect(capsules['Log food']).toBeDefined();
   });
 });
 

@@ -7,7 +7,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { getLogDate } from '@/lib/nutritionLogUtils';
-import { fuelDaySummary, fuelDayTitle, warnsOverTarget, type FuelMacro } from '@/lib/fuelSummary';
+import { fuelDaySummary, warnsOverTarget, type FuelMacro } from '@/lib/fuelSummary';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { decodeMealComposition } from '@/lib/mealComposition';
 import { weekDays } from '@/lib/nutritionCalendar';
@@ -156,8 +156,10 @@ export default function FuelScreen() {
   const loadFailed = status === 'error' && !loaded;
   useAnnounce(loadFailed ? "This day's food could not load. Pull down to try again." : null);
   const c = useBlanc();
-  // Today reads as on the Today tab; other days keep Fuel's own title.
-  const dayLine = live ? format(selectedDate, 'EEEE, MMMM d') : fuelDayTitle(selectedDate);
+  // Every day is written as Today writes its date ("Monday, November 2"), with the year only when it differs.
+  const dayLine = format(selectedDate, selectedDate.getFullYear() === new Date().getFullYear() ? 'EEEE, MMMM d' : 'EEEE, MMMM d, yyyy');
+  // A day with nothing logged shows no figures (no 0 kcal, no 0 g): only Nothing logged and Log food.
+  const empty = loaded && logs.length === 0;
 
   // The day's groups in order, Unassigned first when it has entries. Empty
   // named meals stay out of the way; a meal or snack added by hand stays.
@@ -217,47 +219,49 @@ export default function FuelScreen() {
         <WeekStrip selected={selectedDate} dayKcal={dayKcal} target={kcalTarget} goal={goal} todayKey={todayKey} />
 
         {/* The day's figure and the macros open the targets, the numbers they measure against. */}
-        <Pressable
-          accessibilityRole="button"
-          // The figure, its target and the line under it, as one fact.
-          accessibilityLabel={speak(
-            kcalTarget
-              ? loaded
-                ? `${formatWhole(totals.calories)} of ${formatWhole(kcalTarget)} kcal${live ? ` · ${summary.logLine}` : ''}`
-                : `Target ${formatWhole(kcalTarget)} kcal`
-              : loaded
-                ? `${formatWhole(totals.calories)} kcal`
-                : 'Calories',
-          )}
-          accessibilityHint={kcalTarget ? 'Edits your calorie target' : 'Sets your calorie target'}
-          onPress={() => editTarget('calories')}
-          style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 12, opacity: pressed ? 0.55 : 1 })}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
-            {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
-            <RollingText variant="figure" size={56} style={{ ...restingFigure, letterSpacing: -1.25, marginLeft: figureLead(loaded ? formatWhole(totals.calories) : '–', 56, { tabular: false }) }}>
-              {loaded ? formatWhole(totals.calories) : '–'}
-            </RollingText>
-            <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
-              <BlancText variant="secondary" tone="graphite">
-                {kcalTarget ? `of ${formatWhole(kcalTarget)} kcal` : 'kcal'}
-              </BlancText>
-            </Animated.View>
-          </View>
-          {kcalTarget ? (
-            <View style={{ marginTop: 10 }}>
-              <Track progress={totals.calories / kcalTarget} warnOver={warnsOverTarget('calories', goal)} />
+        {empty ? null : (
+          <Pressable
+            accessibilityRole="button"
+            // The figure, its target and the line under it, as one fact.
+            accessibilityLabel={speak(
+              kcalTarget
+                ? loaded
+                  ? `${formatWhole(totals.calories)} of ${formatWhole(kcalTarget)} kcal${live ? ` · ${summary.logLine}` : ''}`
+                  : `Target ${formatWhole(kcalTarget)} kcal`
+                : loaded
+                  ? `${formatWhole(totals.calories)} kcal`
+                  : 'Calories',
+            )}
+            accessibilityHint={kcalTarget ? 'Edits your calorie target' : 'Sets your calorie target'}
+            onPress={() => editTarget('calories')}
+            style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 12, opacity: pressed ? 0.55 : 1 })}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
+              {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
+              <RollingText variant="figure" size={56} style={{ ...restingFigure, letterSpacing: -1.25, marginLeft: figureLead(loaded ? formatWhole(totals.calories) : '–', 56, { tabular: false }) }}>
+                {loaded ? formatWhole(totals.calories) : '–'}
+              </RollingText>
+              <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
+                <BlancText variant="secondary" tone="graphite">
+                  {kcalTarget ? `of ${formatWhole(kcalTarget)} kcal` : 'kcal'}
+                </BlancText>
+              </Animated.View>
             </View>
-          ) : null}
-          {!kcalTarget && targetKnown ? (
-            <BlancText variant="secondary" tone="graphite" style={{ marginTop: 10 }}>
-              Set a calorie target
-            </BlancText>
-          ) : null}
-        </Pressable>
+            {kcalTarget ? (
+              <View style={{ marginTop: 10 }}>
+                <Track progress={totals.calories / kcalTarget} warnOver={warnsOverTarget('calories', goal)} />
+              </View>
+            ) : null}
+            {!kcalTarget && targetKnown ? (
+              <BlancText variant="secondary" tone="graphite" style={{ marginTop: 10 }}>
+                Set a calorie target
+              </BlancText>
+            ) : null}
+          </Pressable>
+        )}
 
         {/* The macros sit side by side under the day's figure, so the day's food starts on the first screen.
             At the accessibility text sizes they stack as rows. */}
-        {grown ? (
+        {empty ? null : grown ? (
           <Label style={{ overflow: 'hidden', marginTop: 22 }}>
             <MacroRow macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
             <Hairline />

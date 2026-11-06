@@ -199,7 +199,7 @@ const previewPastGroups = pastDays.flatMap(([back]) =>
 );
 const pastLogs = pastDays.flatMap(([back, scale]) =>
   pastDaySeeds.map(([foodId, servings, meal, h, m], i) => ({
-    id: `nl-${back}-${i}`, user_id: PREVIEW_USER_ID, date: ymd(daysAgo(back)), food_id: foodId, servings: Math.round(servings * scale * 4) / 4, meal_type: meal,
+    id: `nl-${back}-${i}`, user_id: PREVIEW_USER_ID, date: ymd(daysAgo(back)), food_id: foodId, servings: Math.round(servings * scale * 10) / 10, meal_type: meal,
     group_id: `ng-${back}-${meal}`, sort_order: i, source: 'manual', external_id: null, import_batch_id: null,
     created_at: iso(at(daysAgo(back), h, m)), logged_at: iso(at(daysAgo(back), h, m)),
   })),
