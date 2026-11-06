@@ -153,10 +153,21 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   Fraunces Mark Medium Italic, approved 2026-10-26): the app icon, Today's top-left
   corner and the sign-in and offline emblem. Fraunces appears nowhere else.
 - The set [Tally](../../../native/src/components/Tally.tsx) counts sets like a
-  paper training log: one stroke per set in groups of five, the next set's stroke
-  taller and in the live red, remaining strokes in `mark`, a finished movement's
-  strokes in graphite (`quiet`), a finished group closed with a diagonal. Use it for set progress and
-  finished-session summaries only, never as a logo or decoration.
+  paper training log: one stroke per set in groups of five, logged strokes in
+  ink, the next set's stroke taller (about half again) and in the live red,
+  still to do in `mark`, a finished group closed with a diagonal. One grammar
+  everywhere: a finished movement recedes through its name, never its strokes.
+  Use it for set progress and finished-session summaries only, never as a
+  logo or decoration.
+- Data marks (past bars, weigh-in dots, a rail's in-range band, the target's
+  dashes) are `mark` at full strength, 3:1 or more in every palette; the
+  current period is ink and over is red. No opacity tricks: hierarchy comes
+  from size and weight. Chart keys are left-aligned with the card title.
+  Progress's nutrition charts show the seven days before today, named by
+  their dates ("Oct 30–Nov 5"), with the average of the logged days; their
+  targets' figures sit in a column beside the bars, as Body weight's scale
+  does, and one key names the dashed line. The muscle figure draws below
+  range as an ink outline, in range in `mark`, over in red.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
   layouts or signature details (the owner ruled out copying Maison Margiela's
   stitches and numbered label on 2026-10-26).
@@ -198,7 +209,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
   nutritionDay, savedMeals, recentFoods, repeatEntries, savedMealFromLog); never copy them into
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
-  `native/src/fuel`) with Recent, Saved and Search as its segments and the
+  `native/src/fuel`) with a Search foods field above its Recent and Saved
+  segments (typing takes the sheet over; Cancel returns to what was showing;
+  matching saved meals list first, then USDA's) and the
   entry methods Barcode, Manual, Photo and Describe (a symbol over each name)
   as a quiet row under them (`native/src/fuel/EntryMethods.tsx`), a review
   for a chosen food, and the meal builder. Photo and Describe are two doors
@@ -206,7 +219,13 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   combined (the owner's call on 2026-11-05): Photo opens the camera at once
   and adds what it takes, Describe puts the cursor in Your meal, and nothing
   is estimated until Analyze meal; only Snap a meal estimates on its own. A
-  device set to the worker gets Photo alone. Search stays a food search.
+  device set to the worker gets Photo alone. Search stays a food search. The
+  line under the title says where food goes ("Adds to today", "Adds to
+  Lunch"); its menu offers No meal, the day's meals, New meal and New snack
+  (on Fuel's day). "No meal" (`NO_MEAL`) names foods outside a meal
+  everywhere, and a lone unnamed snack is "Snack" (`nutritionGroupTitle`).
+  Fuel's date line opens the month (its chevron says so) and "+" stands alone
+  in the bar; a day with food ends on a quiet Log food.
   Barcode opens its camera only when Scan barcode is tapped (the owner's call
   on 2026-10-27). Recent opens
   first: four weeks of the log, most often eaten lately first, + logs the
@@ -231,8 +250,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   the photo library bottom left (iOS's photo picker, which needs no library
   permission; cancelling it returns to the camera). A shot shows Retake and
   Use Photo. Camera access is asked as the screen opens; refused, or with no
-  camera (the simulator), the screen says so (Open Settings when refused)
-  and the library still works, and closing it leaves the reason under Photo.
+  camera (the simulator), the screen says so with Choose from library right
+  under the words (and Open Settings when refused); the library button bottom
+  left still works, and closing it leaves the reason under Photo.
   A photo already added keeps its own menu (Replace photo, Remove photo).
 - "This should work, and it does" (the owner, 2026-10-27; app-wide audit
   2026-10-28): every list item that can be removed swipes left for its actions
@@ -293,7 +313,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm
   choices, saved through the shared `buildPlanSchedule`; saving bumps
   `useScheduleRevision` so open screens re-read it) and Program, which
-  holds the training mode. Flexible mode names the session or starts a quick
+  holds the training mode and, in Program days with a program, Adaptive
+  scheduling. Flexible mode names the session or starts a quick
   start; the session grows with Add movement, the pencil renames it, and
   Finish offers to keep it as a quick start. Adding and removing movements is
   a flexible-session feature, as on the web.
@@ -378,7 +399,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   removing extension files. The run card and the home-screen widgets live in
   the same extension (below).
 - Program lives in Train's stack (`train/program`, `train/program-view`)
-  and holds the training mode. Editing goes through the shared
+  and holds the training mode and Adaptive scheduling. Editing goes through the shared
   `splitEditStore` in the `program-edit` page sheet (its own stack: the
   program, then a day); `usePreventRemove` in its layout asks before
   unsaved edits go, through `discardSplitEdit(confirmAlert)`. Sets and
@@ -398,8 +419,11 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `account`, `about`) plus root sheets (`log-weight`, `targets-edit`,
   `targets-calculate`, `targets-coach`, `saved-meal`). Body weight's chart
   reads 1M, 3M (the default), 6M, 1Y or All on a calendar axis ending today,
-  and Recent ends in All weigh-ins (every one, by month, with each month's
-  average); both come from one paged read of every weigh-in
+  Recent starts at the weigh-in before the figure's (left out with only one)
+  and always ends in All weigh-ins (every one, by month, with each month's
+  average); You's card reads the default 3M range through
+  `weightRangeSummary` ("+0.3 lb/wk since Aug 9"), its sparkline over the same
+  days; both come from one paged read of every weigh-in
   (`loadWeights({ all: true })`, rules in `src/lib/weightHistory.ts`), joined
   to the 90-day read that every log and sync repeats. A gain reads like a
   loss, signed and in ink. Screen state shared
