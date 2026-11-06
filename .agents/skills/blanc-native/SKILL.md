@@ -175,14 +175,25 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   time like Body weight (tap, tap again to let go, or hold and slide): the
   header shows that bar's date and value and the bar turns ink; they are
   adjustable for VoiceOver. A chart still loading shows one graphite spinner
-  in its space. The hollow ring is keyed "No entry". Training time dates its
-  first and last week only. The muscle figure pair fills about 70% of its
+  in its space, and a failed first read a short line with a quiet Retry. The
+  hollow ring ("No entry") appears only where an unlogged day isn't zero
+  (Nutrition); an untrained week is 0 h, a 2 pt tick in `mark`. Training time
+  dates its first and last week only. The muscle figure pair fills about 70% of its
   card: below range a graphite 1.25 pt outline, in range `mark`, over red.
   Day marks (Fuel's week strip, the month sheet) are 28 × 4 pt, ink over
   `mark`, red past target only where the goal warns, nothing on an unlogged
-  day.
+  day, and the selected day keeps its mark. Every week and calendar starts on
+  Monday (`TRAINING_WEEK`, M T W T F S S). Bars appear at their value and
+  animate only changes. A row's detail passes parts when its end matters
+  (time, Estimate), so only the first part (the amount) truncates.
 - Every screen section is a `Section` header over one Label; no footnote
-  group labels. A card that opens a screen shows a chevron (on a figure card,
+  group labels. Today's sections are named for the screens they open (Fuel,
+  Progress), and its session card has one layout live and done (header with
+  day and clock or length, tally, title line, quiet line, action). Fuel's
+  figure, bar and macros are one Label. Session complete is top-anchored:
+  the day as the large title, one quiet line ("Session complete · day ·
+  time", or "5 of 9 sets · …" when short, never "complete"), then the tally,
+  "N sets beat last time" in ink, Volume, Time and Best set. A card that opens a screen shows a chevron (on a figure card,
   on the figure's line) and uses the `pressed` fill. A segmented control's
   `Host` matches its contents vertically only, with an explicit width.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
@@ -244,8 +255,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   everywhere, and a lone unnamed snack is "Snack" (`nutritionGroupTitle`).
   The line names only where food goes, never a total, in a 44 pt target.
   The chosen entry method is lifted like a chosen Chip. No food list carries
-  a kcal heading. Recent ends in Build a meal; Saved has an Edit header on
-  the card's right edge and ends in New saved meal. A quick add's tick
+  a kcal heading. Recent ends in Build a meal; Saved has no Edit mode (each
+  meal swipes and holds for Edit and Delete) and ends in New saved meal. At
+  the accessibility sizes only the title, destination and Search foods stay
+  pinned. An added photo's corner shows a white ellipsis for its menu. A quick add's tick
   belongs to one day and meal; a failed one says "Couldn't confirm. Tap + to
   try again." and its retry reuses its first entry id, time and meal.
   Fuel's date line opens the month (its chevron says so) and "+" stands alone
@@ -372,7 +385,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   without logging a set, pause or resume it, add 30 seconds, change the
   movement's rest length or end it. The length is set only on the presets
   track (1:00, 1:30, 2:00, 3:00, 5:00, then Custom, chosen for any other
-  length); the big time is display only. The
+  length; a 44 pt touch band around a 38 pt fill); the big time is display
+  only, in proportional digits while idle and tabular while it runs. The
   rest is the web's stored rest session (`src/lib/restTimer.ts`), so it
   survives leaving Train and relaunching. Lengths are kept per movement through
   the shared `src/lib/restPreferences.ts`, as on the web (own length, else the
