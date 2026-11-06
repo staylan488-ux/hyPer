@@ -9,6 +9,7 @@ import {
   weightChartTicks,
   weightChartWindow,
   weightHistoryTrend,
+  weightLatestRunDays,
   weightRangeKgPerWeek,
 } from '@/lib/weightHistory';
 
@@ -46,7 +47,7 @@ describe('the chart ranges', () => {
   });
 
   it('cut a long history to the range and keep the trend carried into it', () => {
-    const trend = buildWeightTrend([weighIn('c', '2026-11-04', 82), weighIn('b', '2026-06-01', 79), weighIn('a', '2026-01-10', 76)]);
+    const trend = buildWeightTrend([weighIn('c', '2026-11-04', 82), weighIn('b', '2026-10-15', 79), weighIn('a', '2026-09-20', 76)]);
     const month = weightChartWindow(trend.points, 30, '2026-11-05');
     expect(month.series[0].date).toBe('2026-10-07');
     // Smoothed from the earlier weigh-ins, not restarted at the window's edge.
@@ -66,9 +67,44 @@ describe('the chart ranges', () => {
     expect(weightChartWindow(trend.points, 30, '2026-11-05').series).toEqual([]);
   });
 
+  it('leave out a break of more than four weeks, so the line stops and starts again', () => {
+    // One weigh-in in August, then every day from Oct 25 to Nov 5.
+    const october = Array.from({ length: 7 }, (_, i) => weighIn(`o${i}`, `2026-10-${25 + i}`, 59.6));
+    const november = Array.from({ length: 5 }, (_, i) => weighIn(`n${i}`, `2026-11-0${i + 1}`, 59.7));
+    const trend = weightHistoryTrend([...november, ...october, weighIn('aug', '2026-08-27', 59.5)]);
+    const range = weightChartWindow(trend.points, 90, '2026-11-06');
+    expect(range.series[0]).toMatchObject({ date: '2026-08-27', slot: 18 });
+    // Oct 25 follows Aug 27 directly: no held days between.
+    expect(range.series[1]).toMatchObject({ date: '2026-10-25', slot: 77 });
+    expect(range.series).toHaveLength(13);
+  });
+
+  it('keep the days inside a break of four weeks or less', () => {
+    const trend = weightHistoryTrend([weighIn('b', '2026-11-01', 80), weighIn('a', '2026-10-04', 79)]);
+    expect(weightChartWindow(trend.points, 30, '2026-11-05').series).toHaveLength(26);
+  });
+
   it('keep a weigh-in dated after today on the axis', () => {
     const trend = buildWeightTrend([weighIn('b', '2026-11-06', 80), weighIn('a', '2026-11-01', 79)]);
     expect(weightChartWindow(trend.points, 30, '2026-11-05').endDay).toBe('2026-11-06');
+  });
+});
+
+describe('the latest run of weigh-ins', () => {
+  it('starts after a break of more than four weeks', () => {
+    const trend = weightHistoryTrend([weighIn('c', '2026-11-05', 60), weighIn('b', '2026-10-25', 60), weighIn('a', '2026-08-27', 59)]);
+    // Oct 25 to Nov 6, both included.
+    expect(weightLatestRunDays(trend.points, 90, '2026-11-06')).toBe(13);
+  });
+
+  it('runs back through breaks of four weeks or less, up to the most it may', () => {
+    const trend = weightHistoryTrend([weighIn('c', '2026-11-05', 60), weighIn('b', '2026-10-08', 60), weighIn('a', '2026-09-10', 59)]);
+    expect(weightLatestRunDays(trend.points, 90, '2026-11-06')).toBe(58);
+    expect(weightLatestRunDays(trend.points, 30, '2026-11-06')).toBe(30);
+  });
+
+  it('is the most it may with no weigh-ins', () => {
+    expect(weightLatestRunDays([], 90, '2026-11-06')).toBe(90);
   });
 });
 

@@ -66,27 +66,79 @@ export interface WeightChartWindow {
   endDay: string;
   /** Days on the axis, both ends included. */
   slots: number;
-  /** The trend's days inside the window, oldest first, one per day with no gaps. */
+  /**
+   * The trend's days inside the window, oldest first, one per day. A break of
+   * more than WEIGHT_TREND_RESTART_DAYS without a weigh-in is left out, so
+   * the slots jump there and the line stops and starts again.
+   */
   series: WeightChartPoint[];
+}
+
+/** The last day the axis shows: today, or a weigh-in dated after it (a phone set to another time zone). */
+function windowEndDay(points: WeightTrendPoint[], todayKey: string): string {
+  const last = points.at(-1)?.date;
+  return last && last > todayKey ? last : todayKey;
+}
+
+/**
+ * The trend's days between two weigh-ins more than WEIGHT_TREND_RESTART_DAYS
+ * apart. The trend holds its last value across them, but a flat line there
+ * would draw weeks of weight nobody measured.
+ */
+function breakDays(points: WeightTrendPoint[]): Set<string> {
+  const held = new Set<string>();
+  let previous: string | null = null;
+  let waiting: string[] = [];
+  for (const point of points) {
+    if (point.observedKg == null) {
+      waiting.push(point.date);
+      continue;
+    }
+    if (previous !== null && differenceInCalendarDays(day(point.date), day(previous)) > WEIGHT_TREND_RESTART_DAYS) {
+      for (const date of waiting) held.add(date);
+    }
+    previous = point.date;
+    waiting = [];
+  }
+  return held;
 }
 
 /**
  * The days a range shows. A fixed range is the calendar days ending today, so
  * a month ago sits at the same place whatever was logged; the trend stops at
- * the last weigh-in, leaving the days since then empty rather than invented.
- * All runs from the first weigh-in to today.
+ * the last weigh-in, leaving the days since then empty rather than invented,
+ * and leaves out a long break between weigh-ins the same way. All runs from
+ * the first weigh-in to today.
  */
 export function weightChartWindow(points: WeightTrendPoint[], days: number | null, todayKey: string): WeightChartWindow {
-  const last = points.at(-1)?.date;
-  // A weigh-in dated after today (a phone set to another time zone) stays on the axis.
-  const endDay = last && last > todayKey ? last : todayKey;
+  const endDay = windowEndDay(points, todayKey);
   const first = points[0]?.date ?? endDay;
   const startDay = days === null ? (first < endDay ? first : endDay) : dayKeyOf(addDays(day(endDay), -(Math.max(1, days) - 1)));
   const start = day(startDay);
+  const held = breakDays(points);
   const series = points
-    .filter((point) => point.date >= startDay && point.date <= endDay)
+    .filter((point) => point.date >= startDay && point.date <= endDay && !held.has(point.date))
     .map((point) => ({ ...point, slot: differenceInCalendarDays(day(point.date), start) }));
   return { startDay, endDay, slots: differenceInCalendarDays(day(endDay), start) + 1, series };
+}
+
+/**
+ * The days from the start of the latest run of weigh-ins to the axis's last
+ * day, at most `maxDays`. A run starts at the first weigh-in after a break of
+ * more than WEIGHT_TREND_RESTART_DAYS, where the trend starts again, so a
+ * summary of lately isn't stretched back to one weigh-in months before.
+ */
+export function weightLatestRunDays(points: WeightTrendPoint[], maxDays: number, todayKey: string): number {
+  let start: string | null = null;
+  let previous: string | null = null;
+  for (const point of points) {
+    if (point.observedKg == null) continue;
+    if (previous === null || differenceInCalendarDays(day(point.date), day(previous)) > WEIGHT_TREND_RESTART_DAYS) start = point.date;
+    previous = point.date;
+  }
+  if (start === null) return maxDays;
+  const days = differenceInCalendarDays(day(windowEndDay(points, todayKey)), day(start)) + 1;
+  return Math.max(1, Math.min(maxDays, days));
 }
 
 export interface WeightChartTick {

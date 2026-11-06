@@ -201,6 +201,8 @@ export function ToggleRow({ label, detail, value, onChange, disabled, list }: {
       <Switch
         accessibilityLabel={detail ? `${label}, ${detail}` : label}
         trackColor={{ true: c.switchOn }}
+        // iOS's white knob when off; on, the knob turns with the track (dark on light in dark mode).
+        thumbColor={(pending ?? value) ? c.switchThumbOn : '#FFFFFF'}
         value={pending ?? value}
         disabled={disabled}
         onValueChange={(next) => {

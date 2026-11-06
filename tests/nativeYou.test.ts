@@ -775,7 +775,8 @@ describe('Body weight chart', () => {
     // Three months to start, ending today.
     const threeMonths = charts.at(-1)!.calendar!;
     expect(threeMonths).toMatchObject({ endDay: '2026-11-05', slots: 90 });
-    expect(threeMonths.series[0].date).toBe('2026-08-08');
+    // May to October is a break of months: the line starts again at Oct 1, not on held days before it.
+    expect(threeMonths.series[0].date).toBe(dateFns.format(new Date('2026-10-01T15:00:00Z'), 'yyyy-MM-dd'));
     expect(charts.at(-1)!.span).toBe('last 3 months');
 
     // All goes back to the first weigh-in, six months ago.
@@ -1154,6 +1155,25 @@ describe("You's weight card", () => {
     const { since, rate, page } = await detailThenCard(gaining(new Date(2026, 9, 1, 8)));
     expect(since).toBe('since Oct\u00a01');
     expect(page.textContent).toContain(`${rate} ${since}`);
+  });
+
+  it('starts at the latest run of weigh-ins after a long break, not at one weigh-in months before', async () => {
+    // One weigh-in in August, then every other morning from Oct 1.
+    const entries = [...gaining(new Date(2026, 9, 1, 8)), weighIn('aug', 77, new Date(2026, 7, 27, 8).toISOString())];
+    const { detail, card, page } = await detailThenCard(entries);
+    // Body weight's three months still show the August weigh-in.
+    expect(detail.calendar!.series[0].date).toBe('2026-08-27');
+    expect(page.textContent).toMatch(/\+\d+\.\d lb\/wk since Oct\u00a01/);
+    expect(card.points![0].date).toBe('2026-10-01');
+  });
+
+  it('says the change while the latest run is under two weeks', async () => {
+    const { page } = await detailThenCard([
+      weighIn('b', 78.4, new Date(2026, 10, 4, 8).toISOString()),
+      weighIn('a', 78, new Date(2026, 9, 28, 8).toISOString()),
+      weighIn('aug', 77, new Date(2026, 7, 27, 8).toISOString()),
+    ]);
+    expect(page.textContent).toMatch(/\+\d+\.\d lb since Oct\u00a028/);
   });
 
   it('has no Training group: Adaptive scheduling sits with the training mode on Program', async () => {
