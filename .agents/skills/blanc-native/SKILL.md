@@ -119,7 +119,12 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   leaves no gap) and `figureLead` (pulls the first digit's ink onto the text
   edge); counting figures keep tabular digits. Train's 72 pt weight and reps
   sit on a ruled line (ink while typing) with Menlo "last 60" captions under
-  each field; the rep target is in ink on the line under the movement.
+  each field, shown only while the field differs from last time (the line's
+  height stays); the rep target is in ink on the line under the movement, and
+  the card's notes sit at that line's 15 pt graphite (one quiet level). The
+  card's whole header fades under the compact bar before the bar names the
+  movement. Every text field draws its caret and selection in ink
+  (`selectionColor={c.ink}`).
   Text fields take `field` (one line, with `lineBreakModeIOS="tail"`) or
   `fieldLines` (wrapping), never body: React Native reuses a field's native
   view, and iOS drew the new placeholder with the last one's letter spacing (a
@@ -166,8 +171,20 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   Progress's nutrition charts show the seven days before today, named by
   their dates ("Oct 30–Nov 5"), with the average of the logged days; their
   targets' figures sit in a column beside the bars, as Body weight's scale
-  does, and one key names the dashed line. The muscle figure draws below
-  range as an ink outline, in range in `mark`, over in red.
+  does, and one key names the dashed line. Bar charts read one bar at a
+  time like Body weight (tap, tap again to let go, or hold and slide): the
+  header shows that bar's date and value and the bar turns ink; they are
+  adjustable for VoiceOver. A chart still loading shows one graphite spinner
+  in its space. The hollow ring is keyed "No entry". Training time dates its
+  first and last week only. The muscle figure pair fills about 70% of its
+  card: below range a graphite 1.25 pt outline, in range `mark`, over red.
+  Day marks (Fuel's week strip, the month sheet) are 28 × 4 pt, ink over
+  `mark`, red past target only where the goal warns, nothing on an unlogged
+  day.
+- Every screen section is a `Section` header over one Label; no footnote
+  group labels. A card that opens a screen shows a chevron (on a figure card,
+  on the figure's line) and uses the `pressed` fill. A segmented control's
+  `Host` matches its contents vertically only, with an explicit width.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
   layouts or signature details (the owner ruled out copying Maison Margiela's
   stitches and numbered label on 2026-10-26).
@@ -211,7 +228,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
   `native/src/fuel`) with a Search foods field above its Recent and Saved
   segments (typing takes the sheet over; Cancel returns to what was showing;
-  matching saved meals list first, then USDA's) and the
+  matching saved meals list first, then USDA's, and only results for the
+  words in the field show) and the
   entry methods Barcode, Manual, Photo and Describe (a symbol over each name)
   as a quiet row under them (`native/src/fuel/EntryMethods.tsx`), a review
   for a chosen food, and the meal builder. Photo and Describe are two doors
@@ -224,8 +242,15 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   Lunch"); its menu offers No meal, the day's meals, New meal and New snack
   (on Fuel's day). "No meal" (`NO_MEAL`) names foods outside a meal
   everywhere, and a lone unnamed snack is "Snack" (`nutritionGroupTitle`).
+  The line names only where food goes, never a total, in a 44 pt target.
+  The chosen entry method is lifted like a chosen Chip. No food list carries
+  a kcal heading. Recent ends in Build a meal; Saved has an Edit header on
+  the card's right edge and ends in New saved meal. A quick add's tick
+  belongs to one day and meal; a failed one says "Couldn't confirm. Tap + to
+  try again." and its retry reuses its first entry id, time and meal.
   Fuel's date line opens the month (its chevron says so) and "+" stands alone
-  in the bar; a day with food ends on a quiet Log food.
+  in the bar; a day with food ends on a quiet Log food. Fuel's rows read
+  amount · protein · time · source.
   Barcode opens its camera only when Scan barcode is tapped (the owner's call
   on 2026-10-27). Recent opens
   first: four weeks of the log, most often eaten lately first, + logs the
@@ -345,7 +370,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the
-  movement's rest length (1, 2, 3 or 5 min, or a custom time) or end it. The
+  movement's rest length or end it. The length is set only on the presets
+  track (1:00, 1:30, 2:00, 3:00, 5:00, then Custom, chosen for any other
+  length); the big time is display only. The
   rest is the web's stored rest session (`src/lib/restTimer.ts`), so it
   survives leaving Train and relaunching. Lengths are kept per movement through
   the shared `src/lib/restPreferences.ts`, as on the web (own length, else the
@@ -406,6 +433,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   reps (`program-exercise`), reorder (`program-reorder`) and the picker
   (`swap` with `program=add|swap|superset`) are root sheets over it and
   change the draft only; nothing is written until Save or Create.
+- History draws strength sessions, finished or live, as a tally (the live
+  one's next stroke red, its state in words beside the live dot); a finished
+  session's reveal stays within 700 ms with one haptic at the end.
 - History lives in Train's stack (`train/history`, `train/past`,
   `train/activity-view` for an activity's numbers, notes and a run's splits)
   and Progress
