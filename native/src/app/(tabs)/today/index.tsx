@@ -14,9 +14,8 @@ import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandM
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { LiveClock } from '~/components/LiveClock';
-import { PlanCard } from '~/components/PlanCard';
+import { PlanCard, SessionCard } from '~/components/PlanCard';
 import { RollingText } from '~/components/RollingText';
-import { Tally } from '~/components/Tally';
 import { Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { scrolledFromRest, TabScroll } from '~/components/TabScroll';
@@ -91,7 +90,7 @@ export default function TodayScreen() {
 
           {session ? <SessionLabel session={session} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
 
-          {/* A header over one card, as This week below: the card opens Fuel, its chevron says so. */}
+          {/* A header over one card, as Progress below: the card opens Fuel, its chevron says so. */}
           <Section title="Fuel" action={{ title: 'Log food', symbol: 'plus', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (
               <Label style={{ overflow: 'hidden' }}>
@@ -143,12 +142,12 @@ export default function TodayScreen() {
             )}
           </Section>
 
-          {/* The muscles row opens Progress; before a set is logged this week, the header does. */}
+          {/* Named for the screen it opens, as Fuel is: the muscles row opens Progress; before a set is logged this week, the header's Open does. */}
           {/* The week's sessions ride on the heading; the card holds the one row that leads somewhere. */}
           <Section
-            title="This week"
-            note={plan.weekDone === null ? undefined : plan.weekTarget ? `${plan.weekDone} of ${plan.weekTarget} sessions` : `${plan.weekDone} ${plan.weekDone === 1 ? 'session' : 'sessions'}`}
-            action={week.trained > 0 ? undefined : { title: 'Progress', onPress: () => router.push('/today/progress') }}>
+            title="Progress"
+            note={weekNote(plan.weekDone, plan.weekTarget)}
+            action={week.trained > 0 ? undefined : { title: 'Open', onPress: () => router.push('/today/progress') }}>
             {week.trained > 0 ? (
               <Label>
                 <Row
@@ -168,14 +167,12 @@ export default function TodayScreen() {
 }
 
 function SessionLabel({ session }: { session: SessionModel }) {
-  const c = useBlanc();
   const current = session.current;
   // A flexible session starts empty: nothing to finish yet, as on Train,
   // which asks for its first movement.
   const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = () => router.navigate('/train');
-  const large = useLargeText();
   const title = current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log';
   const line = current
     ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
@@ -184,60 +181,26 @@ function SessionLabel({ session }: { session: SessionModel }) {
       : 'Finish to save the session';
 
   return (
+    // The finished day's record (PlanCard) keeps this skeleton, so finishing changes words, not layout.
     // The whole card returns to the workout; its button resumes or finishes.
-    <Label style={{ marginTop: 18, overflow: 'hidden' }}>
-    <Pressable
-      // VoiceOver reads the card's parts and reaches its button on its own.
-      accessible={false}
-      accessibilityRole="button"
-      onPress={() => {
-        haptics.tap();
-        openWorkout();
-      }}
-      style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View
-        accessible
-        accessibilityLabel={speak(`${session.dayName} · In progress`)}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
-        {/* A long day name gives way; the live state always shows. At the
-            accessibility text sizes the name wraps and the live state moves under it. */}
-        {/* The session names the card quietly; what's up now is its one title, below. */}
-        <BlancText variant="secondary" weight="500" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
-          {session.dayName}
-        </BlancText>
-        {/* The workout's clock, as Train and the workout bar keep it. */}
-        <LiveClock startedAt={session.startedAt} />
-      </View>
-
-      {empty ? null : (
-        <Tally
-          marks={session.sets.map((set) => set.completed)}
-          current={current?.index ?? null}
-          height={16}
-          style={{ marginTop: 14 }}
-          accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
-        />
-      )}
-
-      {/* At the accessibility text sizes the button moves under the words. */}
-      <View style={large ? { gap: 12, marginTop: 16 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 }}>
-        <View accessible accessibilityLabel={speak(`${title} · ${line}`)} style={large ? undefined : { flex: 1, minWidth: 0 }}>
-          <BlancText variant="headline" numberOfLines={large ? undefined : 1}>
-            {title}
-          </BlancText>
-          <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-            {line}
-          </BlancText>
-        </View>
-        {current || empty ? (
+    <SessionCard
+      day={session.dayName}
+      daySpoken={`${session.dayName} · In progress`}
+      // The workout's clock, as Train and the workout bar keep it.
+      aside={<LiveClock startedAt={session.startedAt} />}
+      tally={empty ? null : { marks: session.sets.map((set) => set.completed), current: current?.index ?? null, label: `${session.doneCount} of ${session.sets.length} sets done` }}
+      title={title}
+      line={line}
+      action={
+        current || empty ? (
           <Capsule title="Resume" onPress={openWorkout} />
         ) : (
           // Every set is logged: Finish finishes here, as it does on Train.
           <Capsule title="Finish" busy={closing} onPress={finish} />
-        )}
-      </View>
-    </Pressable>
-    </Label>
+        )
+      }
+      onPress={openWorkout}
+    />
   );
 }
 
@@ -271,6 +234,12 @@ function setLine(setNumber: number, sets: number, weight: number | null, reps: n
   const base = `Set ${setNumber} of ${sets}`;
   const load = formatSet(weight, reps);
   return load ? `${base} · ${load}` : base;
+}
+
+/** "3 of 4 sessions this week", or "2 sessions this week" without a weekly target. */
+function weekNote(done: number | null, target: number | null | undefined): string | undefined {
+  if (done === null) return undefined;
+  return target ? `${done} of ${target} sessions this week` : `${done} ${done === 1 ? 'session' : 'sessions'} this week`;
 }
 
 /** "2 under · 1 over", leaving out zeros. */

@@ -13,7 +13,8 @@ import { silentAccessibility } from './helpers/silentAccessibility';
 
 // Today's and Train's plan card for a day already trained
 // (native/src/components/PlanCard.tsx). The day stays as its record, read
-// from History, and holds the record's place while that read runs. A day
+// from History, in the live session card's skeleton, and holds the record's
+// place while that read runs. A day
 // shown from the phone's copy (Instant launch) says "Trained today" from the
 // first frame instead, and keeps saying so until the record lands, also once
 // this launch's own reads decide the day again.
@@ -41,7 +42,8 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
     'expo-router': { router: { navigate: noop, push } },
     '@/stores/appStore': { useAppStore: programs },
     'react-native': {
-      Pressable: ({ children }: PropsWithChildren) => createElement('div', { 'data-card': 'pressable' }, children),
+      Pressable: ({ children, accessibilityLabel, accessibilityHint, onPress }: PropsWithChildren<{ accessibilityLabel?: string; accessibilityHint?: string; onPress?: () => void }>) =>
+        createElement('div', { 'data-card': 'pressable', 'aria-label': accessibilityLabel, 'data-hint': accessibilityHint, onClick: onPress }, children),
       View: ({ children, style }: PropsWithChildren<{ style?: { height?: number } }>) =>
         createElement('div', { 'data-height': style?.height ?? '' }, children),
     },
@@ -127,12 +129,36 @@ describe('Plan card for a day already trained', () => {
     await show({ hero: done, next: 'Tomorrow · Legs', place: 'today' });
 
     expect(host.textContent).toBe('');
-    expect(host.querySelector('[data-height="104"]')).not.toBeNull();
+    // As tall as the live card, whose skeleton the record keeps.
+    expect(host.querySelector('[data-height="152"]')).not.toBeNull();
 
     await act(async () => history.setState({ finished: record }));
     expect(host.textContent).toContain('Push');
-    expect(host.textContent).toContain('Trained today · 52 min · Next: Legs');
+    expect(host.textContent).toContain('52 min');
+    expect(host.textContent).toContain('Done · 2 of 3 sets');
+    expect(host.textContent).toContain('Next: Legs');
     expect(host.textContent).toContain('2 of 3 sets logged');
+  });
+
+  it('keeps the live card\'s skeleton: the session and its length, the tally, then Done and the next session, with no button', async () => {
+    history.setState({ finished: { ...record, marks: [true, true, true], sets: 3 } });
+    for (const place of ['today', 'train'] as const) {
+      await show({ hero: done, next: 'Tomorrow · Legs', place });
+      const parts = [...host.querySelectorAll('span, i')].map((part) => part.textContent);
+      expect(parts).toEqual(['Push', '52 min', '3 of 3 sets logged', 'Done', 'Next: Legs']);
+      // Every set logged: the tally says so, the title doesn't count them.
+      expect(host.textContent).not.toContain('Done ·');
+      expect(host.textContent).not.toContain('Trained today');
+      expect(host.querySelector('button')).toBeNull();
+
+      // One VoiceOver stop, which opens the workout.
+      const card = host.querySelector<HTMLElement>('[data-card="pressable"]')!;
+      expect(card.getAttribute('aria-label')).toBe('Push, 52 minutes, Done, 3 of 3 sets logged, Next: Legs');
+      expect(card.dataset.hint).toBe('Opens the workout');
+      push.mockClear();
+      await act(async () => card.click());
+      expect(push).toHaveBeenCalledWith({ pathname: '/train/past', params: { id: 'w1' } });
+    }
   });
 
   it('says "Trained today" from the first frame when the day comes from the phone\'s copy', async () => {
@@ -143,7 +169,7 @@ describe('Plan card for a day already trained', () => {
     await show({ hero: done, next: 'Tomorrow · Legs', place: 'train', seeded: true });
     expect(host.textContent).toContain('Trained today');
     // At the record's height, so the record fills in without the card changing size.
-    expect(host.querySelector('[data-min-height="104"]')).not.toBeNull();
+    expect(host.querySelector('[data-min-height="152"]')).not.toBeNull();
   });
 
   it('keeps saying so once this launch decides the day again, until the record lands', async () => {
@@ -153,7 +179,7 @@ describe('Plan card for a day already trained', () => {
     // This launch's own reads decide the same day; History's read still runs.
     await show({ hero: done, next: null, place: 'train', seeded: false });
     expect(host.textContent).toContain('Trained today');
-    expect(host.querySelector('[data-height="104"]')).toBeNull();
+    expect(host.querySelector('[data-height="152"]')).toBeNull();
 
     await act(async () => history.setState({ finished: record }));
     expect(host.textContent).toContain('Push');
@@ -167,7 +193,7 @@ describe('Plan card for a day already trained', () => {
 
     await show({ hero: done, next: null, place: 'train', seeded: false });
     expect(host.textContent).toBe('');
-    expect(host.querySelector('[data-height="104"]')).not.toBeNull();
+    expect(host.querySelector('[data-height="152"]')).not.toBeNull();
   });
 
   it('says "Trained today" when History has no record of it', async () => {

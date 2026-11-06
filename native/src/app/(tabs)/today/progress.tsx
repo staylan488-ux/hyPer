@@ -43,6 +43,8 @@ export default function ProgressScreen() {
   // as it was), and sign-out puts back initialAppData's, so a different list
   // means this account's week was read, by this screen or any other.
   const volumeRead = useAppStore((state) => state.weeklyVolume !== initialAppData.weeklyVolume);
+  // This screen's own read settled and the week is still unread: it failed. Until then the card waits.
+  const [volumeFailed, setVolumeFailed] = useState(false);
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
   // A read that fails says so: with nothing shown yet it offers Retry; over a chart already drawn, the chart stays and a line says it couldn't refresh.
   const [hoursFailed, setHoursFailed] = useState(false);
@@ -55,9 +57,16 @@ export default function ProgressScreen() {
   // The clock's day: past midnight the nutrition block reads again, for the seven days before the new one.
   const todayKey = useCurrentDayKey();
 
+  // A failed read leaves the store as it was rather than throwing, so it is
+  // told by the never-read list still being there once the read settles.
+  const readVolume = useCallback(async () => {
+    await Promise.resolve(useAppStore.getState().calculateWeeklyVolume()).catch(() => {});
+    if (active.current) setVolumeFailed(useAppStore.getState().weeklyVolume === initialAppData.weeklyVolume);
+  }, []);
+
   const load = useCallback(async () => {
     await Promise.all([
-      Promise.resolve(useAppStore.getState().calculateWeeklyVolume()).catch(() => {}),
+      readVolume(),
       fetchTrainingHours()
         .then((points) => {
           if (!active.current) return;
@@ -69,7 +78,7 @@ export default function ProgressScreen() {
         }),
       useAppStore.getState().fetchMacroTarget(),
     ]);
-  }, []);
+  }, [readVolume]);
 
   useEffect(() => {
     active.current = true;
@@ -81,6 +90,13 @@ export default function ProgressScreen() {
 
   // VoiceOver hears a failure it can't see happen.
   useAnnounce(hoursFailed ? (hours ? 'Training time couldn’t refresh.' : 'Training time couldn’t load.') : null);
+  const musclesFailed = !volumeRead && volumeFailed;
+  useAnnounce(musclesFailed ? 'Muscles couldn’t load.' : null);
+
+  const retryVolume = () => {
+    setVolumeFailed(false);
+    void readVolume();
+  };
 
   const retryHours = async () => {
     setHoursFailed(false);
@@ -128,7 +144,21 @@ export default function ProgressScreen() {
                   <Capsule title="Start training" onPress={() => router.navigate('/train')} />
                 </View>
               </Label>
-            ) : null
+            ) : (
+              // In the figure card's place, with its padding: a spinner while the week is read, or what happened and a way to try again.
+              <Label style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 15 }}>
+                {musclesFailed ? (
+                  <View style={{ minHeight: FIGURE_SPACE, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                    <BlancText variant="secondary" tone="graphite">
+                      Muscles couldn’t load.
+                    </BlancText>
+                    <Capsule title="Retry" variant="quiet" onPress={retryVolume} />
+                  </View>
+                ) : (
+                  <Waiting height={FIGURE_SPACE} label="Loading muscles" />
+                )}
+              </Label>
+            )
           ) : (
             <>
               <Label style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 15 }}>
@@ -197,6 +227,12 @@ export default function ProgressScreen() {
     </>
   );
 }
+
+/**
+ * The figure card's space inside its padding: the caption's 22 pt line and
+ * the 204 pt figure 6 pt under it (MuscleFigure's default height and head room).
+ */
+const FIGURE_SPACE = 232;
 
 const formatSets = (sets: number) => `${formatWhole(sets) === String(sets) ? sets : sets.toFixed(1)} ${sets === 1 ? 'set' : 'sets'}`;
 
@@ -440,8 +476,8 @@ function FigureWithUnits({ text }: { text: string }) {
   );
 }
 
-/** Training time as VoiceOver says it: "1 hour 20 minutes", or "nothing logged", as a week read says it. */
-const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'nothing logged');
+/** Training time as VoiceOver says it: "1 hour 20 minutes", or "no training", as a week read says it. */
+const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'no training');
 
 /** Between a scale figure and the line it names, as the body-weight chart leaves it. */
 const SCALE_GAP = 8;
@@ -525,13 +561,20 @@ const MACRO_BAR_GAP = 8;
  */
 const MIN_BAR = 4;
 
+/**
+ * A week without training is a true zero, not a gap: a bar of no height,
+ * drawn as a short tick on the zero line, half the shortest bar's height.
+ */
+const ZERO_BAR = 2;
+
 /** The mark for nothing recorded. */
 const RING = 6;
 
 /**
- * A chart's mark for a column with nothing recorded, the same on every chart:
- * a small hollow ring just above the zero line, so it never reads as a
- * recorded zero (a bar, however short, is something recorded).
+ * The mark for a column with nothing recorded (a day with no food logged,
+ * which isn't 0 kcal): a small hollow ring just above the zero line, so it
+ * never reads as a recorded zero (a bar, however short, is something
+ * recorded). Training time has no such column: a week without training is 0 h.
  */
 function NothingMark({ onPlot = true, read = false }: { onPlot?: boolean; read?: boolean }) {
   const c = useBlanc();
@@ -659,7 +702,7 @@ function TargetKey() {
   );
 }
 
-/** What the ring means, once under a chart that draws it. VoiceOver hears each column's own "none". */
+/** What the ring means, once under the nutrition charts. VoiceOver hears each day's own "nothing logged". */
 function NothingKey({ children }: { children: string }) {
   return (
     <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 }}>
@@ -677,9 +720,10 @@ const hoursScale = (peak: number) => Math.max(60, Math.ceil(peak / 60) * 60);
 /**
  * Eight weeks of training time, against a scale in whole hours: this week in
  * ink, past weeks in `mark` (3:1 or more on the card in every palette), so
- * this week leads without the others going faint. Any week reads in the
- * header line (useBarReading), in ink while it is read; the dates under the
- * plot are its two ends.
+ * this week leads without the others going faint. A week without training is
+ * 0 h, a zero bar: a 2 pt tick on the zero line, so it needs no key. Any week
+ * reads in the header line (useBarReading), in ink while it is read; the
+ * dates under the plot are its two ends.
  */
 function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   const c = useBlanc();
@@ -697,6 +741,8 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   const chosen = read.index >= 0 ? points[read.index] : null;
   // The one ink bar: the week read, or else this week.
   const inked = chosen ? read.index : points.length - 1;
+  // The week the header reads: the one read, or this week so far.
+  const headed = chosen ?? current;
   const spokenValue = chosen
     ? `Week of ${format(parseISO(chosen.weekStart), 'MMMM d')}, ${spokenMinutes(chosen.totalMinutes)}`
     : `Week to date, ${spokenMinutes(current?.totalMinutes ?? 0)}`;
@@ -713,12 +759,12 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
           {chosen ? `Week of ${chosen.label}` : 'Week to date'}
         </BlancText>
         <BlancText variant="secondary" tone="graphite" style={[{ fontVariant: ['tabular-nums'] }, right]}>
-          {chosen && chosen.totalMinutes <= 0 ? 'Nothing logged' : <FigureWithUnits text={formatMinutes((chosen ?? current)?.totalMinutes ?? 0)} />}
+          {(headed?.totalMinutes ?? 0) <= 0 ? 'No training' : <FigureWithUnits text={formatMinutes(headed?.totalMinutes ?? 0)} />}
         </BlancText>
       </View>
       <GestureDetector gesture={read.gesture}>
         <View style={{ height: HOURS_PLOT, marginTop: HOURS_GAP }} onLayout={read.onLayout}>
-          {/* The scale's top, named at its right end, and the zero line; a week without training draws the ring for nothing recorded. */}
+          {/* The scale's top, named at its right end, and the zero line; a week without training is a zero bar on it. */}
           <View style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1, backgroundColor: c.hairline }} />
           <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: HOURS_BAR_GAP, height: '100%' }}>
@@ -735,7 +781,7 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
                     }}
                   />
                 ) : (
-                  <NothingMark read={index === read.index} />
+                  <View style={{ height: ZERO_BAR, borderRadius: ZERO_BAR / 2, backgroundColor: index === inked ? c.ink : c.mark }} />
                 )}
               </View>
             ))}
@@ -759,7 +805,6 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
           {current?.label}
         </BlancText>
       </View>
-      {points.some((point) => point.totalMinutes <= 0) ? <NothingKey>No entry</NothingKey> : null}
     </View>
   );
 }
@@ -826,7 +871,7 @@ function NutritionSection({ todayKey }: { todayKey: string }) {
  * One macro across the seven days before today, against its daily target
  * (dashed, named on its line, "2,600 target"). Every day is a past one, so
  * every bar is `mark` (3:1 or more on the card in every palette), and a day
- * with nothing logged is marked by the same ring as an empty training week. A
+ * with nothing logged is marked by the hollow ring (unlogged isn't 0 kcal). A
  * day well past target is red only where that is a warning for the goal. The
  * header is the daily average of the logged days ("Avg 2,410 kcal"); a single
  * logged day is given as its figure, named by its date ("Nov 3 1,342 kcal"),
@@ -931,7 +976,7 @@ function MacroBars({
       <GestureDetector gesture={read.gesture}>
         <View style={{ height: MACRO_PLOT, marginTop: MACRO_GAP, flexDirection: 'row' }}>
           <View style={{ flex: 1 }} onLayout={read.onLayout}>
-            {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
+            {/* The zero line; a day with nothing logged draws the ring for nothing recorded (an unlogged day isn't 0 kcal). */}
             <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
             {/* The target in `mark`, at full strength: read, but never ahead of the bars. */}
             {target > 0 ? <DashedLine bottom={`${(target / max) * 100}%`} color={c.mark} /> : null}

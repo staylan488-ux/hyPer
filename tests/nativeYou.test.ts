@@ -15,6 +15,8 @@ import * as settingsUx from '@/lib/settingsUx';
 import * as weightDisplayCore from '@/lib/weightDisplayCore';
 import * as weightHistory from '@/lib/weightHistory';
 import * as weightTrend from '@/lib/weightTrend';
+import * as menu from '../native/src/lib/menu';
+import type { MenuAction } from '../native/src/lib/menu';
 import * as weightRate from '../native/src/lib/weightRate';
 import * as weightTrendLine from '../native/src/lib/weightTrendLine';
 import { loadNativeModule } from './helpers/loadNativeModule';
@@ -566,6 +568,14 @@ const clockKey = () => clock.key || dateFns.format(new Date(), 'yyyy-MM-dd');
 
 type ChartProps = { calendar?: weightHistory.WeightChartWindow; summary?: string; span?: string; points?: weightTrend.WeightTrendPoint[]; compact?: boolean };
 type RowSeen = { title: string; detail?: string; value?: string; quiet?: boolean; accessibilityLabel?: string; onPress?: () => void };
+type PressSeen = {
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  accessibilityActions?: Array<{ name: string; label: string }>;
+  onAccessibilityAction?: (event: { nativeEvent: { actionName: string } }) => void;
+  onPress?: () => void;
+  onLongPress?: () => void;
+};
 type Modifier = Record<string, unknown> | null;
 type PickerSeen = { selection: string; onSelectionChange: (next: string) => void; modifiers?: Modifier[] };
 type HostSeen = { matchContents?: boolean | { vertical?: boolean; horizontal?: boolean }; style?: Record<string, unknown>; children?: ReactElement<PickerSeen> };
@@ -577,6 +587,10 @@ type Seen = {
   texts?: Array<{ modifiers?: Modifier[]; children?: unknown }>;
   sections?: Array<{ title: string; note?: string; action?: { title: string } }>;
   scrolls?: Array<((event: unknown) => void) | undefined>;
+  /** Each hold menu's actions, as drawn. */
+  holds?: MenuAction[][];
+  presses?: PressSeen[];
+  alerts?: string[];
 };
 type YouWeights = YouModule & {
   loadWeights: (options?: { all?: boolean }) => Promise<void>;
@@ -605,6 +619,14 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     './Row': rowMock,
     './SwipeRow': { SwipeRow: Wrap },
   });
+  // The real menu's VoiceOver actions and sheet; the hold itself (iOS's context menu) keeps what it offers.
+  const holdMenu = loadNativeModule<Record<string, unknown>>('components/HoldMenu.tsx', {
+    'react-native': { ActionSheetIOS: { showActionSheetWithOptions: vi.fn() }, View: Wrap },
+    '../../modules/hyper-menu': { HyperMenuView: null, hasHyperMenu: false },
+    '~/lib/menu': menu,
+    '~/theme/blanc': { radius: { label: 12 }, useBlanc: () => ({ label: '#fff' }) },
+    './SwipeRow': { dismissOpenSwipeRow: () => {} },
+  });
   return {
     '@expo/ui/swift-ui': {
       Host: (props: PropsWithChildren<HostSeen>) => {
@@ -628,7 +650,16 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     },
     'date-fns': dateFns,
     'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
-    'react-native': { ActivityIndicator: () => null, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
+    'react-native': {
+      ActivityIndicator: () => null,
+      Alert: { alert: (title: string) => { seen.alerts?.push(title); } },
+      Pressable: (props: PropsWithChildren<PressSeen>) => {
+        seen.presses?.push(props);
+        return createElement(Fragment, null, props.children);
+      },
+      RefreshControl: () => null,
+      View: Wrap,
+    },
     'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
     '@/lib/bodyWeightSummary': bodyWeightSummary,
     '@/lib/weightDisplayCore': weightDisplayCore,
@@ -636,6 +667,14 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '@/lib/weightTrend': weightTrend,
     '~/components/BlancText': { BlancText: text },
     '~/components/Capsule': { Capsule: () => null },
+    '~/components/HoldMenu': {
+      ...holdMenu,
+      hasHoldMenu: true,
+      HoldMenu: (props: PropsWithChildren<{ actions: MenuAction[] }>) => {
+        seen.holds?.push(props.actions);
+        return createElement(Fragment, null, props.children);
+      },
+    },
     '~/components/Label': { Label: Wrap },
     '~/components/RollingText': { RollingText: text },
     '~/components/Row': rowMock,
@@ -655,7 +694,7 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '~/components/WeightChart': { WeightChart: (props: ChartProps) => { seen.charts?.push(props); return null; } },
     '~/lib/accountData': { useCurrentDayKey: clockKey },
     '~/lib/accessibility': silentAccessibility,
-    '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
+    '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn(), success: vi.fn(), error: vi.fn() } },
     '~/lib/motion': motion,
     '~/lib/weightRate': weightRate,
     '~/lib/weightTrendLine': weightTrendLine,
@@ -1008,6 +1047,60 @@ describe("Body weight's Recent", () => {
     expect(sections.map((section) => section.title)).not.toContain('Recent');
     expect(listed(rows)).toEqual([]);
     expect(rows.some((row) => row.title === 'All weigh-ins')).toBe(true);
+  });
+});
+
+describe("Body weight's latest weigh-in", () => {
+  afterEach(() => { clock.key = ''; });
+
+  const at = (date: number, hour: number) => new Date(2026, 10, date, hour).toISOString();
+
+  async function open(entries: ReturnType<typeof weighIn>[]) {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue(entries);
+    const seen: Seen = { holds: [], presses: [], alerts: [], rows: [] };
+    const page = await mount(createElement(loadWeightScreen(you, seen)));
+    // The figure's button, as last drawn.
+    const hero = () => seen.presses!.filter((props) => props.accessibilityLabel?.startsWith('Body weight')).at(-1)!;
+    const settle = () => act(async () => { for (let tick = 0; tick < 10; tick += 1) await Promise.resolve(); });
+    return { harness, seen, page, hero, settle };
+  }
+
+  it('holds for its Delete, as its row would, and offers it to VoiceOver; a tap still logs a weigh-in', async () => {
+    const { harness, seen, page, hero, settle } = await open([weighIn('w2', 81, at(5, 8)), weighIn('w1', 80.5, at(4, 8))]);
+    const held = seen.holds!.at(-1)!;
+    expect(held.map((action) => action.title)).toEqual(['Delete weigh-in']);
+    // It leaves at once, as a row's Delete does, without asking.
+    expect(held[0]).toMatchObject({ destructive: true, removes: true });
+    expect(hero().accessibilityActions).toEqual([{ name: 'menu:0', label: 'Delete weigh-in' }]);
+    // iOS's context menu owns the hold.
+    expect(hero().onLongPress).toBeUndefined();
+    expect(hero().accessibilityHint).toBe('Logs a weigh-in');
+
+    // VoiceOver's Delete takes the rows' path: the figure moves to the one before.
+    await act(async () => { hero().onAccessibilityAction!({ nativeEvent: { actionName: 'menu:0' } }); });
+    await settle();
+    expect(harness.deleteManualBodyWeight).toHaveBeenCalledWith('user-1', 'w2');
+    expect(page.textContent).toContain('Nov 4, 8:00 AM');
+    expect(page.textContent).not.toContain('Today, 8:00 AM');
+    expect(seen.alerts).toEqual([]);
+  });
+
+  it('runs the same delete from the hold, and puts the weigh-in back with an alert when it fails', async () => {
+    const { harness, seen, page, settle } = await open([weighIn('w2', 81, at(5, 8)), weighIn('w1', 80.5, at(4, 8))]);
+    harness.deleteManualBodyWeight.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { seen.holds!.at(-1)![0].run!(); });
+    await settle();
+    expect(harness.deleteManualBodyWeight).toHaveBeenCalledWith('user-1', 'w2');
+    expect(seen.alerts).toEqual(['Not deleted']);
+    expect(page.textContent).toContain('Today, 8:00 AM');
+  });
+
+  it('offers nothing to hold for a weigh-in from Apple Health, which stays in Health', async () => {
+    const { seen, hero } = await open([weighIn('h1', 81, at(5, 8), 'healthkit'), weighIn('w1', 80.5, at(4, 8))]);
+    expect(seen.holds!.at(-1)).toEqual([]);
+    expect(hero().accessibilityActions).toBeUndefined();
   });
 });
 

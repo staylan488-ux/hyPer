@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import * as fuelSummary from '@/lib/fuelSummary';
 import * as todayModel from '@/lib/todayModel';
 import * as types from '@/types';
-import type { MacroTarget } from '@/types';
+import type { MacroTarget, MuscleVolume } from '@/types';
 import { todayTotalsShown } from '../native/src/lib/fuel';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
@@ -20,7 +20,8 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 // Today's Fuel card (native/src/app/(tabs)/today/index.tsx) asks for a
 // calorie target only once the saved one is known to be missing, and never
-// shows yesterday's totals as today's.
+// shows yesterday's totals as today's. Its sections are named for the
+// screens they open: Fuel, and Progress.
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
 type PressProps = PropsWithChildren<{
@@ -29,10 +30,18 @@ type PressProps = PropsWithChildren<{
   onPress?: () => void;
   style?: (state: { pressed: boolean }) => Record<string, unknown>;
 }>;
-type RowProps = { title: string; chevron?: boolean; onPress?: () => void };
-// What the screen hands its pressables and rows, by name.
+type RowProps = { title: string; detail?: string; chevron?: boolean; onPress?: () => void };
+type SectionProps = PropsWithChildren<{ title: string; note?: string; action?: { title: string; onPress: () => void } }>;
+// What the screen hands its pressables, rows and sections, by name.
 const presses: PressProps[] = [];
 const rows: RowProps[] = [];
+const sections: SectionProps[] = [];
+const Section = (props: SectionProps) => {
+  sections.push(props);
+  return createElement(Fragment, null, props.children);
+};
+// The week's sessions, as useTodayPlan counts them.
+let week: { weekDone: number | null; weekTarget: number | null } = { weekDone: null, weekTarget: null };
 // Keeps the card's spoken summary, which has its figures in words.
 const Pressable = (props: PressProps) => {
   presses.push(props);
@@ -55,7 +64,7 @@ const haptics = { tap: vi.fn() };
 const appStore = create(() => ({
   macroTarget: null as MacroTarget | null,
   macroTargetLoadedForUserId: null as string | null,
-  weeklyVolume: [],
+  weeklyVolume: [] as MuscleVolume[],
   nutritionProfile: null,
 }));
 const DAY = '2026-11-04';
@@ -83,11 +92,11 @@ async function open() {
     '~/components/Capsule': { Capsule: Empty },
     '~/components/Label': { Label },
     '~/components/LiveClock': { LiveClock: () => null },
-    '~/components/PlanCard': { PlanCard: Empty },
+    '~/components/PlanCard': { PlanCard: Empty, SessionCard: Empty },
     '~/components/RollingText': { RollingText: Text },
     '~/components/Tally': { Tally: Empty },
     '~/components/Row': { Hairline: Empty, Row },
-    '~/components/Section': { Section: Wrap },
+    '~/components/Section': { Section },
     '~/components/TabScroll': { TabScroll: Wrap },
     '~/components/Track': { Track: Empty },
     '~/lib/accountData': { useAccountRefresh: () => ({ refreshing: false, refresh: noop }) },
@@ -99,7 +108,7 @@ async function open() {
     '~/lib/fuel': { today: () => DAY, todayTotalsShown, useFuelStore: fuelStore },
     '~/lib/motion': { figureLayout: undefined },
     '~/lib/session': { useNow: () => Date.now(), useSessionModel: () => null },
-    '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, weekDone: null, weekTarget: null }) },
+    '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, ...week }) },
     '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({ pressed: '#E7E6E1', upcoming: '#707069' }), figureLead: () => 0, restingFigure: {} },
   });
   await act(async () => { root.render(createElement(TodayScreen)); });
@@ -110,10 +119,12 @@ const ASK = 'Set a calorie target';
 beforeEach(() => {
   presses.length = 0;
   rows.length = 0;
+  sections.length = 0;
+  week = { weekDone: null, weekTarget: null };
   router.navigate.mockClear();
   router.push.mockClear();
   haptics.tap.mockClear();
-  appStore.setState({ macroTarget: null, macroTargetLoadedForUserId: null });
+  appStore.setState({ macroTarget: null, macroTargetLoadedForUserId: null, weeklyVolume: [] });
   fuelStore.setState({ todayKey: DAY, todayLoadedKey: DAY, todayTotals: totals });
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -179,7 +190,7 @@ describe('Today’s Fuel section, a header over one card', () => {
     expect(card.textContent).toContain('1200');
     expect(card.textContent).toContain('of 2000 kcal');
     expect(card.textContent).toContain('Protein90 of 150 g');
-    // One chevron, on the card that leads somewhere, as This week's row has.
+    // One chevron, on the card that leads somewhere, as Progress's row has.
     expect([...card.querySelectorAll('[data-symbol]')].map((mark) => mark.getAttribute('data-symbol'))).toEqual(['chevron.right']);
   });
 
@@ -216,5 +227,44 @@ describe('Today’s Fuel section, a header over one card', () => {
     expect(router.push).toHaveBeenCalledWith('/you/targets');
     // Row plays the tap's haptic itself.
     expect(haptics.tap).not.toHaveBeenCalled();
+  });
+});
+
+describe('Today’s Progress section, named for the screen it opens', () => {
+  const landmark = { id: 'l', user_id: 'me', mv: 6, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
+  const trained: MuscleVolume[] = [
+    { muscle_group: 'chest', weekly_sets: 12, landmark: { ...landmark, muscle_group: 'chest' }, status: 'mav' },
+    { muscle_group: 'hamstrings', weekly_sets: 4, landmark: { ...landmark, muscle_group: 'hamstrings' }, status: 'below_mev' },
+  ] as MuscleVolume[];
+  const progress = () => sections.filter((section) => section.title === 'Progress').at(-1);
+
+  it('is Progress, with the week’s sessions in its note, over the muscles row that opens it', async () => {
+    week = { weekDone: 3, weekTarget: 4 };
+    appStore.setState({ weeklyVolume: trained });
+    await open();
+    expect(sections.some((section) => section.title === 'This week')).toBe(false);
+    expect(progress()?.note).toBe('3 of 4 sessions this week');
+    // The card leads there, so the header has no action of its own.
+    expect(progress()?.action).toBeUndefined();
+    const row = rows.filter((entry) => entry.title === '1 of 2 trained muscles in range').at(-1)!;
+    expect(row.chevron).toBe(true);
+    expect(row.detail).toBe('Hamstrings below');
+    await act(async () => { row.onPress!(); });
+    expect(router.push).toHaveBeenCalledWith('/today/progress');
+  });
+
+  it('counts sessions without a weekly target, and opens Progress from its header before a set is logged', async () => {
+    week = { weekDone: 1, weekTarget: null };
+    await open();
+    expect(progress()?.note).toBe('1 session this week');
+    // Not "Progress" twice on one line.
+    expect(progress()?.action?.title).toBe('Open');
+    await act(async () => { progress()!.action!.onPress(); });
+    expect(router.push).toHaveBeenCalledWith('/today/progress');
+  });
+
+  it('has no note until the week is counted', async () => {
+    await open();
+    expect(progress()?.note).toBeUndefined();
   });
 });

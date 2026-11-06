@@ -2,13 +2,15 @@ import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { accessibilityLabel, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import type { BodyWeightMeasurement } from '@/lib/healthWeights';
 import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
 import { DEFAULT_WEIGHT_RANGE, WEIGHT_RANGES, weightRange, type WeightRangeKey } from '@/lib/weightHistory';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { HoldMenu, hasHoldMenu, menuAccessibility, showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
@@ -16,17 +18,35 @@ import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { measuredLabel, WeighInRows } from '~/components/WeighInRows';
 import { WeightChart } from '~/components/WeightChart';
-import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { figureLayout, rowLayout } from '~/lib/motion';
 import { bodyWeightLine, weightRangeSummary } from '~/lib/weightRate';
-import { loadWeights, setWeightUnit, useAllWeighIns, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
+import { deleteWeighIn, loadWeights, setWeightUnit, useAllWeighIns, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
 import { figureLead, restingFigure, space } from '~/theme/blanc';
 
 const RECENT = 6;
 
 const readAll = () => loadWeights({ all: true });
+
+/**
+ * Deletes a typed weigh-in as its row in Recent or All weigh-ins does, with
+ * no question first: it leaves at once (the figure moves to the one before),
+ * and comes back with an alert if the delete fails.
+ */
+function removeWeighIn(entry: BodyWeightMeasurement) {
+  void deleteWeighIn(entry).then((deleted) => {
+    if (deleted) {
+      haptics.success();
+      // The figure changes under VoiceOver's focus.
+      announce('Weigh-in deleted');
+    } else {
+      haptics.error();
+      Alert.alert('Not deleted', 'Check your connection and try again.');
+    }
+  });
+}
 
 /**
  * Body weight: the latest weigh-in, the smoothed trend over a month, three
@@ -88,6 +108,14 @@ export default function WeightScreen() {
     void readAll();
   }, []);
 
+  // The latest weigh-in holds for what its row would offer, since Recent starts
+  // after it. A typed one can be deleted; Apple Health's stay in Health.
+  const heroMenu: MenuAction[] =
+    latest?.source === 'manual'
+      ? [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, removes: true, run: () => removeWeighIn(latest) }]
+      : [];
+  const held = heroMenu.length > 0 ? menuAccessibility(heroMenu) : null;
+
   return (
     <>
       <Stack.Screen
@@ -109,31 +137,45 @@ export default function WeightScreen() {
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         {latest ? (
           <View style={{ paddingHorizontal: space.gutter, paddingTop: 12 }}>
-            {/* The figure is where a weigh-in starts: a tap logs the next one. */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={speak(`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}, ${measuredLabel(latest, todayKey)}`)}
-              accessibilityHint="Logs a weigh-in"
-              onPress={() => {
-                haptics.tap();
-                router.push('/log-weight');
-              }}
-              style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
-              {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                <RollingText variant="figure" size={56} style={{ ...restingFigure, marginLeft: figureLead(formatWeight(Number(latest.kilograms), unit), 56, { tabular: false }) }}>
-                  {formatWeight(Number(latest.kilograms), unit)}
-                </RollingText>
-                <Animated.View layout={figureLayout}>
-                  <BlancText variant="secondary" tone="graphite">
-                    {unit}
-                  </BlancText>
-                </Animated.View>
-              </View>
-              <BlancText variant="secondary" tone="graphite">
-                {measuredLabel(latest, todayKey)}
-              </BlancText>
-            </Pressable>
+            {/* The figure is where a weigh-in starts: a tap logs the next one; a hold offers the latest's own Delete, as its row would. */}
+            {/* The lifted figure keeps a little room around it, which the margins give back so it stays where it was. */}
+            <HoldMenu actions={heroMenu} style={{ alignSelf: 'flex-start', marginHorizontal: -HERO_ROOM.x, marginVertical: -HERO_ROOM.y }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={speak(`Body weight ${formatWeight(Number(latest.kilograms), unit)} ${unit}, ${measuredLabel(latest, todayKey)}`)}
+                accessibilityHint="Logs a weigh-in"
+                accessibilityActions={held ? held.actions : undefined}
+                onAccessibilityAction={(event) => held?.run(event.nativeEvent.actionName)}
+                onPress={() => {
+                  haptics.tap();
+                  router.push('/log-weight');
+                }}
+                // A build without iOS's context menu shows the same choice as a sheet.
+                onLongPress={
+                  held && !hasHoldMenu
+                    ? () => {
+                        haptics.select();
+                        showActionSheet(undefined, heroMenu);
+                      }
+                    : undefined
+                }
+                style={({ pressed }) => ({ paddingHorizontal: HERO_ROOM.x, paddingVertical: HERO_ROOM.y, opacity: pressed ? 0.45 : 1 })}>
+                {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
+                  <RollingText variant="figure" size={56} style={{ ...restingFigure, marginLeft: figureLead(formatWeight(Number(latest.kilograms), unit), 56, { tabular: false }) }}>
+                    {formatWeight(Number(latest.kilograms), unit)}
+                  </RollingText>
+                  <Animated.View layout={figureLayout}>
+                    <BlancText variant="secondary" tone="graphite">
+                      {unit}
+                    </BlancText>
+                  </Animated.View>
+                </View>
+                <BlancText variant="secondary" tone="graphite">
+                  {measuredLabel(latest, todayKey)}
+                </BlancText>
+              </Pressable>
+            </HoldMenu>
             {refreshFailed ? (
               <BlancText variant="footnote" tone="live" style={{ marginTop: 4 }} accessibilityRole="alert">
                 {refreshFailed}
@@ -227,6 +269,9 @@ export default function WeightScreen() {
     </>
   );
 }
+
+/** The room around the figure when a hold lifts it, in points. */
+const HERO_ROOM = { x: 12, y: 8 } as const;
 
 /** Two segments of about the chart range's width (five across a card, some 70 pt each). */
 const UNIT_CONTROL_WIDTH = 140;

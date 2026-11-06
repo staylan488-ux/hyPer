@@ -271,6 +271,44 @@ describe('Progress after a failed read', () => {
     expect(shown()).toContain('Nothing trained yet this week');
   });
 
+  it('says the muscles could not load, in the figure card’s place, and Retry reads the week again', async () => {
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    await open();
+    expect(shown()).toContain('Muscles couldn’t load.');
+    expect(host.querySelector('progress[aria-label="Loading muscles"]')).toBeNull();
+    const retry = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Retry');
+    expect(retry).toBeDefined();
+
+    // Retry waits with the spinner while the read runs, then shows the week.
+    let finishRead = noop;
+    calculateWeeklyVolume.mockImplementation(() => new Promise<void>((resolve) => {
+      finishRead = () => { appStore.setState({ weeklyVolume: [] }); resolve(); };
+    }));
+    await act(async () => { retry!.click(); });
+    expect(calculateWeeklyVolume).toHaveBeenCalledTimes(2);
+    expect(shown()).not.toContain('Muscles couldn’t load.');
+    expect(host.querySelector('progress[aria-label="Loading muscles"]')).not.toBeNull();
+    await act(async () => { finishRead(); });
+    expect(shown()).toContain('Nothing trained yet this week');
+    expect(host.querySelector('progress[aria-label="Loading muscles"]')).toBeNull();
+  });
+
+  it('says the muscles could not load when the read throws', async () => {
+    calculateWeeklyVolume.mockRejectedValue(new Error('offline'));
+    await open();
+    expect(shown()).toContain('Muscles couldn’t load.');
+    expect(shown()).not.toContain('Nothing trained yet this week');
+  });
+
+  it('keeps a week already read when its refresh fails: no failure line over it', async () => {
+    const landmark = { id: 'side', user_id: 'me', muscle_group: 'side_delts' as const, mv: 6, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 14, landmark, status: 'mav' }] });
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    await open();
+    expect(shown()).toContain('Side delts');
+    expect(shown()).not.toContain('Muscles couldn’t load.');
+  });
+
   it('still says nothing was trained when an earlier read found an empty week', async () => {
     // The account load read the week and found nothing; Progress's own read fails.
     appStore.setState({ weeklyVolume: [] });
@@ -369,7 +407,7 @@ describe("Progress's nutrition window", () => {
   });
 
   it('keys the nothing-recorded mark once while a day is missing, and not when none is', async () => {
-    // Training time keys the same ring in the same words; left unread here, so only Nutrition's key shows.
+    // Only Nutrition draws the ring: Training time's weeks at 0 h are zero bars. Left unread here.
     fetchTrainingHours.mockResolvedValue(null);
     nutrition = weekBefore({ 1: 1342 });
     await open();
@@ -393,10 +431,30 @@ describe("Progress's chart marks", () => {
     };
     fetchTrainingHours.mockResolvedValue(workoutSessions.buildWeeklyTrainingHours([session(0), session(14), session(21)]));
     await open();
-    // This week's bar is the one ink mark; the two past weeks are mark.
+    // This week's bar is the one ink mark; the two past weeks are mark, and so are the five weeks at 0 h.
     expect(fills('ink')).toBe(1);
-    expect(fills('mark')).toBe(2);
+    expect(fills('mark')).toBe(7);
+    expect(host.querySelectorAll('[data-fill="mark"][data-height="2"]').length).toBe(5);
     expect(fills('graphite')).toBe(0);
+  });
+
+  it('draws a week without training as a zero bar, a 2 pt tick in mark, with no ring and no key', async () => {
+    const today = new Date();
+    const day = dates.subDays(today, 14);
+    fetchTrainingHours.mockResolvedValue(workoutSessions.buildWeeklyTrainingHours([
+      { date: dates.format(day, 'yyyy-MM-dd'), completed: true, created_at: new Date(day.getTime() - 60 * 60_000).toISOString(), completed_at: day.toISOString() },
+    ]));
+    await open();
+    const hours = host.querySelector('[aria-label="Training time, last 8 weeks"]')!;
+    const ticks = hours.querySelectorAll('[data-height="2"]');
+    // Seven weeks at 0 h; this week, at 0 h too, is the ink one.
+    expect(ticks.length).toBe(7);
+    expect([...ticks].filter((tick) => tick.getAttribute('data-fill') === 'ink').length).toBe(1);
+    expect(hours.querySelectorAll('[data-edge]').length).toBe(0);
+    expect(hours.textContent).not.toContain('No entry');
+    // This week so far says so in words, not "0 min".
+    expect(hours.textContent).toContain('Week to dateNo training');
+    expect(hours.getAttribute('data-value')).toBe('Week to date, no training');
   });
 
   it('draws every one of the seven days in mark, red only past target where that warns', async () => {
@@ -450,6 +508,8 @@ describe("Progress's muscle rows", () => {
   it("draws the rail's band in mark, the figure's in-range tone, on a fill track", async () => {
     appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 14, landmark, status: 'mav' }] });
     calculateWeeklyVolume.mockImplementation(async () => {});
+    // Training time left unread, so its weeks' marks don't count here.
+    fetchTrainingHours.mockResolvedValue(null);
     await open();
     // The key's band and the row's band.
     expect(host.querySelectorAll('[data-fill="mark"]').length).toBe(2);
@@ -532,6 +592,20 @@ describe('Progress while it reads', () => {
     expect(spinner('Loading nutrition')?.parentElement?.dataset.height).toBe('120');
   });
 
+  it('shows one quiet spinner in the muscle figure’s space while the week is first read', async () => {
+    calculateWeeklyVolume.mockReturnValue(new Promise(() => {}));
+    await open();
+    const muscles = spinner('Loading muscles');
+    expect(muscles?.dataset.color).toBe('graphite');
+    // The figure card's caption line and figure.
+    expect(muscles?.parentElement?.dataset.height).toBe('232');
+    // Under the Muscles title, before Training time.
+    const text = shown();
+    expect(text.indexOf('Muscles')).toBeLessThan(text.indexOf('Training time'));
+    expect(shown()).not.toContain('Nothing trained yet this week');
+    expect(shown()).not.toContain('Muscles couldn’t load.');
+  });
+
   it('puts the failure and Retry in the spinner’s place when a read fails', async () => {
     fetchTrainingHours.mockResolvedValueOnce(null);
     await open();
@@ -572,20 +646,21 @@ describe("Progress's charts, one bar at a time", () => {
     await act(async () => { pan.handlers.start!({ x: middle(third, 8, 6) }); });
     expect(hours.textContent).toContain(`Week of ${points[third].label}1 h 10 min`);
     expect(hours.textContent).not.toContain('Week to date');
-    // The week read is the one ink bar; this week goes to mark while it is read.
+    // The week read is the one ink bar; this week goes to mark while it is read, as the five weeks at 0 h are.
     expect(fills(hours, 'ink')).toBe(1);
-    expect(fills(hours, 'mark')).toBe(2);
-    // Sliding on to an empty week says so, and its ring goes ink.
+    expect(fills(hours, 'mark')).toBe(7);
+    // Sliding on to a week without training says so, and its zero bar goes ink.
     await act(async () => { pan.handlers.update!({ x: middle(0, 8, 6) }); });
-    expect(hours.textContent).toContain(`Week of ${points[0].label}Nothing logged`);
-    expect(fills(hours, 'ink')).toBe(0);
-    expect(hours.querySelectorAll('[data-edge="ink"]').length).toBe(1);
+    expect(hours.textContent).toContain(`Week of ${points[0].label}No training`);
+    expect(hours.querySelectorAll('[data-fill="ink"][data-height="2"]').length).toBe(1);
+    expect(fills(hours, 'ink')).toBe(1);
+    expect(hours.querySelectorAll('[data-edge]').length).toBe(0);
     // In a gap, the nearest bar; past the end, the last.
     await act(async () => { pan.handlers.update!({ x: LAYOUT_WIDTH + 40 }); });
     expect(hours.textContent).toContain(`Week of ${points[7].label}1 h 30 min`);
     await act(async () => { pan.handlers.end!({ x: 0 }); });
     expect(hours.textContent).toContain('Week to date1 h 30 min');
-    expect(hours.querySelectorAll('[data-edge="ink"]').length).toBe(0);
+    expect(hours.querySelectorAll('[data-fill="ink"][data-height="2"]').length).toBe(0);
   });
 
   it('reads a day on a tap and lets go on a second tap of the same day', async () => {
@@ -626,7 +701,7 @@ describe("Progress's charts, one bar at a time", () => {
     await step(name, 'decrement');
     expect(chart(name).dataset.value).toBe(`Week of ${dates.format(dates.parseISO(points[7].weekStart), 'MMMM d')}, 1 hour 30 minutes`);
     await step(name, 'decrement');
-    expect(chart(name).dataset.value).toBe(`Week of ${dates.format(dates.parseISO(points[6].weekStart), 'MMMM d')}, nothing logged`);
+    expect(chart(name).dataset.value).toBe(`Week of ${dates.format(dates.parseISO(points[6].weekStart), 'MMMM d')}, no training`);
     await step(name, 'increment');
     await step(name, 'increment');
     // It stops at this week.
@@ -641,7 +716,7 @@ describe("Progress's charts, one bar at a time", () => {
     expect(chart('Calories').dataset.value).toBe('Monday, November 2, 3400 calories, over');
   });
 
-  it('dates the training chart at its two ends only, and keys the ring as on Nutrition', async () => {
+  it('dates the training chart at its two ends only, and keys the ring on Nutrition alone', async () => {
     const points = weeks();
     fetchTrainingHours.mockResolvedValue(points);
     nutrition = weekBefore({ 1: 1342 });
@@ -649,9 +724,8 @@ describe("Progress's charts, one bar at a time", () => {
     const hours = chart('Training time, last 8 weeks');
     const dated = [...hours.querySelectorAll('span')].filter((span) => points.some((point) => point.label === span.textContent)).map((span) => span.textContent);
     expect(dated).toEqual([points[0].label, points[7].label]);
-    // One wording for the ring on both cards.
-    expect(hours.textContent).toContain('No entry');
-    expect(shown()).not.toContain('No training logged');
-    expect(shown().split('No entry').length - 1).toBe(2);
+    // Weeks at 0 h are zero bars, which need no key; an unlogged day keeps its ring, keyed once.
+    expect(hours.textContent).not.toContain('No entry');
+    expect(shown().split('No entry').length - 1).toBe(1);
   });
 });
