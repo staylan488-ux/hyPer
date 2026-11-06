@@ -194,7 +194,8 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
         style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
         {/* A long day name gives way; the live state always shows. At the
             accessibility text sizes the name wraps and the live state moves under it. */}
-        <BlancText variant="headline" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
+        {/* The session names the card quietly; what's up now is its one title, below. */}
+        <BlancText variant="secondary" weight="500" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
           {session.dayName}
         </BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -219,7 +220,7 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       {/* At the accessibility text sizes the button moves under the words. */}
       <View style={large ? { gap: 12, marginTop: 16 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 }}>
         <View accessible accessibilityLabel={speak(`${title} · ${line}`)} style={large ? undefined : { flex: 1, minWidth: 0 }}>
-          <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
+          <BlancText variant="headline" numberOfLines={large ? undefined : 1}>
             {title}
           </BlancText>
           <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>

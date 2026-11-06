@@ -22,7 +22,7 @@ import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
-import { TabScroll, tabBarCover } from '~/components/TabScroll';
+import { scrolledFromRest, TabScroll, tabBarCover } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
 import { announce, screenReaderRunning, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
@@ -94,6 +94,8 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
 
 /** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
 const FIGURE_SIZE = 72;
+/** How far the page scrolls before the set card's movement name passes under the bar: the large title and the tally row above it. */
+const MOVEMENT_TITLE_OFFSET = 96;
 
 /**
  * The weight and reps share one size, stepping down as their digits add up,
@@ -352,12 +354,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // The header is built once per name and state, never per keystroke or
   // clock tick, so its buttons are not re-sent to iOS under the finger.
   const { workoutId, dayName, flexible } = session;
+  const [titleIsMovement, setTitleIsMovement] = useState(false);
+  const barTitle = titleIsMovement && current ? current.movement.name : dayName;
   // Finish stays quiet glass beside Log set until every set is logged, then leads.
   const allLogged = session.sets.length > 0 && session.doneCount >= session.sets.length;
   const headerOptions = useMemo(
     () =>
       ({
-        title: dayName,
+        title: barTitle,
         unstable_headerRightItems: () => [
           {
             type: 'button',
@@ -398,7 +402,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             : []),
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    [workoutId, dayName, closing, c.ink, flexible, finish, allLogged],
+    [workoutId, dayName, barTitle, closing, c.ink, flexible, finish, allLogged],
   );
 
   // A drop saves this session's order at once (never the program); while it
@@ -617,6 +621,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         automaticallyAdjustKeyboardInsets
         onScroll={(event) => {
           scrollOffset.current = event.nativeEvent.contentOffset.y;
+          // Past the card's heading, the bar names the movement being logged.
+          const pastHeading = scrolledFromRest(event.nativeEvent.contentOffset.y) > MOVEMENT_TITLE_OFFSET;
+          if (pastHeading !== titleIsMovement) setTitleIsMovement(pastHeading);
           if (__DEV__ && devScrollTrace.enabled) console.log(`[scroll] ${event.nativeEvent.contentOffset.y.toFixed(1)}`);
         }}>
         {/* The session's tally and its clock share one line under the title; at the accessibility sizes they stack. */}

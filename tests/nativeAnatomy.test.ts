@@ -8,7 +8,7 @@ import { MUSCLE_TONES } from '../native/src/theme/muscleTones';
 
 const SIDES: ViewSide[] = ['front', 'back'];
 /** Progress draws the figure this tall (MuscleFigure's height), in points. */
-const FIGURE_POINTS = 150;
+const FIGURE_POINTS = 136;
 const pointsPerUnit = FIGURE_POINTS / (FIGURE.bottom - FIGURE.top);
 
 /** How far a point inside a polygon is from its edge. */
@@ -181,6 +181,25 @@ describe('Progress\'s in-range tone', () => {
       // Quieter against the card than the dark palette's ink, the screen's own text.
       expect(contrast(tones.in, palette(name).label), name).toBeLessThan(contrast(palette(name).ink, palette(name).label) / 2);
     }
+  });
+
+  it("edges the light body in graphite at about 30%, so it stands off the white card", () => {
+    const { graphite, label } = palette('light');
+    // Graphite laid over the card at 30%.
+    const edge = rgb(graphite).map((value, i) => Math.round(0.3 * value + 0.7 * rgb(label)[i]));
+    rgb(MUSCLE_TONES.light.contour).forEach((value, i) => expect(Math.abs(value - edge[i])).toBeLessThanOrEqual(3));
+    expect(contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body)).toBeGreaterThanOrEqual(1.4);
+    // Quieter than below range's outline, so an outlined muscle never reads as the bare body.
+    expect(contrast(MUSCLE_TONES.light.belowEdge, MUSCLE_TONES.light.body)).toBeGreaterThan(2 * contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body));
+    const source = readFileSync(path.join(__dirname, '../native/src/components/MuscleFigure.tsx'), 'utf8');
+    expect(source).toContain('const BODY_EDGE = 1;');
+  });
+
+  it('draws an untrained muscle as the body alone, with no fill or outline of its own', () => {
+    const source = readFileSync(path.join(__dirname, '../native/src/components/MuscleFigure.tsx'), 'utf8');
+    // Its fill and seams are left out, and only below range is outlined.
+    expect(source.match(/bare\(region\.muscle\) \? null/g)?.length).toBe(2);
+    expect(source).toContain("if (stateOf(shades.get(muscle)) !== 'below') return null;");
   });
 
   it("keeps the body's edge readable on the dark cards", () => {

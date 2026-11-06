@@ -4,6 +4,7 @@ import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated, { FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Svg, { Line } from 'react-native-svg';
 
 import { summarizeWeekVolume } from '@/lib/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
@@ -392,6 +393,13 @@ const SCALE_GAP = 8;
 const SCALE_CLEAR = 12;
 
 /**
+ * The scale figure's box, in points: taller than its line at the largest
+ * size it grows to (Menlo 12's 16 pt line at 1.3×), so the figure always has
+ * room. A box of no height made iOS shrink the text to fit it, to nothing.
+ */
+const SCALE_BOX = 22;
+
+/**
  * A chart's scale or target figure, in Menlo like Train's numeric details:
  * at the right end of the line it names, centred on it as the body-weight
  * chart sets its scale. The card shows behind it, so the line stops just
@@ -409,15 +417,34 @@ function ScaleLabel({ bottom, above = false, children }: { bottom: `${number}%`;
         left: 0,
         right: 0,
         bottom,
+        height: SCALE_BOX,
         alignItems: 'flex-end',
-        // A box of no height on the line, so the figure centres on it.
-        ...(above ? { marginBottom: 3 } : { height: 0, justifyContent: 'center' }),
+        // Centred on the line, or resting just above it.
+        ...(above ? { marginBottom: 3, justifyContent: 'flex-end' } : { marginBottom: -SCALE_BOX / 2, justifyContent: 'center' }),
       }}>
+      {/* Sized to the figure, never shrunk to fit. */}
       <View style={{ paddingLeft: SCALE_GAP, backgroundColor: c.label }}>
-        <BlancText variant="meta" tone="graphite" numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.3} style={{ textAlign: 'right' }}>
+        <BlancText variant="meta" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={1.3}>
           {children}
         </BlancText>
       </View>
+    </View>
+  );
+}
+
+/** The target line's dashes and the gaps between them, in points. */
+const DASH = '4 3';
+
+/**
+ * A dashed line across the plot. iOS draws a dashed border on one side only
+ * as a solid line, so the dashes are drawn.
+ */
+function DashedLine({ bottom, color, opacity }: { bottom: `${number}%`; color: string; opacity: number }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom, height: 1, opacity }}>
+      <Svg width="100%" height={1}>
+        <Line x1="0" y1="0.5" x2="100%" y2="0.5" stroke={color} strokeWidth={1} strokeDasharray={DASH} />
+      </Svg>
     </View>
   );
 }
@@ -697,18 +724,7 @@ function MacroBars({
         {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
         {target > 0 ? (
-          <View
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: `${(target / max) * 100}%`,
-              borderTopWidth: 1,
-              borderStyle: 'dashed',
-              borderColor: c.graphite,
-              opacity: contrast ? 1 : 0.6,
-            }}
-          />
+          <DashedLine bottom={`${(target / max) * 100}%`} color={c.graphite} opacity={contrast ? 1 : 0.6} />
         ) : null}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%' }}>
           {days.map((day) => {

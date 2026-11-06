@@ -32,10 +32,10 @@ export function EntryMethods({
   const c = useBlanc();
   const large = useLargeText();
   const methods: Method[] = [
-    { id: 'scan', title: 'Scan', symbol: 'barcode.viewfinder', spoken: 'Scan a barcode' },
+    { id: 'scan', title: 'Barcode', symbol: 'barcode.viewfinder', spoken: 'Scan a barcode' },
     { id: 'manual', title: 'Manual', symbol: 'square.and.pencil', spoken: 'Enter manually' },
     gemini
-      ? { id: 'photo', title: 'Describe', symbol: 'text.bubble', spoken: 'Describe a meal, with a photo or words' }
+      ? { id: 'photo', title: 'Photo or text', symbol: 'camera', spoken: 'Describe a meal, with a photo or words' }
       : { id: 'photo', title: 'Photo', symbol: 'camera', spoken: photoWaiting ? 'Photo, estimate waiting' : 'Photo' },
   ];
   return (
@@ -70,7 +70,7 @@ export function EntryMethods({
               borderColor: on ? c.labelEdge : 'transparent',
               opacity: disabled ? 0.4 : 1,
             })}>
-            <SymbolView name={method.symbol} size={15} weight={on ? 'semibold' : 'medium'} tintColor={c.ink} />
+            <SymbolView name={method.symbol} size={17} weight={on ? 'semibold' : 'medium'} tintColor={c.ink} />
             <BlancText variant="secondary" weight={on ? '600' : '500'} numberOfLines={large ? undefined : 1} style={large ? { flexShrink: 1 } : undefined}>
               {method.title}
             </BlancText>

@@ -258,8 +258,9 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
             </BlancText>
           ) : null}
         </View>
+        {/* On the food name's line, as Fuel's day list sets it. */}
         {large ? null : (
-          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+          <BlancText variant="secondary" tone="graphite" style={[{ fontVariant: ['tabular-nums'] }, line ? { alignSelf: 'flex-start', marginTop: 2 } : null]}>
             {kcal}
           </BlancText>
         )}

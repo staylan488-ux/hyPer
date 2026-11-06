@@ -42,7 +42,7 @@ import {
 } from '~/lib/you';
 import { centredTrendLine } from '~/lib/weightTrendLine';
 import { summaryRateLabel } from '~/lib/weightRate';
-import { space, useBlanc } from '~/theme/blanc';
+import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
 /**
  * You: who is signed in, body weight with Log, and the settings that shape
@@ -195,7 +195,7 @@ function WeightCard() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                  <RollingText variant="figure" size={44}>
+                  <RollingText variant="figure" size={44} style={{ ...restingFigure, marginLeft: figureLead(formatWeight(Number(latest.kilograms), unit), 44, { tabular: false }) }}>
                     {formatWeight(Number(latest.kilograms), unit)}
                   </RollingText>
                   <Animated.View layout={figureLayout}>
@@ -212,8 +212,8 @@ function WeightCard() {
                 </BlancText>
               ) : null}
               {trend.fittedDayCount >= 2 ? (
-                <View style={{ marginTop: 10 }} pointerEvents="none">
-                  <WeightChart points={centredTrendLine(trend.points)} days={21} unit={unit} height={44} compact />
+                <View style={{ marginTop: 6 }} pointerEvents="none">
+                  <WeightChart points={centredTrendLine(trend.points)} days={21} unit={unit} height={32} compact />
                 </View>
               ) : null}
             </>

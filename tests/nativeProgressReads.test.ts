@@ -24,7 +24,12 @@ import { silentAccessibility } from './helpers/silentAccessibility';
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
 const Empty = () => null;
 const noop = () => {};
-const Text = ({ children }: PropsWithChildren) => createElement('span', null, children);
+// Text and views keep what the scale figures' checks read: whether text may
+// shrink to fit, and a box's height.
+const Text = ({ children, adjustsFontSizeToFit }: PropsWithChildren<{ adjustsFontSizeToFit?: boolean }>) =>
+  createElement('span', adjustsFontSizeToFit ? { 'data-shrinks': 'true' } : null, children);
+const View = ({ children, style }: PropsWithChildren<{ style?: { height?: number | string } }>) =>
+  createElement('div', style?.height !== undefined ? { 'data-height': String(style.height) } : null, children);
 
 let pull: () => void;
 const fetchTrainingHours = vi.fn();
@@ -33,7 +38,7 @@ const calculateWeeklyVolume = vi.fn();
 const initialAppData = { weeklyVolume: [] as MuscleVolume[] };
 const appStore = create(() => ({
   weeklyVolume: initialAppData.weeklyVolume,
-  macroTarget: null,
+  macroTarget: null as { calories: number; protein: number } | null,
   nutritionProfile: null,
   calculateWeeklyVolume,
   fetchMacroTarget: async () => {},
@@ -72,8 +77,9 @@ async function open() {
         pull = onRefresh;
         return null;
       },
-      View: Wrap,
+      View,
     },
+    'react-native-svg': { default: Wrap, Line: Empty },
     'react-native-reanimated': {
       default: { View: Wrap },
       FadeIn: { duration: () => undefined },
@@ -105,7 +111,7 @@ async function open() {
     '~/lib/format': { formatMinutes, formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { select: noop } },
-    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}) },
+    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({ label: '#FFFFFF', graphite: '#66665F' }) },
     '~/theme/useMuscleTones': { useMuscleTones: () => ({}) },
   });
   await act(async () => { root.render(createElement(ProgressScreen)); });
@@ -114,6 +120,7 @@ const refresh = () => act(async () => { pull(); });
 
 beforeEach(() => {
   nutrition = [];
+  appStore.setState({ macroTarget: null });
   accountDay.setState({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') });
   appStore.setState({ weeklyVolume: initialAppData.weeklyVolume });
   fetchTrainingHours.mockReset().mockResolvedValue(trained());
@@ -267,5 +274,35 @@ describe("Progress's muscle rows", () => {
     await open();
     expect(shown()).toContain('Add about 3 sets this week');
     expect(shown()).not.toContain('this week.');
+  });
+});
+
+describe("Progress's scale and target figures", () => {
+  /** The span showing exactly this text. */
+  const figure = (text: string) => [...host.querySelectorAll('span')].find((span) => span.textContent === text);
+  /** The height of the nearest box around an element that sets one. */
+  const boxHeight = (element: Element | undefined) => {
+    for (let at = element?.parentElement; at; at = at.parentElement) if (at.dataset.height !== undefined) return at.dataset.height;
+    return undefined;
+  };
+
+  it("names the training chart's top and each nutrition target, in boxes with room for them", async () => {
+    nutrition = lastWeek({ 0: 1342 }).map((day) => ({ ...day, protein: day.calories ? 130 : 0 }));
+    appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
+    await open();
+    // 90 minutes this week puts the chart's top at 2 hours.
+    for (const text of ['2 h', '2600 target', '190 target']) {
+      const label = figure(text);
+      expect(label, text).toBeDefined();
+      // iOS shrank a figure that could shrink to fit a box of no height to nothing.
+      expect(label?.dataset.shrinks, text).toBeUndefined();
+      expect(Number(boxHeight(label)), text).toBeGreaterThan(0);
+    }
+  });
+
+  it('names no target while none is set', async () => {
+    nutrition = lastWeek({ 0: 1342 });
+    await open();
+    expect(shown()).not.toContain('target');
   });
 });

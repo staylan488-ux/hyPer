@@ -42,7 +42,7 @@ export const palettes = {
     upcoming: '#8C8C86',
     hairline: 'rgba(255, 255, 255, 0.11)',
     track: '#363634',
-    mark: '#6A6A65',
+    mark: '#7A7A73',
     fill: '#2C2C2A',
     pressed: '#30302E',
     capsule: '#F4F4F2',

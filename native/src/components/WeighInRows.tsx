@@ -139,7 +139,8 @@ function WeighInLine({ title, when, menu, onPress }: { title: string; when: stri
       quiet
       accessibilityLabel={label}
       trailing={
-        <BlancText variant="body" style={{ fontVariant: ['tabular-nums'] }}>
+        // The measurement leads the line; its date recedes in graphite.
+        <BlancText variant="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
           {title}
         </BlancText>
       }

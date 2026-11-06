@@ -30,11 +30,12 @@ const DARK_SEAM = 1.35;
 const HEAD_ROOM = 8;
 
 /**
- * The contour's width in figure units; half of it shows outside the body,
- * about two thirds of a point. On the dark card it is wider (and its tone
- * lighter, in muscleTones), so the body's edge still reads there.
+ * The body's edge on the light cards, in points as it shows: half the
+ * contour's stroke shows outside the body, so the near-white body stands
+ * off the white card. On the dark card the contour is set in figure units,
+ * wider (and its tone lighter, in muscleTones), so the edge still reads there.
  */
-const CONTOUR = 1.6;
+const BODY_EDGE = 1;
 const DARK_CONTOUR = 2.8;
 /**
  * The outline that marks a muscle below range, in points as it shows: drawn
@@ -116,7 +117,7 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * element: swiping up and down steps through this week's muscles (the rows
  * of the list below it), and down past the first clears the choice.
  */
-export function MuscleFigure({ volume, selected, onPick, height = 150 }: {
+export function MuscleFigure({ volume, selected, onPick, height = 136 }: {
   volume: MuscleVolume[];
   selected: MuscleGroup | null;
   onPick: (muscle: MuscleGroup | null) => void;
@@ -141,7 +142,6 @@ export function MuscleFigure({ volume, selected, onPick, height = 150 }: {
   const belowEdge = useMemo(() => parseColor(tones.belowEdge, [0.33, 0.33, 0.31]), [tones]);
   const body = tones.body;
   const seam = dark ? DARK_SEAM : SEAM;
-  const contour = dark ? DARK_CONTOUR : CONTOUR;
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   const pick = (x: number, y: number) => {
@@ -189,6 +189,8 @@ export function MuscleFigure({ volume, selected, onPick, height = 150 }: {
   // clipped to the muscle, so only its inner half shows; the seam in the
   // card's colour then takes half a seam of it, which the width makes up.
   const outlineWidth = 2 * (BELOW_OUTLINE / scale + seam / 2);
+  // The contour is stroked at twice the edge that shows outside the body.
+  const contour = dark ? DARK_CONTOUR : (2 * BODY_EDGE) / scale;
 
   return (
     <View

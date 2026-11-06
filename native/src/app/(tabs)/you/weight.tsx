@@ -129,7 +129,7 @@ export default function WeightScreen() {
               style={({ pressed }) => ({ alignSelf: 'flex-start', opacity: pressed ? 0.45 : 1 })}>
               {/* At the accessibility text sizes the unit may wrap below the capped figure. */}
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                <RollingText variant="figure" size={64} style={{ ...restingFigure, marginLeft: figureLead(formatWeight(Number(latest.kilograms), unit), 64, { tabular: false }) }}>
+                <RollingText variant="figure" size={56} style={{ ...restingFigure, marginLeft: figureLead(formatWeight(Number(latest.kilograms), unit), 56, { tabular: false }) }}>
                   {formatWeight(Number(latest.kilograms), unit)}
                 </RollingText>
                 <Animated.View layout={figureLayout}>
