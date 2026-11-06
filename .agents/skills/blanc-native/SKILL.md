@@ -214,6 +214,20 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   once it was changed; not offered for one saved meal as saved). Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
+- Photo's Add photo opens the camera at once, full screen, with no Take
+  photo or Choose from library sheet first (the owner's call on 2026-11-05).
+  iOS's camera picker has no library button, so the camera is hyPer's own
+  ([food-camera](../../../native/src/app/food-camera.tsx), `expo-camera`,
+  photos only with no microphone permission), opened through `pickFoodPhoto`
+  and `openFoodCamera` (`native/src/fuel/foodCamera.ts`), which settles once
+  the screen has gone. Black chrome in either appearance (the dark palette):
+  close top left, the flash top right, the shutter centred at the foot and
+  the photo library bottom left (iOS's photo picker, which needs no library
+  permission; cancelling it returns to the camera). A shot shows Retake and
+  Use Photo. Camera access is asked as the screen opens; refused, or with no
+  camera (the simulator), the screen says so (Open Settings when refused)
+  and the library still works, and closing it leaves the reason under Photo.
+  A photo already added keeps its own menu (Replace photo, Remove photo).
 - "This should work, and it does" (the owner, 2026-10-27; app-wide audit
   2026-10-28): every list item that can be removed swipes left for its actions
   ([SwipeRow](../../../native/src/components/SwipeRow.tsx)): the destructive
@@ -447,8 +461,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   hold still until it lands, and so does a quick add left unconfirmed (its
   retry would close with the meal). Camera access turned off shows Open Settings
   under the error. Train only switches tabs when nothing covers them and never
-  starts a workout. One system picker at a time (`pickFoodPhoto`), none while a
-  photo's action sheet is up (`showPhotoChoices`). Intents that open the app
+  starts a workout. One camera or picker at a time (`pickFoodPhoto`), none while
+  a photo's menu is up (`showPhotoChoices`). Intents that open the app
   compile into the app (the control's also into the extension), App Shortcuts
   only into the app, never into a pod.
 - A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
@@ -522,9 +536,10 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   then `xcrun simctl io <udid> screenshot <file>`. Check light and dark
   (`xcrun simctl ui <udid> appearance dark`). `-hyperAction launch:snap-meal`
   (or `launch:log-food`, `launch:train`) posts a press as iOS hands one over;
-  the simulator has no camera, so Snap a meal stops at "The camera isn't
-  available here." `-hyperAction fuelReminder` sets a Fuel reminder a minute
-  ahead and logs what iOS holds. A new local module (such as `hyper-launch`)
+  the simulator has no camera, so Snap a meal's camera screen says "The
+  camera isn’t available here." with its photo library button still working
+  (`-hyperRoute /food-camera` opens that screen alone). `-hyperAction
+  fuelReminder` sets a Fuel reminder a minute ahead and logs what iOS holds. A new local module (such as `hyper-launch`)
   needs `pod install`, which prebuild runs.
 - Accessibility: `xcrun simctl ui <udid> content_size accessibility-extra-extra-extra-large`
   shows AX5 (`large` is the default) and `xcrun simctl ui <udid> increase_contrast enabled`

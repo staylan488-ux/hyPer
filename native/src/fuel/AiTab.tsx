@@ -107,7 +107,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
     live.current = true;
     return () => {
       live.current = false;
-      // closed under Add photo's choices: they never answer, so Snap a meal stops waiting for them
+      // closed under a photo's menu: it never answers, so Snap a meal stops waiting for it
       dropPhotoChoices();
     };
   }, []);
@@ -117,20 +117,18 @@ export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
   const valid = Boolean(result) && !result?.clarification && isValidTrialReview(items, editing);
   const frozen = busy !== null || draft.saveStarted;
 
-  const addPhoto = () => {
+  // The camera at once, with the photo library a tap away on its screen.
+  const addPhoto = async () => {
     if (draft.photos.length >= MAX_PHOTOS) return;
-    showPhotoChoices({ options: ['Take photo', 'Choose from library', 'Cancel'], cancelButtonIndex: 2 }, async (index) => {
-      if (index === 2) return;
-      setError(null);
-      try {
-        const photo = await pickFoodPhoto(index === 0 ? 'camera' : 'library');
-        if (!photo) return;
-        haptics.select();
-        setDraft((current) => (current.photos.length >= MAX_PHOTOS ? current : { ...current, photos: [...current.photos, photo] }));
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
-      }
-    });
+    setError(null);
+    try {
+      const photo = await pickFoodPhoto('camera');
+      if (!photo || !live.current) return;
+      haptics.select();
+      setDraft((current) => (current.photos.length >= MAX_PHOTOS ? current : { ...current, photos: [...current.photos, photo] }));
+    } catch (cause) {
+      if (live.current) setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
+    }
   };
 
   // Snap a meal passes the photos it just added; every other call uses the draft's.
@@ -344,7 +342,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
             disabled={busy !== null}
             onPress={() => {
               haptics.tap();
-              addPhoto();
+              void addPhoto();
             }}
             style={({ pressed }) => ({
               // At the accessibility sizes the tile grows to fit its words.

@@ -89,6 +89,15 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "hyPer uses the camera to scan food barcodes and analyze food photos you choose to log.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "cameraPermission": "hyPer uses the camera to scan food barcodes and analyze food photos you choose to log.",

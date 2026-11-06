@@ -103,7 +103,7 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
     prepareImage: async () => ({ imageBase64: 'b64', mimeType: 'image/jpeg' }),
     pickFoodPhoto: pick,
     foodPickerUp: () => up,
-    // Add photo's choices (PhotoTab holds them as up until they answer)
+    // a photo's menu (PhotoTab holds it as up until it answers)
     showPhotoChoices: (_options: unknown, callback: (index: number) => Promise<void>) => { sheet = callback; },
     dropPhotoChoices: noop,
   },
@@ -227,13 +227,24 @@ describe('AI tab: Snap a meal', () => {
     expect(analyze.mock.calls[0][0].images).toHaveLength(1);
   });
 
-  it('uses the same picker for Add photo’s Take photo', async () => {
+  it('opens the same camera straight from Add photo, with no choices asked first', async () => {
     pick.mockRejectedValueOnce(new Error(CAMERA_OFF));
     await render(0);
     await act(async () => { pressables['Add photo'].onPress(); });
-    await act(async () => { await sheet!(0); });
+    await settle();
+    expect(sheet).toBeUndefined();
+    expect(pick).toHaveBeenCalledOnce();
     expect(pick).toHaveBeenCalledWith('camera');
     expect(alertText()).toBe(CAMERA_OFF);
     expect(hasCapsule('Open Settings')).toBe(true);
+  });
+
+  it('adds the photo the camera screen hands back from Add photo, without analyzing it', async () => {
+    pick.mockResolvedValueOnce(shot);
+    await render(0);
+    await act(async () => { pressables['Add photo'].onPress(); });
+    await settle();
+    expect(current.photos).toEqual([shot]);
+    expect(analyze).not.toHaveBeenCalled();
   });
 });
