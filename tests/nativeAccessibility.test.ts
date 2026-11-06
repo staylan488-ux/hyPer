@@ -197,6 +197,15 @@ describe('contrast', () => {
     }
   });
 
+  it('keeps marks to read (tally strokes to do, past bars, weigh-in dots) at 3:1 or more on chalk and labels', () => {
+    for (const name of ['light', 'dark', 'lightContrast', 'darkContrast']) {
+      const colours = palette(name);
+      for (const surface of ['ground', 'label']) {
+        expect(contrast(colours.mark, colours[surface]), `${name} mark on ${surface}`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
   it('keeps the chalk, the labels and the P as they are with Increase Contrast', () => {
     expect(palette('lightContrast').ground).toBe(palette('light').ground);
     expect(palette('lightContrast').label).toBe(palette('light').label);

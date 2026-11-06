@@ -21,8 +21,8 @@ export const palettes = {
     upcoming: '#707069',
     hairline: 'rgba(0, 0, 0, 0.09)',
     track: '#DCDBD6',
-    /** Tally strokes still to do: a mark to read, so stronger than a track. */
-    mark: '#96958F',
+    /** Marks to read but not lead (tally strokes still to do, past bars, weigh-in dots): 3:1 or more on chalk and labels. */
+    mark: '#878680',
     fill: '#ECEBE6',
     pressed: '#E7E6E1',
     capsule: '#0B0B0B',
