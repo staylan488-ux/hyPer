@@ -53,21 +53,23 @@ const REST = 1 / BLOOM;
 /** Where the word is spelled out: centred, a little above the middle. */
 const ORIGIN_Y = 0.4;
 
+// About 1.5 s from the first sign of the P to it landing in its corner (it
+// was 2.3 s): every beat is kept, each one shorter.
 const ms = {
   /** The P fades in, shrinking from its bloom. */
-  bloom: 380,
+  bloom: 300,
   /** A beat before it settles and the letters come out. */
-  breath: 140,
+  breath: 80,
   /** The outer letters follow the inner ones. */
-  stagger: 45,
+  stagger: 35,
   /** The spelled-out word holds at least this long. */
-  hold: 560,
-  fold: 260,
+  hold: 250,
+  fold: 210,
   /** The P takes off once the letters have mostly folded into it. */
-  takeOff: 150,
-  handOver: 180,
-  veil: 520,
-  reveal: 700,
+  takeOff: 100,
+  handOver: 140,
+  veil: 400,
+  reveal: 520,
   /** Frames never came smoothly: start anyway. */
   startFallback: 900,
 };
@@ -84,14 +86,14 @@ const SMOOTH_FRAME_MS = 24;
 // settling takes about half as long again.
 const spring = {
   /** The P to its resting size, with a slight overshoot. */
-  settle: { duration: 440, dampingRatio: 0.62 },
-  unfold: { duration: 460, dampingRatio: 0.7 },
-  centre: { duration: 520, dampingRatio: 1 },
-  glideX: { duration: 640, dampingRatio: 1 },
+  settle: { duration: 360, dampingRatio: 0.62 },
+  unfold: { duration: 360, dampingRatio: 0.7 },
+  centre: { duration: 400, dampingRatio: 1 },
+  glideX: { duration: 480, dampingRatio: 1 },
   /** Leads the x spring, so the flight arcs up and then into the corner. */
-  glideY: { duration: 540, dampingRatio: 1 },
+  glideY: { duration: 400, dampingRatio: 1 },
   /** Shrinks a touch past its size and settles back as it lands. */
-  glideScale: { duration: 600, dampingRatio: 0.75 },
+  glideScale: { duration: 450, dampingRatio: 0.75 },
 };
 
 /** A skipped intro moves this much faster. */
@@ -228,12 +230,12 @@ export function BrandIntro({ ready, hurry, onDone, markless = false }: BrandIntr
   }, [started, frames, pOpacity, rise, bloom, y, e, h, r, gx]);
 
   const fadeOut = useEffectEvent(() => {
-    fold.value = withTiming(1, { duration: 300, easing: easeIn });
-    pOpacity.value = withTiming(0, { duration: 300 });
-    veil.value = withTiming(0, { duration: 420, easing: easeInOut });
-    introReveal.value = withTiming(1, { duration: 600, easing: easeOut });
-    markShown.value = withDelay(150, withTiming(1, { duration: 300 }));
-    later(finish, 650);
+    fold.value = withTiming(1, { duration: 240, easing: easeIn });
+    pOpacity.value = withTiming(0, { duration: 240 });
+    veil.value = withTiming(0, { duration: 340, easing: easeInOut });
+    introReveal.value = withTiming(1, { duration: 480, easing: easeOut });
+    markShown.value = withDelay(120, withTiming(1, { duration: 240 }));
+    later(finish, 520);
   });
 
   const land = useEffectEvent(async (measureAnchor: () => Promise<MarkAnchor | null>, quick: boolean) => {

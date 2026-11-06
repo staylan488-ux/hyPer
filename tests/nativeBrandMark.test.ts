@@ -39,8 +39,8 @@ describe('native brand mark geometry', () => {
     const inkLeft = box('h').left + (PAD + LIGHT_GLYPHS.h.inkLeft) * WORD_SIZE;
     const inkRight = box('r').left + (PAD + LIGHT_GLYPHS.r.inkRight) * WORD_SIZE;
     expect(inkLeft + centring).toBeCloseTo(-(inkRight + centring), 6);
-    // hy is wider than er, so the word drifts right of the P by about 9 points.
-    expect(centring).toBeCloseTo(8.79, 1);
+    // hy is wider than er, so the word drifts right of the P by about 7 points.
+    expect(centring).toBeCloseTo(6.83, 1);
   });
 
   it('spells h, y, P, e, r left to right on one baseline', () => {

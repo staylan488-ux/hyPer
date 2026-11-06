@@ -91,7 +91,7 @@ export function drawnMark(): Box & { inkOffsetX: number; inkOffsetY: number } {
 /**
  * The spelled-out word around the P's ink centre at (0, 0): each letter's text
  * box, and the shift that centres the whole word's ink once it is spelled out.
- * hy ends where the P begins; er tucks under the P's italic overhang.
+ * hy ends where the P begins; er tucks just under the P's italic overhang.
  */
 export function wordLayout(): { letters: { letter: Letter; box: Box }[]; centring: number } {
   const baseline = (CAP_HEIGHT / 2) * P_SIZE;
@@ -102,7 +102,10 @@ export function wordLayout(): { letters: { letter: Letter; box: Box }[]; centrin
   const origins: Record<Letter, number> = { h: 0, y: 0, e: 0, r: 0 };
   origins.h = pOrigin - (h.advance + y.advance) * WORD_SIZE - 2 * TRACKING;
   origins.y = origins.h + h.advance * WORD_SIZE + TRACKING;
-  origins.e = pOrigin + 0.92 * pSpan;
+  // A little short of the P's span, so the e still tucks under the italic
+  // overhang but its shoulder clears the bowl by about the gap between the
+  // light letters (at 0.92 the two touched).
+  origins.e = pOrigin + 1.01 * pSpan;
   origins.r = origins.e + e.advance * WORD_SIZE + TRACKING;
 
   const letters = (Object.keys(origins) as Letter[]).map((letter) => ({
