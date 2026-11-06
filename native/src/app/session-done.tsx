@@ -120,8 +120,8 @@ export default function SessionDone() {
             </BlancText>
           </View>
 
-          {/* At the cards' inset, so its edges line up with Done; a faint lift over the label's own edge. */}
-          <Label style={{ marginTop: 22, paddingHorizontal: 26, paddingTop: tally || beats ? 28 : 10, paddingBottom: 26, boxShadow: `0 0 0 0.5px ${c.labelEdge}, 0 1px 2px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.05)` }}>
+          {/* A standard card: the 18-point padding and the edge and shadow every Label has, so its text sits on the app's shared edge. */}
+          <Label style={{ marginTop: 22, paddingHorizontal: 18, paddingTop: tally || beats ? 18 : 10, paddingBottom: 18 }}>
             {/* A session without sets has no tally, as on Today. */}
             {tally ? (
               <Tally

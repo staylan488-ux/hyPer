@@ -41,8 +41,12 @@ import { useBlanc, type Palette } from '~/theme/blanc';
 
 /** Monday first, as the training week and every calendar in the app. */
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-/** A week's row in the month grid: a 44-point target holding the 34-point day, 4 points of clearance and its dot. */
-const DAY_ROW = 44;
+/**
+ * A week's row in the month grid: a 48-point target holding the 34-point day
+ * at its top, the dot 2 points under it, and the rest of the row below, so a
+ * dot sits nearer its own day than the week under it.
+ */
+const DAY_ROW = 48;
 /** A finished workout's tally fits beside its name up to four groups of five; longer ones read in words. */
 const TALLY_MAX_SETS = 20;
 
@@ -429,7 +433,7 @@ function DayCell({
         haptics.select();
         selectHistoryDay(date);
       }}
-      style={{ width: `${100 / 7}%`, height: DAY_ROW, alignItems: 'center', justifyContent: 'center' }}>
+      style={{ width: `${100 / 7}%`, height: DAY_ROW, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 2 }}>
       <View
         style={{
           width: 34,
@@ -453,8 +457,8 @@ function DayCell({
           {number}
         </BlancText>
       </View>
-      {/* About 4 points under the 34-point disc, so the dot stays clear of a chosen day's ink. */}
-      <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 4 }}>
+      {/* 2 points under the 34-point disc: clear of a chosen day's ink, and plainly its own day's. */}
+      <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 2 }}>
         {/* One mark for a day with anything in it; the day's list says what. */}
         {lift || other ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: lift ? c.ink : c.graphite }} /> : null}
       </View>

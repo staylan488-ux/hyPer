@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -181,9 +182,13 @@ export function PlanCard({
  * A finished day's record, on Today and on Train, in the live card's
  * skeleton: the session and its length where the live clock was, the closed
  * tally, then "Done" where the movement was and the next session under it.
- * No button: the card opens the workout.
+ * No button: the card opens the workout, and says so with a chevron where the
+ * live card's button was, as every card that opens a screen does.
  */
 function FinishedCard({ record, next }: { record: FinishedToday; next: string | null }) {
+  const c = useBlanc();
+  // At the accessibility sizes the action slot stacks under the words, where a lone chevron would float.
+  const large = useLargeText();
   // The next session by name only ("Tomorrow · Lower A" → "Lower A"), so the line fits.
   const at = next ? next.indexOf(' · ') : -1;
   const nextName = next && at >= 0 ? next.slice(at + 3) : next;
@@ -208,6 +213,7 @@ function FinishedCard({ record, next }: { record: FinishedToday; next: string | 
         tally={counted ? { marks: record.marks, current: null, label: counted } : null}
         title={outcome}
         line={line}
+        action={large ? undefined : <SymbolView name="chevron.right" size={13} weight="semibold" tintColor={c.upcoming} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />}
         // VoiceOver reads the record as one stop, its length in words ("1 h 5 min" as "1 hour 5 minutes").
         spoken={[record.title, length, 'Done', counted, line].filter(Boolean).join(', ')}
         hint="Opens the workout"

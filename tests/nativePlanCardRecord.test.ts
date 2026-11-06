@@ -40,6 +40,8 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
   'components/PlanCard.tsx',
   {
     'expo-router': { router: { navigate: noop, push } },
+    // The finished card's chevron: a mark only, hidden from VoiceOver.
+    'expo-symbols': { SymbolView: (props: { name: string }) => createElement('u', { 'data-symbol': props.name }) },
     '@/stores/appStore': { useAppStore: programs },
     'react-native': {
       Pressable: ({ children, accessibilityLabel, accessibilityHint, onPress }: PropsWithChildren<{ accessibilityLabel?: string; accessibilityHint?: string; onPress?: () => void }>) =>
@@ -150,6 +152,8 @@ describe('Plan card for a day already trained', () => {
       expect(host.textContent).not.toContain('Done ·');
       expect(host.textContent).not.toContain('Trained today');
       expect(host.querySelector('button')).toBeNull();
+      // A chevron where the button was: the card opens the workout.
+      expect(host.querySelector('[data-symbol="chevron.right"]')).not.toBeNull();
 
       // One VoiceOver stop, which opens the workout.
       const card = host.querySelector<HTMLElement>('[data-card="pressable"]')!;

@@ -661,9 +661,10 @@ function MacroColumn({ macro, value, target, loaded, goal, edge }: {
       onPress={() => editTarget(macro)}
       style={({ pressed }) => ({
         flex: 1,
-        // The first column's words start where the meal cards' do.
+        // The first column's words start where the meal cards' do, and the last
+        // column's bar ends where the calorie bar above it does: the card's 18.
         paddingLeft: 18,
-        paddingRight: 12,
+        paddingRight: 18,
         paddingTop: 13,
         paddingBottom: 15,
         backgroundColor: pressed ? c.pressed : 'transparent',

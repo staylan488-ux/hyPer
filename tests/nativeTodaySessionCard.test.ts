@@ -44,6 +44,8 @@ const finished = { id: 'w9', title: 'Pull', splitDayId: 'pull', marks: [true, tr
 
 const plan = loadNativeModule<Record<string, (props: never) => ReactNode>>('components/PlanCard.tsx', {
   'expo-router': { router: { navigate, push } },
+  // The finished card's chevron: a mark only, hidden from VoiceOver.
+  'expo-symbols': { SymbolView: (props: { name: string }) => createElement('u', { 'data-symbol': props.name }) },
   'react-native': { Pressable, View },
   'react-native-reanimated': { default: { View: Wrap }, FadeIn: { duration: () => undefined } },
   '@/stores/appStore': { useAppStore: create(() => ({ splits: [] })) },
@@ -203,5 +205,7 @@ describe('Today\'s session card, live and finished', () => {
     expect(card.dataset.card).toBe('one stop');
     expect(card.getAttribute('aria-label')).toBe('Pull, 41 minutes, Done, 2 of 3 sets logged, Next: Legs');
     expect(card.dataset.hint).toBe('Opens the workout');
+    // Where Resume was, a chevron says the card opens a screen, as every such card does.
+    expect(host.querySelector('[data-symbol="chevron.right"]')).not.toBeNull();
   });
 });

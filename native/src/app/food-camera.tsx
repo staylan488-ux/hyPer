@@ -12,7 +12,7 @@ import { blancTextStyle, textSizing } from '~/components/BlancText';
 import { CAMERA_OFF, CAMERA_UNAVAILABLE, choosePhotoFromLibrary, settleFoodCamera, type CameraOutcome, type PickedPhoto } from '~/fuel/foodCamera';
 import { announce, useIncreaseContrast } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { paletteFor, type Palette } from '~/theme/blanc';
+import { paletteFor, space, type Palette } from '~/theme/blanc';
 
 /**
  * Log food's camera (opened by `openFoodCamera`): full screen, as iOS's own
@@ -102,8 +102,8 @@ export default function FoodCamera() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000000', paddingTop: insets.top, paddingBottom: insets.bottom }}>
-      {/* Close, and the flash while the camera runs. */}
-      <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 }}>
+      {/* Close, and the flash while the camera runs, 16 points in like the app's other round buttons. */}
+      <View style={{ height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.gutter }}>
         <RoundButton c={c} symbol="xmark" label="Close" onPress={close} />
         {state === 'live' && !shot ? (
           <RoundButton
