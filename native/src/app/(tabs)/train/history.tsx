@@ -498,8 +498,10 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   const title = historyWorkoutTitle(workout);
   if (live) {
     const train = () => router.dismissTo('/train');
-    const detail =
+    // Led by its start time, as every other row of the day is.
+    const progress =
       live.sets.length > 0 ? `${live.doneCount} of ${live.sets.length} sets` : live.movements.length === 0 ? 'No movements yet' : undefined;
+    const detail = [formatActivityStartTime(live.startedAt.toISOString()), progress].filter(Boolean).join(' · ') || undefined;
     return (
       <Row
         title={title}

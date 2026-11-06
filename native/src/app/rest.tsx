@@ -93,7 +93,7 @@ export default function RestSheet() {
   };
 
   const figure = running || paused ? left : length;
-  const caption = running ? 'left' : paused ? 'paused' : 'Rest length';
+  const caption = running ? 'left' : paused ? 'paused' : 'rest length';
 
   // The buttons' results, for VoiceOver: the figure changes, or the buttons
   // change under its focus, without a word.
@@ -165,7 +165,8 @@ export default function RestSheet() {
             {formatClock(figure)}
           </RollingText>
         </View>
-        <BlancText variant="secondary" tone="graphite" style={{ marginTop: running || paused ? 0 : 6 }}>
+        {/* Stopped, the caption sits under the ruled line in the small Menlo of Train's captions. */}
+        <BlancText variant={running || paused ? 'secondary' : 'meta'} tone="graphite" style={{ marginTop: running || paused ? 0 : 5 }}>
           {caption}
         </BlancText>
       </Pressable>

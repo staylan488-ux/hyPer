@@ -1,5 +1,5 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { disabled as swiftDisabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Alert, RefreshControl, View } from 'react-native';
@@ -93,22 +93,27 @@ export default function ProgramScreen() {
           </BlancText>
         ) : null}
 
-        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18 }} pointerEvents={live ? 'none' : 'auto'}>
-          <Picker
-            selection={mode}
-            onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
-            // Locked during a workout in SwiftUI's own disabled look (VoiceOver says dimmed);
-            // pointerEvents holds it for touch while SwiftUI catches up.
-            modifiers={[pickerStyle('segmented'), ...(live ? [swiftDisabled(true)] : [])]}>
-            <SwiftText modifiers={[tag('split')]}>Program days</SwiftText>
-            <SwiftText modifiers={[tag('flexible')]}>Flexible</SwiftText>
-          </Picker>
-        </Host>
         {live ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-            Finish the current workout to switch.
-          </BlancText>
-        ) : null}
+          // Locked during a workout: the mode as a plain row that reads clearly, and why it can't change.
+          <>
+            <Label style={{ marginTop: 18 }}>
+              <Row title="Training" value={mode === 'flexible' ? 'Flexible' : 'Program days'} />
+            </Label>
+            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
+              Finish the current workout to switch.
+            </BlancText>
+          </>
+        ) : (
+          <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18 }}>
+            <Picker
+              selection={mode}
+              onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
+              modifiers={[pickerStyle('segmented')]}>
+              <SwiftText modifiers={[tag('split')]}>Program days</SwiftText>
+              <SwiftText modifiers={[tag('flexible')]}>Flexible</SwiftText>
+            </Picker>
+          </Host>
+        )}
 
         {flexible ? <QuickStarts /> : <Programs splits={splits} />}
       </TabScroll>

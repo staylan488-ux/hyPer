@@ -61,7 +61,8 @@ export function Capsule({
       accessibilityState={{ disabled: !!inactive, busy: !!busy }}
       disabled={inactive}
       onPressIn={() => {
-        scale.set(withSpring(0.96, pressSpring));
+        // A full-width capsule gives a little; a small one more, so both move by about the same few points.
+        scale.set(withSpring(fill ? 0.985 : 0.96, pressSpring));
       }}
       onPressOut={() => {
         scale.set(withSpring(1, pressSpring));

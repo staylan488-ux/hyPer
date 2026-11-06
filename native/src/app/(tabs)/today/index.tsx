@@ -199,8 +199,9 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
         </BlancText>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
-          <BlancText variant="footnote" tone="graphite">
-            In progress · {formatMinutes(minutes)}
+          {/* The live dot says in progress; the words would repeat it. */}
+          <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            {formatMinutes(minutes)}
           </BlancText>
         </View>
       </View>
@@ -215,10 +216,8 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
         />
       )}
 
-      <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 14 }} />
-
       {/* At the accessibility text sizes the button moves under the words. */}
-      <View style={large ? { gap: 12, marginTop: 14 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
+      <View style={large ? { gap: 12, marginTop: 16 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 }}>
         <View accessible accessibilityLabel={speak(`${title} · ${line}`)} style={large ? undefined : { flex: 1, minWidth: 0 }}>
           <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
             {title}

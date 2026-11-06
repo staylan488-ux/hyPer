@@ -31,7 +31,7 @@ import {
 import { useWidgetSnapshot } from '~/lib/widgets';
 import { useWorkoutActivity } from '~/lib/workoutActivity';
 import { loadWeights, resetYou, useHealthStore } from '~/lib/you';
-import { dynamicInk } from '~/theme/blanc';
+import { dynamicGraphite, dynamicInk } from '~/theme/blanc';
 
 // Sheets that belong to the live workout; the screen stays awake under them too.
 const WORKOUT_SHEETS = new Set(['movement', 'rest', 'swap', 'session-done']);
@@ -107,7 +107,9 @@ export default function TabsLayout() {
   return (
     <NativeTabs
       tintColor={dynamicInk}
-      labelStyle={{ selected: { color: dynamicInk } }}
+      // The chosen tab in ink, the others in graphite: the selection reads without an accent colour.
+      iconColor={{ default: dynamicGraphite, selected: dynamicInk }}
+      labelStyle={{ default: { color: dynamicGraphite }, selected: { color: dynamicInk } }}
       // On every tab. iOS only shrinks pages that scroll well past the screen
       // and sticks on pages just past that, so tab pages use TabScroll.
       minimizeBehavior="onScrollDown"

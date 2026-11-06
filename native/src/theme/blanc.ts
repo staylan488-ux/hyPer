@@ -29,7 +29,8 @@ export const palettes = {
     onCapsule: '#FFFFFF',
     /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
     switchOn: '#0B0B0B',
-    live: '#D23B2E',
+    // One red: the P's, also for live, over and errors.
+    live: '#A8352A',
     brand: '#A8352A',
   },
   dark: {
@@ -48,8 +49,8 @@ export const palettes = {
     onCapsule: '#0B0B0B',
     /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
     switchOn: '#A3A39C',
-    live: '#FF5A4C',
-    brand: '#CC5A4B',
+    live: '#E0604F',
+    brand: '#E0604F',
   },
   // With Increase Contrast on (Settings, Accessibility, Display & Text Size),
   // as iOS's own colours do: the same chalk and labels, with darker (in dark,
@@ -72,7 +73,7 @@ export const palettes = {
     onCapsule: '#FFFFFF',
     /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
     switchOn: '#000000',
-    live: '#B3281D',
+    live: '#A8352A',
     brand: '#A8352A',
   },
   darkContrast: {
@@ -91,8 +92,8 @@ export const palettes = {
     onCapsule: '#000000',
     /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
     switchOn: '#C9C9C3',
-    live: '#FF5A4C',
-    brand: '#CC5A4B',
+    live: '#FF6F61',
+    brand: '#E0604F',
   },
 } as const;
 
@@ -119,6 +120,17 @@ export const dynamicInk =
         highContrastDark: palettes.darkContrast.ink,
       })
     : palettes.light.ink;
+
+/** Graphite for native chrome: the tab bar's unselected items, so the chosen tab reads in ink without an accent. */
+export const dynamicGraphite =
+  Platform.OS === 'ios'
+    ? DynamicColorIOS({
+        light: palettes.light.graphite,
+        dark: palettes.dark.graphite,
+        highContrastLight: palettes.lightContrast.graphite,
+        highContrastDark: palettes.darkContrast.graphite,
+      })
+    : palettes.light.graphite;
 
 /**
  * Every text field names its own letter spacing. React Native reuses a text

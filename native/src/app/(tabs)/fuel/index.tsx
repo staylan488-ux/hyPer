@@ -218,7 +218,7 @@ export default function FuelScreen() {
           )}
           accessibilityHint={kcalTarget ? 'Edits your calorie target' : 'Sets your calorie target'}
           onPress={() => editTarget('calories')}
-          style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
+          style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 12, opacity: pressed ? 0.55 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
             {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
             <RollingText variant="figure" size={64} style={{ letterSpacing: -1.5 }}>
@@ -253,7 +253,7 @@ export default function FuelScreen() {
             <MacroRow macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} />
           </Label>
         ) : (
-          <Label style={{ overflow: 'hidden', marginTop: 22, flexDirection: 'row' }}>
+          <Label style={{ overflow: 'hidden', marginTop: 16, flexDirection: 'row' }}>
             <MacroColumn macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
             <MacroColumn macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} edge />
             <MacroColumn macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} edge />
@@ -347,7 +347,7 @@ function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
   return (
     <GestureDetector gesture={swipe}>
       {/* Each day is its own button, so VoiceOver can pick any of them. */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 16 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 12 }}>
         {/* Keyed by weekday, so a week change updates the same buttons and VoiceOver keeps its place. */}
         {days.map((day, index) => {
           const key = dayKey(day);

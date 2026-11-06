@@ -79,6 +79,7 @@ async function open() {
       FadeIn: { duration: () => undefined },
       LinearTransition: { duration: () => undefined },
       useAnimatedStyle: () => ({}),
+      useSharedValue: (value: unknown) => ({ value }),
       withTiming: (value: unknown) => value,
     },
     '@/lib/todayModel': todayModel,
@@ -105,6 +106,7 @@ async function open() {
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { select: noop } },
     '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}) },
+    '~/theme/useMuscleTones': { useMuscleTones: () => ({}) },
   });
   await act(async () => { root.render(createElement(ProgressScreen)); });
 }
@@ -217,5 +219,26 @@ describe("Progress's nutrition header", () => {
     await open();
     expect(shown()).toContain('Avg 2000 kcal');
     expect(shown()).not.toContain('kcal over');
+  });
+});
+
+describe("Progress's muscle rows", () => {
+  const landmark = { id: 'side', user_id: 'me', muscle_group: 'side_delts' as const, mv: 6, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
+
+  it('writes the quiet line as one fragment with no full stop', async () => {
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 24, landmark, status: 'above_mrv' }] });
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    await open();
+    expect(shown()).toContain('Over its ceiling, pull back a little');
+    expect(shown()).not.toContain('Over its ceiling.');
+    expect(shown()).not.toContain('a little.');
+  });
+
+  it('keeps the shared coaching line as it is written', async () => {
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 5, landmark, status: 'below_mev' }] });
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    await open();
+    expect(shown()).toContain('Add about 3 sets this week');
+    expect(shown()).not.toContain('this week.');
   });
 });

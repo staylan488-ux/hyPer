@@ -1,47 +1,49 @@
 import { useMemo, useState } from 'react';
 import { Pressable, useColorScheme, View } from 'react-native';
-import Svg, { Ellipse, G, Path } from 'react-native-svg';
+import Svg, { ClipPath, Defs, Ellipse, G, Path } from 'react-native-svg';
 
 import { mixRgb, parseColor, rgbToCss, shadeMuscles, type MuscleShade, type Rgb } from '@/lib/maquette';
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
-import { AB_LINES, BODY, FIGURE, HEAD, REGIONS, regionAt, smoothPath, type ViewSide } from '~/lib/anatomy';
+import { FIGURE, HEAD, pathOf, REGIONS, regionAt, SILHOUETTE, type ViewSide } from '~/lib/anatomy';
 import { useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { useBlanc } from '~/theme/blanc';
+import { muscleTonesFor } from '~/theme/muscleTones';
 
 import { BlancText } from './BlancText';
 
 const SIDES: ViewSide[] = ['front', 'back'];
 const FIGURE_WIDTH = FIGURE.right - FIGURE.left;
-const GAP = 26;
+/** Between the two figures, in figure units: they sit about a third and two thirds across the card. */
+const GAP = 44;
 const BOX = { width: FIGURE_WIDTH * 2 + GAP, height: FIGURE.bottom - FIGURE.top };
 /** A muscle reaches at least this far from its edge to the finger, in points. */
 const REACH = 12;
 /**
  * The seams between muscles, in the card's colour, in figure units: about
- * three quarters of a point at the figure's height; a little wider on the
- * dark card.
+ * seven tenths of a point at the figure's height; a little wider on the
+ * dark card. Neighbouring muscles share one edge (lib/anatomy), so a seam
+ * is this wide everywhere.
  */
 const SEAM = 1;
 const DARK_SEAM = 1.35;
 
-/**
- * The figure's tones, set by hand for each card. The body and any muscle
- * not trained this week sit just off the card, held by a hairline contour,
- * so every filled shape on the figure means something: a clearly filled
- * light-mid grey below range, the strong tone in range, and the live red
- * over. Each filled state is at least about 1.8:1 from the body and from
- * the others, so they part by lightness as well as colour; in dark mode
- * below range sits well under the red's brightness, which a mid grey
- * matched.
- */
-const TONES = {
-  light: { body: '#F6F5F2', contour: '#D9D8D3', below: '#B9B8B2', in: '#4A4A45' },
-  lightContrast: { body: '#EFEEE9', contour: '#A9A8A2', below: '#8E8D87', in: '#26261F' },
-  dark: { body: '#252524', contour: '#484846', below: '#66665F', in: '#D4D4CE' },
-  darkContrast: { body: '#2D2D2C', contour: '#5A5A56', below: '#6A6A64', in: '#F0F0EA' },
-} as const;
-/** The contour's width in figure units; half of it shows outside the body, about two thirds of a point. */
+/** The contour's width in figure units; half of it shows outside the body, a little over half a point. */
 const CONTOUR = 1.6;
+
+/** Each view's shapes as path data, the back view moved along beside the front. */
+const VIEWS = SIDES.map((side, index) => {
+  const dx = index * (FIGURE_WIDTH + GAP);
+  return {
+    side,
+    head: { ...HEAD, cx: HEAD.cx + dx },
+    body: pathOf(SILHOUETTE, dx),
+    regions: REGIONS[side].map((region) => ({
+      muscle: region.muscle,
+      d: pathOf(region.cubics, dx),
+      seams: region.seams.map((seam) => pathOf(seam, dx, false)).join(''),
+    })),
+  };
+});
 
 type FigureState = 'untrained' | 'below' | 'in' | 'over';
 
@@ -94,7 +96,7 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * element: swiping up and down steps through this week's muscles (the rows
  * of the list below it), and down past the first clears the choice.
  */
-export function MuscleFigure({ volume, selected, onPick, height = 164 }: {
+export function MuscleFigure({ volume, selected, onPick, height = 146 }: {
   volume: MuscleVolume[];
   selected: MuscleGroup | null;
   onPick: (muscle: MuscleGroup | null) => void;
@@ -105,7 +107,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 164 }: {
   const dark = useColorScheme() === 'dark';
   const contrast = useIncreaseContrast();
   const shades = useMemo(() => shadeMuscles(volume), [volume]);
-  const tones = TONES[`${dark ? 'dark' : 'light'}${contrast ? 'Contrast' : ''}`];
+  const tones = muscleTonesFor(dark, contrast);
   const palette = useMemo<Record<FigureState, Rgb>>(
     () => ({
       untrained: parseColor(tones.body, [0.96, 0.96, 0.95]),
@@ -174,6 +176,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 164 }: {
       {/* One touch area for the figure: the shapes themselves are too small to aim at. */}
       <Pressable
         accessible={false}
+        style={{ marginTop: 4 }}
         onLayout={(event) => setSize({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height })}
         onPress={(event) => pick(event.nativeEvent.locationX, event.nativeEvent.locationY)}>
         <Svg
@@ -182,33 +185,30 @@ export function MuscleFigure({ volume, selected, onPick, height = 164 }: {
           width="100%"
           viewBox={`${FIGURE.left} ${FIGURE.top} ${BOX.width} ${BOX.height}`}
           preserveAspectRatio="xMidYMid meet">
-          {SIDES.map((side, index) => (
-            <G key={side} transform={`translate(${index * (FIGURE_WIDTH + GAP)} 0)`}>
-              {/* The contour: every body part stroked, then filled over, so only the silhouette's outer edge shows. */}
-              <Ellipse cx={HEAD.cx} cy={HEAD.cy} rx={HEAD.rx} ry={HEAD.ry} fill={tones.contour} stroke={tones.contour} strokeWidth={CONTOUR} />
-              {BODY.map((outline, i) => (
-                <Path key={`c${i}`} d={smoothPath(outline)} fill={tones.contour} stroke={tones.contour} strokeWidth={CONTOUR} strokeLinejoin="round" />
-              ))}
-              <Ellipse cx={HEAD.cx} cy={HEAD.cy} rx={HEAD.rx} ry={HEAD.ry} fill={body} />
-              {BODY.map((outline, i) => (
-                <Path key={`b${i}`} d={smoothPath(outline)} fill={body} />
-              ))}
-              {REGIONS[side].map((region, i) => (
-                // A muscle left as the body draws no seam, which would cut into the contour.
-                <Path
-                  key={`m${i}`}
-                  d={smoothPath(region.points)}
-                  fill={colorOf(region.muscle)}
-                  stroke={bare(region.muscle) ? 'none' : c.label}
-                  strokeWidth={seam}
-                  strokeLinejoin="round"
-                />
-              ))}
-              {side === 'front' && !bare('core')
-                ? AB_LINES.map(([from, to], i) => (
-                    <Path key={`a${i}`} d={`M${from[0]} ${from[1]}L${to[0]} ${to[1]}`} stroke={c.label} strokeWidth={seam} />
-                  ))
-                : null}
+          {/* The seams stop at the body's edge, so they never notch its contour. */}
+          <Defs>
+            {VIEWS.map((view) => (
+              <ClipPath key={view.side} id={`figure-${view.side}`}>
+                <Path d={view.body} />
+              </ClipPath>
+            ))}
+          </Defs>
+          {VIEWS.map((view) => (
+            <G key={view.side}>
+              {/* The contour: the head and body stroked, then filled over, so only the silhouette's outer edge shows. */}
+              <Ellipse cx={view.head.cx} cy={view.head.cy} rx={view.head.rx} ry={view.head.ry} fill={tones.contour} stroke={tones.contour} strokeWidth={CONTOUR} />
+              <Path d={view.body} fill={tones.contour} stroke={tones.contour} strokeWidth={CONTOUR} strokeLinejoin="round" />
+              <Ellipse cx={view.head.cx} cy={view.head.cy} rx={view.head.rx} ry={view.head.ry} fill={body} />
+              <Path d={view.body} fill={body} />
+              {/* A muscle left as the body draws nothing: the body already shows it. */}
+              {view.regions.map((region, i) => (bare(region.muscle) ? null : <Path key={`m${i}`} d={region.d} fill={colorOf(region.muscle)} />))}
+              <G clipPath={`url(#figure-${view.side})`}>
+                {view.regions.map((region, i) =>
+                  bare(region.muscle) ? null : (
+                    <Path key={`s${i}`} d={region.seams} fill="none" stroke={c.label} strokeWidth={seam} strokeLinecap="round" strokeLinejoin="round" />
+                  ),
+                )}
+              </G>
             </G>
           ))}
         </Svg>

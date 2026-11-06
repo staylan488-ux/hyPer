@@ -1,4 +1,3 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { Pressable, View } from 'react-native';
 
@@ -14,10 +13,9 @@ type GlassButtonProps = {
   disabled?: boolean;
 };
 
-/** A round Liquid Glass button for custom bars (sheets); a quiet fill before iOS 26. */
+/** A round button for custom bars (sheets): a quiet fill, the same in every sheet. */
 export function GlassButton({ symbol, onPress, accessibilityLabel, size = 44, disabled }: GlassButtonProps) {
   const c = useBlanc();
-  const glass = isLiquidGlassAvailable();
   const face = { width: size, height: size, borderRadius: size / 2, alignItems: 'center' as const, justifyContent: 'center' as const };
   const icon = <SymbolView name={symbol} size={17} weight="semibold" tintColor={c.ink} />;
 
@@ -33,13 +31,9 @@ export function GlassButton({ symbol, onPress, accessibilityLabel, size = 44, di
         haptics.tap();
         onPress();
       }}>
-      {glass ? (
-        <GlassView isInteractive style={face}>
-          {icon}
-        </GlassView>
-      ) : (
-        <View style={[face, { backgroundColor: c.fill }]}>{icon}</View>
-      )}
+      {/* One look in every sheet: Liquid Glass drew as raised glass in a page sheet but flat in a floating one,
+          so the close buttons of two sheets didn't match. The quiet fill is the same everywhere. */}
+      <View style={[face, { backgroundColor: c.fill }]}>{icon}</View>
     </Pressable>
   );
 }

@@ -120,7 +120,7 @@ function Elapsed({ startedAt }: { startedAt: Date }) {
       tone="graphite"
       // The clock in words; the tally just below reads the sets.
       accessibilityLabel={`Workout time, ${spokenClock(elapsed)}`}
-      style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
+      style={{ fontVariant: ['tabular-nums'] }}>
       {/* Minutes, as Today's card says it: a ticking m:ss here read like a time of day. */}
       {formatMinutes(Math.floor(elapsed / 60))}
     </BlancText>
@@ -614,18 +614,27 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           scrollOffset.current = event.nativeEvent.contentOffset.y;
           if (__DEV__ && devScrollTrace.enabled) console.log(`[scroll] ${event.nativeEvent.contentOffset.y.toFixed(1)}`);
         }}>
-        <Elapsed startedAt={session.startedAt} />
-
-        {/* An empty session has no marks to draw. */}
-        {session.sets.length > 0 ? (
-          <Tally
-            marks={session.sets.map((set) => set.completed)}
-            current={current?.index ?? null}
-            height={20}
-            style={{ marginHorizontal: space.gutter, marginTop: 12 }}
-            accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
-          />
-        ) : null}
+        {/* The session's tally and its clock share one line under the title; at the accessibility sizes they stack. */}
+        <View
+          style={
+            large
+              ? { marginHorizontal: space.gutter, marginTop: 2, gap: 10 }
+              : { marginHorizontal: space.gutter, marginTop: 6, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }
+          }>
+          {/* An empty session has no marks to draw. */}
+          {session.sets.length > 0 ? (
+            <Tally
+              marks={session.sets.map((set) => set.completed)}
+              current={current?.index ?? null}
+              height={20}
+              style={large ? undefined : { flexShrink: 1 }}
+              accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
+            />
+          ) : (
+            <View />
+          )}
+          <Elapsed startedAt={session.startedAt} />
+        </View>
 
         {current && draft ? (
           <View ref={cardRef} collapsable={false}>
@@ -748,7 +757,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   skip(current.movement);
                 }}
                 style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-                <BlancText variant="secondary" weight="500" tone="graphite">
+                <BlancText variant="secondary" weight="500">
                   {current.movement.done > 0 ? 'End early' : 'Skip movement'}
                 </BlancText>
               </Pressable>

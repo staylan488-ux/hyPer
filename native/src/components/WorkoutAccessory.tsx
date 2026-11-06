@@ -82,25 +82,26 @@ export function WorkoutAccessory() {
         </>
       ) : (
         <>
+          {/* What's up now leads, as in the shrunk bar; the session's name follows. */}
           <View style={{ flex: 1, minWidth: 0 }}>
-            <BlancText variant="footnote" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE}>
-              {session.dayName}
-            </BlancText>
             {session.current && !resting && !paused ? (
               // A long name is cut at its end; the set count always shows.
               <View style={{ flexDirection: 'row' }}>
-                <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ flexShrink: 1 }}>
+                <BlancText variant="footnote" weight="600" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ flexShrink: 1 }}>
                   {session.current.movement.name}
                 </BlancText>
-                <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
+                <BlancText variant="footnote" weight="600" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
                   {` · Set ${session.current.setNumber} of ${session.current.movement.sets.length}`}
                 </BlancText>
               </View>
             ) : (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
+              <BlancText variant="footnote" weight="600" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
                 {status}
               </BlancText>
             )}
+            <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE}>
+              {session.dayName}
+            </BlancText>
           </View>
           {resting || paused ? (
             <SymbolView name="timer" size={17} tintColor={c.ink} />

@@ -25,6 +25,7 @@ import { speak, spokenClock, useAnnounce, useIncreaseContrast, useLargeText } fr
 import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
+import { useMuscleTones } from '~/theme/useMuscleTones';
 
 const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
@@ -157,11 +158,12 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
   // Words only when something needs doing: under, over or near the ceiling.
   const words = call.priority <= 2;
   const name = MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group.replace('_', ' ');
-  const advice = asSentences(call.headline);
+  const advice = asFragment(call.headline);
   // An open row names the rail's marks by what they mean.
-  const landmarks = mv.landmark
-    ? `Minimum ${mv.landmark.mev} · Best ${mv.landmark.mav_low}–${mv.landmark.mav_high} · Ceiling ${mv.landmark.mrv}`
-    : 'No landmarks set for this muscle.';
+  const marks = mv.landmark
+    ? [`Minimum ${mv.landmark.mev}`, `Best ${mv.landmark.mav_low}–${mv.landmark.mav_high}`, `Ceiling ${mv.landmark.mrv}`]
+    : null;
+  const landmarks = marks ? marks.join(' · ') : 'No landmarks set for this muscle';
   // One fact for VoiceOver, the rail's band included, with the words the row
   // shows; an open row adds what it shows.
   const spoken = [
@@ -199,10 +201,19 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
       ) : null}
       {mv.landmark ? <Rail sets={mv.weekly_sets} landmark={mv.landmark} hot={hot} open={open} /> : null}
       {open ? (
-        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 8 }}>
-          <BlancText variant={mv.landmark ? 'meta' : 'footnote'} tone="graphite" {...(mv.landmark ? { size: 11, maxFontSizeMultiplier: 1.4 } : null)} style={{ fontVariant: ['tabular-nums'] }}>
-            {landmarks}
-          </BlancText>
+        // The marks wrap a whole mark at a time when they no longer fit on one line.
+        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 }}>
+          {marks ? (
+            marks.map((mark) => (
+              <BlancText key={mark} variant="meta" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+                {mark}
+              </BlancText>
+            ))
+          ) : (
+            <BlancText variant="footnote" tone="graphite">
+              {landmarks}
+            </BlancText>
+          )}
         </Animated.View>
       ) : null}
     </Pressable>
@@ -227,16 +238,20 @@ function Disclosure({ open }: { open: boolean }) {
 
 /** The rail's marker for this week's sets: a solid dot, a reading rather than a handle to drag. */
 const MARKER = 7;
+/** The card-coloured ring that keeps the dot clear of the band under it. */
+const RING = 1.5;
 
 /**
  * Weekly sets on a line from zero past the ceiling. The band is in range
  * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
- * "in range" counts it, in the mark tone (at least 2:1 against the track in
- * every palette). An open row adds the band's darker middle, the best range,
- * and names the marks under the rail.
+ * "in range" counts it, in the figure's in-range tone at reduced strength
+ * (at least 2:1 against the track in every palette). An open row adds the
+ * band's middle, the best range, at that tone's full strength, and names the
+ * marks under the rail. The dot is this week's reading, in ink (red over).
  */
 function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean; open: boolean }) {
   const c = useBlanc();
+  const tones = useMuscleTones();
   const max = Math.max(landmark.mrv * 1.1, sets, 1);
   const share = (value: number) => Math.min(100, (value / max) * 100);
   const at = (value: number) => `${share(value)}%` as const;
@@ -252,7 +267,7 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
             width: span(landmark.mev, landmark.mrv),
             height: 5,
             borderRadius: 2.5,
-            backgroundColor: c.mark,
+            backgroundColor: tones.band,
           }}
         />
         {open ? (
@@ -264,7 +279,7 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
               width: span(landmark.mav_low, landmark.mav_high),
               height: 5,
               borderRadius: 2.5,
-              backgroundColor: c.graphite,
+              backgroundColor: tones.in,
             }}
           />
         ) : null}
@@ -272,10 +287,12 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
           style={{
             position: 'absolute',
             left: at(sets),
-            marginLeft: -MARKER / 2,
-            width: MARKER,
-            height: MARKER,
-            borderRadius: MARKER / 2,
+            marginLeft: -MARKER / 2 - RING,
+            width: MARKER + RING * 2,
+            height: MARKER + RING * 2,
+            borderRadius: MARKER / 2 + RING,
+            borderWidth: RING,
+            borderColor: c.label,
             backgroundColor: hot ? c.live : c.ink,
           }}
         />
@@ -285,19 +302,16 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
 }
 
 /**
- * Shared coaching shorthand as sentences: "Over its ceiling · pull back"
- * reads "Over its ceiling. Pull back a little." A single phrase stays as it is.
+ * Shared coaching shorthand as one quiet fragment, with no full stop, as iOS
+ * writes a secondary line: "Over its ceiling · pull back" reads "Over its
+ * ceiling, pull back a little". A single phrase stays as it is.
  */
-function asSentences(headline: string): string {
-  const written = SENTENCES[headline];
-  if (written) return written;
-  const parts = headline.split(' · ');
-  if (parts.length < 2) return headline;
-  return parts.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}.`).join(' ');
+function asFragment(headline: string): string {
+  return FRAGMENTS[headline] ?? headline.split(' · ').join(', ');
 }
-const SENTENCES: Record<string, string> = {
-  'Over its ceiling · pull back': 'Over its ceiling. Pull back a little.',
-  'Near its ceiling · hold here': 'Near its ceiling. Hold here.',
+const FRAGMENTS: Record<string, string> = {
+  'Over its ceiling · pull back': 'Over its ceiling, pull back a little',
+  'Near its ceiling · hold here': 'Near its ceiling, hold here',
 };
 
 /**
@@ -358,6 +372,19 @@ function ScaleLabel({ bottom, width = SCALE_COLUMN, children }: { bottom: `${num
 /** The width the training chart's middle date centres in. */
 const MIDDLE_TICK = 64;
 
+/**
+ * The shortest bar a chart draws for any amount, twice the height of the
+ * tick that marks nothing recorded, so a small day or week never reads as an
+ * empty one.
+ */
+const MIN_BAR = 4;
+
+/** A chart's mark for a column with nothing recorded: a short tick on the zero line, in the track tone. */
+function NothingTick() {
+  const c = useBlanc();
+  return <View style={{ height: 2, borderRadius: 1, backgroundColor: c.track }} />;
+}
+
 /** The top of the training chart: the next whole hour at or above the longest week. */
 const hoursScale = (peak: number) => Math.max(60, Math.ceil(peak / 60) * 60);
 
@@ -400,7 +427,8 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
               {point.totalMinutes > 0 ? (
                 <View
                   style={{
-                    height: `${Math.max(3, (point.totalMinutes / top) * 100)}%`,
+                    height: `${(point.totalMinutes / top) * 100}%`,
+                    minHeight: MIN_BAR,
                     borderRadius: 3,
                     borderCurve: 'continuous',
                     backgroundColor: index === points.length - 1 ? c.ink : c.graphite,
@@ -408,7 +436,7 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
                   }}
                 />
               ) : (
-                <View style={{ height: 2, borderRadius: 1, backgroundColor: c.track }} />
+                <NothingTick />
               )}
             </View>
           ))}
@@ -481,9 +509,10 @@ function NutritionSection() {
 
 /**
  * One macro across the last seven days, against its daily target (dashed,
- * named beside it, "2,600 target"); today in ink, as in the training chart, and a day
- * with nothing logged left empty. A day well past target is red only where
- * that is a warning for the goal. The header is the daily average of the
+ * named beside it, "2,600 target"); today in ink, as in the training chart,
+ * and a day with nothing logged marked by the same short tick as an empty
+ * training week. A day well past target is red only where that is a warning
+ * for the goal. The header is the daily average of the
  * logged days (Fuel already shows today), with how many days it covers
  * while some of the week is missing; a single logged day is named as one.
  */
@@ -557,7 +586,7 @@ function MacroBars({
         )}
       </View>
       <View style={{ height: 72, marginTop: 12 }}>
-        {/* The zero line: a day with nothing logged draws nothing on it. */}
+        {/* The zero line; a day with nothing logged draws a short tick on it, as an empty week does on the training chart. */}
         <View style={{ position: 'absolute', left: 0, right: TARGET_COLUMN + 6, bottom: 0, height: 1, backgroundColor: c.hairline }} />
         {target > 0 ? (
           <>
@@ -585,14 +614,17 @@ function MacroBars({
                 {day[macro] > 0 ? (
                   <View
                     style={{
-                      height: `${Math.max(3, (day[macro] / max) * 100)}%`,
+                      height: `${(day[macro] / max) * 100}%`,
+                      minHeight: MIN_BAR,
                       borderRadius: 3,
                       borderCurve: 'continuous',
                       backgroundColor: over ? c.live : current ? c.ink : c.graphite,
                       opacity: contrast || over || current ? 1 : 0.5,
                     }}
                   />
-                ) : null}
+                ) : (
+                  <NothingTick />
+                )}
               </View>
             );
           })}
