@@ -88,7 +88,7 @@ export default function WorkerScreen() {
             <BlancText variant="body" style={large ? undefined : { flex: 1 }}>
               Photos
             </BlancText>
-            <Host matchContents style={{ width: 170 }}>
+            <Host matchContents={{ vertical: true }} style={{ width: 170 }}>
               <Picker
                 selection={draft.provider}
                 onSelectionChange={(provider) => {

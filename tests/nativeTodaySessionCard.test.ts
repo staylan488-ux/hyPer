@@ -36,6 +36,7 @@ async function open() {
   const { default: TodayScreen } = loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/today/index.tsx', {
     'date-fns': dates,
     'expo-router': { router: { navigate, push: noop }, Stack: { Screen: Empty } },
+    'expo-symbols': { SymbolView: Empty },
     'react-native': { Pressable: Wrap, RefreshControl: Empty, View: Wrap },
     'react-native-reanimated': { default: { View: Wrap } },
     '@/lib/todayModel': todayModel,

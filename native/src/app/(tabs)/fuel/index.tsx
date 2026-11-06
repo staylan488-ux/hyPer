@@ -516,7 +516,9 @@ function entryDetail(log: FoodLog): string {
   // As the web's ledger does, an AI estimate says so (one word, so the line stays quiet).
   const raw = log.source as string | undefined;
   const source = raw === 'gemini_estimate' || raw === 'gemini_trial' ? 'Estimate' : raw === 'gemini_label' ? 'From label' : null;
-  return [time, amount, protein > 0 ? `${formatWhole(protein)} g protein` : null, source].filter(Boolean).join(' · ');
+  // What was eaten leads; the time follows, before the source word, so a
+  // line cut short at the row's edge loses the source before the time.
+  return [amount, protein > 0 ? `${formatWhole(protein)} g protein` : null, time, source].filter(Boolean).join(' · ');
 }
 
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */

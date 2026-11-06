@@ -115,7 +115,8 @@ export default function LogWeightSheet() {
           <BlancText variant="footnote" tone="graphite" style={large ? undefined : { flex: 1 }}>
             {lastWeighInLabel(latest, failedHistory, todayKey)}
           </BlancText>
-          <Host matchContents style={{ width: 110 }}>
+          {/* A host that matched its contents both ways shrank the segmented control to its smallest. */}
+          <Host matchContents={{ vertical: true }} style={{ width: 110 }}>
             <Picker selection={unit} onSelectionChange={(next) => switchUnit(next as WeightUnit)} modifiers={[pickerStyle('segmented')]}>
               <SwiftText modifiers={[tag('lb'), accessibilityLabel('Pounds')]}>lb</SwiftText>
               <SwiftText modifiers={[tag('kg'), accessibilityLabel('Kilograms')]}>kg</SwiftText>

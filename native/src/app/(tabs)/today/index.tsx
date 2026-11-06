@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -32,6 +33,13 @@ import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
+/**
+ * The Fuel card's height at the standard text size, held while the saved
+ * target is read: 14 above the 56 pt figure's 60 pt line, 10 and the 3 pt
+ * line, 18 and the protein meter (a 20 pt line, 8 and its 3 pt line), 18 below.
+ */
+const FUEL_CARD_HEIGHT = 154;
+
 export default function TodayScreen() {
   const now = useNow(30_000);
   const session = useSessionModel();
@@ -52,6 +60,7 @@ export default function TodayScreen() {
   const rise = useIntroRise();
   const { refreshing, refresh } = useAccountRefresh();
   const large = useLargeText();
+  const c = useBlanc();
 
   return (
     <>
@@ -82,57 +91,55 @@ export default function TodayScreen() {
 
           {session ? <SessionLabel session={session} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
 
+          {/* A header over one card, as This week below: the card opens Fuel, its chevron says so. */}
           <Section title="Fuel" action={{ title: 'Log food', symbol: 'plus', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (
-              // The day's figures open Fuel, where they come from.
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={speak(
-                  `${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal eaten, ${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
-                )}
-                accessibilityHint="Opens Fuel"
-                onPress={() => {
-                  haptics.tap();
-                  router.navigate('/fuel');
-                }}
-                style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
-                {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                  <RollingText variant="figure" size={56} style={{ ...restingFigure, letterSpacing: -1.25, marginLeft: figureLead(formatWhole(totals.calories), 56, { tabular: false }) }}>
-                    {formatWhole(totals.calories)}
-                  </RollingText>
-                  <Animated.View layout={figureLayout}>
-                    <BlancText variant="secondary" tone="graphite">
-                      of {formatWhole(target.calories)} kcal
-                    </BlancText>
-                  </Animated.View>
-                </View>
-                {/* The day's food as Fuel shows it: the figure eaten, the line filling toward the target. */}
-                <View style={{ marginTop: 10 }}>
-                  <Track progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
-                </View>
-                <View style={{ marginTop: 18 }}>
-                  <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
-                </View>
-              </Pressable>
+              <Label style={{ overflow: 'hidden' }}>
+                {/* The day's figures open Fuel, where they come from. */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={speak(
+                    `${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal eaten, ${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
+                  )}
+                  accessibilityHint="Opens Fuel"
+                  onPress={() => {
+                    haptics.tap();
+                    router.navigate('/fuel');
+                  }}
+                  // The figure's line box carries its own room above the digits, so the top is a little less.
+                  style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+                  {/* The chevron on the figure's line, as You's weight card has it. */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
+                      <RollingText variant="figure" size={56} style={{ ...restingFigure, letterSpacing: -1.25, marginLeft: figureLead(formatWhole(totals.calories), 56, { tabular: false }) }}>
+                        {formatWhole(totals.calories)}
+                      </RollingText>
+                      <Animated.View layout={figureLayout}>
+                        <BlancText variant="secondary" tone="graphite">
+                          of {formatWhole(target.calories)} kcal
+                        </BlancText>
+                      </Animated.View>
+                    </View>
+                    <SymbolView name="chevron.right" size={13} weight="semibold" tintColor={c.upcoming} style={{ marginRight: -2 }} />
+                  </View>
+                  {/* The day's food as Fuel shows it: the figure eaten, the line filling toward the target. */}
+                  <View style={{ marginTop: 10 }}>
+                    <Track progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
+                  </View>
+                  <View style={{ marginTop: 18 }}>
+                    <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
+                  </View>
+                </Pressable>
+              </Label>
             ) : !targetRead ? (
-              // Holds the figures' place (68 pt figure and the meters) until the target is read.
-              <View style={{ height: 140 }} />
+              // Holds the card's place (the 56 pt figure, its line and the protein meter) until the target is read.
+              <Label style={{ height: FUEL_CARD_HEIGHT }} />
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityHint="Opens your targets"
-                // One line of text: the slop makes it 44 points tall, short of the sections around it.
-                hitSlop={{ top: 2, bottom: 22 }}
-                onPress={() => {
-                  haptics.tap();
-                  router.push('/you/targets');
-                }}
-                style={({ pressed }) => ({ marginHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
-                <BlancText variant="secondary" tone="graphite">
-                  Set a calorie target
-                </BlancText>
-              </Pressable>
+              // No target yet: the same card holds one row that asks for one. Row plays the tap's haptic itself.
+              <Label>
+                <Row title="Set a calorie target" chevron onPress={() => router.push('/you/targets')} />
+              </Label>
             )}
           </Section>
 

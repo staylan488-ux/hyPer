@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, Fragment, useEffect, type ComponentType, type PropsWithChildren } from 'react';
+import { act, createElement, Fragment, useEffect, type ComponentType, type PropsWithChildren, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
@@ -566,11 +566,16 @@ const clockKey = () => clock.key || dateFns.format(new Date(), 'yyyy-MM-dd');
 
 type ChartProps = { calendar?: weightHistory.WeightChartWindow; summary?: string; span?: string; points?: weightTrend.WeightTrendPoint[]; compact?: boolean };
 type RowSeen = { title: string; detail?: string; value?: string; quiet?: boolean; accessibilityLabel?: string; onPress?: () => void };
+type Modifier = Record<string, unknown> | null;
+type PickerSeen = { selection: string; onSelectionChange: (next: string) => void; modifiers?: Modifier[] };
+type HostSeen = { matchContents?: boolean | { vertical?: boolean; horizontal?: boolean }; style?: Record<string, unknown>; children?: ReactElement<PickerSeen> };
 type Seen = {
   charts?: ChartProps[];
   rows?: RowSeen[];
-  pickers?: Array<{ selection: string; onSelectionChange: (next: string) => void }>;
-  sections?: Array<{ title: string; note?: string }>;
+  pickers?: PickerSeen[];
+  hosts?: HostSeen[];
+  texts?: Array<{ modifiers?: Modifier[]; children?: unknown }>;
+  sections?: Array<{ title: string; note?: string; action?: { title: string } }>;
   scrolls?: Array<((event: unknown) => void) | undefined>;
 };
 type YouWeights = YouModule & {
@@ -602,14 +607,25 @@ function weightScreenImports(you: YouModule, seen: Seen) {
   });
   return {
     '@expo/ui/swift-ui': {
-      Host: Wrap,
-      Picker: (props: PropsWithChildren<{ selection: string; onSelectionChange: (next: string) => void }>) => {
+      Host: (props: PropsWithChildren<HostSeen>) => {
+        seen.hosts?.push(props as HostSeen);
+        return createElement(Fragment, null, props.children);
+      },
+      Picker: (props: PropsWithChildren<PickerSeen>) => {
         seen.pickers?.push(props);
         return createElement(Fragment, null, props.children);
       },
-      Text: Wrap,
+      Text: (props: PropsWithChildren<{ modifiers?: Modifier[] }>) => {
+        seen.texts?.push(props);
+        return createElement(Fragment, null, props.children);
+      },
     },
-    '@expo/ui/swift-ui/modifiers': { accessibilityLabel: () => null, pickerStyle: () => null, tag: () => null },
+    // Each modifier as what it sets, so a test can read a control's style and labels.
+    '@expo/ui/swift-ui/modifiers': {
+      accessibilityLabel: (label: string) => ({ accessibilityLabel: label }),
+      pickerStyle: (style: string) => ({ pickerStyle: style }),
+      tag: (value: string) => ({ tag: value }),
+    },
     'date-fns': dateFns,
     'expo-router': { router: { push: vi.fn() }, Stack: { Screen: () => null } },
     'react-native': { ActivityIndicator: () => null, Pressable: Wrap, RefreshControl: () => null, View: Wrap },
@@ -624,7 +640,7 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '~/components/RollingText': { RollingText: text },
     '~/components/Row': rowMock,
     '~/components/Section': {
-      Section: (props: PropsWithChildren<{ title: string; note?: string }>) => {
+      Section: (props: PropsWithChildren<{ title: string; note?: string; action?: { title: string } }>) => {
         seen.sections?.push(props);
         return createElement(Fragment, null, props.children);
       },
@@ -1019,12 +1035,13 @@ describe("You's weight card", () => {
     root = null;
 
     const cardCharts: ChartProps[] = [];
+    const sections: NonNullable<Seen['sections']> = [];
     const pressed: string[] = [];
-    const page = await mount(createElement(loadYouScreen(you, { charts: cardCharts }, harness, pressed, options)));
+    const page = await mount(createElement(loadYouScreen(you, { charts: cardCharts, sections }, harness, pressed, options)));
     await act(async () => {});
     // "+4.1 lb since Aug 8 · +0.3 lb/wk": the change, then the rate.
     const [change, rate] = detail.summary!.split('\u00a0· ');
-    return { detail, since: change.slice(change.indexOf('since')), rate, card: cardCharts.at(-1)!, page, pressed };
+    return { detail, since: change.slice(change.indexOf('since')), rate, card: cardCharts.at(-1)!, page, pressed, sections };
   }
 
   it('says the rate and the span Body weight says for its default range', async () => {
@@ -1047,10 +1064,54 @@ describe("You's weight card", () => {
   });
 
   it('has no Training group: Adaptive scheduling sits with the training mode on Program', async () => {
-    const { page } = await detailThenCard(gaining(new Date(2026, 9, 1, 8)));
-    expect(page.textContent).toContain('App');
+    const { page, sections } = await detailThenCard(gaining(new Date(2026, 9, 1, 8)));
+    expect(sections.map((section) => section.title)).toContain('App');
+    expect(sections.map((section) => section.title)).not.toContain('Training');
     expect(page.textContent).not.toContain('Training');
     expect(page.textContent).not.toContain('Adaptive scheduling');
+  });
+
+  it('heads Body weight, Food and App with one section header system', async () => {
+    const { sections } = await detailThenCard(gaining(new Date(2026, 9, 1, 8)));
+    // Each group is a Section (20/600 at the card edge), only Body weight with an action.
+    expect([...new Set(sections.map((section) => section.title))]).toEqual(['Body weight', 'Food', 'App']);
+    expect(sections.find((section) => section.title === 'Body weight')?.action?.title).toBe('Log');
+    expect(sections.filter((section) => section.title !== 'Body weight').every((section) => !section.action)).toBe(true);
+  });
+});
+
+describe("Body weight's Units", () => {
+  it('is the native segmented control the chart range is, sized at the row’s trailing edge, and still saves the unit', async () => {
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue([weighIn('w2', 79, '2026-11-03T15:00:00Z'), weighIn('w1', 78, '2026-10-01T15:00:00Z')]);
+    const seen: Seen = { pickers: [], hosts: [], texts: [] };
+    await mount(createElement(loadWeightScreen(you, seen)));
+
+    const units = seen.pickers!.filter((picker) => picker.selection === 'lb').at(-1)!;
+    const range = rangePicker(seen.pickers!);
+    expect(units.modifiers).toContainEqual({ pickerStyle: 'segmented' });
+    expect(range.modifiers).toContainEqual({ pickerStyle: 'segmented' });
+
+    // Both hosts match only their height: a host matching both ways shrinks a segmented control to its smallest.
+    const hostOf = (picker: PickerSeen) => seen.hosts!.filter((host) => host.children?.props.selection === picker.selection).at(-1)!;
+    expect(hostOf(units).matchContents).toEqual({ vertical: true });
+    expect(hostOf(range).matchContents).toEqual({ vertical: true });
+    expect(hostOf(units).style).toEqual({ width: 140 });
+
+    // VoiceOver still hears each segment by its unit's name.
+    const labels = seen.texts!.flatMap((text) => text.modifiers ?? []).map((modifier) => modifier?.accessibilityLabel).filter(Boolean);
+    expect(labels).toEqual(expect.arrayContaining(['Pounds', 'Kilograms']));
+
+    // A choice is saved for next time and shown at once.
+    const save = harness.imports['@/lib/weightDisplayCore'].setPreferredWeightUnit;
+    await act(async () => { units.onSelectionChange('kg'); });
+    expect(save).toHaveBeenCalledWith('kg');
+    expect(you.useWeightStore.getState()).toMatchObject({ unit: 'kg' });
+    // The unit already chosen does nothing.
+    save.mockClear();
+    const now = seen.pickers!.filter((picker) => picker.selection === 'kg').at(-1)!;
+    await act(async () => { now.onSelectionChange('kg'); });
+    expect(save).not.toHaveBeenCalled();
   });
 });
 

@@ -50,6 +50,10 @@ const app = create(() => ({
 }));
 
 const haptics = { tap: vi.fn(), select: vi.fn(), success: vi.fn(), error: vi.fn() };
+const newProgram = vi.fn();
+type HeaderItem = { type: string; label: string; icon?: { type: string; name: string }; onPress: () => void };
+// The bar's options, as the screen last set them.
+let screenOptions: { unstable_headerRightItems?: () => HeaderItem[] } | undefined;
 // What the screen draws, in order: rows by title, the switch by its label.
 let drawn: string[] = [];
 let toggles: ToggleSeen[] = [];
@@ -60,7 +64,10 @@ function load() {
   return loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/train/program.tsx', {
     '@expo/ui/swift-ui': { Host: Wrap, Picker: Wrap, Text: Wrap },
     '@expo/ui/swift-ui/modifiers': { pickerStyle: noop, tag: noop },
-    'expo-router': { router: { push: noop }, Stack: { Screen: () => null } },
+    'expo-router': {
+      router: { push: noop },
+      Stack: { Screen: ({ options }: { options: typeof screenOptions }) => { screenOptions = options; return null; } },
+    },
     'react-native': { Alert: { alert: vi.fn() }, RefreshControl: () => null, View: Wrap },
     'react-native-reanimated': { default: { View: Wrap } },
     '@/hooks/useAdaptiveSplitScheduling': adaptiveHook,
@@ -100,7 +107,7 @@ function load() {
     '~/lib/program': {
       deleteProgram: vi.fn(async () => true),
       editProgram: noop,
-      newProgram: noop,
+      newProgram,
       planTarget: () => '',
       renameQuickStart: noop,
       setActiveProgram: vi.fn(async () => false),
@@ -126,6 +133,8 @@ const lastToggle = () => toggles.at(-1);
 
 beforeEach(() => {
   backend.updateUser.mockReset();
+  newProgram.mockClear();
+  screenOptions = undefined;
   Object.values(haptics).forEach((fn) => fn.mockClear());
   useAuthStore.setState({ user: { id: 'user-a', user_metadata: {} } as unknown as User, session: null });
   app.setState({ splits: [program], workoutMode: 'split', currentWorkout: null });
@@ -186,5 +195,24 @@ describe('Adaptive scheduling on Program', () => {
     await act(async () => { app.setState({ workoutMode: 'split', splits: [] }); });
     await render();
     expect(toggles).toEqual([]);
+  });
+});
+
+describe("Program's bar button", () => {
+  it('is a bare + that VoiceOver names New program (the bar item\'s title), and makes one', async () => {
+    await render();
+    const items = screenOptions!.unstable_headerRightItems!();
+    expect(items).toHaveLength(1);
+    // The label is the bar item's title: iOS draws the symbol alone and VoiceOver reads the title.
+    expect(items[0]).toMatchObject({ type: 'button', label: 'New program', icon: { type: 'sfSymbol', name: 'plus' } });
+    items[0].onPress();
+    expect(newProgram).toHaveBeenCalledTimes(1);
+    expect(haptics.tap).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not there in Flexible, which makes no programs', async () => {
+    app.setState({ workoutMode: 'flexible' });
+    await render();
+    expect(screenOptions!.unstable_headerRightItems!()).toEqual([]);
   });
 });

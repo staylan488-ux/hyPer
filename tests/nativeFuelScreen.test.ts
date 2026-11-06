@@ -29,6 +29,7 @@ const noop = () => {};
 type Press = { accessibilityRole?: string; accessibilityLabel?: string; accessibilityHint?: string; onPress?: () => void; children?: ReactNode };
 type CapsuleProps = { title: string; variant?: 'primary' | 'quiet'; onPress: () => void };
 type HeaderItem = { label: string; onPress: () => void };
+type RowProps = { title: string; detail?: string; value?: string; accessibilityLabel?: string; onPress?: () => void };
 
 const oats: Food = {
   id: 'oats', user_id: null, name: 'Oats', calories: 150, protein: 5, carbs: 27, fat: 3,
@@ -40,11 +41,12 @@ const noSavedFoods: Food[] = [];
 const push = vi.fn();
 const pressables: Record<string, Press> = {};
 const capsules: Record<string, CapsuleProps> = {};
+const rows: Record<string, RowProps> = {};
 const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } = {};
 let root: Root | undefined;
 
-async function renderFuel({ day = TODAY, logged = true } = {}) {
-  const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null, sort_order: 0 }] : [];
+async function renderFuel({ day = TODAY, logged = true, source }: { day?: string; logged?: boolean; source?: string } = {}) {
+  const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null, sort_order: 0, source }] : [];
   const fuel = { selected: day, logs, groups: [] };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
     'date-fns': dates,
@@ -87,7 +89,7 @@ async function renderFuel({ day = TODAY, logged = true } = {}) {
     '~/components/Label': { Label: Wrap },
     '~/components/HoldMenu': { showActionSheet: noop },
     '~/components/RollingText': { RollingText: Wrap },
-    '~/components/Row': { Row: Empty, Hairline: Empty },
+    '~/components/Row': { Row: (props: RowProps) => { rows[props.title] = props; return null; }, Hairline: Empty },
     '~/components/Section': { Section: Wrap },
     '~/components/SwipeRow': { SwipeRow: Wrap },
     '~/components/TabScroll': { TabScroll: Wrap },
@@ -115,7 +117,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
   push.mockClear();
-  for (const record of [pressables, capsules]) for (const key of Object.keys(record)) delete record[key];
+  for (const record of [pressables, capsules, rows]) for (const key of Object.keys(record)) delete record[key];
   screen.options = undefined;
 });
 afterEach(async () => {
@@ -159,5 +161,27 @@ describe("Fuel's last action", () => {
     expect(capsules['Log food'].variant).toBeUndefined();
     await act(async () => { capsules['Log food'].onPress(); });
     expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { day: TODAY } });
+  });
+});
+
+describe("Fuel's day rows", () => {
+  // The time the oats were logged, as the row shows it on this machine's clock.
+  const time = () => dates.format(new Date(`${TODAY}T08:00:00Z`), 'h:mm a');
+
+  it('lead with what was eaten: the amount and protein, then the time', async () => {
+    await renderFuel();
+    const row = rows.Oats;
+    expect(row.detail).toBe(`40 g · 5 g protein · ${time()}`);
+    expect(row.value).toBe('150');
+    // VoiceOver hears the same line in the same order.
+    expect(row.accessibilityLabel).toBe(`Oats, 40 g · 5 g protein · ${time()}, 150 kcal`);
+    // A tap still opens the entry, where its time is changed.
+    await act(async () => { row.onPress!(); });
+    expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { entry: 'log-oats' } });
+  });
+
+  it('keep the time ahead of the source word, so a line cut short loses the word first', async () => {
+    await renderFuel({ source: 'gemini_estimate' });
+    expect(rows.Oats.detail).toBe(`40 g · 5 g protein · ${time()} · Estimate`);
   });
 });

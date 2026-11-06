@@ -23,12 +23,34 @@ vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 // shows yesterday's totals as today's.
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
+type PressProps = PropsWithChildren<{
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  onPress?: () => void;
+  style?: (state: { pressed: boolean }) => Record<string, unknown>;
+}>;
+type RowProps = { title: string; chevron?: boolean; onPress?: () => void };
+// What the screen hands its pressables and rows, by name.
+const presses: PressProps[] = [];
+const rows: RowProps[] = [];
 // Keeps the card's spoken summary, which has its figures in words.
-const Pressable = ({ children, accessibilityLabel }: PropsWithChildren<{ accessibilityLabel?: string }>) =>
-  createElement('div', { 'aria-label': accessibilityLabel }, children);
+const Pressable = (props: PressProps) => {
+  presses.push(props);
+  return createElement('div', { 'aria-label': props.accessibilityLabel }, props.children);
+};
+// The white card, and the chevron that says the card leads somewhere.
+const Label = ({ children, style }: PropsWithChildren<{ style?: { height?: number } }>) =>
+  createElement('section', { 'data-card': '', 'data-height': style?.height }, children);
+const SymbolView = ({ name }: { name: string }) => createElement('i', { 'data-symbol': name });
+const Row = (props: RowProps) => {
+  rows.push(props);
+  return createElement('span', { 'data-row': '' }, props.title);
+};
 const Empty = () => null;
 const noop = () => {};
 const Text = ({ children }: PropsWithChildren) => createElement('span', null, children);
+const router = { navigate: vi.fn(), push: vi.fn() };
+const haptics = { tap: vi.fn() };
 
 const appStore = create(() => ({
   macroTarget: null as MacroTarget | null,
@@ -47,7 +69,8 @@ const shown = () => host.textContent ?? '';
 async function open() {
   const { default: TodayScreen } = loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/today/index.tsx', {
     'date-fns': dates,
-    'expo-router': { router: { navigate: noop, push: noop }, Stack: { Screen: Empty } },
+    'expo-router': { router, Stack: { Screen: Empty } },
+    'expo-symbols': { SymbolView },
     'react-native': { Pressable, RefreshControl: Empty, View: Wrap },
     'react-native-reanimated': { default: { View: Wrap } },
     '@/lib/todayModel': todayModel,
@@ -58,12 +81,12 @@ async function open() {
     '~/components/BlancText': { BlancText: Text },
     '~/components/BrandMark': { BrandMark: Empty, HEADER_MARK_SIZE: 30, headerMarkSlot: {} },
     '~/components/Capsule': { Capsule: Empty },
-    '~/components/Label': { Label: Wrap },
+    '~/components/Label': { Label },
     '~/components/LiveClock': { LiveClock: () => null },
     '~/components/PlanCard': { PlanCard: Empty },
     '~/components/RollingText': { RollingText: Text },
     '~/components/Tally': { Tally: Empty },
-    '~/components/Row': { Hairline: Empty, Row: Empty },
+    '~/components/Row': { Hairline: Empty, Row },
     '~/components/Section': { Section: Wrap },
     '~/components/TabScroll': { TabScroll: Wrap },
     '~/components/Track': { Track: Empty },
@@ -72,12 +95,12 @@ async function open() {
     '~/lib/finishWorkout': { useFinishWorkout: () => ({ finish: noop, closing: false }) },
     '~/lib/format': { formatLoad: String, formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/accessibility': silentAccessibility,
-    '~/lib/haptics': { haptics: { tap: noop } },
+    '~/lib/haptics': { haptics },
     '~/lib/fuel': { today: () => DAY, todayTotalsShown, useFuelStore: fuelStore },
     '~/lib/motion': { figureLayout: undefined },
     '~/lib/session': { useNow: () => Date.now(), useSessionModel: () => null },
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, weekDone: null, weekTarget: null }) },
-    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}), figureLead: () => 0 },
+    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({ pressed: '#E7E6E1', upcoming: '#707069' }), figureLead: () => 0, restingFigure: {} },
   });
   await act(async () => { root.render(createElement(TodayScreen)); });
 }
@@ -85,6 +108,11 @@ async function open() {
 const ASK = 'Set a calorie target';
 
 beforeEach(() => {
+  presses.length = 0;
+  rows.length = 0;
+  router.navigate.mockClear();
+  router.push.mockClear();
+  haptics.tap.mockClear();
   appStore.setState({ macroTarget: null, macroTargetLoadedForUserId: null });
   fuelStore.setState({ todayKey: DAY, todayLoadedKey: DAY, todayTotals: totals });
   host = document.createElement('div');
@@ -133,5 +161,60 @@ describe('Today’s Fuel card', () => {
     expect(shown()).toContain('0of 2000 kcal');
     // Today shows the calories left and the protein meter; nothing of yesterday's 40 g.
     expect(shown()).toContain('Protein0 of 150 g');
+  });
+});
+
+describe('Today’s Fuel section, a header over one card', () => {
+  const TARGET = { calories: 2000, protein: 150, carbs: 200, fat: 60 } as MacroTarget;
+  const SPOKEN = '1200 of 2000 calories eaten, 800 calories left. Protein 90 of 150 grams';
+  const fuelCard = () => host.querySelector(`[aria-label="${SPOKEN}"]`);
+
+  it('draws the figure and the protein meter inside a card whose chevron says it opens Fuel', async () => {
+    appStore.setState({ macroTarget: TARGET, macroTargetLoadedForUserId: 'user-1' });
+    await open();
+
+    const card = fuelCard()!;
+    // The figure and the protein meter sit in the white card, not on the ground.
+    expect(card.closest('[data-card]')).not.toBeNull();
+    expect(card.textContent).toContain('1200');
+    expect(card.textContent).toContain('of 2000 kcal');
+    expect(card.textContent).toContain('Protein90 of 150 g');
+    // One chevron, on the card that leads somewhere, as This week's row has.
+    expect([...card.querySelectorAll('[data-symbol]')].map((mark) => mark.getAttribute('data-symbol'))).toEqual(['chevron.right']);
+  });
+
+  it('keeps its VoiceOver label and hint, highlights under the finger and opens Fuel with a tap', async () => {
+    appStore.setState({ macroTarget: TARGET, macroTargetLoadedForUserId: 'user-1' });
+    await open();
+
+    const press = presses.filter((props) => props.accessibilityLabel === SPOKEN).at(-1)!;
+    expect(press.accessibilityHint).toBe('Opens Fuel');
+    // A card's press highlight, as its rows have, rather than fading on the ground.
+    expect(press.style!({ pressed: true })).toMatchObject({ backgroundColor: '#E7E6E1' });
+    expect(press.style!({ pressed: false })).toMatchObject({ backgroundColor: 'transparent' });
+    await act(async () => { press.onPress!(); });
+    expect(router.navigate).toHaveBeenCalledWith('/fuel');
+    expect(haptics.tap).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the card’s place with an empty card while the saved target is read', async () => {
+    await open();
+    const cards = [...host.querySelectorAll('[data-card]')];
+    expect(cards).toHaveLength(1);
+    expect(Number(cards[0].getAttribute('data-height'))).toBeGreaterThan(140);
+    expect(cards[0].textContent).toBe('');
+  });
+
+  it('asks for a target as one row in the same card, which opens the targets', async () => {
+    appStore.setState({ macroTargetLoadedForUserId: 'user-1' });
+    await open();
+
+    const ask = rows.filter((row) => row.title === ASK).at(-1)!;
+    expect(ask.chevron).toBe(true);
+    expect(host.querySelector('[data-row]')!.closest('[data-card]')).not.toBeNull();
+    await act(async () => { ask.onPress!(); });
+    expect(router.push).toHaveBeenCalledWith('/you/targets');
+    // Row plays the tap's haptic itself.
+    expect(haptics.tap).not.toHaveBeenCalled();
   });
 });

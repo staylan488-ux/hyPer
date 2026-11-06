@@ -39,7 +39,7 @@ import {
   type AppearanceChoice,
 } from '~/lib/you';
 import { bodyWeightLine, weightRangeSummary } from '~/lib/weightRate';
-import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
+import { figureLead, restingFigure, useBlanc } from '~/theme/blanc';
 
 /**
  * You: who is signed in, body weight with Log, and the settings that shape
@@ -91,44 +91,51 @@ export default function YouScreen() {
 
         <WeightCard />
 
-        {/* Food: targets, saved meals, analysis and the evening reminder, one group. */}
-        <GroupHeading>Food</GroupHeading>
-        <FuelReminderSetting
-          top={0}
-          rows={
-            <>
-              <Row
-                title="Targets"
-                value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : targetKnown ? 'Not set' : undefined}
-                chevron
-                onPress={() => router.push('/you/targets')}
-              />
-              <Hairline />
-              <Row
-                title="Saved meals"
-                chevron
-                onPress={() => router.push('/you/meals')}
-              />
-              <Hairline />
-              <Row
-                title="Food analysis"
-                value={analysis === 'gemini' ? 'Gemini' : 'Your Mac'}
-                chevron
-                onPress={() => router.push('/you/analysis')}
-              />
-            </>
-          }
-        />
+        {/* Food: targets, saved meals, analysis and the evening reminder, one group under
+            the same section header as Body weight's. Header and card move as one with the cards around them. */}
+        <Animated.View layout={rowLayout}>
+          <Section title="Food">
+            <FuelReminderSetting
+              top={0}
+              rows={
+                <>
+                  <Row
+                    title="Targets"
+                    value={targetsFailed ? 'Not loaded' : target ? `${formatWhole(target.calories)} kcal` : targetKnown ? 'Not set' : undefined}
+                    chevron
+                    onPress={() => router.push('/you/targets')}
+                  />
+                  <Hairline />
+                  <Row
+                    title="Saved meals"
+                    chevron
+                    onPress={() => router.push('/you/meals')}
+                  />
+                  <Hairline />
+                  <Row
+                    title="Food analysis"
+                    value={analysis === 'gemini' ? 'Gemini' : 'Your Mac'}
+                    chevron
+                    onPress={() => router.push('/you/analysis')}
+                  />
+                </>
+              }
+            />
+          </Section>
+        </Animated.View>
 
         {/* Food, then the app itself. Adaptive scheduling is on Program, beside the training mode. */}
-        <GroupHeading>App</GroupHeading>
-        <Label layout={rowLayout}>
-          <Row title="Connections" value={connections} chevron onPress={() => router.push('/you/connections')} />
-          <Hairline />
-          <AppearanceRow />
-          <Hairline />
-          <Row title="About" chevron onPress={() => router.push('/you/about')} />
-        </Label>
+        <Animated.View layout={rowLayout}>
+          <Section title="App">
+            <Label layout={rowLayout}>
+              <Row title="Connections" value={connections} chevron onPress={() => router.push('/you/connections')} />
+              <Hairline />
+              <AppearanceRow />
+              <Hairline />
+              <Row title="About" chevron onPress={() => router.push('/you/about')} />
+            </Label>
+          </Section>
+        </Animated.View>
       </TabScroll>
     </>
   );
@@ -294,18 +301,5 @@ function AppearanceRow() {
         </Menu>
       </Host>
     </View>
-  );
-}
-
-/** A settings group's quiet heading, on its card's text edge, as iOS's grouped lists name theirs. */
-function GroupHeading({ children }: { children: string }) {
-  return (
-    <BlancText
-      variant="footnote"
-      tone="graphite"
-      accessibilityRole="header"
-      style={{ marginTop: space.section, marginBottom: 6, marginHorizontal: space.inset + 18 }}>
-      {children}
-    </BlancText>
   );
 }

@@ -228,6 +228,9 @@ export default function WeightScreen() {
   );
 }
 
+/** Two segments of about the chart range's width (five across a card, some 70 pt each). */
+const UNIT_CONTROL_WIDTH = 140;
+
 function UnitRow({ unit }: { unit: WeightUnit }) {
   // At the accessibility text sizes the switch sits under its label.
   const large = useLargeText();
@@ -241,7 +244,11 @@ function UnitRow({ unit }: { unit: WeightUnit }) {
       <BlancText variant="bodyStrong" style={large ? undefined : { flex: 1 }}>
         Units
       </BlancText>
-      <Host matchContents style={{ width: 120 }}>
+      {/* The chart range's segmented control, at the row's trailing edge: the host gives
+          it its width (a host that matches its contents both ways shrinks a segmented
+          control to its smallest), its segments about as wide as the range's. At the
+          accessibility text sizes it spans the row under its label, as the range spans the card. */}
+      <Host matchContents={{ vertical: true }} style={large ? { alignSelf: 'stretch' } : { width: UNIT_CONTROL_WIDTH }}>
         <Picker
           selection={unit}
           onSelectionChange={(next) => {
