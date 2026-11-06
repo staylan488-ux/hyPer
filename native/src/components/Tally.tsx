@@ -39,7 +39,7 @@ type Size = (typeof SIZES)['regular'];
 /**
  * hyPer's set tally, counted the way a paper training log is: one stroke per
  * set in groups of five. Logged strokes are ink, the next set's stroke stands
- * taller, and a group of five logged sets is closed with a diagonal stroke.
+ * taller in graphite, and a group of five logged sets is closed with a diagonal stroke.
  */
 export function Tally({ marks, current, height: tall, compact, drawIn, accessibilityLabel, style }: TallyProps) {
   // Followed live: turning Reduce Motion on draws the next tally at once.
@@ -107,7 +107,8 @@ function Stroke({ logged, next, height, size, appear }: { logged: boolean; next:
         {
           width: next ? size.nextWidth : size.width,
           borderRadius: size.nextWidth / 2,
-          backgroundColor: logged || next ? c.ink : c.track,
+          // Ink counts what is logged; the next set stands taller in graphite, so the ink strokes always equal the sets done.
+          backgroundColor: logged ? c.ink : next ? c.graphite : c.mark,
         },
         animated,
       ]}

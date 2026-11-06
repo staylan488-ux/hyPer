@@ -58,7 +58,9 @@ export function WorkoutAccessory() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={speak(`${session.dayName}, ${spokenStatus}. ${resting || paused ? 'Open rest timer.' : 'Open workout.'}`)}
+      accessibilityLabel={speak(
+        `${session.dayName}, ${spokenStatus}${resting || paused ? '' : `, ${spokenClock(Math.max(0, (now - session.startedAt.getTime()) / 1000))}`}. ${resting || paused ? 'Open rest timer.' : 'Open workout.'}`,
+      )}
       onPress={() => {
         haptics.tap();
         router.navigate('/train');
@@ -91,7 +93,14 @@ export function WorkoutAccessory() {
               </BlancText>
             )}
           </View>
-          <SymbolView name={resting ? 'timer' : paused ? 'pause.fill' : 'play.fill'} size={17} tintColor={c.ink} />
+          {resting || paused ? (
+            <SymbolView name="timer" size={17} tintColor={c.ink} />
+          ) : (
+            // The workout's clock, where a media bar would put play: the bar opens the workout, it doesn't play anything.
+            <BlancText variant="footnote" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
+              {formatClock(Math.max(0, (now - session.startedAt.getTime()) / 1000))}
+            </BlancText>
+          )}
         </>
       )}
     </Pressable>

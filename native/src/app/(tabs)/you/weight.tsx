@@ -30,6 +30,7 @@ import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { figureLayout, rowLayout } from '~/lib/motion';
+import { centredTrendLine } from '~/lib/weightTrendLine';
 import { loadWeights, setWeightUnit, useAllWeighIns, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
 
@@ -55,12 +56,15 @@ export default function WeightScreen() {
   const olderMissing = useWeightStore((state) => state.allFailed && state.all === null);
   const entries = everything ?? history;
   const trend = useMemo(() => weightHistoryTrend(entries), [entries]);
+  // The line drawn looks both ways from each day, so it runs through the
+  // weigh-ins instead of trailing them; the change above it reads the same line.
+  const line = useMemo(() => centredTrendLine(trend.points), [trend.points]);
   const latest = entries[0] ?? null;
   const [rangeKey, setRangeKey] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
   const range = weightRange(rangeKey);
   // Handed to the rows and the chart, so "Today" and the range move on at midnight.
   const todayKey = useCurrentDayKey();
-  const calendar = useMemo(() => weightChartWindow(trend.points, range.days, todayKey), [trend.points, range.days, todayKey]);
+  const calendar = useMemo(() => weightChartWindow(line, range.days, todayKey), [line, range.days, todayKey]);
   // The chart's resting line: "+4.1 lb since Aug 7 · +0.32 lb/wk", the
   // rate averaged over the same days. Gaining reads like losing, in ink:
   // whether it's good is the goal's to say.
@@ -187,7 +191,7 @@ export default function WeightScreen() {
             </Host>
             <Label style={{ marginTop: 12, padding: 18, paddingBottom: 12 }}>
               <WeightChart
-                points={trend.points}
+                points={line}
                 calendar={calendar}
                 span={range.key !== 'all' ? `last ${range.spoken}` : olderMissing ? 'recent weigh-ins only' : 'since the first weigh-in'}
                 unit={unit}

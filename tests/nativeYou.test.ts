@@ -15,6 +15,7 @@ import * as settingsUx from '@/lib/settingsUx';
 import * as weightDisplayCore from '@/lib/weightDisplayCore';
 import * as weightHistory from '@/lib/weightHistory';
 import * as weightTrend from '@/lib/weightTrend';
+import * as weightTrendLine from '../native/src/lib/weightTrendLine';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -638,6 +639,7 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
     '~/lib/motion': motion,
+    '~/lib/weightTrendLine': weightTrendLine,
     '~/lib/you': you,
     '~/theme/blanc': { space: { gutter: 20, inset: 16, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
   };

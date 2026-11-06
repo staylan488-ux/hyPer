@@ -128,6 +128,7 @@ describe('Today’s Fuel card', () => {
     const card = host.querySelector('[aria-label*="calories left"]');
     expect(card?.getAttribute('aria-label')).toBe('2000 calories left. Eaten 0 of 2000 calories, protein 0 of 150 grams');
     expect(shown()).toContain('2000kcal left');
-    expect(shown()).toContain('Eaten0 / 2000');
+    // Today shows the calories left and the protein meter; nothing of yesterday's 40 g.
+    expect(shown()).toContain('Protein0 / 150 g');
   });
 });

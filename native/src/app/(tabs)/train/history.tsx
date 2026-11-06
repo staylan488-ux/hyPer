@@ -430,8 +430,8 @@ function DayCell({
         </BlancText>
       </View>
       <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 1 }}>
-        {lift && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.ink }} /> : null}
-        {other && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, borderWidth: 1, borderColor: c.graphite }} /> : null}
+        {/* One mark for a day with anything in it; the day's list says what. */}
+        {(lift || other) && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: lift ? c.ink : c.graphite }} /> : null}
       </View>
     </Pressable>
   );

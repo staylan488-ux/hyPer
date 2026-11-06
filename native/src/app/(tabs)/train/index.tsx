@@ -1,6 +1,6 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
+import { differenceInCalendarWeeks, parseISO } from 'date-fns';
 import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -120,7 +120,7 @@ function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; to
       // The clock in words; the tally just below reads the sets.
       accessibilityLabel={`Workout time, ${spokenClock(elapsed)}`}
       style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-      <BlancText variant="meta" size={14} tone="graphite">
+      <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
         {formatClock(elapsed)}
       </BlancText>
       {total > 0 ? ` · ${done} of ${total} sets` : null}
@@ -219,6 +219,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
   const lastLine = last ? formatSet(last.weight, last.reps, { unit: false }) : '';
+  // On the card, beside the editable figures, the weight keeps its unit.
+  const lastLineUnit = last ? formatSet(last.weight, last.reps) : '';
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
   const cardLine = current
@@ -342,6 +344,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // The header is built once per name and state, never per keystroke or
   // clock tick, so its buttons are not re-sent to iOS under the finger.
   const { workoutId, dayName, flexible } = session;
+  // Finish stays quiet glass beside Log set until every set is logged, then leads.
+  const allLogged = session.sets.length > 0 && session.doneCount >= session.sets.length;
   const headerOptions = useMemo(
     () =>
       ({
@@ -350,7 +354,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           {
             type: 'button',
             label: closing ? 'Saving…' : 'Finish',
-            variant: 'prominent',
+            variant: allLogged ? 'prominent' : 'plain',
             tintColor: c.ink,
             disabled: closing,
             onPress: () => {
@@ -386,7 +390,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             : []),
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    [workoutId, dayName, closing, c.ink, flexible, finish],
+    [workoutId, dayName, closing, c.ink, flexible, finish, allLogged],
   );
 
   // A drop saves this session's order at once (never the program); while it
@@ -746,21 +750,27 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               ) : lastLine ? (
                 <Animated.View key="last" entering={FadeIn.duration(220)} style={large ? undefined : { flexShrink: 1, marginLeft: 12 }}>
                   <BlancText
-                    variant="meta"
+                    variant="footnote"
                     tone="graphite"
+                    style={{ fontVariant: ['tabular-nums'] }}
                     numberOfLines={large ? undefined : 1}
                     adjustsFontSizeToFit={!large}
                     minimumFontScale={0.8}
                     // With its unit in words: "Last time, 80 pounds × 10".
                     accessibilityLabel={speak(`Last time, ${formatSet(last?.weight, last?.reps)}`)}>
-                    Last time {lastLine}
+                    Last time {lastLineUnit}
                   </BlancText>
                 </Animated.View>
               ) : null}
             </View>
             {lastNote ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 10 }}>
-                Last note, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
+              <BlancText
+                variant="footnote"
+                tone="graphite"
+                numberOfLines={large ? undefined : 2}
+                accessibilityLabel={`Last note: ${lastNote.note}`}
+                style={{ marginTop: 10 }}>
+                “{lastNote.note}”
               </BlancText>
             ) : null}
 
@@ -874,7 +884,7 @@ function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
       exiting={FadeOut.duration(220)}
       style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }, style]}>
       <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} />
-      <BlancText variant="meta" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1 }}>
+      <BlancText variant="footnote" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1, fontVariant: ['tabular-nums'] }}>
         Beat last time · {gain}
       </BlancText>
     </Animated.View>

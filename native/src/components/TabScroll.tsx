@@ -16,6 +16,11 @@ const TAB_BAR = 49;
 const WORKOUT_ACCESSORY = 56;
 const windowInsets = initialWindowMetrics?.insets ?? { top: 59, bottom: 34 };
 
+/** How far a tab page has scrolled from rest, under a large title. */
+export function scrolledFromRest(offsetY: number): number {
+  return offsetY + windowInsets.top + NAV_BAR_WITH_LARGE_TITLE;
+}
+
 /** How much of a tab page the tab bar (and the workout bar above it) covers at the foot. */
 export function tabBarCover(accessory: boolean): number {
   return windowInsets.bottom + TAB_BAR + (accessory ? WORKOUT_ACCESSORY : 0);

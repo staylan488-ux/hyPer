@@ -16,11 +16,11 @@ import { RollingText } from '~/components/RollingText';
 import { Tally } from '~/components/Tally';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { TabScroll } from '~/components/TabScroll';
+import { scrolledFromRest, TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { speak, useLargeText } from '~/lib/accessibility';
 import { useAccountRefresh } from '~/lib/accountData';
-import { useIntroRise } from '~/lib/brand';
+import { markAtRest, useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
@@ -64,21 +64,15 @@ export default function TodayScreen() {
               hidesSharedBackground: true,
             },
           ],
-          unstable_headerRightItems: () => [
-            {
-              type: 'button',
-              label: 'You',
-              accessibilityLabel: 'Your profile',
-              icon: { type: 'sfSymbol', name: 'person.crop.circle' },
-              onPress: () => {
-                haptics.tap();
-                router.navigate('/you');
-              },
-            },
-          ],
         }}
       />
-      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
+      <TabScroll
+        onScroll={(event) => {
+          // Scrolled past the large title, the corner P steps back with it.
+          const scrolled = scrolledFromRest(event.nativeEvent.contentOffset.y);
+          markAtRest.value = Math.max(0, Math.min(1, 1 - (scrolled - 8) / 36));
+        }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Animated.View style={rise}>
           <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
             {format(now, 'EEEE, MMMM d')}
@@ -102,7 +96,7 @@ export default function TodayScreen() {
                 style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
                 {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                  <RollingText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
+                  <RollingText variant="figure" size={64} style={{ letterSpacing: -1.5 }}>
                     {formatWhole(Math.abs(kcalLeft))}
                   </RollingText>
                   <Animated.View layout={figureLayout}>
@@ -111,14 +105,17 @@ export default function TodayScreen() {
                     </BlancText>
                   </Animated.View>
                 </View>
-                <View style={large ? { gap: 14, marginTop: 14 } : { flexDirection: 'row', gap: 20, marginTop: 14 }}>
-                  <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
+                {/* The figure says what is left; the line under it shows how far the day has come, as on Fuel. */}
+                <View style={{ marginTop: 10 }}>
+                  <Track progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
+                </View>
+                <View style={{ marginTop: 18 }}>
                   <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
                 </View>
               </Pressable>
             ) : !targetRead ? (
               // Holds the figures' place (68 pt figure and the meters) until the target is read.
-              <View style={{ height: 118 }} />
+              <View style={{ height: 140 }} />
             ) : (
               <Pressable
                 accessibilityRole="button"

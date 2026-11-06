@@ -94,7 +94,7 @@ export default function ProgramScreen() {
           </BlancText>
         ) : null}
 
-        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18, opacity: live ? 0.5 : 1 }} pointerEvents={live ? 'none' : 'auto'}>
+        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18, opacity: live ? 0.72 : 1 }} pointerEvents={live ? 'none' : 'auto'}>
           <Picker
             selection={mode}
             onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
@@ -156,7 +156,8 @@ function Programs({ splits }: { splits: Split[] }) {
   ];
 
   return (
-    <Section title="Programs">
+    // The page is titled Program; the list needs no heading of its own.
+    <View style={{ marginTop: 24 }}>
       <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {shown.map((split, index) => (
           <Animated.View key={split.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
@@ -182,7 +183,7 @@ function Programs({ splits }: { splits: Split[] }) {
           </Animated.View>
         ))}
       </Label>
-    </Section>
+    </View>
   );
 }
 

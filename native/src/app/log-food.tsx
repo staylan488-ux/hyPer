@@ -846,9 +846,10 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
           />
         ) : (
           <View key={captureKey}>
-            {buildMeal}
+            {/* The foods to repeat come first; building a meal from several follows them. */}
             {recentTab}
             {savedTab}
+            {buildMeal}
             {searchTab}
             {scanTab}
             {manualTab}

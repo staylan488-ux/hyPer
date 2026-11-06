@@ -3,7 +3,7 @@ import { View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { windowFrame } from '../../modules/hyper-view';
-import { markShown, registerMarkAnchor } from '~/lib/brand';
+import { markAtRest, markShown, registerMarkAnchor } from '~/lib/brand';
 import { markBox, markInkInsets, PAD } from '~/lib/brandGeometry';
 import { useBlanc } from '~/theme/blanc';
 
@@ -50,7 +50,7 @@ export function BrandMark({ size, anchor = false, tight = false, style }: BrandM
     });
   }, [anchor, size]);
 
-  const shown = useAnimatedStyle(() => ({ opacity: anchor ? markShown.value : 1 }));
+  const shown = useAnimatedStyle(() => ({ opacity: anchor ? markShown.value * markAtRest.value : 1 }));
 
   // The outer view is the caller's to lay out; the inner one is the P's text
   // box, which the intro measures and lands on.

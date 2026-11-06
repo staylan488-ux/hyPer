@@ -1,6 +1,6 @@
 import { useSegments } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useNativeHealthSync } from '@/hooks/useNativeHealthSync';
 import { useWhoopForegroundSync } from '@/hooks/useWhoopForegroundSync';
@@ -17,7 +17,7 @@ import { useHealthCarryOver } from '~/lib/healthCarryOver';
 import { resetHistory } from '~/lib/history';
 import { useLaunchActionRunner } from '~/lib/launch';
 import { useNotesStore } from '~/lib/notes';
-import { useRestFinish, useRestLifecycle, useRestPreferences } from '~/lib/rest';
+import { useRestFinish, useRestLifecycle, useRestPreferences, useRestStore } from '~/lib/rest';
 import {
   useFocusStore,
   usePendingSkips,
@@ -44,6 +44,16 @@ export default function TabsLayout() {
   const segments = useSegments() as string[];
   const onTrain = segments[0] === '(tabs)' ? segments[1] === 'train' : WORKOUT_SHEETS.has(segments[0] ?? '');
   useKeepAwakeWhile(live && onTrain);
+  // The bar repeats the live workout, so it steps aside on the two screens that
+  // already show it: Today's live card and Train's set card. During a rest it
+  // stays on Train too, with the countdown. A sheet over a screen keeps that
+  // screen's choice, so the bar never pops in behind it.
+  const resting = useRestStore((state) => state.session !== null && state.session.status !== 'completed');
+  const onTabRoot = segments[0] === '(tabs)' ? segments.length === 2 && (segments[1] === 'today' || segments[1] === 'train') : null;
+  const [showsWorkout, setShowsWorkout] = useState(false);
+  const nextShowsWorkout = onTabRoot === null ? showsWorkout : onTabRoot && !(segments[1] === 'train' && resting);
+  if (nextShowsWorkout !== showsWorkout) setShowsWorkout(nextShowsWorkout);
+  const accessory = live && !nextShowsWorkout;
   useRestLifecycle();
   useRestFinish();
   useRestPreferences();
@@ -98,7 +108,7 @@ export default function TabsLayout() {
       minimizeBehavior="onScrollDown"
       // iOS's tab bar has no tap feedback of its own; the web app's tabs did.
       screenListeners={{ tabPress: () => haptics.tap() }}>
-      {live ? (
+      {accessory ? (
         <NativeTabs.BottomAccessory>
           <WorkoutAccessory />
         </NativeTabs.BottomAccessory>

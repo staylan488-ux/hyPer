@@ -2,7 +2,7 @@ import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
@@ -220,7 +220,7 @@ export default function FuelScreen() {
           style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
             {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
-            <RollingText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
+            <RollingText variant="figure" size={64} style={{ letterSpacing: -1.5 }}>
               {loaded ? formatWhole(totals.calories) : '–'}
             </RollingText>
             <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
@@ -234,11 +234,6 @@ export default function FuelScreen() {
               <Track progress={totals.calories / kcalTarget} warnOver={warnsOverTarget('calories', goal)} />
             </View>
           ) : null}
-          {kcalTarget && live && loaded ? (
-            <BlancText variant="secondary" tone={summary.kcalOverWarns ? 'live' : 'graphite'} style={{ marginTop: 10 }}>
-              {summary.logLine}
-            </BlancText>
-          ) : null}
           {!kcalTarget && targetKnown ? (
             <BlancText variant="secondary" tone="graphite" style={{ marginTop: 10 }}>
               Set a calorie target
@@ -246,15 +241,23 @@ export default function FuelScreen() {
           ) : null}
         </Pressable>
 
-        <Section title="Macros">
-          <Label style={{ overflow: 'hidden' }}>
+        {/* The macros sit side by side under the day's figure, so the day's food starts on the first screen.
+            At the accessibility text sizes they stack as rows. */}
+        {grown ? (
+          <Label style={{ overflow: 'hidden', marginTop: 22 }}>
             <MacroRow macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
             <Hairline />
             <MacroRow macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} />
             <Hairline />
             <MacroRow macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} />
           </Label>
-        </Section>
+        ) : (
+          <Label style={{ overflow: 'hidden', marginTop: 22, flexDirection: 'row' }}>
+            <MacroColumn macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
+            <MacroColumn macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} edge />
+            <MacroColumn macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} edge />
+          </Label>
+        )}
 
         {/* One day's list: rows and meals fold away and close up when removed.
             Moving to another day swaps the whole list without that motion. */}
@@ -460,6 +463,8 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
   return (
     <Section
       title={title}
+      // A day's meals read as one ledger: closer together than a screen's sections.
+      style={{ marginTop: 20 }}
       note={logs.length > 0 ? `${formatWhole(kcal)} kcal` : undefined}
       accessory={
         group || copyable || savable ? (
@@ -603,6 +608,49 @@ function MacroRow({ macro, value, target, loaded, goal }: {
         </View>
       </View>
       {target ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : null}
+    </Pressable>
+  );
+}
+
+/** One macro of three side by side: its name, the grams against the target and its line; a tap opens that target. */
+function MacroColumn({ macro, value, target, loaded, goal, edge }: {
+  macro: Exclude<FuelMacro, 'calories'>;
+  value: number;
+  target: number | null;
+  loaded: boolean;
+  goal: NutritionGoal | undefined;
+  /** A hairline on its leading side, between it and the column before. */
+  edge?: boolean;
+}) {
+  const c = useBlanc();
+  const name = MACRO_NAMES[macro];
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={loaded ? speak(`${name}, ${formatWhole(value)}${target ? ` of ${formatWhole(target)}` : ''} g`) : name}
+      accessibilityHint={`Edits your ${name.toLowerCase()} target`}
+      onPress={() => editTarget(macro)}
+      style={({ pressed }) => ({
+        flex: 1,
+        paddingHorizontal: 14,
+        paddingTop: 13,
+        paddingBottom: 15,
+        backgroundColor: pressed ? c.pressed : 'transparent',
+        borderLeftWidth: edge ? StyleSheet.hairlineWidth : 0,
+        borderLeftColor: c.hairline,
+      })}>
+      <BlancText variant="footnote" tone="graphite">
+        {name}
+      </BlancText>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 3, marginBottom: 9 }}>
+        <RollingText variant="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
+          {loaded ? formatWhole(value) : '–'}
+        </RollingText>
+        <BlancText variant="footnote" tone="graphite" numberOfLines={1} style={{ fontVariant: ['tabular-nums'], flexShrink: 1 }}>
+          {target ? ` / ${formatWhole(target)} g` : loaded ? ' g' : ''}
+        </BlancText>
+      </View>
+      {target ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : <View style={{ height: 4 }} />}
     </Pressable>
   );
 }

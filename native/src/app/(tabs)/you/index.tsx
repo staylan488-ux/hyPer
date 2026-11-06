@@ -38,9 +38,9 @@ import {
   usePullRefresh,
   useTargetsStore,
   useWeightStore,
-  useYouMealsStore,
   type AppearanceChoice,
 } from '~/lib/you';
+import { centredTrendLine } from '~/lib/weightTrendLine';
 import { space, useBlanc } from '~/theme/blanc';
 
 /**
@@ -57,7 +57,6 @@ export default function YouScreen() {
   const targetKnown = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId);
   const whoop = useAppStore((state) => state.whoopConnection);
   const health = useHealthStore((state) => state.enabled);
-  const meals = useYouMealsStore((state) => state.meals);
   const analysis = useAnalysisModeStore((state) => state.mode);
   const { refreshing, refresh } = usePullRefresh(loadYou);
 
@@ -103,7 +102,6 @@ export default function YouScreen() {
           <Hairline />
           <Row
             title="Saved meals"
-            value={meals && meals.length > 0 ? String(meals.length) : undefined}
             chevron
             onPress={() => router.push('/you/meals')}
           />
@@ -127,8 +125,6 @@ export default function YouScreen() {
         <SchedulingSetting />
 
         <Label layout={rowLayout} style={{ marginTop: space.section }}>
-          <Row title="Start a run" chevron onPress={() => router.push('/run')} />
-          <Hairline />
           <Row title="About" chevron onPress={() => router.push('/you/about')} />
         </Label>
       </TabScroll>
@@ -212,7 +208,7 @@ function WeightCard() {
               ) : null}
               {trend.fittedDayCount >= 2 ? (
                 <View style={{ marginTop: 10 }} pointerEvents="none">
-                  <WeightChart points={trend.points} days={30} unit={unit} height={44} compact />
+                  <WeightChart points={centredTrendLine(trend.points)} days={30} unit={unit} height={44} compact />
                 </View>
               ) : null}
             </>

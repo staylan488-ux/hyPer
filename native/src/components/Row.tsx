@@ -117,7 +117,8 @@ export function Row({ title, detail, detailMark, value, leading, trailing, chevr
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: 12,
-    minHeight: form ? 52 : 60,
+    // One line is iOS's 52 pt list row; a row with a detail line keeps 60.
+    minHeight: form || !detail ? 52 : 60,
     paddingVertical: 10,
     paddingLeft: 18,
     paddingRight: 16,

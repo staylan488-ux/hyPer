@@ -21,26 +21,33 @@ export const palettes = {
     upcoming: '#707069',
     hairline: 'rgba(0, 0, 0, 0.09)',
     track: '#DCDBD6',
+    /** Tally strokes still to do: a mark to read, so stronger than a track. */
+    mark: '#C2C1BB',
     fill: '#ECEBE6',
     pressed: '#E7E6E1',
     capsule: '#0B0B0B',
     onCapsule: '#FFFFFF',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#0B0B0B',
     live: '#D23B2E',
     brand: '#A8352A',
   },
   dark: {
     ground: '#000000',
-    label: '#141414',
+    label: '#1C1C1B',
     labelEdge: 'rgba(255, 255, 255, 0.07)',
     ink: '#F4F4F2',
     graphite: '#A3A39C',
     upcoming: '#8C8C86',
     hairline: 'rgba(255, 255, 255, 0.11)',
-    track: '#2B2B29',
-    fill: '#1F1F1E',
-    pressed: '#232322',
+    track: '#363634',
+    mark: '#4D4D49',
+    fill: '#2C2C2A',
+    pressed: '#30302E',
     capsule: '#F4F4F2',
     onCapsule: '#0B0B0B',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#A3A39C',
     live: '#FF5A4C',
     brand: '#E58477',
   },
@@ -58,26 +65,32 @@ export const palettes = {
     upcoming: '#57574F',
     hairline: 'rgba(0, 0, 0, 0.22)',
     track: '#BDBCB6',
+    mark: '#9C9B95',
     fill: '#E3E2DC',
     pressed: '#D8D7D1',
     capsule: '#000000',
     onCapsule: '#FFFFFF',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#000000',
     live: '#B3281D',
     brand: '#A8352A',
   },
   darkContrast: {
     ground: '#000000',
-    label: '#1A1A1A',
+    label: '#222221',
     labelEdge: 'rgba(255, 255, 255, 0.24)',
     ink: '#FFFFFF',
     graphite: '#C9C9C3',
     upcoming: '#B2B2AC',
     hairline: 'rgba(255, 255, 255, 0.28)',
     track: '#4D4D4A',
-    fill: '#2E2E2C',
-    pressed: '#383836',
+    mark: '#6A6A66',
+    fill: '#38383A',
+    pressed: '#424240',
     capsule: '#FFFFFF',
     onCapsule: '#000000',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#C9C9C3',
     live: '#FF5A4C',
     brand: '#E58477',
   },
@@ -139,8 +152,8 @@ export const type = {
 } satisfies Record<string, TextStyle>;
 
 export const space = {
-  /** Screen edge to text. */
-  gutter: 20,
+  /** Screen edge to text on the ground: the large title's edge, which the cards share. */
+  gutter: 16,
   /** Screen edge to a label card. */
   inset: 16,
   /** Between sections. */

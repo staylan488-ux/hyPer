@@ -133,6 +133,11 @@ export default function ProgressScreen() {
                   </Animated.View>
                 ))}
               </Label>
+              {coached.some(({ mv }) => mv.landmark) ? (
+                <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
+                  The band is in range, its darker middle the best range.
+                </BlancText>
+              ) : null}
             </Section>
           </>
         )}
@@ -160,10 +165,10 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
   const landmarks = mv.landmark
     ? `Maintain ${mv.landmark.mv} · grow from ${mv.landmark.mev} · best ${mv.landmark.mav_low}–${mv.landmark.mav_high} · ceiling ${mv.landmark.mrv}`
     : 'No landmarks set for this muscle.';
-  // One fact for VoiceOver, the rail's best range included, with the words the
-  // row shows; an open row adds what it shows.
+  // One fact for VoiceOver, the rail's band and best range included, with the
+  // words the row shows; an open row adds what it shows.
   const spoken = [
-    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, best ${mv.landmark.mav_low}–${mv.landmark.mav_high}` : ''}, ${call.chip}`,
+    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, in range ${mv.landmark.mev}–${mv.landmark.mrv}, best ${mv.landmark.mav_low}–${mv.landmark.mav_high}` : ''}, ${call.chip}`,
     words ? call.headline : null,
     open ? landmarks : null,
   ]
@@ -202,28 +207,43 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
   );
 }
 
-/** Weekly sets on a line from zero past the ceiling, with the best range drawn in. */
+/**
+ * Weekly sets on a line from zero past the ceiling. The band is in range
+ * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
+ * "in range" counts it; its darker middle is the best range.
+ */
 function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean }) {
   const c = useBlanc();
   // Increase Contrast draws the quiet marks at full strength.
   const contrast = useIncreaseContrast();
   const max = Math.max(landmark.mrv * 1.1, sets, 1);
   const at = (value: number) => `${Math.min(100, (value / max) * 100)}%` as const;
+  const span = (from: number, to: number) => `${Math.max(0, ((Math.min(to, max) - from) / max) * 100)}%` as const;
   return (
     <View style={{ height: 10, marginTop: 10, justifyContent: 'center' }} importantForAccessibility="no-hide-descendants">
       <View style={{ height: 3, borderRadius: 1.5, backgroundColor: c.track }} />
       <View
         style={{
           position: 'absolute',
-          left: at(landmark.mav_low),
-          width: `${Math.max(0, ((landmark.mav_high - landmark.mav_low) / max) * 100)}%`,
-          height: 3,
-          borderRadius: 1.5,
+          left: at(landmark.mev),
+          width: span(landmark.mev, landmark.mrv),
+          height: 5,
+          borderRadius: 2.5,
           backgroundColor: c.graphite,
-          opacity: contrast ? 1 : 0.55,
+          opacity: contrast ? 0.45 : 0.28,
         }}
       />
-      <View style={{ position: 'absolute', left: at(landmark.mrv), width: 1.5, height: 9, backgroundColor: c.graphite, opacity: contrast ? 1 : 0.6 }} />
+      <View
+        style={{
+          position: 'absolute',
+          left: at(landmark.mav_low),
+          width: span(landmark.mav_low, landmark.mav_high),
+          height: 5,
+          borderRadius: 2.5,
+          backgroundColor: c.graphite,
+          opacity: contrast ? 1 : 0.7,
+        }}
+      />
       <View
         style={{
           position: 'absolute',
@@ -252,13 +272,37 @@ function inWords(text: string): string {
 /** Training time as VoiceOver says it: "1 hour 20 minutes", or "none". */
 const spokenMinutes = (minutes: number) => (minutes > 0 ? spokenClock(minutes * 60) : 'none');
 
-/** Eight weeks of training time; this week in ink. */
+/** The width beside a chart that holds its one scale figure. */
+const SCALE_COLUMN = 44;
+
+/** A chart's scale figure, beside the line it names. */
+function ScaleLabel({ bottom, children }: { bottom: `${number}%`; children: string }) {
+  return (
+    <View style={{ position: 'absolute', right: 0, width: SCALE_COLUMN, bottom, marginBottom: -8, height: 16, justifyContent: 'center' }}>
+      <BlancText
+        variant="footnote"
+        tone="graphite"
+        size={12}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        maxFontSizeMultiplier={1.3}
+        style={{ textAlign: 'right', fontVariant: ['tabular-nums'] }}>
+        {children}
+      </BlancText>
+    </View>
+  );
+}
+
+/** The top of the training chart: the next whole hour at or above the longest week. */
+const hoursScale = (peak: number) => Math.max(60, Math.ceil(peak / 60) * 60);
+
+/** Eight weeks of training time; this week in ink, against a scale in whole hours. */
 function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   const c = useBlanc();
   const large = useLargeText();
   // Increase Contrast draws past weeks at full strength, still graphite against this week's ink.
   const contrast = useIncreaseContrast();
-  const peak = Math.max(60, ...points.map((point) => point.totalMinutes));
+  const top = hoursScale(Math.max(0, ...points.map((point) => point.totalMinutes)));
   const current = points[points.length - 1];
   // At the accessibility text sizes a line that no longer fits wraps; the right-hand words stay right.
   const wrap = large ? ({ flexWrap: 'wrap', columnGap: 12 } as const) : null;
@@ -277,27 +321,35 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
           {formatMinutes(current?.totalMinutes ?? 0)}
         </BlancText>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: 110, marginTop: 14 }}>
-        {points.map((point, index) => (
-          <View key={point.weekStart} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
-            <View
-              style={{
-                height: `${Math.max(point.totalMinutes > 0 ? 3 : 1.5, (point.totalMinutes / peak) * 100)}%`,
-                borderRadius: 3,
-                borderCurve: 'continuous',
-                backgroundColor: index === points.length - 1 ? c.ink : point.totalMinutes > 0 ? c.graphite : c.track,
-                opacity: contrast || index === points.length - 1 || point.totalMinutes === 0 ? 1 : 0.5,
-              }}
-            />
-          </View>
-        ))}
+      <View style={{ height: 110, marginTop: 18 }}>
+        {/* The scale's top and the zero line; a week without training draws nothing on it. */}
+        <View style={{ position: 'absolute', left: 0, right: SCALE_COLUMN + 6, top: 0, height: 1, backgroundColor: c.hairline }} />
+        <View style={{ position: 'absolute', left: 0, right: SCALE_COLUMN + 6, bottom: 0, height: 1, backgroundColor: c.hairline }} />
+        <ScaleLabel bottom="100%">{formatMinutes(top)}</ScaleLabel>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 6, height: '100%', marginRight: SCALE_COLUMN + 6 }}>
+          {points.map((point, index) => (
+            <View key={point.weekStart} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+              {point.totalMinutes > 0 ? (
+                <View
+                  style={{
+                    height: `${Math.max(3, (point.totalMinutes / top) * 100)}%`,
+                    borderRadius: 3,
+                    borderCurve: 'continuous',
+                    backgroundColor: index === points.length - 1 ? c.ink : c.graphite,
+                    opacity: contrast || index === points.length - 1 ? 1 : 0.5,
+                  }}
+                />
+              ) : null}
+            </View>
+          ))}
+        </View>
       </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, ...wrap }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, marginRight: SCALE_COLUMN + 6, ...wrap }}>
         <BlancText variant="footnote" tone="graphite">
           {points[0]?.label}
         </BlancText>
         <BlancText variant="footnote" tone="graphite" style={right}>
-          This week
+          {current?.label}
         </BlancText>
       </View>
     </View>
@@ -336,9 +388,10 @@ function NutritionSection() {
 }
 
 /**
- * One macro across the last seven days, against its daily target (dashed);
- * today in ink, as in the training chart. A day well past target is red only
- * where that is a warning for the goal.
+ * One macro across the last seven days, against its daily target (dashed,
+ * its figure beside it); today in ink, as in the training chart, and a day
+ * with nothing logged left empty. A day well past target is red only where
+ * that is a warning for the goal.
  */
 function MacroBars({
   days,
@@ -389,40 +442,49 @@ function MacroBars({
           {unit} {todayOnly ? 'today' : 'a day'}{share}
         </BlancText>
       </View>
-      <View style={{ height: 72, marginTop: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+      <View style={{ height: 72, marginTop: 12 }}>
+        {/* The zero line: a day with nothing logged draws nothing on it. */}
+        <View style={{ position: 'absolute', left: 0, right: SCALE_COLUMN + 6, bottom: 0, height: 1, backgroundColor: c.hairline }} />
         {target > 0 ? (
-          <View
-            style={{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: `${(target / max) * 100}%`,
-              borderTopWidth: 1,
-              borderStyle: 'dashed',
-              borderColor: c.graphite,
-              opacity: contrast ? 1 : 0.6,
-            }}
-          />
+          <>
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: SCALE_COLUMN + 6,
+                bottom: `${(target / max) * 100}%`,
+                borderTopWidth: 1,
+                borderStyle: 'dashed',
+                borderColor: c.graphite,
+                opacity: contrast ? 1 : 0.6,
+              }}
+            />
+            <ScaleLabel bottom={`${(target / max) * 100}%`}>{formatWhole(target)}</ScaleLabel>
+          </>
         ) : null}
-        {days.map((day) => {
-          const over = isOver(day);
-          const current = day.date === todayKey;
-          return (
-            <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
-              <View
-                style={{
-                  height: `${Math.max(day[macro] > 0 ? 3 : 1.5, (day[macro] / max) * 100)}%`,
-                  borderRadius: 3,
-                  borderCurve: 'continuous',
-                  backgroundColor: day[macro] === 0 ? c.track : over ? c.live : current ? c.ink : c.graphite,
-                  opacity: contrast || day[macro] === 0 || over || current ? 1 : 0.5,
-                }}
-              />
-            </View>
-          );
-        })}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%', marginRight: SCALE_COLUMN + 6 }}>
+          {days.map((day) => {
+            const over = isOver(day);
+            const current = day.date === todayKey;
+            return (
+              <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+                {day[macro] > 0 ? (
+                  <View
+                    style={{
+                      height: `${Math.max(3, (day[macro] / max) * 100)}%`,
+                      borderRadius: 3,
+                      borderCurve: 'continuous',
+                      backgroundColor: over ? c.live : current ? c.ink : c.graphite,
+                      opacity: contrast || over || current ? 1 : 0.5,
+                    }}
+                  />
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 6, marginRight: SCALE_COLUMN + 6 }}>
         {days.map((day) => (
           <BlancText key={day.date} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {format(parseISO(day.date), 'EEEEE')}

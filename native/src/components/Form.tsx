@@ -182,12 +182,13 @@ export function ToggleRow({ label, detail, value, onChange, disabled, list }: {
   /** Among list Rows rather than form fields: 60 pt, label and line as a Row's. */
   list?: boolean;
 }) {
+  const c = useBlanc();
   const [pending, setPending] = useState<boolean | null>(null);
   useEffect(() => {
     if (!disabled) setPending(null);
   }, [disabled, value]);
   return (
-    <View style={[rowStyle, { paddingVertical: 10 }, list ? { minHeight: 60 } : null]}>
+    <View style={[rowStyle, { paddingVertical: 10 }, list ? { minHeight: detail ? 60 : 52 } : null]}>
       <View style={{ flex: 1 }} {...spokenByControl}>
         <BlancText variant={list ? 'bodyStrong' : 'body'}>{label}</BlancText>
         {detail ? (
@@ -198,6 +199,7 @@ export function ToggleRow({ label, detail, value, onChange, disabled, list }: {
       </View>
       <Switch
         accessibilityLabel={detail ? `${label}, ${detail}` : label}
+        trackColor={{ true: c.switchOn }}
         value={pending ?? value}
         disabled={disabled}
         onValueChange={(next) => {
