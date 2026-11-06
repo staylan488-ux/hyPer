@@ -201,7 +201,15 @@ describe("Progress's nutrition header", () => {
   it("uses today's figure while today is the only day logged", async () => {
     nutrition = lastWeek({ 0: 1342 });
     await open();
-    expect(shown()).toContain('Avg 1342 kcal over 1 day');
+    expect(shown()).toContain('1342 kcal · 1 day logged');
+    expect(shown()).not.toContain('Avg 1342');
+  });
+
+  it('says one logged day plainly rather than as an average', async () => {
+    nutrition = lastWeek({ 0: 900, 2: 2100 });
+    await open();
+    expect(shown()).toContain('2100 kcal · 1 day logged');
+    expect(shown()).not.toContain('over 1 day');
   });
 
   it('names no count once every earlier day is logged', async () => {

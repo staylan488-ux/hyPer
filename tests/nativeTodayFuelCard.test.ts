@@ -7,6 +7,7 @@ import { create } from 'zustand';
 
 import * as fuelSummary from '@/lib/fuelSummary';
 import * as todayModel from '@/lib/todayModel';
+import * as types from '@/types';
 import type { MacroTarget } from '@/types';
 import { todayTotalsShown } from '../native/src/lib/fuel';
 import { loadNativeModule } from './helpers/loadNativeModule';
@@ -50,6 +51,7 @@ async function open() {
     'react-native': { Pressable, RefreshControl: Empty, View: Wrap },
     'react-native-reanimated': { default: { View: Wrap } },
     '@/lib/todayModel': todayModel,
+    '@/types': types,
     '@/lib/fuelSummary': fuelSummary,
     '@/stores/appStore': { useAppStore: appStore },
     '@/stores/authStore': { useAuthStore: create(() => ({ user: { id: 'user-1' } })) },

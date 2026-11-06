@@ -252,7 +252,7 @@ function AppearanceRow() {
           : { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingLeft: 18, paddingRight: 16 }
       }>
       {/* The menu says its own name to VoiceOver, with the choice as its value: one stop, "Appearance, Automatic". */}
-      <BlancText variant="bodyStrong" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
+      <BlancText variant="body" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
         Appearance
       </BlancText>
       <Host matchContents>

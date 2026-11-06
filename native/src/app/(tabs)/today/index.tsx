@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
+import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
@@ -151,8 +152,9 @@ export default function TodayScreen() {
                 <>
                   <Hairline />
                   <Row
-                    title={`${week.inRange} of ${week.trained} muscles in range`}
-                    detail={insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over)}
+                    title={`${week.inRange} of ${week.trained} trained muscles in range`}
+                    // Every exception the week has, by name: what Progress opens on.
+                    detail={weekExceptions(weekly) ?? (insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over))}
                     chevron
                     onPress={() => router.push('/today/progress')}
                   />
@@ -281,4 +283,14 @@ function setLine(setNumber: number, sets: number, weight: number | null, reps: n
 /** "2 under · 1 over", leaving out zeros. */
 function muscleCounts(under: number, over: number): string | undefined {
   return [under ? `${under} under` : null, over ? `${over} over` : null].filter(Boolean).join(' · ') || undefined;
+}
+
+/** "Hamstrings below · Side delts over": the trained muscles outside their range this week, by name. */
+function weekExceptions(weekly: MuscleVolume[] | null | undefined): string | undefined {
+  const trained = (weekly ?? []).filter((volume) => volume.weekly_sets > 0);
+  const name = (volume: MuscleVolume) => MUSCLE_GROUP_LABELS[volume.muscle_group] ?? volume.muscle_group;
+  const below = trained.filter((volume) => volume.status === 'below_mev').map(name);
+  const over = trained.filter((volume) => volume.status === 'above_mrv').map(name);
+  const parts = [below.length ? `${below.join(', ')} below` : null, over.length ? `${over.join(', ')} over` : null].filter(Boolean);
+  return parts.length ? parts.join(' · ') : undefined;
 }

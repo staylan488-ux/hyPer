@@ -21,17 +21,23 @@ const SEAM = 0.8;
 const DARK_SEAM = 1.05;
 
 /**
- * The figure's three greys, set by hand for each card so the states stay
- * apart: the bare body (untrained), one light-mid grey (below range) and
- * ink (in range); over is the live red. Each step is at least about 1.4:1
- * from the card and 1.8:1 from its neighbour, more with Increase Contrast.
+ * The figure's tones, set by hand for each card. The body and any muscle
+ * not trained this week sit just off the card, held by a hairline contour,
+ * so every filled shape on the figure means something: a clearly filled
+ * light-mid grey below range, the strong tone in range, and the live red
+ * over. Each filled state is at least about 1.8:1 from the body and from
+ * the others, so they part by lightness as well as colour; in dark mode
+ * below range sits well under the red's brightness, which a mid grey
+ * matched.
  */
 const TONES = {
-  light: { body: '#E4E3DE', below: '#B9B8B2', in: '#4A4A45' },
-  lightContrast: { body: '#D3D2CC', below: '#8A8983', in: '#26261F' },
-  dark: { body: '#343432', below: '#6E6E69', in: '#C4C4BE' },
-  darkContrast: { body: '#4A4A47', below: '#98988F', in: '#E6E6E0' },
+  light: { body: '#F6F5F2', contour: '#D9D8D3', below: '#B9B8B2', in: '#4A4A45' },
+  lightContrast: { body: '#EFEEE9', contour: '#A9A8A2', below: '#8E8D87', in: '#26261F' },
+  dark: { body: '#252524', contour: '#484846', below: '#66665F', in: '#D4D4CE' },
+  darkContrast: { body: '#2D2D2C', contour: '#5A5A56', below: '#6A6A64', in: '#F0F0EA' },
 } as const;
+/** The contour's width in figure units; half of it shows outside the body, about two thirds of a point. */
+const CONTOUR = 1.3;
 
 type FigureState = 'untrained' | 'below' | 'in' | 'over';
 
@@ -74,8 +80,8 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
 }
 
 /**
- * This week's volume on a flat front and back muscle figure: bare where
- * untrained, light grey below range, ink in range, red past the recoverable
+ * This week's volume on a flat front and back muscle figure: an outline
+ * where untrained, light grey below range, ink in range, red past the recoverable
  * ceiling, with the key under it. The shading is the web app's
  * (`src/lib/maquette.ts`); the drawing is the app's own (`lib/anatomy.ts`).
  * Tap a muscle to choose it (a near miss counts; small ones like the side
@@ -98,8 +104,8 @@ export function MuscleFigure({ volume, selected, onPick, height = 200 }: {
   const tones = TONES[`${dark ? 'dark' : 'light'}${contrast ? 'Contrast' : ''}`];
   const palette = useMemo<Record<FigureState, Rgb>>(
     () => ({
-      untrained: parseColor(tones.body, [0.89, 0.88, 0.86]),
-      below: parseColor(tones.below, [0.66, 0.66, 0.64]),
+      untrained: parseColor(tones.body, [0.96, 0.96, 0.95]),
+      below: parseColor(tones.below, [0.73, 0.72, 0.7]),
       // In range reads strongest without the full weight of ink, which made the figure a silhouette.
       in: parseColor(tones.in, [0.29, 0.29, 0.27]),
       over: parseColor(c.live, [0.82, 0.23, 0.18]),
@@ -136,6 +142,8 @@ export function MuscleFigure({ volume, selected, onPick, height = 200 }: {
     if (chosen && state === 'untrained') return rgbToCss(mixRgb(palette.untrained, palette.below, 0.5));
     return rgbToCss(palette[state]);
   };
+  // Untrained and not chosen: drawn as the body itself.
+  const bare = (muscle: MuscleGroup) => stateOf(shades.get(muscle)) === 'untrained' && !isChosen(selected, muscle);
   // The key: one swatch for each state a trained muscle takes.
   const key: Array<{ label: string; swatch: string }> = [
     { label: 'Below range', swatch: rgbToCss(palette.below) },
@@ -172,14 +180,27 @@ export function MuscleFigure({ volume, selected, onPick, height = 200 }: {
           preserveAspectRatio="xMidYMid meet">
           {SIDES.map((side, index) => (
             <G key={side} transform={`translate(${index * (FIGURE_WIDTH + GAP)} 0)`}>
+              {/* The contour: every body part stroked, then filled over, so only the silhouette's outer edge shows. */}
+              <Ellipse cx={HEAD.cx} cy={HEAD.cy} rx={HEAD.rx} ry={HEAD.ry} fill={tones.contour} stroke={tones.contour} strokeWidth={CONTOUR} />
+              {BODY.map((outline, i) => (
+                <Path key={`c${i}`} d={smoothPath(outline)} fill={tones.contour} stroke={tones.contour} strokeWidth={CONTOUR} strokeLinejoin="round" />
+              ))}
               <Ellipse cx={HEAD.cx} cy={HEAD.cy} rx={HEAD.rx} ry={HEAD.ry} fill={body} />
               {BODY.map((outline, i) => (
                 <Path key={`b${i}`} d={smoothPath(outline)} fill={body} />
               ))}
               {REGIONS[side].map((region, i) => (
-                <Path key={`m${i}`} d={smoothPath(region.points)} fill={colorOf(region.muscle)} stroke={c.label} strokeWidth={seam} strokeLinejoin="round" />
+                // A muscle left as the body draws no seam, which would cut into the contour.
+                <Path
+                  key={`m${i}`}
+                  d={smoothPath(region.points)}
+                  fill={colorOf(region.muscle)}
+                  stroke={bare(region.muscle) ? 'none' : c.label}
+                  strokeWidth={seam}
+                  strokeLinejoin="round"
+                />
               ))}
-              {side === 'front'
+              {side === 'front' && !bare('core')
                 ? AB_LINES.map(([from, to], i) => (
                     <Path key={`a${i}`} d={`M${from[0]} ${from[1]}L${to[0]} ${to[1]}`} stroke={c.label} strokeWidth={seam} />
                   ))

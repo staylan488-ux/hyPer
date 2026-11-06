@@ -117,7 +117,7 @@ const lmSeeds: LMSeed[] = [
   ['back', 8, 12, 14, 20, 25, 18, 'mav'],
   ['quads', 6, 8, 10, 16, 20, 9, 'mev_mav'],
   ['hamstrings', 4, 6, 8, 12, 16, 5, 'below_mev'],
-  ['side_delts', 6, 10, 12, 18, 22, 21, 'above_mrv'],
+  ['side_delts', 6, 10, 12, 18, 22, 24, 'above_mrv'],
   ['biceps', 6, 8, 10, 16, 20, 12, 'mav'],
   ['triceps', 6, 8, 10, 16, 20, 10, 'mav'],
   ['glutes', 4, 6, 8, 14, 18, 11, 'mav'],

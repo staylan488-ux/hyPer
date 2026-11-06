@@ -38,6 +38,11 @@ import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc, type Palette } from '~/theme/blanc';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/** A week's row in the month grid: a 44-point target holding the 34-point day, 4 points of clearance and its dot. */
+const DAY_ROW = 44;
+/** Days still to come, as Fuel's week strip dims them; Increase Contrast keeps them legible. */
+const FUTURE_OPACITY = 0.35;
+const FUTURE_CONTRAST_OPACITY = 0.55;
 
 /**
  * A length the way the rest of the app writes one ("48 min", "1 h 5 min"), or null without one.
@@ -143,9 +148,11 @@ export default function HistoryScreen() {
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Calendar month={month} day={day} workouts={workouts} activities={activities} />
 
+        {/* Closer under the calendar than sections usually sit: the heading is the chosen day's, so it reads with the grid. */}
         <Section
           title={format(date, 'EEEE, MMMM d')}
-          accessory={<AddActivityButton day={day} />}>
+          accessory={<AddActivityButton day={day} />}
+          style={{ marginTop: 14 }}>
           <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
             {loading ? (
               <Animated.View key="loading" entering={rowEnter} exiting={blockExit}>
@@ -239,7 +246,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
   };
 
   return (
-    <Label style={{ marginTop: 6, paddingTop: 6, paddingBottom: 10, overflow: 'hidden' }}>
+    <Label style={{ marginTop: 6, paddingTop: 4, paddingBottom: 4, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 6 }}>
         <BlancText variant="headline" style={{ flex: 1 }} accessibilityRole="header">
           {monthName}
@@ -272,7 +279,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
           }}
         />
       </View>
-      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 4 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 2 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         {WEEKDAYS.map((weekday, index) => (
           <BlancText key={index} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {weekday}
@@ -286,7 +293,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
         showsHorizontalScrollIndicator={false}
         scrollsToTop={false}
         // As tall as this month's weeks; the neighbours clip while they slide in.
-        style={{ height: (buildCalendarDays(month).length / 7) * 46 + 2 }}
+        style={{ height: (buildCalendarDays(month).length / 7) * DAY_ROW + 2 }}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
         onScrollBeginDrag={() => {
           arrowTurn.current = false;
@@ -356,6 +363,7 @@ function MonthGrid({
           inMonth={cell.inMonth}
           selected={cell.key === day}
           today={cell.key === todayKey}
+          future={cell.key > todayKey}
           lifts={marks.lifts.get(cell.key) ?? 0}
           activities={marks.other.get(cell.key)?.join(', ') ?? ''}
           contrast={contrast}
@@ -374,6 +382,7 @@ function DayCell({
   inMonth,
   selected,
   today,
+  future,
   lifts,
   activities,
   contrast,
@@ -385,6 +394,8 @@ function DayCell({
   inMonth: boolean;
   selected: boolean;
   today: boolean;
+  /** After today: dimmed, still tappable. */
+  future: boolean;
   /** Workouts that day. */
   lifts: number;
   /** The day's activities by name ("Running, Cycling"), or empty. */
@@ -405,7 +416,7 @@ function DayCell({
         haptics.select();
         selectHistoryDay(date);
       }}
-      style={{ width: `${100 / 7}%`, height: 46, alignItems: 'center', justifyContent: 'center' }}>
+      style={{ width: `${100 / 7}%`, height: DAY_ROW, alignItems: 'center', justifyContent: 'center' }}>
       <View
         style={{
           width: 34,
@@ -424,8 +435,9 @@ function DayCell({
           style={{
             fontVariant: ['tabular-nums'],
             color: selected && inMonth ? c.label : inMonth ? c.ink : c.upcoming,
-            // Increase Contrast keeps the neighbouring months' days legible.
-            opacity: inMonth || contrast ? 1 : 0.55,
+            // Days to come dim (a chosen one stays on its disc); Increase
+            // Contrast keeps them and the neighbouring months' days legible.
+            opacity: selected && inMonth ? 1 : inMonth && future ? (contrast ? FUTURE_CONTRAST_OPACITY : FUTURE_OPACITY) : inMonth || contrast ? 1 : 0.55,
           }}>
           {number}
         </BlancText>

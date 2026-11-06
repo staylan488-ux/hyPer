@@ -7,6 +7,7 @@ import { create } from 'zustand';
 
 import * as fuelSummary from '@/lib/fuelSummary';
 import * as todayModel from '@/lib/todayModel';
+import * as types from '@/types';
 import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
@@ -38,6 +39,7 @@ async function open() {
     'react-native': { Pressable: Wrap, RefreshControl: Empty, View: Wrap },
     'react-native-reanimated': { default: { View: Wrap } },
     '@/lib/todayModel': todayModel,
+    '@/types': types,
     '@/lib/fuelSummary': fuelSummary,
     '@/stores/appStore': { useAppStore: create(() => ({ macroTarget: null, weeklyVolume: [], nutritionProfile: null })) },
     '@/stores/authStore': { useAuthStore: create(() => ({ user: { id: 'user-1' } })) },

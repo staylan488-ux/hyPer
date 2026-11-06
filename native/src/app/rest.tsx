@@ -160,7 +160,7 @@ export default function RestSheet() {
         }>
         {/* Counts down like the Clock app's timer: each second rolls. */}
         {/* Before it starts, the length carries the ruled line of a figure that can be written in, as Train's weight and reps do. */}
-        <View style={{ borderBottomWidth: running || paused ? 0 : 1.5, borderBottomColor: c.mark, paddingHorizontal: 6 }}>
+        <View style={{ borderBottomWidth: running || paused ? 0 : 1, borderBottomColor: c.mark, paddingHorizontal: 6 }}>
           <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center' }}>
             {formatClock(figure)}
           </RollingText>

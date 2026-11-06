@@ -86,7 +86,7 @@ export default function ProgressScreen() {
   const chosen = open ? volume.find((entry) => entry.muscle_group === open) ?? null : null;
   const caption = chosen
     ? `${MUSCLE_GROUP_LABELS[chosen.muscle_group]} · ${formatSets(chosen.weekly_sets)}`
-    : `${week.inRange} of ${week.trained} muscles in range`;
+    : `${week.inRange} of ${week.trained} trained muscles in range`;
 
   return (
     <>
@@ -158,14 +158,16 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
   // Words only when something needs doing: under, over or near the ceiling.
   const words = call.priority <= 2;
   const name = MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group.replace('_', ' ');
+  const advice = asSentences(call.headline);
+  // An open row names the rail's marks by what they mean.
   const landmarks = mv.landmark
-    ? `Maintain ${mv.landmark.mv} · grow from ${mv.landmark.mev} · best ${mv.landmark.mav_low}–${mv.landmark.mav_high} · ceiling ${mv.landmark.mrv}`
+    ? `Minimum ${mv.landmark.mev} · Best ${mv.landmark.mav_low}–${mv.landmark.mav_high} · Ceiling ${mv.landmark.mrv}`
     : 'No landmarks set for this muscle.';
-  // One fact for VoiceOver, the rail's band and best range included, with the
-  // words the row shows; an open row adds what it shows.
+  // One fact for VoiceOver, the rail's band included, with the words the row
+  // shows; an open row adds what it shows.
   const spoken = [
-    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, in range ${mv.landmark.mev}–${mv.landmark.mrv}, best ${mv.landmark.mav_low}–${mv.landmark.mav_high}` : ''}, ${call.chip}`,
-    words ? call.headline : null,
+    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, in range ${mv.landmark.mev}–${mv.landmark.mrv}` : ''}, ${call.chip}`,
+    words ? advice : null,
     open ? landmarks : null,
   ]
     .filter(Boolean)
@@ -191,14 +193,15 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
         </BlancText>
       </View>
       {words ? (
-        <BlancText variant="secondary" tone={hot ? 'live' : 'graphite'} numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-          {call.headline}
+        // Red stays on the count and the rail's dot; the advice is quiet.
+        <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+          {advice}
         </BlancText>
       ) : null}
-      {mv.landmark ? <Rail sets={mv.weekly_sets} landmark={mv.landmark} hot={hot} /> : null}
+      {mv.landmark ? <Rail sets={mv.weekly_sets} landmark={mv.landmark} hot={hot} open={open} /> : null}
       {open ? (
-        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 10 }}>
-          <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 8 }}>
+          <BlancText variant={mv.landmark ? 'meta' : 'footnote'} tone="graphite" {...(mv.landmark ? { size: 11, maxFontSizeMultiplier: 1.4 } : null)} style={{ fontVariant: ['tabular-nums'] }}>
             {landmarks}
           </BlancText>
         </Animated.View>
@@ -226,38 +229,17 @@ function Disclosure({ open }: { open: boolean }) {
 /**
  * Weekly sets on a line from zero past the ceiling. The band is in range
  * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
- * "in range" counts it, with those two set counts under its ends; its darker
- * middle is the best range.
+ * "in range" counts it. An open row adds the band's darker middle, the best
+ * range, and names the marks under the rail.
  */
-function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean }) {
+function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean; open: boolean }) {
   const c = useBlanc();
   // Increase Contrast draws the quiet marks at full strength.
   const contrast = useIncreaseContrast();
-  const large = useLargeText();
   const max = Math.max(landmark.mrv * 1.1, sets, 1);
   const share = (value: number) => Math.min(100, (value / max) * 100);
   const at = (value: number) => `${share(value)}%` as const;
   const span = (from: number, to: number) => `${Math.max(0, ((Math.min(to, max) - from) / max) * 100)}%` as const;
-  // A count centred under its end of the band; one at the very start sits flush left.
-  const end = (which: string, value: number) => (
-    <BlancText
-      key={which}
-      variant="meta"
-      tone="graphite"
-      size={11}
-      maxFontSizeMultiplier={1.4}
-      numberOfLines={1}
-      style={{
-        position: 'absolute',
-        left: at(value),
-        width: END_WIDTH,
-        marginLeft: share(value) < 6 ? 0 : -END_WIDTH / 2,
-        textAlign: share(value) < 6 ? 'left' : 'center',
-        fontVariant: ['tabular-nums'],
-      }}>
-      {formatWhole(value)}
-    </BlancText>
-  );
   return (
     <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       <View style={{ height: 10, marginTop: 10, justifyContent: 'center' }}>
@@ -273,17 +255,20 @@ function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<Mus
             opacity: contrast ? 0.45 : 0.28,
           }}
         />
-        <View
-          style={{
-            position: 'absolute',
-            left: at(landmark.mav_low),
-            width: span(landmark.mav_low, landmark.mav_high),
-            height: 5,
-            borderRadius: 2.5,
-            backgroundColor: c.graphite,
-            opacity: contrast ? 1 : 0.7,
-          }}
-        />
+        {open ? (
+          <Animated.View
+            entering={FadeIn.duration(180)}
+            style={{
+              position: 'absolute',
+              left: at(landmark.mav_low),
+              width: span(landmark.mav_low, landmark.mav_high),
+              height: 5,
+              borderRadius: 2.5,
+              backgroundColor: c.graphite,
+              opacity: contrast ? 1 : 0.7,
+            }}
+          />
+        ) : null}
         <View
           style={{
             position: 'absolute',
@@ -298,17 +283,25 @@ function Rail({ sets, landmark, hot }: { sets: number; landmark: NonNullable<Mus
           }}
         />
       </View>
-      {/* The counts sit out of the flow; the accessibility sizes give them a taller line. */}
-      <View style={{ height: large ? 20 : 14, marginTop: 3 }}>
-        {end('mev', landmark.mev)}
-        {end('mrv', landmark.mrv)}
-      </View>
     </View>
   );
 }
 
-/** The width each end count of a range bar centres in. */
-const END_WIDTH = 32;
+/**
+ * Shared coaching shorthand as sentences: "Over its ceiling · pull back"
+ * reads "Over its ceiling. Pull back a little." A single phrase stays as it is.
+ */
+function asSentences(headline: string): string {
+  const written = SENTENCES[headline];
+  if (written) return written;
+  const parts = headline.split(' · ');
+  if (parts.length < 2) return headline;
+  return parts.map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}.`).join(' ');
+}
+const SENTENCES: Record<string, string> = {
+  'Over its ceiling · pull back': 'Over its ceiling. Pull back a little.',
+  'Near its ceiling · hold here': 'Near its ceiling. Hold here.',
+};
 
 /**
  * Shorthand in words for VoiceOver, with the coaching lines' "~2 sets" as
@@ -342,6 +335,9 @@ function ScaleLabel({ bottom, children }: { bottom: `${number}%`; children: stri
   );
 }
 
+/** The width the training chart's middle date centres in. */
+const MIDDLE_TICK = 64;
+
 /** The top of the training chart: the next whole hour at or above the longest week. */
 const hoursScale = (peak: number) => Math.max(60, Math.ceil(peak / 60) * 60);
 
@@ -356,6 +352,8 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   // At the accessibility text sizes a line that no longer fits wraps; the right-hand words stay right.
   const wrap = large ? ({ flexWrap: 'wrap', columnGap: 12 } as const) : null;
   const right = large ? ({ flexGrow: 1, textAlign: 'right' } as const) : undefined;
+  // One date between the first and last week's, the middle week's.
+  const middle = points.length >= 3 ? Math.floor(points.length / 2) : null;
   return (
     <View
       accessible
@@ -401,6 +399,28 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
         <BlancText variant="footnote" tone="graphite" style={right}>
           {current?.label}
         </BlancText>
+        {/*
+          The middle week's date, centred under its bar in a row laid out as
+          the bars are. Left out at the accessibility text sizes, where the
+          three no longer fit on one line.
+        */}
+        {middle !== null && !large ? (
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row', gap: 6 }}>
+            {points.map((point, index) => (
+              <View key={point.weekStart} style={{ flex: 1 }}>
+                {index === middle ? (
+                  <BlancText
+                    variant="footnote"
+                    tone="graphite"
+                    numberOfLines={1}
+                    style={{ position: 'absolute', left: '50%', width: MIDDLE_TICK, marginLeft: -MIDDLE_TICK / 2, textAlign: 'center' }}>
+                    {point.label}
+                  </BlancText>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -443,7 +463,7 @@ function NutritionSection() {
  * with nothing logged left empty. A day well past target is red only where
  * that is a warning for the goal. The header is the daily average of the
  * logged days (Fuel already shows today), with how many days it covers
- * while some of the week is missing.
+ * while some of the week is missing; a single logged day is named as one.
  */
 function MacroBars({
   days,
@@ -474,14 +494,16 @@ function MacroBars({
   const average = todayOnly ? averageLoggedDays(days, macro) : pastAverage;
   // The days the average is of; named while any earlier day is missing.
   const counted = todayOnly ? 1 : earlier.filter((day) => day[macro] > 0).length;
-  const coverage = counted > 0 && (todayOnly || counted < earlier.length) ? `over ${counted} ${counted === 1 ? 'day' : 'days'}` : null;
+  // One day is said plainly ("1,342 kcal · 1 day logged"): an average of one day is no average.
+  const single = counted === 1;
+  const coverage = counted > 1 && counted < earlier.length ? `over ${counted} days` : null;
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
   return (
     <View
       accessible
       accessibilityLabel={speak(
-        `${label}, ${counted > 0 ? `daily average ${formatWhole(average)} ${unit}${coverage ? ` ${coverage}` : ''}` : 'none logged'}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
+        `${label}, ${single ? `${formatWhole(average)} ${unit}, 1 day logged` : counted > 0 ? `daily average ${formatWhole(average)} ${unit}${coverage ? ` ${coverage}` : ''}` : 'none logged'}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
           .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${day[macro] > 0 ? formatWhole(day[macro]) : 'nothing logged'}${isOver(day) ? ', over' : ''}`)
           .join('; ')}`,
       )}>
@@ -490,7 +512,14 @@ function MacroBars({
         <BlancText variant="secondary" tone="graphite">
           {label}
         </BlancText>
-        {counted > 0 ? (
+        {single ? (
+          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            <BlancText variant="secondary" weight="500">
+              {formatWhole(average)}
+            </BlancText>{' '}
+            {unit} · 1 day logged
+          </BlancText>
+        ) : counted > 0 ? (
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
             Avg{' '}
             <BlancText variant="secondary" weight="500">

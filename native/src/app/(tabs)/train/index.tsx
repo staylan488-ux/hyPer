@@ -29,7 +29,7 @@ import { announce, screenReaderRunning, speak, spokenClock, useAnnounce, useLarg
 import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatMinutes, formatRepRange, formatSet, formatTarget } from '~/lib/format';
+import { formatLoad, formatMinutes, formatRepRange, formatSet, formatTarget } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
@@ -217,9 +217,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const ready = weight !== null && reps !== null;
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
-  const lastLine = last ? formatSet(last.weight, last.reps, { unit: false }) : '';
-  // On the card, beside the editable figures, the weight keeps its unit.
-  const lastLineUnit = last ? formatSet(last.weight, last.reps) : '';
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
   const cardLine = current
@@ -514,6 +511,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         quiet
         title={movement.name}
         trailing={tally}
+        // It opens its sets to correct: a disclosure says so, as the row no longer looks up next.
+        chevron
         accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
         onPress={() => openMovement(movement.exerciseId)}
         actions={actions}
@@ -620,14 +619,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             marks={session.sets.map((set) => set.completed)}
             current={current?.index ?? null}
             height={20}
-            style={{ marginHorizontal: space.gutter, marginTop: 16 }}
+            style={{ marginHorizontal: space.gutter, marginTop: 12 }}
             accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
           />
         ) : null}
 
         {current && draft ? (
           <View ref={cardRef} collapsable={false}>
-          <Label style={{ marginTop: 18, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
+          <Label style={{ marginTop: 14, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
             {/* Keyed by movement so a switch fades the new movement in instead of jumping. */}
             <Animated.View key={current.movement.exerciseId} entering={FadeIn.duration(220)}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
@@ -670,20 +669,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               </BlancText>
             ) : null}
 
-            {/* Last time sits under the prescription, where it can be compared with the figures; last time's note rides on it. */}
+            {/* Last time's numbers sit under the figures they compare with; here, a fresh gain or last time's note. */}
             {beat?.fresh ? (
               <BeatLine key={beat.key} gain={beat.gain} style={{ marginTop: 8 }} />
-            ) : lastLine || lastNote ? (
-              <Animated.View key="last" entering={FadeIn.duration(220)} style={{ marginTop: 8 }}>
+            ) : lastNote ? (
+              <Animated.View key="note" entering={FadeIn.duration(220)} style={{ marginTop: 8 }}>
                 <BlancText
                   variant="footnote"
                   tone="graphite"
                   numberOfLines={large ? undefined : 2}
-                  style={{ fontVariant: ['tabular-nums'] }}
-                  accessibilityLabel={speak(
-                    [lastLine ? `Last time, ${formatSet(last?.weight, last?.reps)}` : null, lastNote ? `last note: ${lastNote.note}` : null].filter(Boolean).join('. '),
-                  )}>
-                  {[lastLine ? `Last time ${lastLineUnit}` : null, lastNote?.note].filter(Boolean).join(' · ')}
+                  accessibilityLabel={`Last note: ${lastNote.note}`}>
+                  {lastNote.note}
                 </BlancText>
               </Animated.View>
             ) : null}
@@ -696,6 +692,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   value={draft.weight}
                   unit="lb"
                   size={figure}
+                  last={last && Number.isFinite(last.weight ?? NaN) && (last.weight ?? 0) > 0 ? formatLoad(last.weight) : undefined}
+                  spokenLast={last && Number.isFinite(last.weight ?? NaN) && (last.weight ?? 0) > 0 ? `${formatLoad(last.weight)} pounds` : undefined}
                   accessibilityLabel="Weight in pounds"
                   onChange={(text) => setDraft({ ...draft, weight: text, touched: true })}
                   onFocus={() => setEditing('weight')}
@@ -709,6 +707,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   unit="reps"
                   size={figure}
                   integer
+                  last={last && Number.isFinite(last.reps ?? NaN) ? String(last.reps) : undefined}
+                  spokenLast={last && Number.isFinite(last.reps ?? NaN) ? `${last.reps} reps` : undefined}
                   accessibilityLabel="Reps"
                   onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
                   onFocus={() => setEditing('reps')}
@@ -887,7 +887,8 @@ function FigureRow({ weight, reps, size }: { weight: ReactNode; reps: ReactNode;
       tone="graphite"
       accessibilityElementsHidden
       importantForAccessibility="no"
-      style={{ marginBottom: Math.round(size * 0.16) }}>
+      // Centred on the figures, above the captions under them.
+      style={{ marginBottom: Math.round(size * 0.3) + CAPTION_HEIGHT + 5 }}>
       ×
     </BlancText>
   );
@@ -918,11 +919,16 @@ function BigValue({
   onBlur,
   accessibilityLabel,
   integer,
+  last,
+  spokenLast,
 }: {
   ref: Ref<TextField>;
   value: string;
   unit: string;
   size: number;
+  /** Last time's value, written small under the ruled line ("last 60"). */
+  last?: string;
+  spokenLast?: string;
   onChange: (text: string) => void;
   onFocus: () => void;
   onBlur: () => void;
@@ -934,10 +940,11 @@ function BigValue({
   const [focused, setFocused] = useState(false);
   useImperativeHandle(ref, () => field.current as TextField);
   return (
-    // The unit beside the number is part of the field: a tap there types too.
+    <View>
+    {/* The unit beside the number is part of the field: a tap there types too. */}
     <Pressable accessible={false} onPress={() => field.current?.focus()} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
       {/* A ruled line under the figure, as in a paper log: it can be written in. Ink while typing. */}
-      <View style={{ borderBottomWidth: focused ? 2 : 1.5, borderBottomColor: focused ? c.ink : c.mark, marginBottom: focused ? -0.5 : 0 }}>
+      <View style={{ borderBottomWidth: focused ? 1.5 : 1, borderBottomColor: focused ? c.ink : c.mark, marginBottom: focused ? -0.5 : 0 }}>
       <FigureInput
         ref={field}
         // The key bar below brings − / +, Next and Done; no system bar.
@@ -971,8 +978,22 @@ function BigValue({
         {unit}
       </BlancText>
     </Pressable>
+    {/* Last time under its own figure, as a paper log keeps the last session in the margin. */}
+    <BlancText
+      variant="meta"
+      tone="graphite"
+      accessibilityLabel={spokenLast ? `Last time, ${spokenLast}` : undefined}
+      accessibilityElementsHidden={!last}
+      importantForAccessibility={last ? 'auto' : 'no-hide-descendants'}
+      style={{ marginTop: 5, minHeight: CAPTION_HEIGHT, opacity: last ? 1 : 0 }}>
+      {last ? `last ${last}` : ' '}
+    </BlancText>
+    </View>
   );
 }
+
+/** The last-time caption's line under each figure (Menlo 12 on a 16 pt line), kept even when empty so the card doesn't move. */
+const CAPTION_HEIGHT = 16;
 
 /**
  * The key bar's text grows no further than this, like iOS's own bars above

@@ -31,7 +31,8 @@ export function FuelReminderSetting() {
   const noTarget = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId && !hasReminderTarget(state.macroTarget));
   const time = useMemo(() => reminderTimeDate(settings.minutes), [settings.minutes]);
   return (
-    <Animated.View layout={rowLayout} style={{ marginTop: space.section }}>
+    // It belongs with the food settings just above it: closer to them than the groups between areas.
+    <Animated.View layout={rowLayout} style={{ marginTop: 20 }}>
       <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
         {/* Among You's list rows: a list switch, as Adaptive scheduling's. */}
         <ToggleRow list label="Fuel reminder" value={settings.enabled} disabled={!ready} onChange={setFuelReminderEnabled} />
