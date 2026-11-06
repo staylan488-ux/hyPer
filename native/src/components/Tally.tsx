@@ -17,8 +17,6 @@ type TallyProps = {
   compact?: boolean;
   /** Draw the strokes in one by one as it appears, each group's diagonal after its fifth. */
   drawIn?: boolean;
-  /** A finished movement's tally: logged strokes in graphite, receding with its name. */
-  quiet?: boolean;
   accessibilityLabel: string;
   style?: ViewStyle;
 };
@@ -31,19 +29,28 @@ const GROUP = 5;
 const DRAW_START = 350;
 const DRAW_STEP = 45;
 
+/**
+ * How much taller a compact tally's next stroke stands, and so the room it
+ * keeps above its strokes: half again the 12 pt stroke, as on Today's card
+ * (16 + 8). At 4 pt (a third) the next stroke read as the same height in a row.
+ */
+export const COMPACT_RISE = 6;
+
 /** Stroke width, gaps and how much taller the next stroke stands, per size. */
 const SIZES = {
   regular: { width: 2, nextWidth: 2.5, gap: 6, groupGap: 14, rowGap: 10, grow: 8, closing: 2 },
-  compact: { width: 1.5, nextWidth: 2, gap: 4, groupGap: 8, rowGap: 6, grow: 4, closing: 1.5 },
+  compact: { width: 1.5, nextWidth: 2, gap: 4, groupGap: 8, rowGap: 6, grow: COMPACT_RISE, closing: 1.5 },
 };
 type Size = (typeof SIZES)['regular'];
 
 /**
  * hyPer's set tally, counted the way a paper training log is: one stroke per
  * set in groups of five. Logged strokes are ink, the next set's stroke stands
- * taller in the live red, and a group of five logged sets is closed with a diagonal stroke.
+ * taller in the live red, the sets still to do are in `mark`, and a group of
+ * five logged sets is closed with a diagonal stroke. One grammar wherever a
+ * tally appears: a finished movement recedes through its name, never its strokes.
  */
-export function Tally({ marks, current, height: tall, compact, drawIn, quiet, accessibilityLabel, style }: TallyProps) {
+export function Tally({ marks, current, height: tall, compact, drawIn, accessibilityLabel, style }: TallyProps) {
   // Followed live: turning Reduce Motion on draws the next tally at once.
   const reduced = useReduceMotion();
   const draw = drawIn && !reduced;
@@ -71,10 +78,9 @@ export function Tally({ marks, current, height: tall, compact, drawIn, quiet, ac
           // Each group keeps room for the taller next stroke, so wrapped lines never shift.
           <View key={groupIndex} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: size.gap, minHeight: height + size.grow }}>
             {indexes.map((index) => (
-              <Stroke key={index} quiet={quiet} logged={marks[index]} next={index === current} height={height} size={size} appear={draw ? DRAW_START + index * DRAW_STEP : null} />
+              <Stroke key={index} logged={marks[index]} next={index === current} height={height} size={size} appear={draw ? DRAW_START + index * DRAW_STEP : null} />
             ))}
             <ClosingStroke
-              quiet={quiet}
               closed={closed}
               height={height}
               size={size}
@@ -88,7 +94,7 @@ export function Tally({ marks, current, height: tall, compact, drawIn, quiet, ac
 }
 
 /** `appear`: ms after mounting to draw the stroke in, or null to show it drawn. */
-function Stroke({ logged, next, quiet, height, size, appear }: { logged: boolean; next: boolean; quiet?: boolean; height: number; size: Size; appear: number | null }) {
+function Stroke({ logged, next, height, size, appear }: { logged: boolean; next: boolean; height: number; size: Size; appear: number | null }) {
   const c = useBlanc();
   const grow = useSharedValue(next ? 1 : 0);
   const shown = useSharedValue(appear === null ? 1 : 0);
@@ -111,7 +117,7 @@ function Stroke({ logged, next, quiet, height, size, appear }: { logged: boolean
           width: next ? size.nextWidth : size.width,
           borderRadius: size.nextWidth / 2,
           // Ink counts what is logged; the next set is the live one, taller and in the live red, so the ink strokes always equal the sets done.
-          backgroundColor: logged ? (quiet ? c.graphite : c.ink) : next ? c.live : c.mark,
+          backgroundColor: logged ? c.ink : next ? c.live : c.mark,
         },
         animated,
       ]}
@@ -120,7 +126,7 @@ function Stroke({ logged, next, quiet, height, size, appear }: { logged: boolean
 }
 
 /** The diagonal that closes a finished group of five; drawn in after `appear` ms, with a tick. */
-function ClosingStroke({ closed, quiet, height, size, appear }: { closed: boolean; quiet?: boolean; height: number; size: Size; appear: number | null }) {
+function ClosingStroke({ closed, height, size, appear }: { closed: boolean; height: number; size: Size; appear: number | null }) {
   const c = useBlanc();
   const drawn = useSharedValue(closed && appear === null ? 1 : 0);
 
@@ -155,7 +161,7 @@ function ClosingStroke({ closed, quiet, height, size, appear }: { closed: boolea
           width: length,
           height: size.closing,
           borderRadius: size.closing / 2,
-          backgroundColor: quiet ? c.graphite : c.ink,
+          backgroundColor: c.ink,
           transformOrigin: 'center',
         },
         animated,

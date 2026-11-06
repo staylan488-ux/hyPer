@@ -531,7 +531,7 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   const progress = progressFromSets(workout.sets);
   const duration = lengthOf(getWorkoutDurationMs(workout));
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
-  // The sets drawn as a quiet tally on the title's line, where it fits beside
+  // The sets drawn as a small tally on the title's line, where it fits beside
   // the name; otherwise (no sets, a long session, the accessibility sizes) in words.
   const tally = !large && progress.totalSets > 0 && progress.totalSets <= TALLY_MAX_SETS;
   const detail = tally ? duration ?? undefined : [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
@@ -551,8 +551,9 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
           accessibilityLabel={tally ? [title, duration, sets].filter(Boolean).join(', ') : undefined}
           trailing={
             tally ? (
-              <View style={detail ? { alignSelf: 'flex-start', marginTop: 3 } : null}>
-                <Tally compact quiet marks={orderedMarks(workout)} current={null} accessibilityLabel={sets} />
+              // Its strokes on the title's line, below the room the tally keeps for a next stroke.
+              <View style={detail ? { alignSelf: 'flex-start', marginTop: 1 } : null}>
+                <Tally compact marks={orderedMarks(workout)} current={null} accessibilityLabel={sets} />
               </View>
             ) : undefined
           }

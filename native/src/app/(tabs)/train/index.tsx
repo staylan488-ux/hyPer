@@ -4,7 +4,7 @@ import { differenceInCalendarWeeks, parseISO } from 'date-fns';
 import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { heldMovement, moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
@@ -24,11 +24,12 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { scrolledFromRest, TabScroll, tabBarCover } from '~/components/TabScroll';
-import { Tally } from '~/components/Tally';
+import { COMPACT_RISE, Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
 import { announce, screenReaderRunning, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
+import { headingShown, type HeadingSpan } from '~/lib/barTitle';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { useWorkoutBarShown } from '~/lib/workoutBar';
 import { formatLoad, formatRepRange, formatSet, formatTarget } from '~/lib/format';
@@ -95,13 +96,6 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
 
 /** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
 const FIGURE_SIZE = 72;
-/**
- * How far the page scrolls before the set card's movement name has fully
- * passed under the collapsed bar (the large title, the tally row and the
- * name's own line), so the bar never shows it while it is still legible
- * beneath.
- */
-const MOVEMENT_TITLE_OFFSET = 142;
 
 /**
  * The weight and reps share one size, stepping down as their digits add up,
@@ -340,6 +334,32 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const { workoutId, dayName, flexible } = session;
   const [titleIsMovement, setTitleIsMovement] = useState(false);
   const barTitle = titleIsMovement && current ? current.movement.name : dayName;
+
+  // Scrolled up, the bar names the movement being logged. The card's name
+  // fades as it crosses under the collapsed bar, and the bar takes it only
+  // once it is gone, so the name never reads twice (iOS 26's soft edge leaves
+  // the page legible under the bar). Where the name sits is measured on the
+  // page, so a two-line name, a wrapped tally above or a larger text size
+  // moves the point with it.
+  const page = useRef<ComponentRef<typeof View>>(null);
+  const nameRef = useRef<ComponentRef<typeof View>>(null);
+  const nameSpan = useRef<HeadingSpan | null>(null);
+  const nameShown = useSharedValue(1);
+  const nameStyle = useAnimatedStyle(() => ({ opacity: nameShown.get() }));
+  const followScroll = (offsetY: number) => {
+    const shown = headingShown(scrolledFromRest(offsetY), nameSpan.current);
+    nameShown.set(shown);
+    const pastName = shown === 0;
+    if (pastName !== titleIsMovement) setTitleIsMovement(pastName);
+  };
+  // Again whenever the name or the card moves: a new movement, a longer name, the tally above wrapping.
+  const measureName = () => {
+    if (!nameRef.current || !page.current) return;
+    nameRef.current.measureLayout(page.current, (_x, y, _width, height) => {
+      nameSpan.current = { top: y, bottom: y + height };
+      followScroll(scrollOffset.current);
+    });
+  };
   // Finish stays quiet glass beside Log set until every set is logged, then leads.
   const allLogged = session.sets.length > 0 && session.doneCount >= session.sets.length;
   const headerOptions = useMemo(
@@ -455,17 +475,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1, `${movement.name} moved down`) }]
         : []),
     ];
-    // Each movement ends with its own tally; the next set stands taller on the row up now.
-    // The tally keeps 4 pt on top for that stroke; the same below centres the strokes on the row.
+    // Each movement ends with its own tally, drawn as every tally is: logged
+    // in ink, the next set taller in red on the row up now. A finished
+    // movement recedes through its name only.
+    // The tally keeps room on top for that stroke; the same below centres the strokes on the row.
     const tally = (
       <Tally
         compact
-        // A finished movement's strokes recede with its name, as History draws them.
-        quiet={complete}
         marks={movement.sets.map((set) => set.completed)}
         current={isCurrent && current ? current.setNumber - 1 : null}
         accessibilityLabel={`${movement.done} of ${movement.sets.length} sets done`}
-        style={{ marginBottom: 4 }}
+        style={{ marginBottom: COMPACT_RISE }}
       />
     );
     // Up now, the card above says the rest; later rows give the target (this
@@ -596,6 +616,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Stack.Screen options={headerOptions} />
       <TabScroll
         ref={scroll}
+        // The page itself, to measure where the card's name sits on it.
+        innerViewRef={page}
         // Once Finish is confirmed, its saved summary must not race new edits.
         pointerEvents={closing ? 'none' : 'auto'}
         accessibilityElementsHidden={closing}
@@ -607,9 +629,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         automaticallyAdjustKeyboardInsets
         onScroll={(event) => {
           scrollOffset.current = event.nativeEvent.contentOffset.y;
-          // Past the card's heading, the bar names the movement being logged.
-          const pastHeading = scrolledFromRest(event.nativeEvent.contentOffset.y) > MOVEMENT_TITLE_OFFSET;
-          if (pastHeading !== titleIsMovement) setTitleIsMovement(pastHeading);
+          followScroll(event.nativeEvent.contentOffset.y);
           if (__DEV__ && devScrollTrace.enabled) console.log(`[scroll] ${event.nativeEvent.contentOffset.y.toFixed(1)}`);
         }}>
         {/* The session's tally and its clock share one line under the title; at the accessibility sizes they stack. */}
@@ -635,7 +655,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         </View>
 
         {current && draft ? (
-          <View ref={cardRef} collapsable={false}>
+          <View ref={cardRef} collapsable={false} onLayout={measureName}>
           <Label style={{ marginTop: 14, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
             {/* Keyed by movement so a switch fades the new movement in instead of jumping. */}
             <Animated.View key={current.movement.exerciseId} entering={FadeIn.duration(220)}>
@@ -654,9 +674,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   openMovement(current.movement.exerciseId);
                 }}
                 style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.55 : 1 })}>
-                <BlancText variant="title" numberOfLines={large ? undefined : 2}>
-                  {current.movement.name}
-                </BlancText>
+                {/* Fades as it passes under the collapsed bar, which then names the movement. */}
+                <Animated.View style={nameStyle}>
+                  <View ref={nameRef} collapsable={false} onLayout={measureName}>
+                    <BlancText variant="title" numberOfLines={large ? undefined : 2}>
+                      {current.movement.name}
+                    </BlancText>
+                  </View>
+                </Animated.View>
                 {/* Where the set stands, then what it asks for: the rep target in ink, the one instruction on the card. */}
                 <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                   {cardLine}
