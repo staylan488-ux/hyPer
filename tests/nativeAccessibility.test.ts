@@ -274,6 +274,13 @@ describe('native accessibility', () => {
     expect(wrong).toEqual([]);
   });
 
+  it("draws every text field's caret and selection in ink: Blanc has no blue", () => {
+    const fields = elements('TextInput');
+    expect(fields.length).toBeGreaterThan(15);
+    const wrong = fields.filter(({ tag }) => !/selectionColor=\{c\.ink\}/.test(tag) && !/\scaretHidden/.test(tag)).map(({ where }) => where);
+    expect(wrong).toEqual([]);
+  });
+
   it('names or hides every image', () => {
     const images = elements('Image');
     // A SwiftUI Image (Expo UI) takes these as modifiers instead of props.

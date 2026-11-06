@@ -105,6 +105,7 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
                 1 serving = {food.serving_label || `${display(food.serving_size)} ${food.serving_unit}`}. Gemini reads your amount; review it before applying.
               </BlancText>
               <TextInput
+                selectionColor={c.ink}
                 value={text}
                 maxLength={500}
                 editable={!disabled}

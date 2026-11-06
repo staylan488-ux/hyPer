@@ -496,6 +496,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                   {/* At the accessibility sizes the name takes the whole line and the grams sit under it. */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
                     <TextInput
+                      selectionColor={c.ink}
                       value={item.name}
                       onChangeText={(name) => updateItem(item.id, { name, groundedFood: null, persistedFoodId: undefined })}
                       accessibilityLabel="Food"
@@ -644,6 +645,7 @@ function GramsInput({ grams, label, onChange }: { grams: number; label: string; 
   const { text, onChangeText } = useDecimalText(grams, (value) => onChange(Math.max(0, value)));
   return (
     <TextInput
+      selectionColor={c.ink}
       value={text}
       onChangeText={onChangeText}
       keyboardType="decimal-pad"

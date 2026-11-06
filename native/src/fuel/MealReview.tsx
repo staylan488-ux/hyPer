@@ -276,6 +276,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           </BlancText>
         </View>
         <TextInput
+          selectionColor={c.ink}
           ref={field}
           value={value}
           editable={!disabled}

@@ -82,6 +82,7 @@ export function FieldRow({ ref, label, unit, wide, grows, paragraphs, invalid, k
   const name = accessibilityLabel ?? fieldLabel(label, unit);
   const textInput = (
       <TextInput
+        selectionColor={c.ink}
         ref={field}
         placeholderTextColor={c.upcoming}
         // The red label's meaning, in words.

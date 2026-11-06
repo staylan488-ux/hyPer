@@ -40,6 +40,7 @@ export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboar
         {value || placeholder}
       </Text>
       <TextInput
+        selectionColor={c.ink}
         ref={ref}
         {...rest}
         keyboardType={keyboardType}

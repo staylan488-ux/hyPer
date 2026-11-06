@@ -412,6 +412,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
         <Section title="Your meal" style={{ marginTop: 0 }}>
           <Label>
             <TextInput
+              selectionColor={c.ink}
               ref={hintField}
               value={draft.hint}
               onChangeText={(text) => setDraft((current) => ({ ...current, hint: text.slice(0, LIMIT) }))}
