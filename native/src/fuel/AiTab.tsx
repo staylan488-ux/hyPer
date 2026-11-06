@@ -77,11 +77,13 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
  * photos (a plate or a nutrition label), answer one follow-up question if
  * asked, then review each food and log it.
  */
-export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
+export function AiTab({ draft, setDraft, cameraRequest = 0, analyzeRequest = 0 }: {
   draft: AiDraft;
   setDraft: (update: (draft: AiDraft) => AiDraft) => void;
   /** Snap a meal: each new value opens the camera, then analyzes the photo (log-food.tsx). */
   cameraRequest?: number;
+  /** Each change runs the estimate on the draft's words at once (Search's "Estimate" row). */
+  analyzeRequest?: number;
 }) {
   const c = useBlanc();
   const large = useLargeText();
@@ -194,6 +196,18 @@ export function AiTab({ draft, setDraft, cameraRequest = 0 }: {
     seenCamera.current = cameraRequest;
     void snap();
   }, [cameraRequest]);
+
+  // Search's Estimate row hands its words over and asks for the estimate in the same step.
+  const seenAnalyze = useRef(analyzeRequest);
+  const analyzeNow = useEffectEvent(() => {
+    announce('Analyzing meal');
+    void analyze();
+  });
+  useEffect(() => {
+    if (analyzeRequest === seenAnalyze.current) return;
+    seenAnalyze.current = analyzeRequest;
+    analyzeNow();
+  }, [analyzeRequest]);
 
   const clearEstimate = () => {
     setError(null);

@@ -199,10 +199,16 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   nutritionDay, savedMeals, recentFoods, repeatEntries, savedMealFromLog); never copy them into
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
   `native/src/fuel`) with Recent, Saved and Search as its segments and the
-  entry methods Barcode, Manual and Photo (a meal photo, or the meal described in words) as a quiet
+  entry methods Barcode, Manual and Photo as a quiet
   row of buttons under them (`native/src/fuel/EntryMethods.tsx`), a
-  review for a chosen food, and the meal builder (Scan opens the camera only
-  when Scan barcode is tapped, the owner's call on 2026-10-27). Recent opens
+  review for a chosen food, and the meal builder. Each way of describing a
+  meal has its own door (the owner's call on 2026-11-05): Photo opens the
+  camera at once while its view is empty, and what it takes is estimated
+  without a tap; with Gemini, words typed in Search also offer an
+  "Estimate “…”" row above the results, which runs the same estimate on the
+  Photo view (asking first before it replaces a meal already started there).
+  Barcode opens its camera only when Scan barcode is tapped (the owner's call
+  on 2026-10-27). Recent opens
   first: four weeks of the log, most often eaten lately first, + logs the
   usual amount and a tap reviews at it; a swipe hides a food on this device
   until it is logged again. A day's entries swipe for More and Delete and hold

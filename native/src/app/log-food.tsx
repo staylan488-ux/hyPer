@@ -633,6 +633,43 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       </Label>
     </View>
   ) : null;
+  // Words go to the Photo view, which estimates from a photo, words or both.
+  // Asks before replacing a meal already started there.
+  const describeInPhotoView = (description: string, then?: () => void) => {
+    if (saving) return;
+    if (busy) {
+      Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
+      return;
+    }
+    const handOff = () => {
+      setAi(emptyAi(description));
+      showTab('photo');
+      then?.();
+    };
+    if (!aiHasDraft(ai)) {
+      handOff();
+      return;
+    }
+    Alert.alert('Replace the current AI meal?', 'Unsaved work on the AI tab will be discarded.', [
+      { text: 'Keep', style: 'cancel' },
+      { text: 'Replace', style: 'destructive', onPress: handOff },
+    ]);
+  };
+  // Search's Estimate row: the typed words, estimated at once.
+  const [analyzeRequest, setAnalyzeRequest] = useState(0);
+  const estimateWords = (text: string) => {
+    haptics.tap();
+    describeInPhotoView(text, () => setAnalyzeRequest((count) => count + 1));
+  };
+  // Photo opens the camera at once while its view is empty; with a meal already
+  // started there it just shows it.
+  const chooseMethod = (method: Tab) => {
+    if (saving) return;
+    const fresh = method === 'photo' && (gemini ? !aiHasDraft(ai) : !photo.photos.top && photo.items.length === 0);
+    openTab(method);
+    if (fresh) setCameraRequest((count) => count + 1);
+  };
+
   const recentTab = tab === 'recent' ? <RecentTab userId={userId} /> : null;
   const savedTab = tab === 'saved' ? (
     <SavedTab
@@ -660,7 +697,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       }}
     />
   ) : null;
-  const searchTab = tab === 'search' ? <SearchTab /> : null;
+  const searchTab = tab === 'search' ? <SearchTab onEstimate={gemini ? estimateWords : undefined} /> : null;
   const scanTab = tab === 'scan' ? (
     <ScanTab
       onCreateProduct={(barcode) => {
@@ -674,30 +711,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       draft={manual}
       setDraft={(update) => setManual(update)}
       onDescribeText={describedInManual}
-      onGeminiHandoff={
-        gemini
-          ? (description) => {
-              // the hand-off is a tab switch too
-              if (saving) return;
-              if (busy) {
-                Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
-                return;
-              }
-              const handOff = () => {
-                setAi(emptyAi(description));
-                setTab('photo');
-              };
-              if (!aiHasDraft(ai)) {
-                handOff();
-                return;
-              }
-              Alert.alert('Replace the current AI meal?', 'Unsaved work on the AI tab will be discarded.', [
-                { text: 'Keep', style: 'cancel' },
-                { text: 'Replace', style: 'destructive', onPress: handOff },
-              ]);
-            }
-          : undefined
-      }
+      // the hand-off is a tab switch too
+      onGeminiHandoff={gemini ? (description) => describeInPhotoView(description) : undefined}
     />
   ) : null;
 
@@ -801,7 +816,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 gemini={gemini}
                 photoWaiting={photoWaiting}
                 disabled={saving}
-                onSelect={openTab}
+                onSelect={chooseMethod}
               />
             </View>
           ) : null}
@@ -882,7 +897,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             the next ingredient capture drops the old analysis. */}
         {gemini ? (
           <View key={`ai-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
-            <AiTab draft={ai} setDraft={(update) => setAi(update)} cameraRequest={cameraRequest} />
+            <AiTab draft={ai} setDraft={(update) => setAi(update)} cameraRequest={cameraRequest} analyzeRequest={analyzeRequest} />
           </View>
         ) : (
           <View key={`photo-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>

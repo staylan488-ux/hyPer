@@ -28,7 +28,7 @@ function deferred<T>() {
 type Photo = { uri: string; width: number; height: number };
 type Draft = { hint: string; answer: string; photos: Photo[]; clarificationUsed: boolean; result: unknown; items: unknown[]; saveAsReusable: boolean; saveStarted: boolean };
 type Button = { title: string; busy?: boolean; disabled?: boolean; onPress: () => void };
-type TabProps = { draft: Draft; setDraft: (update: (draft: Draft) => Draft) => void; cameraRequest?: number };
+type TabProps = { draft: Draft; setDraft: (update: (draft: Draft) => Draft) => void; cameraRequest?: number; analyzeRequest?: number };
 type AnalyzeRequest = { images: unknown[]; hint: string };
 
 const capsules: Record<string, Button> = {};
@@ -112,16 +112,16 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
 
 const shot: Photo = { uri: 'shot', width: 10, height: 10 };
 let current: Draft;
-function Host({ request, initial }: { request: number; initial?: Draft }) {
+function Host({ request, initial, estimate = 0 }: { request: number; initial?: Draft; estimate?: number }) {
   const [draft, setDraft] = useState<Draft>(() => initial ?? emptyAi());
   useEffect(() => { current = draft; });
-  return createElement(AiTab, { draft, setDraft: (update) => setDraft(update), cameraRequest: request });
+  return createElement(AiTab, { draft, setDraft: (update) => setDraft(update), cameraRequest: request, analyzeRequest: estimate });
 }
 
 let host: HTMLDivElement;
 let root: Root;
-const render = async (request: number, initial?: Draft) => {
-  await act(async () => { root.render(createElement(Host, { request, initial })); });
+const render = async (request: number, initial?: Draft, estimate = 0) => {
+  await act(async () => { root.render(createElement(Host, { request, initial, estimate })); });
 };
 const settle = () => act(async () => { for (let tick = 0; tick < 20; tick += 1) await Promise.resolve(); });
 const alertText = () => host.querySelector('[data-alert]')?.textContent ?? null;
@@ -215,6 +215,18 @@ describe('AI tab: Snap a meal', () => {
     pick.mockResolvedValueOnce(null);
     await render(2);
     expect(pick).toHaveBeenCalledOnce();
+  });
+
+  it('estimates the words Search hands over at once, without opening the camera', async () => {
+    await render(0, emptyAi('chicken salad, large'), 0);
+    expect(analyze).not.toHaveBeenCalled();
+    await render(0, undefined, 1);
+    await settle();
+    expect(pick).not.toHaveBeenCalled();
+    expect(analyze).toHaveBeenCalledOnce();
+    expect(analyze.mock.calls[0][0]).toMatchObject({ hint: 'chicken salad, large' });
+    expect(analyze.mock.calls[0][0].images).toHaveLength(0);
+    expect(announce).toHaveBeenCalledWith('Analyzing meal');
   });
 
   it('analyzes the photo together with a typed description', async () => {
