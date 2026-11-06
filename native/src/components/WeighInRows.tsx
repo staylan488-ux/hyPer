@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
 import { useState, type ReactNode } from 'react';
-import { ActionSheetIOS, Alert, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import type { BodyWeightMeasurement } from '@/lib/healthWeights';
@@ -68,21 +68,6 @@ export function WeighInRows({
     });
   };
 
-  const menu = (entry: BodyWeightMeasurement) => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: `${formatWeight(Number(entry.kilograms), unit)} ${unit}`,
-        message: measuredLabel(entry, todayKey),
-        options: ['Delete weigh-in', 'Cancel'],
-        destructiveButtonIndex: 0,
-        cancelButtonIndex: 1,
-      },
-      (index) => {
-        if (index === 0) remove(entry);
-      },
-    );
-  };
-
   const shown = entries.filter((entry) => !leaving.has(entry.id));
   return (
     <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
@@ -91,7 +76,8 @@ export function WeighInRows({
         const when = measuredLabel(entry, todayKey);
         const manual = entry.source === 'manual';
         const actions: { menu?: MenuAction[]; onPress?: () => void } = manual
-          ? { menu: [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, removes: true, run: () => remove(entry) }], onPress: () => menu(entry) }
+          // Delete lives in the swipe and the hold; a plain tap doesn't open a sheet whose only choice is Delete.
+          ? { menu: [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, removes: true, run: () => remove(entry) }] }
           : {};
         const row = (
           <View style={{ backgroundColor: c.label }}>
@@ -148,7 +134,8 @@ function WeighInLine({ title, when, menu, onPress }: { title: string; when: stri
       onPress={onPress}
     />
   );
-  return onPress ? (
+  // A typed weigh-in's row speaks for itself with its hold actions; one from Apple Health is grouped here.
+  return onPress || menu ? (
     row
   ) : (
     <View accessible accessibilityLabel={speak(label)}>

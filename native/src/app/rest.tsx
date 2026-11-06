@@ -171,7 +171,21 @@ export default function RestSheet() {
 
       {/* Lengths in order: a custom one takes its place among the presets, and a tap on it types another.
           At the accessibility text sizes the lengths wrap onto more lines. */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, paddingHorizontal: space.inset, ...(large ? { flexWrap: 'wrap' } : null) }}>
+      {/* The lengths share one track, as a segmented control's choices do, so the chosen one reads at a glance. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'center',
+          gap: 2,
+          marginTop: 22,
+          marginHorizontal: space.inset,
+          alignSelf: 'center',
+          padding: 2,
+          borderRadius: 19,
+          borderCurve: 'continuous',
+          backgroundColor: c.fill,
+          ...(large ? { flexWrap: 'wrap' } : null),
+        }}>
         {(extra !== null ? [...PRESETS, extra].sort((a, b) => a - b) : PRESETS).map((seconds) =>
           seconds === extra ? (
             <Chip
@@ -180,6 +194,7 @@ export default function RestSheet() {
               accessibilityLabel={`Custom, ${spokenClock(extra)}`}
               selected={length === extra}
               tabular
+              inTrack
               haptic={false}
               accessibilityHint={length === extra ? 'Type another length' : undefined}
               style={{ minWidth: 58 }}
@@ -192,13 +207,14 @@ export default function RestSheet() {
               accessibilityLabel={spokenClock(seconds)}
               selected={length === seconds}
               tabular
+              inTrack
               haptic={false}
               style={{ minWidth: 58 }}
               onPress={() => choose(seconds)}
             />
           ),
         )}
-        {extra !== null ? null : <Chip label="Custom" tabular haptic={false} accessibilityHint="Type a rest length" style={{ minWidth: 58 }} onPress={chooseCustom} />}
+        {extra !== null ? null : <Chip label="Custom" tabular inTrack haptic={false} accessibilityHint="Type a rest length" style={{ minWidth: 58 }} onPress={chooseCustom} />}
       </View>
 
       {/* At the accessibility text sizes the buttons stack, each as wide as the sheet. */}

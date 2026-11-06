@@ -678,6 +678,9 @@ function MacroBars({
   const counted = todayOnly ? 1 : earlier.filter((day) => day[macro] > 0).length;
   // One day is said plainly ("1,342 kcal"): an average of one day is no average.
   const single = counted === 1;
+  // ...and names which day it is, so the figure never reads as a total or an average.
+  const singleDay = single ? (todayOnly ? days.find((day) => day.date === todayKey) : earlier.find((day) => day[macro] > 0)) : undefined;
+  const singleWhen = singleDay ? (singleDay.date === todayKey ? 'Today' : format(parseISO(singleDay.date), 'MMM d')) : '';
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
   // The target's figure sits on its line at the plot's right end, over the
@@ -690,7 +693,7 @@ function MacroBars({
     <View
       accessible
       accessibilityLabel={speak(
-        `${label}, ${single ? `${formatWhole(average)} ${unit}` : counted > 0 ? `daily average ${formatWhole(average)} ${unit}` : 'none logged'}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
+        `${label}, ${single ? `${singleWhen ? `${singleWhen}, ` : ''}${formatWhole(average)} ${unit}` : counted > 0 ? `daily average ${formatWhole(average)} ${unit}` : 'none logged'}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
           .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${day[macro] > 0 ? formatWhole(day[macro]) : 'nothing logged'}${isOver(day) ? ', over' : ''}`)
           .join('; ')}`,
       )}>
@@ -701,6 +704,7 @@ function MacroBars({
         </BlancText>
         {single ? (
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            {singleWhen ? `${singleWhen} ` : ''}
             <BlancText variant="secondary" weight="500">
               {formatWhole(average)}
             </BlancText>{' '}

@@ -95,8 +95,13 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
 
 /** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
 const FIGURE_SIZE = 72;
-/** How far the page scrolls before the set card's movement name passes under the bar: the large title and the tally row above it. */
-const MOVEMENT_TITLE_OFFSET = 96;
+/**
+ * How far the page scrolls before the set card's movement name has fully
+ * passed under the collapsed bar (the large title, the tally row and the
+ * name's own line), so the bar never shows it while it is still legible
+ * beneath.
+ */
+const MOVEMENT_TITLE_OFFSET = 142;
 
 /**
  * The weight and reps share one size, stepping down as their digits add up,
@@ -666,12 +671,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${current.movement.name}: sets, note and swap`}
-                hitSlop={10}
                 onPress={() => {
                   haptics.tap();
                   openMovement(current.movement.exerciseId);
                 }}
-                style={({ pressed }) => ({ marginTop: 2, marginRight: -4, opacity: pressed ? 0.45 : 1 })}>
+                // A full 44 pt target, the glyph kept on the card's trailing text edge.
+                style={({ pressed }) => ({ width: 44, height: 44, marginTop: -8, marginRight: -12, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
                 {/* The app's one in-content "more": a bare ellipsis in graphite. */}
                 <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.graphite} />
               </Pressable>
