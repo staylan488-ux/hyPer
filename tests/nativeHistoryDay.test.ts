@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import type { ActivitySession, Workout } from '@/types';
 import { dayEntries } from '../native/src/lib/historyDay';
 
 const at = (hour: number, minute = 0) => new Date(2026, 10, 5, hour, minute).toISOString();
-const workout = (id: string, createdAt: string | null) => ({ id, created_at: createdAt, date: '2026-11-05' });
-const activity = (id: string, startedAt: string | null, createdAt: string | null = null) => ({ id, started_at: startedAt, created_at: createdAt, date: '2026-11-05' });
+const workout = (id: string, createdAt: string | null): Pick<Workout, 'id' | 'created_at' | 'date'> => ({ id, created_at: createdAt ?? undefined, date: '2026-11-05' });
+// Rows read before created_at was filled can carry null; the helper must still place them.
+const activity = (id: string, startedAt: string | null, createdAt: string | null = null) =>
+  ({ id, started_at: startedAt, created_at: createdAt, date: '2026-11-05' }) as unknown as Pick<ActivitySession, 'id' | 'started_at' | 'created_at' | 'date'>;
 const ids = (entries: ReturnType<typeof dayEntries>) =>
-  entries.map((entry) => (entry.kind === 'workout' ? entry.workout.id : entry.activity.id));
+  entries.map((entry) => (entry.kind === 'workout' ? entry.workout.id : (entry.activity as unknown as { id: string }).id));
 
 describe("History's day list", () => {
   it('puts workouts and activities in one order, earliest first', () => {
