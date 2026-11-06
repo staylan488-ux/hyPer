@@ -35,7 +35,7 @@ export function EntryMethods({
     { id: 'scan', title: 'Barcode', symbol: 'barcode.viewfinder', spoken: 'Scan a barcode' },
     { id: 'manual', title: 'Manual', symbol: 'square.and.pencil', spoken: 'Enter manually' },
     gemini
-      ? { id: 'photo', title: 'Photo or text', symbol: 'camera', spoken: 'Describe a meal, with a photo or words' }
+      ? { id: 'photo', title: 'Describe', symbol: 'text.bubble', spoken: 'Describe a meal, with a photo or words' }
       : { id: 'photo', title: 'Photo', symbol: 'camera', spoken: photoWaiting ? 'Photo, estimate waiting' : 'Photo' },
   ];
   return (

@@ -476,6 +476,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const tally = (
       <Tally
         compact
+        // A finished movement's strokes recede with its name, as History draws them.
+        quiet={complete}
         marks={movement.sets.map((set) => set.completed)}
         current={isCurrent && current ? current.setNumber - 1 : null}
         accessibilityLabel={`${movement.done} of ${movement.sets.length} sets done`}

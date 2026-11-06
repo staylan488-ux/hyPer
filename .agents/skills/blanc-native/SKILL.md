@@ -102,7 +102,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   confirmation's `auth/callback` exchanges its code there.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
-  the live workout, header items with SF Symbols, Expo UI SwiftUI controls,
+  the live workout (it leads with the movement and set and the live clock, and
+  steps aside on Today's and Train's roots, which show the workout themselves,
+  except on Train during a rest; tab pages size their foot from
+  `useWorkoutBarShown`), header items with SF Symbols, Expo UI SwiftUI controls,
   `expo-glass-effect`, `expo-haptics`, context menus, `ActionSheetIOS`,
   `Alert`.
 
@@ -111,13 +114,21 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - [Tokens and type roles](../../../native/src/theme/blanc.ts): the system font only.
   Section 20/600, title 24/600, body 17, secondary 15, footnote 13, Menlo 12 for
   label details; big figures in SF Pro Thin (weight 200, tabular digits).
+  Figures at rest (Today's and Fuel's 56 pt kcal, Body weight's 56 pt and
+  You's 44 pt weight) use `restingFigure` (proportional digits, so a "1"
+  leaves no gap) and `figureLead` (pulls the first digit's ink onto the text
+  edge); counting figures keep tabular digits. Train's 72 pt weight and reps
+  sit on a ruled line (ink while typing) with Menlo "last 60" captions under
+  each field; the rep target is in ink on the line under the movement.
   Text fields take `field` (one line, with `lineBreakModeIOS="tail"`) or
   `fieldLines` (wrapping), never body: React Native reuses a field's native
   view, and iOS drew the new placeholder with the last one's letter spacing (a
   big figure's, squeezing the letters together) unless the field names its own
   (`tests/nativeTextFields.test.ts` checks).
 - Chalk ground, white labels, black ink, graphite for secondary text. No accent
-  colour; red only for live state, errors, over-limit and the brand P.
+  colour; red only for live state, errors, over-limit and the brand P, and it
+  is one red: `live` and `brand` share a value in each palette (the P's brick
+  in light; the design council's call on 2026-11-05).
   Over-limit follows the saved nutrition goal through the shared
   `warnsOverTarget` (`src/lib/fuelSummary.ts`): protein past target is never
   red, and while bulking or lean bulking nothing past target is (calories read
@@ -127,13 +138,19 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - The white [Label](../../../native/src/components/Label.tsx) is the one container
   (10 pt continuous corners). Sections are separated by space, rows by hairlines
   with an iOS press highlight. Ink capsules are primary actions; quiet fill
-  capsules are secondary.
+  capsules are secondary. A chosen chip is an ink ring on the label colour, so
+  a sheet's one filled shape stays its main button. Switches are ink
+  (`switchOn`), never iOS green. One-line rows are 52 pt in regular weight; a
+  row with a detail line is 60 pt with a medium title and its value on the
+  title's line. Sheets' round buttons (`GlassButton`) are a quiet fill in every
+  sheet.
 - The brand mark is the red italic P ([BrandMark](../../../native/src/components/BrandMark.tsx),
   Fraunces Mark Medium Italic, approved 2026-10-26): the app icon, Today's top-left
   corner and the sign-in and offline emblem. Fraunces appears nowhere else.
 - The set [Tally](../../../native/src/components/Tally.tsx) counts sets like a
   paper training log: one stroke per set in groups of five, the next set's stroke
-  taller, a finished group closed with a diagonal. Use it for set progress and
+  taller and in the live red, remaining strokes in `mark`, a finished movement's
+  strokes in graphite (`quiet`), a finished group closed with a diagonal. Use it for set progress and
   finished-session summaries only, never as a logo or decoration.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
   layouts or signature details (the owner ruled out copying Maison Margiela's
@@ -176,7 +193,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
   nutritionDay, savedMeals, recentFoods, repeatEntries, savedMealFromLog); never copy them into
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
-  `native/src/fuel`) with Recent, Saved, Search, Scan, Manual and Photo, a
+  `native/src/fuel`) with Recent, Saved and Search as its segments and the
+  entry methods Barcode, Manual and Describe (Photo on the worker) as a quiet
+  row of buttons under them (`native/src/fuel/EntryMethods.tsx`), a
   review for a chosen food, and the meal builder (Scan opens the camera only
   when Scan barcode is tapped, the owner's call on 2026-10-27). Recent opens
   first: four weeks of the log, most often eaten lately first, + logs the
@@ -220,8 +239,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   to refresh, and a small destructive button with no swipe behind it asks
   first.
 - Food AI: the owner logs with Gemini (the web logger's hosted mode), so the
-  native app defaults to it (AI tab, Manual's hand-off, Describe amount); a
-  device set to the worker gets the Photo tab instead.
+  native app defaults to it (the Describe method, Manual's hand-off, Describe
+  amount); a device set to the worker gets Photo instead.
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
   from ⋯ on the current card, a finished movement's row, or a hold (lifted and let go) on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12
