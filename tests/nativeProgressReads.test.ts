@@ -24,20 +24,29 @@ import { silentAccessibility } from './helpers/silentAccessibility';
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
 const Empty = () => null;
 const noop = () => {};
-// Text and views keep what the scale figures' checks read: whether text may
-// shrink to fit, and a box's height.
+// Text and views keep what the checks read: whether text may shrink to fit,
+// a box's height and place, its fill (a palette token's name, below) and
+// what VoiceOver hears for it.
 const Text = ({ children, adjustsFontSizeToFit }: PropsWithChildren<{ adjustsFontSizeToFit?: boolean }>) =>
   createElement('span', adjustsFontSizeToFit ? { 'data-shrinks': 'true' } : null, children);
-const View = ({ children, style }: PropsWithChildren<{ style?: { height?: number | string; bottom?: number | string; alignItems?: string } }>) =>
+const View = ({
+  children,
+  style,
+  accessibilityLabel,
+}: PropsWithChildren<{ style?: { height?: number | string; bottom?: number | string; alignItems?: string; backgroundColor?: string }; accessibilityLabel?: string }>) =>
   createElement(
     'div',
     {
       ...(style?.height !== undefined ? { 'data-height': String(style.height) } : null),
       ...(style?.bottom !== undefined ? { 'data-bottom': String(style.bottom) } : null),
       ...(style?.alignItems !== undefined ? { 'data-align': style.alignItems } : null),
+      ...(style?.backgroundColor !== undefined ? { 'data-fill': style.backgroundColor } : null),
+      ...(accessibilityLabel !== undefined ? { 'aria-label': accessibilityLabel } : null),
     },
     children,
   );
+// The palette by token name, so a check reads which token a mark is drawn in.
+const palette = { label: 'label', graphite: 'graphite', ink: 'ink', mark: 'mark', live: 'live', fill: 'fill', track: 'track', hairline: 'hairline', pressed: 'pressed' };
 
 let pull: () => void;
 const fetchTrainingHours = vi.fn();
@@ -60,15 +69,17 @@ const trained = () => workoutSessions.buildWeeklyTrainingHours([
   { date: dates.format(new Date(), 'yyyy-MM-dd'), completed: true, created_at: new Date(Date.now() - 90 * 60_000).toISOString(), completed_at: new Date().toISOString() },
 ]);
 
-// The last seven days of eating the screen reads; none by default.
+// The seven days of eating the screen reads; none by default. Each read's last day is kept.
 type Day = { date: string; calories: number; protein: number };
 let nutrition: Day[] = [];
+let askedFor: Array<string | undefined> = [];
 const averageLoggedDays = (days: Day[], key: 'calories' | 'protein') => {
   const logged = days.filter((day) => day[key] > 0);
   return logged.length ? logged.reduce((sum, day) => sum + day[key], 0) / logged.length : 0;
 };
-const lastWeek = (eaten: Record<number, number>): Day[] =>
-  [6, 5, 4, 3, 2, 1, 0].map((ago) => ({ date: dates.format(dates.subDays(new Date(), ago), 'yyyy-MM-dd'), calories: eaten[ago] ?? 0, protein: 0 }));
+/** The seven days before `today` (by default the account's day), as the hook gives them: calories eaten so many days ago. */
+const weekBefore = (eaten: Record<number, number>, today = accountDay.getState().dayKey): Day[] =>
+  [7, 6, 5, 4, 3, 2, 1].map((ago) => ({ date: dates.format(dates.subDays(dates.parseISO(today), ago), 'yyyy-MM-dd'), calories: eaten[ago] ?? 0, protein: 0 }));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -97,7 +108,13 @@ async function open() {
       withTiming: (value: unknown) => value,
     },
     '@/lib/todayModel': todayModel,
-    '@/hooks/useWeeklyNutrition': { averageLoggedDays, useWeeklyNutrition: () => ({ weeklyNutrition: nutrition, loading: false, error: null }) },
+    '@/hooks/useWeeklyNutrition': {
+      averageLoggedDays,
+      useWeeklyNutrition: (lastDay?: string) => {
+        askedFor.push(lastDay);
+        return { weeklyNutrition: nutrition, loading: false, error: null };
+      },
+    },
     '@/lib/fuelSummary': fuelSummary,
     '@/lib/trainingHours': { fetchTrainingHours },
     '@/lib/volumeCoaching': volumeCoaching,
@@ -119,7 +136,7 @@ async function open() {
     '~/lib/format': { formatMinutes, formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { select: noop } },
-    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({ label: '#FFFFFF', graphite: '#66665F' }) },
+    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => palette },
     '~/theme/useMuscleTones': { useMuscleTones: () => ({}) },
   });
   await act(async () => { root.render(createElement(ProgressScreen)); });
@@ -128,6 +145,7 @@ const refresh = () => act(async () => { pull(); });
 
 beforeEach(() => {
   nutrition = [];
+  askedFor = [];
   appStore.setState({ macroTarget: null });
   accountDay.setState({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') });
   appStore.setState({ weeklyVolume: initialAppData.weeklyVolume });
@@ -216,50 +234,113 @@ describe("Progress's week", () => {
   });
 });
 
-describe("Progress's nutrition header", () => {
+describe("Progress's nutrition window", () => {
   const count = (text: string) => shown().split(text).length - 1;
+  /** What VoiceOver hears for a macro's chart. */
+  const spoken = (macro: string) => [...host.querySelectorAll('[aria-label]')].map((el) => el.getAttribute('aria-label') ?? '').find((label) => label.startsWith(`${macro}, `));
 
-  it('averages the logged days before today, and says once in the note how many days are logged', async () => {
-    nutrition = lastWeek({ 0: 800, 1: 2000, 3: 2400 });
+  it('reads the seven days ending yesterday, and moves on with the day while the screen stays open', async () => {
+    accountDay.setState({ dayKey: '2026-11-05' });
+    await open();
+    expect(askedFor.at(-1)).toBe('2026-11-04');
+    // Past midnight, the screen still on top
+    await act(async () => { accountDay.setState({ dayKey: '2026-11-06' }); });
+    expect(askedFor.at(-1)).toBe('2026-11-05');
+    expect(shown()).toContain('Nutrition Oct 30–Nov 5');
+  });
+
+  it('names its dates across two months, and says once how many days are logged', async () => {
+    accountDay.setState({ dayKey: '2026-11-05' });
+    nutrition = weekBefore({ 1: 2000, 3: 2400 });
+    await open();
+    expect(shown()).toContain('Nutrition Oct 29–Nov 4 · 2 days logged');
+    expect(count('days logged')).toBe(1);
+    expect(shown()).not.toContain('Last 7 days');
+  });
+
+  it('names one month once when the seven days are within it', async () => {
+    accountDay.setState({ dayKey: '2026-11-08' });
+    nutrition = weekBefore({ 1: 2000, 2: 2000, 3: 2000, 4: 2000, 5: 2000, 6: 2000, 7: 2000 });
+    await open();
+    expect(shown()).toContain('Nutrition Nov 1–7');
+    // Every day is logged, so no count.
+    expect(shown()).not.toMatch(/\d+ days? logged/);
+  });
+
+  it('heads each chart with the daily average of the logged days, and says so to VoiceOver', async () => {
+    accountDay.setState({ dayKey: '2026-11-05' });
+    nutrition = weekBefore({ 1: 2000, 3: 2400 });
     await open();
     expect(shown()).toContain('Avg 2200 kcal');
-    expect(shown()).toContain('Nutrition Last 7 days · 3 days logged');
-    expect(count('days logged')).toBe(1);
-    expect(shown()).not.toContain('over 2 days');
-    expect(shown()).not.toContain('today');
+    expect(spoken('Calories')).toContain('Calories, 2200 calories, the daily average of the logged days, October 29 to November 4');
+    expect(shown()).not.toContain('Today');
   });
 
-  it("uses today's figure while today is the only day logged, the count said once for both charts", async () => {
-    nutrition = lastWeek({ 0: 1342 });
+  it('gives one logged day as its figure, named by its date', async () => {
+    accountDay.setState({ dayKey: '2026-11-05' });
+    nutrition = weekBefore({ 2: 1342 });
     await open();
-    expect(shown()).toContain('1342 kcal');
-    expect(shown()).toContain('Last 7 days · 1 day logged');
-    expect(count('1 day logged')).toBe(1);
+    expect(shown()).toContain('Nov 3 1342 kcal');
     expect(shown()).not.toContain('Avg 1342');
+    expect(shown()).not.toContain('Today');
+    expect(shown()).toContain('Oct 29–Nov 4 · 1 day logged');
+    expect(count('1 day logged')).toBe(1);
+    expect(spoken('Calories')).toContain('Calories, 1342 calories on November 3, the only day logged');
   });
 
-  it('says one logged day plainly rather than as an average', async () => {
-    nutrition = lastWeek({ 0: 900, 2: 2100 });
+  it('says none logged for a macro with nothing in the seven days', async () => {
+    accountDay.setState({ dayKey: '2026-11-05' });
+    nutrition = weekBefore({ 1: 2000, 3: 2400 });
     await open();
-    expect(shown()).toContain('2100 kcal');
-    expect(shown()).not.toContain('Avg 2100');
-    expect(shown()).not.toContain('over 1 day');
+    // Calories are logged; protein is not.
+    expect(count('None logged')).toBe(1);
+    expect(spoken('Protein')).toContain('Protein, none logged, October 29 to November 4');
   });
 
-  it('names no count once every day is logged', async () => {
-    nutrition = lastWeek({ 0: 500, 1: 2000, 2: 2000, 3: 2000, 4: 2000, 5: 2000, 6: 2000 }).map((day) => ({ ...day, protein: 150 }));
+  it('still names its dates with nothing logged in them, and says when a day shows here', async () => {
+    accountDay.setState({ dayKey: '2026-11-05' });
     await open();
-    expect(shown()).toContain('Avg 2000 kcal');
-    expect(shown()).toContain('Nutrition Last 7 days');
-    expect(shown()).not.toMatch(/\d+ days? logged/);
-    // Nothing is missing, so the key for the nothing-recorded mark is left out.
-    expect(shown()).not.toContain('No entry');
+    expect(shown()).toContain('Nutrition Oct 29–Nov 4');
+    expect(shown()).toContain('Days you log in Fuel show here once they’re over.');
   });
 
-  it('keys the nothing-recorded mark once while a day is missing', async () => {
-    nutrition = lastWeek({ 0: 1342 });
+  it('keys the nothing-recorded mark once while a day is missing, and not when none is', async () => {
+    nutrition = weekBefore({ 1: 1342 });
     await open();
     expect(count('No entry')).toBe(1);
+    act(() => root.unmount());
+    root = createRoot(host);
+    nutrition = weekBefore({ 1: 500, 2: 2000, 3: 2000, 4: 2000, 5: 2000, 6: 2000, 7: 2000 }).map((day) => ({ ...day, protein: 150 }));
+    await open();
+    expect(shown()).not.toContain('No entry');
+  });
+});
+
+describe("Progress's chart marks", () => {
+  const fills = (token: string) => host.querySelectorAll(`[data-fill="${token}"]`).length;
+
+  it("draws past weeks in mark and this week in ink, with no faded bars", async () => {
+    const today = new Date();
+    const session = (daysAgo: number) => {
+      const day = dates.subDays(today, daysAgo);
+      return { date: dates.format(day, 'yyyy-MM-dd'), completed: true, created_at: new Date(day.getTime() - 60 * 60_000).toISOString(), completed_at: day.toISOString() };
+    };
+    fetchTrainingHours.mockResolvedValue(workoutSessions.buildWeeklyTrainingHours([session(0), session(14), session(21)]));
+    await open();
+    // This week's bar is the one ink mark; the two past weeks are mark.
+    expect(fills('ink')).toBe(1);
+    expect(fills('mark')).toBe(2);
+    expect(fills('graphite')).toBe(0);
+  });
+
+  it('draws every one of the seven days in mark, red only past target where that warns', async () => {
+    fetchTrainingHours.mockResolvedValue(null);
+    nutrition = weekBefore({ 1: 2000, 3: 2400, 5: 3400 });
+    appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
+    await open();
+    expect(fills('mark')).toBe(2);
+    expect(fills('live')).toBe(1);
+    expect(fills('ink')).toBe(0);
   });
 });
 
@@ -285,6 +366,16 @@ describe("Progress's muscle rows", () => {
     expect(text.indexOf('In range')).toBeLessThan(text.indexOf('Side delts'));
   });
 
+  it("draws the rail's band in mark, the figure's in-range tone, on a fill track", async () => {
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 14, landmark, status: 'mav' }] });
+    calculateWeeklyVolume.mockImplementation(async () => {});
+    await open();
+    // The key's band and the row's band.
+    expect(host.querySelectorAll('[data-fill="mark"]').length).toBe(2);
+    expect(host.querySelectorAll('[data-fill="fill"]').length).toBe(1);
+    expect(host.querySelectorAll('[data-fill="track"]').length).toBe(0);
+  });
+
   it('keeps the shared coaching line as it is written', async () => {
     appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 5, landmark, status: 'below_mev' }] });
     calculateWeeklyVolume.mockImplementation(async () => {});
@@ -304,7 +395,7 @@ describe("Progress's scale and target figures", () => {
   };
 
   it("names the training chart's top and each nutrition target, in boxes with room for them", async () => {
-    nutrition = lastWeek({ 0: 1342 }).map((day) => ({ ...day, protein: day.calories ? 130 : 0 }));
+    nutrition = weekBefore({ 1: 1342 }).map((day) => ({ ...day, protein: day.calories ? 130 : 0 }));
     appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
     await open();
     // 90 minutes this week puts the chart's top at 2 hours.
@@ -319,7 +410,7 @@ describe("Progress's scale and target figures", () => {
 
   it('keeps a target figure on its own line when the last days run past it, moving to the clear end', async () => {
     // The last three days well past 2,600; the first days clear.
-    nutrition = lastWeek({ 0: 3400, 1: 3300, 2: 3200 }).map((day) => ({ ...day, protein: 0 }));
+    nutrition = weekBefore({ 1: 3400, 2: 3300, 3: 3200 }).map((day) => ({ ...day, protein: 0 }));
     appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
     await open();
     const label = figure('2600 target');
@@ -333,7 +424,7 @@ describe("Progress's scale and target figures", () => {
   });
 
   it('names no target while none is set', async () => {
-    nutrition = lastWeek({ 0: 1342 });
+    nutrition = weekBefore({ 1: 1342 });
     await open();
     expect(shown()).not.toContain('target');
   });

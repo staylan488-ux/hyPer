@@ -53,6 +53,8 @@ const hasProp = (tag: string, prop: string) => new RegExp(`\\s${prop}[=\\s/>]`).
 describe('VoiceOver words for Blanc shorthand', () => {
   it('reads middle dots as pauses, ranges as "to" and units as words', () => {
     expect(speak('Set 2 of 3 · 8–10 reps')).toBe('Set 2 of 3, 8 to 10 reps');
+    expect(speak('Oct 29–Nov 4 · 5 days logged')).toBe('Oct 29 to Nov 4, 5 days logged');
+    expect(speak('Nov 1–7')).toBe('Nov 1 to 7');
     expect(speak('Now · 3 × 8–12 · last 135 × 8')).toBe('Now, 3 × 8 to 12, last 135 × 8');
     expect(speak('135 lb × 8')).toBe('135 pounds × 8');
     expect(speak('1 lb')).toBe('1 pound');

@@ -1,4 +1,4 @@
-import { format, parseISO, startOfWeek } from 'date-fns';
+import { format, isSameMonth, parseISO, startOfWeek, subDays } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,7 +22,7 @@ import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { useAccountDay, useCurrentDayKey } from '~/lib/accountData';
-import { speak, spokenClock, useAnnounce, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
+import { speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
@@ -32,7 +32,7 @@ const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
 /**
  * Progress: this week's volume by muscle, training time over eight weeks, and
- * the last seven days' eating. Each section names its own span, since they differ.
+ * eating over the seven days before today. Each section names its own span, since they differ.
  */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
@@ -51,6 +51,8 @@ export default function ProgressScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const active = useRef(true);
   const large = useLargeText();
+  // The clock's day: past midnight the nutrition block reads again, for the seven days before the new one.
+  const todayKey = useCurrentDayKey();
 
   const load = useCallback(async () => {
     await Promise.all([
@@ -189,7 +191,7 @@ export default function ProgressScreen() {
           </Label>
         </Section>
 
-        <NutritionSection key={round} />
+        <NutritionSection key={`${round}:${todayKey}`} todayKey={todayKey} />
       </TabScroll>
     </>
   );
@@ -306,14 +308,14 @@ function Tick({ hot }: { hot: boolean }) {
  * Each row already says both to VoiceOver.
  */
 function RailKey() {
-  const tones = useMuscleTones();
+  const c = useBlanc();
   return (
     <View
       importantForAccessibility="no-hide-descendants"
       accessibilityElementsHidden
       style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 4, paddingLeft: 18, paddingRight: 16, paddingTop: 12, paddingBottom: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <View style={{ width: BAND.width, height: BAND.height, borderRadius: BAND.height / 2, backgroundColor: tones.in }} />
+        <View style={{ width: BAND.width, height: BAND.height, borderRadius: BAND.height / 2, backgroundColor: c.mark }} />
         <BlancText variant="footnote" tone="graphite">
           In range
         </BlancText>
@@ -331,11 +333,12 @@ function RailKey() {
 /**
  * Weekly sets on a line from zero past the ceiling. The band is in range
  * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
- * "in range" counts it, in the figure's in-range tone (at least 2:1 against
- * the track in every palette). An open row adds the band's middle, the best
- * range, in a deeper step of that tone, and names the marks under the rail.
- * The tick is this week's reading, in ink (red over); the list's head keys
- * both once.
+ * "in range" counts it, in the figure's in-range tone, `mark`. The track is
+ * the lighter `fill`, so the band reads at 3:1 or more against both the
+ * track and the card in every palette (against `track` it would not). An
+ * open row adds the band's middle, the best range, in a deeper step of that
+ * tone, and names the marks under the rail. The tick is this week's reading,
+ * in ink (red over); the list's head keys both once.
  */
 function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean; open: boolean }) {
   const c = useBlanc();
@@ -347,7 +350,7 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
   return (
     <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       <View style={{ height: TICK.height, marginTop: 9, justifyContent: 'center' }}>
-        <View style={{ height: 3, borderRadius: 1.5, backgroundColor: c.track }} />
+        <View style={{ height: 3, borderRadius: 1.5, backgroundColor: c.fill }} />
         <View
           style={{
             position: 'absolute',
@@ -355,7 +358,7 @@ function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullab
             width: span(landmark.mev, landmark.mrv),
             height: 5,
             borderRadius: 2.5,
-            backgroundColor: tones.in,
+            backgroundColor: c.mark,
           }}
         />
         {open ? (
@@ -479,9 +482,9 @@ const DASH = '4 3';
  * A dashed line across the plot. iOS draws a dashed border on one side only
  * as a solid line, so the dashes are drawn.
  */
-function DashedLine({ bottom, color, opacity }: { bottom: `${number}%`; color: string; opacity: number }) {
+function DashedLine({ bottom, color }: { bottom: `${number}%`; color: string }) {
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom, height: 1, opacity }}>
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom, height: 1 }}>
       <Svg width="100%" height={1}>
         <Line x1="0" y1="0.5" x2="100%" y2="0.5" stroke={color} strokeWidth={1} strokeDasharray={DASH} />
       </Svg>
@@ -544,12 +547,14 @@ function NothingKey({ children }: { children: string }) {
 /** The top of the training chart: the next whole hour at or above the longest week. */
 const hoursScale = (peak: number) => Math.max(60, Math.ceil(peak / 60) * 60);
 
-/** Eight weeks of training time; this week in ink, against a scale in whole hours. */
+/**
+ * Eight weeks of training time, against a scale in whole hours: this week in
+ * ink, past weeks in `mark` (3:1 or more on the card in every palette), so
+ * this week leads without the others going faint.
+ */
 function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   const c = useBlanc();
   const large = useLargeText();
-  // Increase Contrast draws past weeks at full strength, still graphite against this week's ink.
-  const contrast = useIncreaseContrast();
   const top = hoursScale(Math.max(0, ...points.map((point) => point.totalMinutes)));
   const current = points[points.length - 1];
   // The scale's figure sits on its line over the last two weeks' bars; one
@@ -589,8 +594,7 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
                     minHeight: MIN_BAR,
                     borderRadius: 3,
                     borderCurve: 'continuous',
-                    backgroundColor: index === points.length - 1 ? c.ink : c.graphite,
-                    opacity: contrast || index === points.length - 1 ? 1 : 0.5,
+                    backgroundColor: index === points.length - 1 ? c.ink : c.mark,
                   }}
                 />
               ) : (
@@ -639,8 +643,24 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   );
 }
 
-function NutritionSection() {
-  const { weeklyNutrition, loading, error } = useWeeklyNutrition();
+/**
+ * The seven days Progress's nutrition charts show: the seven before today
+ * (Today and Fuel already show today). Named by its dates, "Oct 29–Nov 4" or,
+ * within one month, "Nov 1–7"; spoken in full, "October 29 to November 4".
+ */
+function weekBefore(todayKey: string) {
+  const last = subDays(parseISO(todayKey), 1);
+  const first = subDays(last, 6);
+  return {
+    lastKey: format(last, 'yyyy-MM-dd'),
+    written: `${format(first, 'MMM d')}–${format(last, isSameMonth(first, last) ? 'd' : 'MMM d')}`,
+    spoken: `${format(first, 'MMMM d')} to ${format(last, 'MMMM d')}`,
+  };
+}
+
+function NutritionSection({ todayKey }: { todayKey: string }) {
+  const week = weekBefore(todayKey);
+  const { weeklyNutrition, loading, error } = useWeeklyNutrition(week.lastKey);
   const target = useAppStore((state) => state.macroTarget);
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const failed = "Couldn't load your nutrition. Pull down to try again.";
@@ -649,7 +669,7 @@ function NutritionSection() {
   // How many of the seven days have anything logged, said once for both charts while some are missing.
   const logged = weeklyNutrition.filter((day) => day.calories > 0 || day.protein > 0).length;
   const shown = !loading && !error && logged > 0 && logged < weeklyNutrition.length;
-  const note = `Last 7 days${shown ? ` · ${logged} ${logged === 1 ? 'day' : 'days'} logged` : ''}`;
+  const note = `${week.written}${shown ? ` · ${logged} ${logged === 1 ? 'day' : 'days'} logged` : ''}`;
   return (
     <Section title="Nutrition" note={note}>
       <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
@@ -660,14 +680,15 @@ function NutritionSection() {
             {failed}
           </BlancText>
         ) : weeklyNutrition.length === 0 ? (
+          // Today's meals are in Fuel; a day shows here from the next.
           <BlancText variant="secondary" tone="graphite">
-            Log meals in Fuel to see the week here.
+            Days you log in Fuel show here once they’re over.
           </BlancText>
         ) : (
           <View>
             <View style={{ gap: 22 }}>
-              <MacroBars days={weeklyNutrition} macro="calories" label="Calories" unit="kcal" target={target?.calories ?? 0} warnOver={warnsOverTarget('calories', goal)} />
-              <MacroBars days={weeklyNutrition} macro="protein" label="Protein" unit="g" target={target?.protein ?? 0} warnOver={warnsOverTarget('protein', goal)} />
+              <MacroBars days={weeklyNutrition} span={week.spoken} macro="calories" label="Calories" unit="kcal" target={target?.calories ?? 0} warnOver={warnsOverTarget('calories', goal)} />
+              <MacroBars days={weeklyNutrition} span={week.spoken} macro="protein" label="Protein" unit="g" target={target?.protein ?? 0} warnOver={warnsOverTarget('protein', goal)} />
             </View>
             {weeklyNutrition.some((day) => day.calories <= 0 || day.protein <= 0) ? <NothingKey>No entry</NothingKey> : null}
           </View>
@@ -678,17 +699,19 @@ function NutritionSection() {
 }
 
 /**
- * One macro across the last seven days, against its daily target (dashed,
- * named at its right end, "2,600 target"); today in ink, as in the
- * training chart, and a day with nothing logged marked by the same ring as
- * an empty training week. A day well past target is red only where that is
- * a warning for the goal. The header is the daily average of the logged
- * days before today (Fuel already shows today); a single logged day is
- * given as its figure, since an average of one day is no average. How many
- * days are logged is said once, in the section's note.
+ * One macro across the seven days before today, against its daily target
+ * (dashed, named on its line, "2,600 target"). Every day is a past one, so
+ * every bar is `mark` (3:1 or more on the card in every palette), and a day
+ * with nothing logged is marked by the same ring as an empty training week. A
+ * day well past target is red only where that is a warning for the goal. The
+ * header is the daily average of the logged days ("Avg 2,410 kcal"); a single
+ * logged day is given as its figure, named by its date ("Nov 3 1,342 kcal"),
+ * since an average of one day is no average. How many days are logged is
+ * said once, in the section's note.
  */
 function MacroBars({
   days,
+  span,
   macro,
   label,
   unit,
@@ -696,6 +719,8 @@ function MacroBars({
   warnOver,
 }: {
   days: DailyNutrition[];
+  /** The seven days in words, for VoiceOver: "October 29 to November 4". */
+  span: string;
   macro: 'calories' | 'protein';
   label: string;
   unit: string;
@@ -704,23 +729,17 @@ function MacroBars({
 }) {
   const c = useBlanc();
   const large = useLargeText();
-  // Increase Contrast draws the target line and past days at full strength.
-  const contrast = useIncreaseContrast();
-  // The clock's day, so a screen left open past midnight moves today on.
-  const todayKey = useCurrentDayKey();
-  // Today is still being eaten: the average is of the days before it, or
-  // today's own figure while it is the only day logged.
-  const earlier = days.filter((day) => day.date !== todayKey);
-  const pastAverage = averageLoggedDays(earlier, macro);
-  const todayOnly = pastAverage === 0 && averageLoggedDays(days, macro) > 0;
-  const average = todayOnly ? averageLoggedDays(days, macro) : pastAverage;
+  const average = averageLoggedDays(days, macro);
   // The days the average is of.
-  const counted = todayOnly ? 1 : earlier.filter((day) => day[macro] > 0).length;
-  // One day is said plainly ("1,342 kcal"): an average of one day is no average.
-  const single = counted === 1;
-  // ...and names which day it is, so the figure never reads as a total or an average.
-  const singleDay = single ? (todayOnly ? days.find((day) => day.date === todayKey) : earlier.find((day) => day[macro] > 0)) : undefined;
-  const singleWhen = singleDay ? (singleDay.date === todayKey ? 'Today' : format(parseISO(singleDay.date), 'MMM d')) : '';
+  const counted = days.filter((day) => day[macro] > 0).length;
+  // One day is said plainly, and named, so the figure never reads as a total or an average.
+  const singleDay = counted === 1 ? days.find((day) => day[macro] > 0) : undefined;
+  const figure = `${formatWhole(average)} ${unit}`;
+  const headline = singleDay
+    ? `${figure} on ${format(parseISO(singleDay.date), 'MMMM d')}, the only day logged`
+    : counted > 0
+      ? `${figure}, the daily average of the logged days, ${span}`
+      : `none logged, ${span}`;
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
   // The target's figure always sits on its own line, so it names the right
@@ -734,7 +753,7 @@ function MacroBars({
     <View
       accessible
       accessibilityLabel={speak(
-        `${label}, ${single ? `${singleWhen ? `${singleWhen}, ` : ''}${formatWhole(average)} ${unit}` : counted > 0 ? `daily average ${formatWhole(average)} ${unit}` : 'none logged'}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
+        `${label}, ${headline}${target > 0 ? ` · target ${formatWhole(target)}` : ''}. ${days
           .map((day) => `${format(parseISO(day.date), 'EEEE')}, ${day[macro] > 0 ? formatWhole(day[macro]) : 'nothing logged'}${isOver(day) ? ', over' : ''}`)
           .join('; ')}`,
       )}>
@@ -743,9 +762,9 @@ function MacroBars({
         <BlancText variant="secondary" tone="graphite">
           {label}
         </BlancText>
-        {single ? (
+        {singleDay ? (
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {singleWhen ? `${singleWhen} ` : ''}
+            {format(parseISO(singleDay.date), 'MMM d')}{' '}
             <BlancText variant="secondary" weight="500">
               {formatWhole(average)}
             </BlancText>{' '}
@@ -768,32 +787,26 @@ function MacroBars({
       <View style={{ height: MACRO_PLOT, marginTop: MACRO_GAP }}>
         {/* The zero line; a day with nothing logged draws the ring for nothing recorded, as an empty week does on the training chart. */}
         <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
-        {target > 0 ? (
-          <DashedLine bottom={`${(target / max) * 100}%`} color={c.graphite} opacity={contrast ? 1 : 0.6} />
-        ) : null}
+        {/* The target in `mark`, at full strength: read, but never ahead of the bars. */}
+        {target > 0 ? <DashedLine bottom={`${(target / max) * 100}%`} color={c.mark} /> : null}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: '100%' }}>
-          {days.map((day) => {
-            const over = isOver(day);
-            const current = day.date === todayKey;
-            return (
-              <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
-                {day[macro] > 0 ? (
-                  <View
-                    style={{
-                      height: `${(day[macro] / max) * 100}%`,
-                      minHeight: MIN_BAR,
-                      borderRadius: 3,
-                      borderCurve: 'continuous',
-                      backgroundColor: over ? c.live : current ? c.ink : c.graphite,
-                      opacity: contrast || over || current ? 1 : 0.5,
-                    }}
-                  />
-                ) : (
-                  <NothingMark />
-                )}
-              </View>
-            );
-          })}
+          {days.map((day) => (
+            <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
+              {day[macro] > 0 ? (
+                <View
+                  style={{
+                    height: `${(day[macro] / max) * 100}%`,
+                    minHeight: MIN_BAR,
+                    borderRadius: 3,
+                    borderCurve: 'continuous',
+                    backgroundColor: isOver(day) ? c.live : c.mark,
+                  }}
+                />
+              ) : (
+                <NothingMark />
+              )}
+            </View>
+          ))}
         </View>
         {/* Over the bars, so a bar never covers it. */}
         {target > 0 ? (

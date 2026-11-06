@@ -154,32 +154,37 @@ function palette(name: string): Record<string, string> {
   return Object.fromEntries([...body.matchAll(/(\w+): '(#[0-9A-F]{6})'/g)].map((match) => [match[1], match[2]]));
 }
 
+// In range is the palette's `mark` on the figure, the key and the rails' band;
+// below range is outlined in the palette's ink.
 describe('Progress\'s in-range tone', () => {
   for (const name of Object.keys(MUSCLE_TONES) as Array<keyof typeof MUSCLE_TONES>) {
-    it(`draws the rail's band in the figure's in-range tone, clear of the track (${name})`, () => {
+    it(`draws the rail's band in the figure's in-range tone, at 3:1 against its track and the card (${name})`, () => {
       const tones = MUSCLE_TONES[name];
-      const { track } = palette(name);
-      expect(track, name).toBeDefined();
-      expect(contrast(tones.in, track), name).toBeGreaterThanOrEqual(2);
-      // The best range, a deeper step of the same tone, stands out from the band.
-      expect(contrast(tones.best, tones.in), name).toBeGreaterThanOrEqual(2);
+      const { mark, fill, label } = palette(name);
+      expect(mark && fill && label, name).toBeTruthy();
+      // The rail's track is `fill`: against `track` the band would fall short of 3:1.
+      expect(contrast(mark, fill), name).toBeGreaterThanOrEqual(3);
+      expect(contrast(mark, label), name).toBeGreaterThanOrEqual(3);
+      // The best range, a deeper step of the same tone, stands out from the band and reads on the card.
+      expect(contrast(tones.best, mark), name).toBeGreaterThanOrEqual(2);
+      expect(contrast(tones.best, label), name).toBeGreaterThanOrEqual(3);
     });
 
-    it(`outlines a muscle below range clearly, against the body and its own light fill (${name})`, () => {
+    it(`outlines a muscle below range in ink, against the body and its own light fill (${name})`, () => {
       const tones = MUSCLE_TONES[name];
-      expect(contrast(tones.belowEdge, tones.body), name).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(tones.belowEdge, tones.below), name).toBeGreaterThanOrEqual(4.5);
+      const { ink, mark } = palette(name);
+      expect(contrast(ink, tones.body), name).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(ink, tones.below), name).toBeGreaterThanOrEqual(4.5);
       // In range is clearly a fill, but quieter than the outline, so below range leads.
-      expect(contrast(tones.in, tones.body), name).toBeGreaterThanOrEqual(3);
-      expect(contrast(tones.belowEdge, tones.body), name).toBeGreaterThan(contrast(tones.in, tones.body));
+      expect(contrast(mark, tones.body), name).toBeGreaterThanOrEqual(3);
+      expect(contrast(ink, tones.body), name).toBeGreaterThan(contrast(mark, tones.body));
     });
   }
 
   it('keeps in range a mid-tone on the dark cards, never the brightest thing on screen', () => {
     for (const name of ['dark', 'darkContrast'] as const) {
-      const tones = MUSCLE_TONES[name];
       // Quieter against the card than the dark palette's ink, the screen's own text.
-      expect(contrast(tones.in, palette(name).label), name).toBeLessThan(contrast(palette(name).ink, palette(name).label) / 2);
+      expect(contrast(palette(name).mark, palette(name).label), name).toBeLessThan(contrast(palette(name).ink, palette(name).label) / 2);
     }
   });
 
@@ -189,8 +194,8 @@ describe('Progress\'s in-range tone', () => {
     const edge = rgb(graphite).map((value, i) => Math.round(0.3 * value + 0.7 * rgb(label)[i]));
     rgb(MUSCLE_TONES.light.contour).forEach((value, i) => expect(Math.abs(value - edge[i])).toBeLessThanOrEqual(3));
     expect(contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body)).toBeGreaterThanOrEqual(1.4);
-    // Quieter than below range's outline, so an outlined muscle never reads as the bare body.
-    expect(contrast(MUSCLE_TONES.light.belowEdge, MUSCLE_TONES.light.body)).toBeGreaterThan(2 * contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body));
+    // Quieter than below range's ink outline, so an outlined muscle never reads as the bare body.
+    expect(contrast(palette('light').ink, MUSCLE_TONES.light.body)).toBeGreaterThan(2 * contrast(MUSCLE_TONES.light.contour, MUSCLE_TONES.light.body));
     const source = readFileSync(path.join(__dirname, '../native/src/components/MuscleFigure.tsx'), 'utf8');
     expect(source).toContain('const BODY_EDGE = 1;');
   });

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import { logMacro } from '@/lib/nutritionMacros';
-import { subDays, format } from 'date-fns';
+import { subDays, format, parseISO } from 'date-fns';
 
 export interface DailyNutrition {
   date: string;
@@ -16,7 +16,12 @@ export interface WeeklyNutritionData {
   error: string | null;
 }
 
-export function useWeeklyNutrition() {
+/**
+ * Calories and protein for each of seven days, oldest first: the seven
+ * ending `lastDay` (a 'yyyy-MM-dd' key), or ending today when none is given.
+ * Empty when nothing is logged in those days.
+ */
+export function useWeeklyNutrition(lastDay?: string) {
   const [data, setData] = useState<WeeklyNutritionData>({
     weeklyNutrition: [],
     loading: true,
@@ -27,7 +32,7 @@ export function useWeeklyNutrition() {
     let cancelled = false;
 
     const run = async () => {
-      const result = await fetchWeeklyNutrition();
+      const result = await fetchWeeklyNutrition(lastDay);
       if (cancelled) return;
       if (result) {
         setData(result);
@@ -39,22 +44,22 @@ export function useWeeklyNutrition() {
     run();
 
     return () => { cancelled = true; };
-  }, []);
+  }, [lastDay]);
 
   return data;
 }
 
-async function fetchWeeklyNutrition() {
+async function fetchWeeklyNutrition(lastDay?: string) {
   try {
     const userId = await getSessionUserId();
     if (!userId) return;
 
-    const today = new Date();
-    const sevenDaysAgo = subDays(today, 6);
+    const end = lastDay ? parseISO(lastDay) : new Date();
+    const sevenDaysAgo = subDays(end, 6);
     const startDateStr = format(sevenDaysAgo, 'yyyy-MM-dd');
-    const endDateStr = format(today, 'yyyy-MM-dd');
+    const endDateStr = format(end, 'yyyy-MM-dd');
 
-    // Fetch nutrition logs for the last 7 days, each with its food
+    // Fetch nutrition logs for the 7 days, each with its food
     const { data: nutritionLogs, error: logsError } = await fetchNutritionLogsWithFoods<
       { date: string; servings: number; food_id: string },
       { id: string; calories: number; protein: number }
@@ -65,7 +70,7 @@ async function fetchWeeklyNutrition() {
     // Aggregate daily nutrition
     const dailyNutritionMap = new Map<string, DailyNutrition>();
     for (let i = 0; i < 7; i++) {
-      const d = format(subDays(today, i), 'yyyy-MM-dd');
+      const d = format(subDays(end, i), 'yyyy-MM-dd');
       dailyNutritionMap.set(d, { date: d, calories: 0, protein: 0 });
     }
 

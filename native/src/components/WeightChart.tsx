@@ -1,6 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { useMemo, useState } from 'react';
-import { useColorScheme, useWindowDimensions, View, type AccessibilityActionEvent } from 'react-native';
+import { useWindowDimensions, View, type AccessibilityActionEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
@@ -8,7 +8,7 @@ import { indexAtX, linearScale, monotonePath, xAtIndex } from '@/lib/chartGeomet
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import { weightChartTicks, type WeightChartPoint, type WeightChartWindow } from '@/lib/weightHistory';
 import type { WeightTrendPoint } from '@/lib/weightTrend';
-import { speak, spokenUnit, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
+import { speak, spokenUnit, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { sparklineDomain, weightScale } from '~/lib/weightChartScale';
 import { useBlanc } from '~/theme/blanc';
@@ -37,8 +37,9 @@ const SCALE_COLUMN = 34;
 const SCALE_GAP = 8;
 
 /**
- * The smoothed body-weight line with the day's weigh-ins as dots (a mis-read
- * hollow). The full chart reads any day: tap it (tap that day again to let
+ * The smoothed body-weight line in ink with the day's weigh-ins as dots in
+ * `mark` at full strength (a mis-read hollow, its ring the same tone): 3:1 or
+ * more on the card in every palette, the line leading by its weight. The full chart reads any day: tap it (tap that day again to let
  * go), or hold and slide; VoiceOver swipes up and down through the days. The
  * day read is the chart's value, which VoiceOver speaks as it changes, so the
  * readout line above is hidden from it. Given a `calendar` (Body weight's
@@ -75,11 +76,6 @@ export function WeightChart({
   const c = useBlanc();
   const large = useLargeText();
   const { fontScale } = useWindowDimensions();
-  // Increase Contrast draws the weigh-in dots at full strength.
-  const contrast = useIncreaseContrast();
-  // In dark, graphite dots at the light appearance's strength sink into the card.
-  const dark = useColorScheme() === 'dark';
-  const dotOpacity = contrast ? 1 : dark ? 0.85 : 0.6;
   const [width, setWidth] = useState(0);
   // The day read, by date, for the days it was read in: another range starts from its summary.
   const view = calendar ? `${calendar.startDay}/${calendar.slots}` : 'last';
@@ -122,7 +118,7 @@ export function WeightChart({
     // Dots shrink as the days crowd together, so a year reads as a band around the line.
     const radius = Math.max(1.25, Math.min(DOT_RADIUS, (plotWidth / Math.max(1, slots)) * 0.9));
     const line = series.map((point) => ({ x: x(point.slot), y: y(toUnit(point.ewmaKg)) }));
-    // The sparkline shows its weigh-ins faintly behind the trend (mis-reads left out), as the full chart does.
+    // The sparkline shows its weigh-ins behind the trend (mis-reads left out), as the full chart does.
     const dots = series.flatMap((point, index) =>
       point.observedKg == null || (compact && point.isOutlier) ? [] : [{ index, x: line[index].x, y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
     );
@@ -251,10 +247,9 @@ export function WeightChart({
               cx={dot.x}
               cy={dot.y}
               r={compact ? 1.25 : geometry.radius}
-              fill={dot.outlier ? 'none' : compact ? c.mark : c.graphite}
-              stroke={dot.outlier ? c.graphite : 'none'}
+              fill={dot.outlier ? 'none' : c.mark}
+              stroke={dot.outlier ? c.mark : 'none'}
               strokeWidth={1}
-              opacity={dotOpacity}
             />
           ))}
           {geometry && geometry.line.length > 1 ? (
@@ -334,14 +329,14 @@ export function WeightChart({
             </BlancText>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View style={{ width: 2 * DOT_RADIUS, height: 2 * DOT_RADIUS, borderRadius: DOT_RADIUS, backgroundColor: c.graphite, opacity: dotOpacity }} />
+            <View style={{ width: 2 * DOT_RADIUS, height: 2 * DOT_RADIUS, borderRadius: DOT_RADIUS, backgroundColor: c.mark }} />
             <BlancText variant="footnote" tone="graphite">
               Weigh-ins
             </BlancText>
           </View>
           {series.some((point) => point.isOutlier) ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 2 * DOT_RADIUS + 1, height: 2 * DOT_RADIUS + 1, borderRadius: DOT_RADIUS + 0.5, borderWidth: 1, borderColor: c.graphite, opacity: dotOpacity }} />
+              <View style={{ width: 2 * DOT_RADIUS + 1, height: 2 * DOT_RADIUS + 1, borderRadius: DOT_RADIUS + 0.5, borderWidth: 1, borderColor: c.mark }} />
               <BlancText variant="footnote" tone="graphite">
                 Mis-read
               </BlancText>
