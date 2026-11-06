@@ -199,7 +199,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   nutritionDay, savedMeals, recentFoods, repeatEntries, savedMealFromLog); never copy them into
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
   `native/src/fuel`) with Recent, Saved and Search as its segments and the
-  entry methods Barcode, Manual and Describe (Photo on the worker) as a quiet
+  entry methods Barcode, Manual and Photo (a meal photo, or the meal described in words) as a quiet
   row of buttons under them (`native/src/fuel/EntryMethods.tsx`), a
   review for a chosen food, and the meal builder (Scan opens the camera only
   when Scan barcode is tapped, the owner's call on 2026-10-27). Recent opens
@@ -244,8 +244,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   to refresh, and a small destructive button with no swipe behind it asks
   first.
 - Food AI: the owner logs with Gemini (the web logger's hosted mode), so the
-  native app defaults to it (the Describe method, Manual's hand-off, Describe
-  amount); a device set to the worker gets Photo instead.
+  native app defaults to it (the Photo method, Manual's hand-off, Describe
+  amount); a device set to the worker gets the worker's photo view under the same Photo button.
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
   from ⋯ on the current card, a finished movement's row, or a hold (lifted and let go) on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12
