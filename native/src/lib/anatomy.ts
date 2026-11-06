@@ -376,6 +376,28 @@ const bothSides = (tiles: Array<[MuscleGroup, string[]]>): Region[] =>
 
 export const REGIONS: Record<ViewSide, Region[]> = { front: bothSides(FRONT_TILES), back: bothSides(BACK_TILES) };
 
+const samePt = (a: Pt, b: Pt) => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
+const sameCubic = (a: Cubic, b: Cubic) => a.every((point, i) => samePt(point, b[i])) || a.every((point, i) => samePt(point, b[3 - i]));
+
+/**
+ * Each muscle's edge on each view as one shape: its pieces' outlines less
+ * the curves two of its own pieces share (the hamstrings' heads, the two
+ * sides of the chest), so a muscle drawn with an outline is outlined once
+ * around, not piece by piece. The curves are in no particular order.
+ */
+export const MUSCLE_EDGES: Record<ViewSide, Map<MuscleGroup, Cubic[]>> = (() => {
+  const edgesOf = (regions: Region[]) => {
+    const edges = new Map<MuscleGroup, Cubic[]>();
+    for (const region of regions) {
+      const own = regions.filter((other) => other !== region && other.muscle === region.muscle);
+      const outer = region.cubics.filter((cubic) => !own.some((other) => other.cubics.some((shared) => sameCubic(cubic, shared))));
+      edges.set(region.muscle, [...(edges.get(region.muscle) ?? []), ...outer]);
+    }
+    return edges;
+  };
+  return { front: edgesOf(REGIONS.front), back: edgesOf(REGIONS.back) };
+})();
+
 /** The whole silhouette below the head: the right half, then the left back up, joined under the chin. */
 export const SILHOUETTE: Cubic[] = (() => {
   const right = BUILT.outline.cubics;

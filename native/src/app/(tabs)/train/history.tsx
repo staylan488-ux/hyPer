@@ -18,6 +18,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
+import { Tally } from '~/components/Tally';
 import { announce, speak, useAnnounce, useLargeText, useReduceMotion } from '~/lib/accessibility';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
@@ -32,6 +33,7 @@ import {
   useHistoryStore,
   workoutsOnDay,
 } from '~/lib/history';
+import { dayEntries } from '~/lib/historyDay';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useSessionModel, type SessionModel } from '~/lib/session';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -40,6 +42,8 @@ import { useBlanc, type Palette } from '~/theme/blanc';
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 /** A week's row in the month grid: a 44-point target holding the 34-point day, 4 points of clearance and its dot. */
 const DAY_ROW = 44;
+/** A finished workout's tally fits beside its name up to four groups of five; longer ones read in words. */
+const TALLY_MAX_SETS = 20;
 
 /**
  * A length the way the rest of the app writes one ("48 min", "1 h 5 min"), or null without one.
@@ -80,6 +84,9 @@ export default function HistoryScreen() {
     () => sortActivitySessionsByStart(activities.filter((activity) => getActivitySessionDateKey(activity) === day)),
     [activities, day],
   );
+  // One log for the day, earliest first; the workout running now leads.
+  const liveId = live?.workoutId ?? null;
+  const entries = useMemo(() => dayEntries(dayWorkouts, dayActivities, liveId), [dayWorkouts, dayActivities, liveId]);
   const date = parseISO(day);
   const onToday = isToday(date);
   useAnnounce(failed && !loading ? "Couldn't load this month" : null);
@@ -174,19 +181,19 @@ export default function HistoryScreen() {
               </Animated.View>
             ) : null}
             {!loading &&
-              dayWorkouts.map((workout, index) => (
-                <Animated.View key={workout.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-                  {index > 0 ? <Hairline /> : null}
-                  <WorkoutRow workout={workout} live={live?.workoutId === workout.id ? live : null} />
-                </Animated.View>
-              ))}
-            {!loading &&
-              dayActivities.map((activity, index) => (
-                <Animated.View key={activity.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-                  {index > 0 || dayWorkouts.length > 0 ? <Hairline /> : null}
-                  <ActivityRow activity={activity} sameDay={dayActivities} />
-                </Animated.View>
-              ))}
+              entries.map((entry, index) =>
+                entry.kind === 'workout' ? (
+                  <Animated.View key={entry.workout.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                    {index > 0 ? <Hairline /> : null}
+                    <WorkoutRow workout={entry.workout} live={live?.workoutId === entry.workout.id ? live : null} />
+                  </Animated.View>
+                ) : (
+                  <Animated.View key={entry.activity.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                    {index > 0 ? <Hairline /> : null}
+                    <ActivityRow activity={entry.activity} sameDay={dayActivities} />
+                  </Animated.View>
+                ),
+              )}
           </Label>
         </Section>
       </TabScroll>
@@ -520,7 +527,10 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   const progress = progressFromSets(workout.sets);
   const duration = lengthOf(getWorkoutDurationMs(workout));
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
-  const detail = [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
+  // The sets drawn as a quiet tally on the title's line, where it fits beside
+  // the name; otherwise (no sets, a long session, the accessibility sizes) in words.
+  const tally = !large && progress.totalSets > 0 && progress.totalSets <= TALLY_MAX_SETS;
+  const detail = tally ? duration ?? undefined : [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
   const remove = () => void confirmDeleteWorkout(title, workout.id, { onDeleted: () => announce(`${title} deleted`) });
   const menu: MenuAction[] = [
@@ -531,10 +541,30 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   return (
     <SwipeRow name={title} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={title} detail={detail} chevron onPress={open} menu={menu} />
+        <Row
+          title={title}
+          detail={detail}
+          accessibilityLabel={tally ? [title, duration, sets].filter(Boolean).join(', ') : undefined}
+          trailing={
+            tally ? (
+              <View style={detail ? { alignSelf: 'flex-start', marginTop: 3 } : null}>
+                <Tally compact quiet marks={orderedMarks(workout)} current={null} accessibilityLabel={sets} />
+              </View>
+            ) : undefined
+          }
+          chevron
+          onPress={open}
+          menu={menu}
+        />
       </View>
     </SwipeRow>
   );
+}
+
+/** One stroke per set, logged ones first, so a session left short reads as done, then not. */
+function orderedMarks(workout: HistoryWorkout): boolean[] {
+  const done = workout.sets.filter((set) => set.completed).length;
+  return workout.sets.map((_, index) => index < done);
 }
 
 /** "● In progress" at a live row's right; beside a detail line it sits on the title's line, as a value does. */

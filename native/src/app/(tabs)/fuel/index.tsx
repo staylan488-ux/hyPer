@@ -38,7 +38,7 @@ import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey,
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useYouMealsStore } from '~/lib/you';
-import { space, useBlanc } from '~/theme/blanc';
+import { figureLead, space, useBlanc } from '~/theme/blanc';
 
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
 
@@ -221,7 +221,7 @@ export default function FuelScreen() {
           style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 12, opacity: pressed ? 0.55 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
             {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
-            <RollingText variant="figure" size={64} style={{ letterSpacing: -1.5 }}>
+            <RollingText variant="figure" size={56} style={{ letterSpacing: -1.25, marginLeft: figureLead(loaded ? formatWhole(totals.calories) : '–', 56) }}>
               {loaded ? formatWhole(totals.calories) : '–'}
             </RollingText>
             <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
@@ -271,7 +271,7 @@ export default function FuelScreen() {
             ) : null}
             {sections.map(({ group, logs: entries }) => (
               <Animated.View key={group.id} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
+                <MealSection title={mealTitle(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ))}
 
@@ -371,7 +371,7 @@ function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
                 haptics.select();
                 useFuelStore.getState().select(key);
               }}
-              style={({ pressed }) => ({ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.35 : pressed ? 0.5 : 1 })}>
+              style={({ pressed }) => ({ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.55 : pressed ? 0.5 : 1 })}>
               <BlancText variant="footnote" tone="graphite" maxFontSizeMultiplier={DAY_CELL_TEXT_MAX}>
                 {format(day, 'EEEEE')}
               </BlancText>
@@ -481,7 +481,7 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
               groupMenu();
             }}
             style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'flex-end', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-            <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.ink} />
+            <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.graphite} />
           </Pressable>
         ) : undefined
       }>
@@ -526,7 +526,7 @@ function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: 
   // and VoiceOver all offer the same list.
   const targets: { id: string | null; label: string }[] = [
     { id: null, label: 'Unassigned' },
-    ...groups.map((group) => ({ id: group.id, label: nutritionGroupLabel(group, groups) })),
+    ...groups.map((group) => ({ id: group.id, label: mealTitle(group, groups) })),
   ].filter((targetGroup) => targetGroup.id !== (log.group_id ?? null));
   const menu: MenuAction[] = [
     { title: 'Edit', symbol: 'pencil', run: edit },
@@ -659,4 +659,12 @@ function MacroColumn({ macro, value, target, loaded, goal, edge }: {
       {target ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : <View style={{ height: 4 }} />}
     </Pressable>
   );
+}
+
+/** A meal's name on Fuel: "Snack" while it is the day's only snack, "Snack 2" once there are more. */
+function mealTitle(group: NutritionGroup, groups: NutritionGroup[]): string {
+  const label = nutritionGroupLabel(group, groups);
+  if (group.label) return label;
+  const sameKind = groups.filter((candidate) => !candidate.label && candidate.kind === group.kind).length;
+  return sameKind === 1 ? label.replace(/ 1$/, '') : label;
 }

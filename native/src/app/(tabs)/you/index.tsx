@@ -9,7 +9,7 @@ import Animated from 'react-native-reanimated';
 
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
-import { bodyWeightTrends, weeklyRateLabel } from '@/lib/bodyWeightSummary';
+import { bodyWeightTrends } from '@/lib/bodyWeightSummary';
 import { formatWeight } from '@/lib/weightDisplayCore';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -41,6 +41,7 @@ import {
   type AppearanceChoice,
 } from '~/lib/you';
 import { centredTrendLine } from '~/lib/weightTrendLine';
+import { summaryRateLabel } from '~/lib/weightRate';
 import { space, useBlanc } from '~/theme/blanc';
 
 /**
@@ -154,7 +155,8 @@ function WeightCard() {
   const large = useLargeText();
   const { trend, rate } = useMemo(() => bodyWeightTrends(history), [history]);
   const latest = history[0] ?? null;
-  const rateLabel = weeklyRateLabel(rate.kgPerWeek, unit);
+  // One decimal, as Body weight's chart line rounds it.
+  const rateLabel = summaryRateLabel(rate.kgPerWeek, unit);
   const latestDate = latest ? new Date(latest.measured_at) : null;
   const todayKey = useCurrentDayKey();
   const line = rateLabel

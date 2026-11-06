@@ -29,7 +29,7 @@ import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
-import { space, useBlanc } from '~/theme/blanc';
+import { figureLead, space, useBlanc } from '~/theme/blanc';
 
 export default function TodayScreen() {
   const now = useNow(30_000);
@@ -97,7 +97,7 @@ export default function TodayScreen() {
                 style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
                 {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                  <RollingText variant="figure" size={64} style={{ letterSpacing: -1.5 }}>
+                  <RollingText variant="figure" size={56} style={{ letterSpacing: -1.25, marginLeft: figureLead(formatWhole(totals.calories), 56) }}>
                     {formatWhole(totals.calories)}
                   </RollingText>
                   <Animated.View layout={figureLayout}>

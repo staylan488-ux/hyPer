@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { weeklyRateLabel } from '@/lib/bodyWeightSummary';
 import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
 import {
   DEFAULT_WEIGHT_RANGE,
@@ -30,6 +29,7 @@ import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { figureLayout, rowLayout } from '~/lib/motion';
+import { summaryRateLabel } from '~/lib/weightRate';
 import { centredTrendLine } from '~/lib/weightTrendLine';
 import { loadWeights, setWeightUnit, useAllWeighIns, useHealthStore, usePullRefresh, useWeightStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
@@ -65,11 +65,11 @@ export default function WeightScreen() {
   // Handed to the rows and the chart, so "Today" and the range move on at midnight.
   const todayKey = useCurrentDayKey();
   const calendar = useMemo(() => weightChartWindow(line, range.days, todayKey), [line, range.days, todayKey]);
-  // The chart's resting line: "+4.1 lb since Aug 7 · +0.32 lb/wk", the
-  // rate averaged over the same days. Gaining reads like losing, in ink:
+  // The chart's resting line: "+4.1 lb since Aug 7 · +0.3 lb/wk", the
+  // rate averaged over the same days, at a summary's one decimal (as You's card). Gaining reads like losing, in ink:
   // whether it's good is the goal's to say.
   const change = weightChangeLabel(calendar.series, unit);
-  const rateLabel = weeklyRateLabel(weightRangeKgPerWeek(calendar.series), unit);
+  const rateLabel = summaryRateLabel(weightRangeKgPerWeek(calendar.series), unit);
   const trendLine = change
     ? // The dot stays with the words before it when the line wraps at the largest text sizes.
       [change, rateLabel].filter(Boolean).join('\u00a0· ')

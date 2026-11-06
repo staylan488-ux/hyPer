@@ -645,7 +645,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               {/* The name and its line open the movement's sets, note and swap, like ⋯. */}
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={speak(`${current.movement.name}, ${cardLine}`)}
+                accessibilityLabel={speak([current.movement.name, cardLine, repTarget && !current.movement.superset && !current.movement.substitutesFor ? repTarget : null].filter(Boolean).join(', '))}
                 accessibilityHint="Opens its sets, note and swap"
                 onPress={() => {
                   haptics.tap();
@@ -659,8 +659,15 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 <BlancText variant="title" numberOfLines={large ? undefined : 2}>
                   {current.movement.name}
                 </BlancText>
+                {/* Where the set stands, then what it asks for: the rep target in ink, the one instruction on the card. */}
                 <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                   {cardLine}
+                  {repTarget && !current.movement.superset && !current.movement.substitutesFor ? (
+                    <BlancText variant="secondary" weight="500">
+                      {cardLine ? ' · ' : ''}
+                      {repTarget}
+                    </BlancText>
+                  ) : null}
                 </BlancText>
               </Pressable>
               <Pressable
@@ -685,7 +692,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             {beat?.fresh ? (
               <BeatLine key={beat.key} gain={beat.gain} style={{ marginTop: 8 }} />
             ) : lastNote ? (
-              <Animated.View key="note" entering={FadeIn.duration(220)} style={{ marginTop: 8 }}>
+              <Animated.View key="note" entering={FadeIn.duration(220)} style={{ marginTop: 4 }}>
                 <BlancText
                   variant="footnote"
                   tone="graphite"
@@ -719,8 +726,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   unit="reps"
                   size={figure}
                   integer
-                  caption={[repTarget?.replace(/ reps?$/, ''), lastReps !== null ? `last ${lastReps}` : null].filter(Boolean).join(' · ') || undefined}
-                  spokenCaption={[repTarget ? `Target ${repTarget}` : null, lastReps !== null ? `last time ${lastReps} reps` : null].filter(Boolean).join(', ') || undefined}
+                  caption={lastReps !== null ? `last ${lastReps}` : undefined}
+                  spokenCaption={lastReps !== null ? `Last time, ${lastReps} reps` : undefined}
                   accessibilityLabel="Reps"
                   onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
                   onFocus={() => setEditing('reps')}
@@ -757,7 +764,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   skip(current.movement);
                 }}
                 style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-                <BlancText variant="secondary" weight="500">
+                <BlancText variant="footnote" tone="graphite">
                   {current.movement.done > 0 ? 'End early' : 'Skip movement'}
                 </BlancText>
               </Pressable>

@@ -175,3 +175,15 @@ export const space = {
 export const radius = {
   label: 10,
 } as const;
+
+/**
+ * How far to pull a big Thin figure left so its first digit's ink, not its
+ * box, sits on the text edge. A tabular "1" is centred in a wide advance
+ * (about an eighth of the size on either side); other digits carry a little
+ * side bearing too.
+ */
+export function figureLead(text: string, size: number): number {
+  const first = text.trim().charAt(0);
+  if (!/[0-9]/.test(first)) return 0;
+  return -Math.round(size * (first === '1' ? 0.12 : 0.04));
+}

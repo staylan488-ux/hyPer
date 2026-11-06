@@ -97,7 +97,7 @@ export default function ProgramScreen() {
           // Locked during a workout: the mode as a plain row that reads clearly, and why it can't change.
           <>
             <Label style={{ marginTop: 18 }}>
-              <Row title="Training" value={mode === 'flexible' ? 'Flexible' : 'Program days'} />
+              <Row title="Training mode" quiet value={mode === 'flexible' ? 'Flexible' : 'Program days'} accessibilityLabel={`Training mode, ${mode === 'flexible' ? 'Flexible' : 'Program days'}, locked during a workout`} />
             </Label>
             <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
               Finish the current workout to switch.

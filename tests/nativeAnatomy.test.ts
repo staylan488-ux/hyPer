@@ -8,7 +8,7 @@ import { BAND_STRENGTH, MUSCLE_TONES } from '../native/src/theme/muscleTones';
 
 const SIDES: ViewSide[] = ['front', 'back'];
 /** Progress draws the figure this tall (MuscleFigure's height), in points. */
-const FIGURE_POINTS = 146;
+const FIGURE_POINTS = 170;
 const pointsPerUnit = FIGURE_POINTS / (FIGURE.bottom - FIGURE.top);
 
 /** How far a point inside a polygon is from its edge. */
@@ -125,6 +125,11 @@ describe("Progress's muscle figure", () => {
     }
   });
 
+  it('is drawn at the height these checks assume', () => {
+    const source = readFileSync(path.join(__dirname, '../native/src/components/MuscleFigure.tsx'), 'utf8');
+    expect(source).toContain(`height = ${FIGURE_POINTS} }`);
+  });
+
   it('gives the figure room across, an arm hanging clear of the body', () => {
     // Each figure at least 70 pt wide at Progress's height.
     expect((FIGURE.right - FIGURE.left) * pointsPerUnit).toBeGreaterThanOrEqual(70);
@@ -162,5 +167,19 @@ describe('Progress\'s in-range tone', () => {
       // The best range, at full strength, stands out from the band.
       expect(contrast(tones.in, tones.band), name).toBeGreaterThanOrEqual(2);
     });
+
+    it(`outlines a muscle below range clearly, against the body and its own light fill (${name})`, () => {
+      const tones = MUSCLE_TONES[name];
+      expect(contrast(tones.belowEdge, tones.body), name).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(tones.belowEdge, tones.below), name).toBeGreaterThanOrEqual(4.5);
+      // In range is the strong solid fill.
+      expect(contrast(tones.in, tones.body), name).toBeGreaterThanOrEqual(4.5);
+    });
   }
+
+  it("keeps the body's edge readable on the dark cards", () => {
+    for (const name of ['dark', 'darkContrast'] as const) {
+      expect(contrast(MUSCLE_TONES[name].contour, palette(name).label), name).toBeGreaterThanOrEqual(2.2);
+    }
+  });
 });

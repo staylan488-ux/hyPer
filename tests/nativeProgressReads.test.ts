@@ -193,32 +193,49 @@ describe("Progress's week", () => {
 });
 
 describe("Progress's nutrition header", () => {
-  it('averages the logged days before today and says how many while some are missing', async () => {
+  const count = (text: string) => shown().split(text).length - 1;
+
+  it('averages the logged days before today, and says once in the note how many days are logged', async () => {
     nutrition = lastWeek({ 0: 800, 1: 2000, 3: 2400 });
     await open();
-    expect(shown()).toContain('Avg 2200 kcal over 2 days');
+    expect(shown()).toContain('Avg 2200 kcal');
+    expect(shown()).toContain('Nutrition Last 7 days · 3 days logged');
+    expect(count('days logged')).toBe(1);
+    expect(shown()).not.toContain('over 2 days');
     expect(shown()).not.toContain('today');
   });
 
-  it("uses today's figure while today is the only day logged", async () => {
+  it("uses today's figure while today is the only day logged, the count said once for both charts", async () => {
     nutrition = lastWeek({ 0: 1342 });
     await open();
-    expect(shown()).toContain('1342 kcal · 1 day logged');
+    expect(shown()).toContain('1342 kcal');
+    expect(shown()).toContain('Last 7 days · 1 day logged');
+    expect(count('1 day logged')).toBe(1);
     expect(shown()).not.toContain('Avg 1342');
   });
 
   it('says one logged day plainly rather than as an average', async () => {
     nutrition = lastWeek({ 0: 900, 2: 2100 });
     await open();
-    expect(shown()).toContain('2100 kcal · 1 day logged');
+    expect(shown()).toContain('2100 kcal');
+    expect(shown()).not.toContain('Avg 2100');
     expect(shown()).not.toContain('over 1 day');
   });
 
-  it('names no count once every earlier day is logged', async () => {
-    nutrition = lastWeek({ 0: 500, 1: 2000, 2: 2000, 3: 2000, 4: 2000, 5: 2000, 6: 2000 });
+  it('names no count once every day is logged', async () => {
+    nutrition = lastWeek({ 0: 500, 1: 2000, 2: 2000, 3: 2000, 4: 2000, 5: 2000, 6: 2000 }).map((day) => ({ ...day, protein: 150 }));
     await open();
     expect(shown()).toContain('Avg 2000 kcal');
-    expect(shown()).not.toContain('kcal over');
+    expect(shown()).toContain('Nutrition Last 7 days');
+    expect(shown()).not.toContain('logged');
+    // Nothing is missing, so the key for the nothing-recorded mark is left out.
+    expect(shown()).not.toContain('No entry');
+  });
+
+  it('keys the nothing-recorded mark once while a day is missing', async () => {
+    nutrition = lastWeek({ 0: 1342 });
+    await open();
+    expect(count('No entry')).toBe(1);
   });
 });
 

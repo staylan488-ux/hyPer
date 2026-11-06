@@ -76,7 +76,7 @@ async function open() {
     '~/lib/motion': { figureLayout: undefined },
     '~/lib/session': { useNow: () => Date.now(), useSessionModel: () => null },
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, weekDone: null, weekTarget: null }) },
-    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}) },
+    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}), figureLead: () => 0 },
   });
   await act(async () => { root.render(createElement(TodayScreen)); });
 }

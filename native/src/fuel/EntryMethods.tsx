@@ -64,7 +64,8 @@ export function EntryMethods({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              backgroundColor: on ? c.label : pressed ? c.pressed : c.fill,
+              // Actions, not a second segmented control: no fill at rest; the open one sits on the label colour.
+              backgroundColor: on ? c.label : pressed ? c.pressed : 'transparent',
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: on ? c.labelEdge : 'transparent',
               opacity: disabled ? 0.4 : 1,

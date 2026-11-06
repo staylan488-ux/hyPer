@@ -34,7 +34,8 @@ export function Section({ title, action, note, accessory, children, style }: Sec
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 12,
-          minHeight: 44,
+          // A heading row no taller than it needs: its action keeps a 44 pt target through hit slop.
+          minHeight: 36,
           paddingHorizontal: space.gutter,
           ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null),
         }}>
@@ -57,12 +58,12 @@ export function Section({ title, action, note, accessory, children, style }: Sec
         {action ? (
           <Pressable
             accessibilityRole="button"
-            hitSlop={8}
+            hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
             onPress={() => {
               haptics.tap();
               action.onPress();
             }}
-            style={({ pressed }) => ({ opacity: pressed ? 0.45 : 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5 })}>
+            style={({ pressed }) => ({ opacity: pressed ? 0.45 : 1, minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5 })}>
             {action.symbol ? <SymbolView name={action.symbol} size={13} weight="semibold" tintColor={c.ink} /> : null}
             <BlancText variant="bodyStrong" size={15}>
               {action.title}
@@ -72,7 +73,7 @@ export function Section({ title, action, note, accessory, children, style }: Sec
           accessory ?? null
         )}
       </View>
-      <View style={{ marginTop: 6 }}>{children}</View>
+      <View style={{ marginTop: 8 }}>{children}</View>
     </View>
   );
 }

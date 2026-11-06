@@ -21,9 +21,11 @@ export const EMBLEM_MARK_SIZE = 48;
 
 /**
  * The corner mark's header item. iOS centres an item narrower than 44 points
- * in a 44-point slot; filling the slot puts the P at the bar's leading edge.
+ * in a 44-point slot; filling the slot puts the P at the bar's leading edge,
+ * and the nudge sets the italic's foot on the large title's edge rather than
+ * its text box.
  */
-export const headerMarkSlot = { width: 44, alignItems: 'flex-start' } as const;
+export const headerMarkSlot = { width: 44, alignItems: 'flex-start', marginLeft: -4.5 } as const;
 
 type BrandMarkProps = {
   /** Font size in points. */

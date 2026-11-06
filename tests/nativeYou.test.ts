@@ -15,6 +15,7 @@ import * as settingsUx from '@/lib/settingsUx';
 import * as weightDisplayCore from '@/lib/weightDisplayCore';
 import * as weightHistory from '@/lib/weightHistory';
 import * as weightTrend from '@/lib/weightTrend';
+import * as weightRate from '../native/src/lib/weightRate';
 import * as weightTrendLine from '../native/src/lib/weightTrendLine';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
@@ -564,7 +565,7 @@ const clock = { key: '' };
 const clockKey = () => clock.key || dateFns.format(new Date(), 'yyyy-MM-dd');
 
 type ChartProps = { calendar?: weightHistory.WeightChartWindow; summary?: string; span?: string };
-type RowSeen = { title: string; detail?: string; value?: string; onPress?: () => void };
+type RowSeen = { title: string; detail?: string; value?: string; quiet?: boolean; accessibilityLabel?: string; onPress?: () => void };
 type Seen = {
   charts?: ChartProps[];
   rows?: RowSeen[];
@@ -594,6 +595,7 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '~/lib/motion': motion,
     '~/lib/you': you,
     '~/theme/blanc': { useBlanc: () => ({ label: '#fff' }) },
+    './BlancText': { BlancText: text },
     './Label': { Label: Wrap },
     './Row': rowMock,
     './SwipeRow': { SwipeRow: Wrap },
@@ -639,6 +641,7 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
     '~/lib/motion': motion,
+    '~/lib/weightRate': weightRate,
     '~/lib/weightTrendLine': weightTrendLine,
     '~/lib/you': you,
     '~/theme/blanc': { space: { gutter: 20, inset: 16, section: 32 }, useBlanc: () => ({ label: '#fff' }) },
@@ -694,8 +697,8 @@ describe('Body weight chart', () => {
     const everything = charts.at(-1)!.calendar!;
     expect(everything.startDay).toBe(dateFns.format(new Date('2026-05-01T15:00:00Z'), 'yyyy-MM-dd'));
     expect(everything.series.at(-1)!.date).toBe(dateFns.format(new Date('2026-11-03T15:00:00Z'), 'yyyy-MM-dd'));
-    // The rate beside the change is the same days' average.
-    expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May\u00a0[0-9]+\u00a0· \+0\.\d\d lb\/wk$/);
+    // The rate beside the change is the same days' average, at a summary's one decimal.
+    expect(charts.at(-1)!.summary).toMatch(/^\+\d+\.\d lb since May\u00a0[0-9]+\u00a0· \+\d+\.\d lb\/wk$/);
   });
 
   it('draws the chart for someone back after months away', async () => {
@@ -763,7 +766,7 @@ describe('All weigh-ins', () => {
     // The row leads on; its count would only repeat the list it opens.
     expect(all).toBeDefined();
     expect(all?.value).toBeUndefined();
-    expect(rows.filter((row) => row.title.endsWith(' lb')).length).toBeGreaterThan(0);
+    expect(rows.filter((row) => row.accessibilityLabel?.includes(' lb, ')).length).toBeGreaterThan(0);
   });
 
   it('lists every weigh-in by month, newest first, with each month’s average', async () => {
@@ -786,6 +789,23 @@ describe('All weigh-ins', () => {
   });
 });
 
+describe('Weigh-in rows', () => {
+  afterEach(() => { clock.key = ''; });
+
+  it('read on one line: when leads, quiet, and VoiceOver hears the weight first', async () => {
+    clock.key = '2026-11-05';
+    const { harness, you } = youWeights();
+    harness.getAllBodyWeights.mockResolvedValue([weighIn('w1', 80, '2026-11-02T15:00:00Z')]);
+    const rows: RowSeen[] = [];
+    await mount(createElement(loadWeighInsScreen(you, { rows })));
+    const row = rows.at(-1)!;
+    const when = dateFns.format(new Date('2026-11-02T15:00:00Z'), 'MMM d, h:mm a');
+    expect(row).toMatchObject({ title: when, quiet: true });
+    expect(row.detail).toBeUndefined();
+    expect(row.accessibilityLabel).toBe(`${weightDisplayCore.formatWeight(80, 'lb')} lb, ${when}`);
+  });
+});
+
 describe('All weigh-ins with a long history', () => {
   afterEach(() => { clock.key = ''; });
 
@@ -798,7 +818,7 @@ describe('All weigh-ins with a long history', () => {
     const rows: RowSeen[] = [];
     const scrolls: NonNullable<Seen['scrolls']> = [];
     await mount(createElement(loadWeighInsScreen(you, { rows, scrolls })));
-    const drawn = () => new Set(rows.slice(-400).map((row) => row.detail)).size;
+    const drawn = () => new Set(rows.slice(-400).map((row) => row.title)).size;
     rows.length = 0;
     await act(async () => { root!.render(createElement(loadWeighInsScreen(you, { rows, scrolls }))); });
     expect(drawn()).toBe(16);
@@ -894,7 +914,7 @@ describe("Body weight's recent weigh-ins, as the app compiles it", () => {
     const rows: RowSeen[] = [];
     const Screen = loadWeightScreen(you, { rows }, { compile: true });
     await mount(createElement(Screen));
-    const weighIn = () => rows.filter((row) => row.detail?.includes('7:00 AM')).at(-1)?.detail;
+    const weighIn = () => rows.filter((row) => row.title.includes('7:00 AM')).at(-1)?.title;
     expect(weighIn()).toBe('Today, 7:00 AM');
 
     // left open overnight; the screen renders again with the same weigh-ins
