@@ -149,11 +149,11 @@ describe('preview uses real program and workout store paths', () => {
     expect(previewTables.workouts.find((workout) => workout.id === 'w_current')?.split_day_id).toBe(firstDay.id);
   });
 
-  it('preserves 3/9 initial state, completes it, starts real placeholder sets and resumes them', async () => {
+  it('preserves 5/9 initial state, completes it, starts real placeholder sets and resumes them', async () => {
     await useAppStore.getState().fetchCurrentWorkout();
     const initial = useAppStore.getState().currentWorkout!;
     expect(initial.sets).toHaveLength(9);
-    expect(initial.sets.filter((set) => set.completed)).toHaveLength(3);
+    expect(initial.sets.filter((set) => set.completed)).toHaveLength(5);
     await useAppStore.getState().completeWorkout();
     const started = await useAppStore.getState().startWorkout('d1');
     expect(started?.id).not.toBe(initial.id);
@@ -353,7 +353,9 @@ describe('preview uses real program and workout store paths', () => {
   it('drops the sets a lower set count removed from the live workout', async () => {
     await useAppStore.getState().fetchCurrentWorkout();
     const workout = useAppStore.getState().currentWorkout!;
-    const exerciseId = workout.sets.find((set) => !set.completed)!.exercise_id;
+    // A movement with nothing logged yet, so every set past the first can go.
+    const untouched = (id: string) => workout.sets.every((set) => set.exercise_id !== id || !set.completed);
+    const exerciseId = workout.sets.find((set) => untouched(set.exercise_id))!.exercise_id;
 
     await useAppStore.getState().updateWorkoutExerciseTargetSets(workout.id, exerciseId, 1);
 

@@ -97,8 +97,8 @@ export const previewCurrentWorkout: Workout = {
     ws(exBench, 1, 100, 8, 8, true, sessionMinutesAgo(19)),
     ws(exBench, 2, 100, 8, 8.5, true, sessionMinutesAgo(15)),
     ws(exBench, 3, 102.5, 6, 9, true, sessionMinutesAgo(10)),
-    ws(exRow, 1, 80, 10, 7, false, null),
-    ws(exRow, 2, 80, 10, 7, false, null),
+    ws(exRow, 1, 80, 10, 7, true, sessionMinutesAgo(6)),
+    ws(exRow, 2, 80, 10, 7.5, true, sessionMinutesAgo(3)),
     ws(exRow, 3, 80, 9, 8, false, null),
     ws(exIncline, 1, 30, 12, 7, false, null),
     ws(exIncline, 2, 30, 11, 8, false, null),
@@ -168,11 +168,45 @@ const previewGroupByLegacyMeal: Record<string, string> = {
   snack: 'ng-snack-1',
 };
 
-export const previewNutritionLogs = logSeeds.map(([foodId, servings, meal, h, m], i) => ({
+const todayLogs = logSeeds.map(([foodId, servings, meal, h, m], i) => ({
   id: `nl${i}`, user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, food_id: foodId, servings, meal_type: meal,
   group_id: previewGroupByLegacyMeal[meal] ?? null, sort_order: i, source: 'manual', external_id: null, import_batch_id: null,
   created_at: iso(at(now, h, m)), logged_at: iso(at(now, h, m)),
 }));
+
+/* The week before today: five days logged and two left empty, so Progress's
+   nutrition charts show a lived-in week (an average, a missing day). Each
+   day is the same plan scaled a little. */
+const pastDaySeeds: LogSeed[] = [
+  ['f_oats', 1.5, 'breakfast', 7, 30],
+  ['f_eggs', 1.5, 'breakfast', 7, 35],
+  ['f_yogurt', 1, 'breakfast', 7, 40],
+  ['f_chicken', 1.5, 'lunch', 12, 45],
+  ['f_rice', 1.5, 'lunch', 12, 50],
+  ['f_whey', 1, 'snack', 15, 10],
+  ['f_banana', 1, 'snack', 15, 12],
+  ['f_almond', 1, 'snack', 15, 15],
+  ['f_salmon', 1, 'dinner', 19, 30],
+  ['f_rice', 1, 'dinner', 19, 35],
+];
+const pastDays: Array<[daysBack: number, scale: number]> = [[1, 1], [2, 1.08], [3, 0.94], [5, 1.12], [6, 0.98]];
+const pastGroupKinds = [['breakfast', 'meal'], ['lunch', 'meal'], ['snack', 'snack'], ['dinner', 'meal']] as const;
+const previewPastGroups = pastDays.flatMap(([back]) =>
+  pastGroupKinds.map(([meal, kind], order) => ({
+    id: `ng-${back}-${meal}`, user_id: PREVIEW_USER_ID, date: ymd(daysAgo(back)), kind, label: meal === 'snack' ? null : meal, sort_order: order,
+    created_at: iso(daysAgo(back)), updated_at: iso(daysAgo(back)),
+  })),
+);
+const pastLogs = pastDays.flatMap(([back, scale]) =>
+  pastDaySeeds.map(([foodId, servings, meal, h, m], i) => ({
+    id: `nl-${back}-${i}`, user_id: PREVIEW_USER_ID, date: ymd(daysAgo(back)), food_id: foodId, servings: Math.round(servings * scale * 4) / 4, meal_type: meal,
+    group_id: `ng-${back}-${meal}`, sort_order: i, source: 'manual', external_id: null, import_batch_id: null,
+    created_at: iso(at(daysAgo(back), h, m)), logged_at: iso(at(daysAgo(back), h, m)),
+  })),
+);
+previewNutritionGroups.push(...previewPastGroups);
+
+export const previewNutritionLogs = [...todayLogs, ...pastLogs];
 
 /* ── History: completed workouts + their sets over the last fortnight ── */
 const historyPlan: { offset: number; dayId: string; ex: Exercise[]; notes?: Record<string, string> }[] = [
