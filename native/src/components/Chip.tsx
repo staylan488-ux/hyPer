@@ -1,4 +1,4 @@
-import { Pressable, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, type ViewStyle } from 'react-native';
 
 import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -7,11 +7,11 @@ import { useBlanc } from '~/theme/blanc';
 import { BlancText } from './BlancText';
 
 /**
- * A choice capsule: ink when selected, quiet fill otherwise. Choosing ticks
+ * A choice capsule: lifted on the fill when selected, as a segmented control's choice; quiet fill otherwise. Choosing ticks
  * (a value change); a hold can offer more, as a VoiceOver action too. Without
  * `selected` it is a quiet action pill (Add RPE, Skip) in the same metrics.
  */
-export function Chip({ label, selected, onPress, onLongPress, tabular, haptic = true, disabled, accessibilityLabel, accessibilityHint, style }: {
+export function Chip({ label, selected, onPress, onLongPress, tabular, haptic = true, disabled, accessibilityLabel, accessibilityHint, style, inTrack }: {
   label: string;
   /** Ink when chosen; leave out for an action pill that is never chosen. */
   selected?: boolean;
@@ -26,6 +26,8 @@ export function Chip({ label, selected, onPress, onLongPress, tabular, haptic = 
   accessibilityHint?: string;
   /** Placement and width, such as a minimum width or a top margin. */
   style?: ViewStyle;
+  /** One of a row of choices on a shared fill track (a segmented control's look): clear at rest, lifted when chosen. */
+  inTrack?: boolean;
 }) {
   const c = useBlanc();
   // At the accessibility text sizes the chip grows with its label.
@@ -62,11 +64,16 @@ export function Chip({ label, selected, onPress, onLongPress, tabular, haptic = 
           borderRadius: 17,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: selected ? c.capsule : pressed ? c.pressed : c.fill,
+          // Chosen reads as a segmented control's choice: the label colour lifted on the fill with a hairline edge,
+          // so a sheet's one filled shape stays its main button.
+          backgroundColor: selected ? c.label : pressed ? c.pressed : inTrack ? 'transparent' : c.fill,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: selected ? c.labelEdge : 'transparent',
+          ...(selected ? { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } } : null),
         },
         style,
       ]}>
-      <BlancText variant="footnote" weight="600" tone={selected ? 'onCapsule' : 'ink'} style={tabular ? { fontVariant: ['tabular-nums'] } : undefined}>
+      <BlancText variant="footnote" weight={selected ? '700' : '600'} tone="ink" style={tabular ? { fontVariant: ['tabular-nums'] } : undefined}>
         {label}
       </BlancText>
     </Pressable>

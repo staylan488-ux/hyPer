@@ -3,7 +3,7 @@ import { View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { windowFrame } from '../../modules/hyper-view';
-import { markShown, registerMarkAnchor } from '~/lib/brand';
+import { markAtRest, markShown, registerMarkAnchor } from '~/lib/brand';
 import { markBox, markInkInsets, PAD } from '~/lib/brandGeometry';
 import { useBlanc } from '~/theme/blanc';
 
@@ -21,9 +21,11 @@ export const EMBLEM_MARK_SIZE = 48;
 
 /**
  * The corner mark's header item. iOS centres an item narrower than 44 points
- * in a 44-point slot; filling the slot puts the P at the bar's leading edge.
+ * in a 44-point slot; filling the slot puts the P at the bar's leading edge,
+ * and the nudge sets the italic's foot on the large title's edge rather than
+ * its text box.
  */
-export const headerMarkSlot = { width: 44, alignItems: 'flex-start' } as const;
+export const headerMarkSlot = { width: 44, alignItems: 'flex-start', marginLeft: -4.5 } as const;
 
 type BrandMarkProps = {
   /** Font size in points. */
@@ -50,7 +52,7 @@ export function BrandMark({ size, anchor = false, tight = false, style }: BrandM
     });
   }, [anchor, size]);
 
-  const shown = useAnimatedStyle(() => ({ opacity: anchor ? markShown.value : 1 }));
+  const shown = useAnimatedStyle(() => ({ opacity: anchor ? markShown.value * markAtRest.value : 1 }));
 
   // The outer view is the caller's to lay out; the inner one is the P's text
   // box, which the intro measures and lands on.

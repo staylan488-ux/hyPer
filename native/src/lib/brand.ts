@@ -8,6 +8,8 @@ import type { MarkAnchor } from '~/lib/brandGeometry';
  * them while the P flies in, then hands over in the frame it arrives.
  */
 export const markShown = makeMutable(1);
+/** Today's corner mark fades as the page scrolls, as the large title does, so it never sits over the cards passing under the bar (1 at rest, 0 scrolled). */
+export const markAtRest = makeMutable(1);
 
 /** 0 → 1 while the intro reveals the app. See useIntroRise. */
 export const introReveal = makeMutable(1);

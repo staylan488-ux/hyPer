@@ -157,8 +157,8 @@ export const minutesOf = (date: Date) => date.getHours() * 60 + date.getMinutes(
 export function fuelReminderNote(goal: Goal, hasTarget: boolean): string {
   if (!hasTarget) return 'Set your targets to get this reminder.';
   return isGainingGoal(goal)
-    ? 'A reminder when you’re well short of calories or protein for the day. Never sent once you’ve hit them.'
-    : 'A reminder when you’re well short of protein for the day. Never sent once you’ve hit it.';
+    ? 'Reminds you when calories or protein are well below today’s targets. Stops once you reach them.'
+    : 'Reminds you when protein is well below today’s target. Stops once you reach it.';
 }
 
 /** expo-notifications' permission answer, as much as the reminder needs. */

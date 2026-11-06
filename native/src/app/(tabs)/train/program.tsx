@@ -1,22 +1,26 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { disabled as swiftDisabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router, Stack } from 'expo-router';
 import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Alert, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
+import { saveAdaptiveSplitScheduling } from '@/lib/adaptiveSplitScheduling';
 import { exerciseTotal, plural, shownActiveProgram, visibleTemplateItems } from '@/lib/programSummary';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import type { FlexDayTemplate, Split } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { FormNote, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { announce, useLargeText, useScreenReader } from '~/lib/accessibility';
+import { announce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteProgram, editProgram, newProgram, planTarget, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
@@ -24,7 +28,8 @@ import { space, useBlanc } from '~/theme/blanc';
 
 /**
  * Program: how Train works (program days or flexible sessions), the programs
- * to choose from, or the quick starts kept from flexible sessions.
+ * to choose from, or the quick starts kept from flexible sessions. Program
+ * days end with Adaptive scheduling, which decides how those days move.
  */
 export default function ProgramScreen() {
   const splits = useAppStore((state) => state.splits);
@@ -33,7 +38,6 @@ export default function ProgramScreen() {
   const setWorkoutMode = useAppStore((state) => state.setWorkoutMode);
   const flexible = mode === 'flexible';
   const active = shownActiveProgram(splits, mode);
-  const screenReader = useScreenReader();
   // Only what the rows below do not already say: the picker names the mode,
   // the active program's row says Active, and the empty card says there is none.
   const subtitle = flexible ? 'Build each session as you go' : !active && splits.length > 0 ? 'None active' : null;
@@ -94,26 +98,76 @@ export default function ProgramScreen() {
           </BlancText>
         ) : null}
 
-        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18, opacity: live ? 0.5 : 1 }} pointerEvents={live ? 'none' : 'auto'}>
-          <Picker
-            selection={mode}
-            onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
-            // VoiceOver acts without touches, so pointerEvents alone would let it
-            // switch during a workout; SwiftUI's disabled holds it (and says dimmed).
-            modifiers={[pickerStyle('segmented'), ...(live && screenReader ? [swiftDisabled(true)] : [])]}>
-            <SwiftText modifiers={[tag('split')]}>Program days</SwiftText>
-            <SwiftText modifiers={[tag('flexible')]}>Flexible</SwiftText>
-          </Picker>
-        </Host>
-        {live ? (
-          <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
-            Finish the current workout to switch.
-          </BlancText>
-        ) : null}
+        {live ? null : (
+          <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18 }}>
+            <Picker
+              selection={mode}
+              onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
+              modifiers={[pickerStyle('segmented')]}>
+              <SwiftText modifiers={[tag('split')]}>Program days</SwiftText>
+              <SwiftText modifiers={[tag('flexible')]}>Flexible</SwiftText>
+            </Picker>
+          </Host>
+        )}
 
         {flexible ? <QuickStarts /> : <Programs splits={splits} />}
+
+        {/* During a workout the programs lead; the mode, locked for now, follows with why. */}
+        {live ? (
+          <>
+            <Label style={{ marginTop: space.section }}>
+              <Row title="Training mode" quiet value={mode === 'flexible' ? 'Flexible' : 'Program days'} accessibilityLabel={`Training mode, ${mode === 'flexible' ? 'Flexible' : 'Program days'}, locked during a workout`} />
+            </Label>
+            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
+              Finish the current workout to switch.
+            </BlancText>
+          </>
+        ) : null}
+
+        {/* Only program days are scheduled; with no program there is nothing yet to move. */}
+        {flexible || splits.length === 0 ? null : <SchedulingSetting />}
       </TabScroll>
     </>
+  );
+}
+
+/**
+ * Adaptive scheduling: a switch saved to the account, with the reason under
+ * it. Not locked during a workout: it changes the days ahead, not this one.
+ */
+function SchedulingSetting() {
+  const enabled = useAdaptiveSplitScheduling();
+  const userId = useAuthStore((state) => state.user?.id);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const toggle = async (next: boolean) => {
+    if (saving || !userId) return;
+    setSaving(true);
+    setFailed(false);
+    try {
+      await saveAdaptiveSplitScheduling(next);
+      haptics.success();
+    } catch {
+      haptics.error();
+      setFailed(true);
+    }
+    // After the try, not in a finally, which the React Compiler can't
+    // compile; nothing in the catch throws.
+    setSaving(false);
+  };
+
+  return (
+    <Animated.View layout={rowLayout}>
+      <Label style={{ marginTop: space.section }}>
+        <ToggleRow list label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
+      </Label>
+      <FormNote alert={failed}>
+        {failed
+          ? 'Couldn’t save this setting. Your previous choice is still active.'
+          : 'Upcoming workouts follow the program days you complete. Off uses your saved schedule.'}
+      </FormNote>
+    </Animated.View>
   );
 }
 
@@ -156,7 +210,8 @@ function Programs({ splits }: { splits: Split[] }) {
   ];
 
   return (
-    <Section title="Programs">
+    // The page is titled Program; the list needs no heading of its own.
+    <View style={{ marginTop: 24 }}>
       <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
         {shown.map((split, index) => (
           <Animated.View key={split.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
@@ -182,7 +237,7 @@ function Programs({ splits }: { splits: Split[] }) {
           </Animated.View>
         ))}
       </Label>
-    </Section>
+    </View>
   );
 }
 

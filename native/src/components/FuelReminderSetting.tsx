@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Linking } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -21,7 +21,8 @@ const REMINDER_RANGE = { min: reminderTimeDate(REMINDER_EARLIEST), max: reminder
  * moves with the cards around it (`rowLayout`), and the note clips while it
  * grows, so the cards below never cover Open Settings on their way down.
  */
-export function FuelReminderSetting() {
+/** `rows`: the food settings that share its card (You's Targets, Saved meals, Food analysis), above the switch. */
+export function FuelReminderSetting({ rows, top = space.section }: { rows?: ReactNode; top?: number } = {}) {
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const ready = useFuelReminderStore((state) => state.userId !== null && state.userId === userId);
   const settings = useFuelReminderStore((state) => state.settings);
@@ -31,8 +32,15 @@ export function FuelReminderSetting() {
   const noTarget = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId && !hasReminderTarget(state.macroTarget));
   const time = useMemo(() => reminderTimeDate(settings.minutes), [settings.minutes]);
   return (
-    <Animated.View layout={rowLayout} style={{ marginTop: space.section }}>
+    // One group with the food settings above it, its note as the group's footer.
+    <Animated.View layout={rowLayout} style={{ marginTop: top }}>
       <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
+        {rows ? (
+          <>
+            {rows}
+            <Hairline />
+          </>
+        ) : null}
         {/* Among You's list rows: a list switch, as Adaptive scheduling's. */}
         <ToggleRow list label="Fuel reminder" value={settings.enabled} disabled={!ready} onChange={setFuelReminderEnabled} />
         {settings.enabled ? (

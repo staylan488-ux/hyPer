@@ -94,6 +94,16 @@ export default function RootLayout() {
               name="run"
               options={{ presentation: 'fullScreenModal', gestureEnabled: false, contentStyle: { backgroundColor: p.ground } }}
             />
+            {/* Log food's camera, over the sheet: black and full screen, as iOS's cameras are. */}
+            <Stack.Screen
+              name="food-camera"
+              options={{
+                presentation: 'fullScreenModal',
+                gestureEnabled: false,
+                animation: reducedMotion ? 'fade' : 'default',
+                contentStyle: { backgroundColor: '#000000' },
+              }}
+            />
             <Stack.Screen
               name="log-food"
               options={{

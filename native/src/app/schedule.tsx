@@ -27,6 +27,8 @@ type StartChoice = 'today' | 'tomorrow' | 'pick';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** The days in the order every week in the app is drawn (Monday first, as the training week runs); values stay JavaScript's 0 = Sunday. */
+const MONDAY_FIRST = [1, 2, 3, 4, 5, 6, 0];
 const ymd = (date: Date) => format(date, 'yyyy-MM-dd');
 /** Day 1 for the choice, by the clock as this runs. */
 const startDateFor = (choice: StartChoice, picked: Date) =>
@@ -160,7 +162,8 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
             {/* The week as the rhythm runs it: the first day in ink, the other
                 training days on a label, rest days bare. A tap picks the first day. */}
             <View style={{ flexDirection: 'row', gap: 6, marginHorizontal: space.inset, marginTop: 14 }}>
-              {LETTERS.map((letter, weekday) => {
+              {MONDAY_FIRST.map((weekday) => {
+                const letter = LETTERS[weekday];
                 const selected = anchorDay === weekday;
                 const training = weekdays.includes(weekday);
                 return (

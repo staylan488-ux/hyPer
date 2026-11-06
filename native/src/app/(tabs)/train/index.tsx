@@ -1,10 +1,10 @@
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { differenceInCalendarWeeks, format, parseISO } from 'date-fns';
+import { differenceInCalendarWeeks, parseISO } from 'date-fns';
 import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode, type Ref } from 'react';
 import { Alert, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, useWindowDimensions, View, type ViewStyle } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { heldMovement, moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
@@ -18,23 +18,26 @@ import { DragList } from '~/components/DragList';
 import { FigureInput } from '~/components/FigureInput';
 import { FormNote, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { LiveClock } from '~/components/LiveClock';
 import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
-import { TabScroll, tabBarCover } from '~/components/TabScroll';
-import { Tally } from '~/components/Tally';
+import { scrolledFromRest, TabScroll, tabBarCover } from '~/components/TabScroll';
+import { COMPACT_RISE, Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
 import { announce, screenReaderRunning, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
+import { headingShown, type HeadingSpan } from '~/lib/barTitle';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatClock, formatRepRange, formatSet, formatTarget } from '~/lib/format';
+import { useWorkoutBarShown } from '~/lib/workoutBar';
+import { formatLoad, formatRepRange, formatSet, formatTarget } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
 import { restSecondsFor, startRest } from '~/lib/rest';
-import { liveSessionModel, useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { liveSessionModel, useFocusStore, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
@@ -91,8 +94,14 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
   };
 }
 
+/** A field's value isn't last time's figure (or the field is empty), so last time's caption under it says something new. */
+function differsFromLast(text: string, last: number): boolean {
+  const value = parseNumber(text);
+  return value === null || Math.abs(value - last) > 1e-6;
+}
+
 /** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
-const FIGURE_SIZE = 76;
+const FIGURE_SIZE = 72;
 
 /**
  * The weight and reps share one size, stepping down as their digits add up,
@@ -107,25 +116,6 @@ export default function TrainScreen() {
   const session = useSessionModel();
   if (!session) return <StartWorkout />;
   return <LiveWorkout session={session} />;
-}
-
-/** The session clock; ticks on its own so the screen around it stays still. */
-function Elapsed({ startedAt, done, total }: { startedAt: Date; done: number; total: number }) {
-  const now = useNow(1000);
-  const elapsed = Math.max(0, (now - startedAt.getTime()) / 1000);
-  return (
-    <BlancText
-      variant="secondary"
-      tone="graphite"
-      // The clock in words; the tally just below reads the sets.
-      accessibilityLabel={`Workout time, ${spokenClock(elapsed)}`}
-      style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-      <BlancText variant="meta" size={14} tone="graphite">
-        {formatClock(elapsed)}
-      </BlancText>
-      {total > 0 ? ` · ${done} of ${total} sets` : null}
-    </BlancText>
-  );
 }
 
 function LiveWorkout({ session }: { session: SessionModel }) {
@@ -218,8 +208,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const ready = weight !== null && reps !== null;
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
-  const lastLine = last ? formatSet(last.weight, last.reps, { unit: false }) : '';
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
+  const lastLoad = last && typeof last.weight === 'number' && last.weight > 0 ? last.weight : null;
+  const lastRepCount = last && typeof last.reps === 'number' && Number.isFinite(last.reps) ? last.reps : null;
+  // Last time's figure shows under its field only while the field holds
+  // another value: "last 80" under an 80 only repeats the figure, "last 8"
+  // under a 9 says something. Hidden, it keeps its line, so nothing moves,
+  // and it comes back as soon as the field is edited away from last time's.
+  const lastWeight = lastLoad !== null && draft && differsFromLast(draft.weight, lastLoad) ? formatLoad(lastLoad) : null;
+  const lastReps = lastRepCount !== null && draft && differsFromLast(draft.reps, lastRepCount) ? lastRepCount : null;
+  // Ending a movement early with one set to go only skips that set: the quiet action says so.
+  const lastSetLeft = current ? current.movement.sets.length - current.movement.done === 1 : false;
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
   const cardLine = current
     ? [
@@ -228,11 +227,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           ? `superset with ${current.movement.superset.partnerName}`
           : current.movement.substitutesFor
             ? `instead of ${current.movement.substitutesFor.exercise_name ?? 'the planned movement'}`
-            : formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max),
+            : null,
       ]
         .filter(Boolean)
         .join(' · ')
     : '';
+
+  // The rep target sits under the reps figure, beside last time's reps: "8–10 · last 9".
+  const repTarget = current ? formatRepRange(current.movement.plan?.target_reps_min, current.movement.plan?.target_reps_max) : null;
 
   const blocked = current?.blocked ?? null;
   // Why the set can't log yet (a superset's turn), as it appears.
@@ -322,6 +324,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     announce(`${movement.name} brought back${next ? ', up now' : ''}`);
   };
 
+  // The undo bar sits above whatever covers the foot: the workout bar only shows here during a rest.
+  const workoutBar = useWorkoutBarShown((state) => state.shown);
   const { finish, closing } = useFinishWorkout(session);
 
   // Magic Tap (a two-finger double tap) logs the set that's ready, exactly
@@ -342,15 +346,47 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // The header is built once per name and state, never per keystroke or
   // clock tick, so its buttons are not re-sent to iOS under the finger.
   const { workoutId, dayName, flexible } = session;
+  const [titleIsMovement, setTitleIsMovement] = useState(false);
+  const barTitle = titleIsMovement && current ? current.movement.name : dayName;
+
+  // Scrolled up, the bar names the movement being logged. The card's whole
+  // header block (its name, the set line and the note under them) fades as
+  // it crosses under the collapsed bar, and the bar takes the name only once
+  // all of it is gone, so no line of it reads under the bar's title (iOS 26's
+  // soft edge leaves the page legible under the bar). Where the block sits is
+  // measured on the page, so a two-line name, a note, a wrapped tally above
+  // or a larger text size moves the point with it.
+  const page = useRef<ComponentRef<typeof View>>(null);
+  const headerRef = useRef<ComponentRef<typeof View>>(null);
+  const headerSpan = useRef<HeadingSpan | null>(null);
+  const headerShown = useSharedValue(1);
+  const headerStyle = useAnimatedStyle(() => ({ opacity: headerShown.get() }));
+  const followScroll = (offsetY: number) => {
+    const shown = headingShown(scrolledFromRest(offsetY), headerSpan.current);
+    headerShown.set(shown);
+    const pastHeader = shown === 0;
+    if (pastHeader !== titleIsMovement) setTitleIsMovement(pastHeader);
+  };
+  // Again whenever the block or the card moves or resizes: a new movement, a
+  // longer name, a note arriving or giving way to "Beat last time", the tally above wrapping.
+  const measureHeader = () => {
+    if (!headerRef.current || !page.current) return;
+    headerRef.current.measureLayout(page.current, (_x, y, _width, height) => {
+      headerSpan.current = { top: y, bottom: y + height };
+      followScroll(scrollOffset.current);
+    });
+  };
+  // Finish stays quiet glass beside Log set until every set is logged, then leads.
+  const allLogged = session.sets.length > 0 && session.doneCount >= session.sets.length;
   const headerOptions = useMemo(
     () =>
       ({
-        title: dayName,
+        title: barTitle,
         unstable_headerRightItems: () => [
           {
             type: 'button',
             label: closing ? 'Saving…' : 'Finish',
-            variant: 'prominent',
+            variant: allLogged ? 'prominent' : 'plain',
             tintColor: c.ink,
             disabled: closing,
             onPress: () => {
@@ -386,7 +422,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             : []),
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    [workoutId, dayName, closing, c.ink, flexible, finish],
+    [workoutId, dayName, barTitle, closing, c.ink, flexible, finish, allLogged],
   );
 
   // A drop saves this session's order at once (never the program); while it
@@ -455,15 +491,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         ? [{ label: 'Move down', run: () => void moveBlock(blocks[blockIndex][0], blockIndex + 1, `${movement.name} moved down`) }]
         : []),
     ];
-    // Each movement ends with its own tally; the next set stands taller on the row up now.
-    // The tally keeps 4 pt on top for that stroke; the same below centres the strokes on the row.
+    // Each movement ends with its own tally, drawn as every tally is: logged
+    // in ink, the next set taller in red on the row up now. A finished
+    // movement recedes through its name only.
+    // The tally keeps room on top for that stroke; the same below centres the strokes on the row.
     const tally = (
       <Tally
         compact
         marks={movement.sets.map((set) => set.completed)}
         current={isCurrent && current ? current.setNumber - 1 : null}
         accessibilityLabel={`${movement.done} of ${movement.sets.length} sets done`}
-        style={{ marginBottom: 4 }}
+        style={{ marginBottom: COMPACT_RISE }}
       />
     );
     // Up now, the card above says the rest; later rows give the target (this
@@ -489,11 +527,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         quiet
         title={movement.name}
         value={`Ended early · ${movement.done} of ${movement.sets.length}`}
-        leading={
-          <Lead>
-            <SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />
-          </Lead>
-        }
         accessibilityLabel={`${movement.name}, ended early, ${movement.done} of ${movement.sets.length} sets logged. Bring back`}
         onPress={() => bringBack(movement, true)}
         actions={actions}
@@ -504,11 +537,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         quiet
         title={movement.name}
         value="Skipped"
-        leading={
-          <Lead>
-            <SymbolView name="forward.end" size={13} weight="semibold" tintColor={c.graphite} />
-          </Lead>
-        }
         accessibilityLabel={`${movement.name}, skipped. Bring back`}
         onPress={() => bringBack(movement, true)}
         actions={actions}
@@ -518,11 +546,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Row
         quiet
         title={movement.name}
-        leading={
-          <Lead>
-            <SymbolView name="checkmark" size={14} weight="semibold" tintColor={c.graphite} />
-          </Lead>
-        }
         trailing={tally}
         accessibilityLabel={`${movement.name}, done, ${movement.done} sets. Show sets`}
         onPress={() => openMovement(movement.exerciseId)}
@@ -533,7 +556,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Row
         title={movement.name}
         detail={detail || undefined}
-        leading={<Lead />}
         trailing={tally}
         accessibilityLabel={[movement.name, detail, `${movement.done} of ${movement.sets.length} sets done`].filter(Boolean).join(', ')}
         onPress={
@@ -548,12 +570,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         actions={actions}
       />
     );
-    return swipe.length > 0 ? (
+    // Always inside its SwipeRow (swipe off when it has no actions), so logging a
+    // movement's last set doesn't remount the row and snap its tally.
+    return (
       <SwipeRow name={movement.name} actions={swipe}>
         <View style={{ backgroundColor: c.label }}>{row}</View>
       </SwipeRow>
-    ) : (
-      row
     );
   };
   const addMovement = () => router.push({ pathname: '/swap', params: { mode: 'add' } });
@@ -572,7 +594,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 const movement = byId.get(id);
                 return movement ? (
                   <View key={id} onTouchStart={() => touchMovement(id)}>
-                    {index > 0 ? <Hairline inset={46} /> : null}
+                    {index > 0 ? <Hairline /> : null}
                     {movementRow(movement, blocks.findIndex((entry) => entry === block))}
                   </View>
                 ) : null;
@@ -582,14 +604,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             revision={orderRevision}
             roundBottom={!session.flexible}
             // Rules start at the names, past each row's 16 pt mark.
-            ruleInset={46}
+            ruleInset={18}
             onMove={(key, index) => void moveBlock(key, index)}
             onHold={(key) => openMovement(heldMovement(blocks, key, touchedMovement.current))}
             onDragging={setDragging}
           />
           {session.flexible ? (
             <Animated.View layout={rowLayout}>
-              <Hairline inset={46} />
+              <Hairline />
               <Row
                 title="Add movement"
                 leading={
@@ -610,6 +632,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       <Stack.Screen options={headerOptions} />
       <TabScroll
         ref={scroll}
+        // The page itself, to measure where the card's name sits on it.
+        innerViewRef={page}
         // Once Finish is confirmed, its saved summary must not race new edits.
         pointerEvents={closing ? 'none' : 'auto'}
         accessibilityElementsHidden={closing}
@@ -621,31 +645,44 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         automaticallyAdjustKeyboardInsets
         onScroll={(event) => {
           scrollOffset.current = event.nativeEvent.contentOffset.y;
+          followScroll(event.nativeEvent.contentOffset.y);
           if (__DEV__ && devScrollTrace.enabled) console.log(`[scroll] ${event.nativeEvent.contentOffset.y.toFixed(1)}`);
         }}>
-        <Elapsed startedAt={session.startedAt} done={session.doneCount} total={session.sets.length} />
-
-        {/* An empty session has no marks to draw. */}
-        {session.sets.length > 0 ? (
-          <Tally
-            marks={session.sets.map((set) => set.completed)}
-            current={current?.index ?? null}
-            height={20}
-            style={{ marginHorizontal: space.gutter, marginTop: 16 }}
-            accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
-          />
-        ) : null}
+        {/* The session's tally and its clock share one line under the title; at the accessibility sizes they stack. */}
+        <View
+          style={
+            large
+              ? { marginHorizontal: space.gutter, marginTop: 2, gap: 10 }
+              : { marginHorizontal: space.gutter, marginTop: 6, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }
+          }>
+          {/* An empty session has no marks to draw. */}
+          {session.sets.length > 0 ? (
+            <Tally
+              marks={session.sets.map((set) => set.completed)}
+              current={current?.index ?? null}
+              height={20}
+              style={large ? undefined : { flexShrink: 1 }}
+              accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done${current ? `, set ${current.index + 1} next` : ''}`}
+            />
+          ) : (
+            <View />
+          )}
+          <LiveClock startedAt={session.startedAt} variant="secondary" />
+        </View>
 
         {current && draft ? (
-          <View ref={cardRef} collapsable={false}>
-          <Label style={{ marginTop: 18, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
+          <View ref={cardRef} collapsable={false} onLayout={measureHeader}>
+          <Label style={{ marginTop: 14, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
             {/* Keyed by movement so a switch fades the new movement in instead of jumping. */}
             <Animated.View key={current.movement.exerciseId} entering={FadeIn.duration(220)}>
+            {/* The header block fades as it passes under the collapsed bar, which then names the movement. */}
+            <Animated.View style={headerStyle}>
+            <View ref={headerRef} collapsable={false} onLayout={measureHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
               {/* The name and its line open the movement's sets, note and swap, like ⋯. */}
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={speak(`${current.movement.name}, ${cardLine}`)}
+                accessibilityLabel={speak([current.movement.name, cardLine, repTarget && !current.movement.superset && !current.movement.substitutesFor ? repTarget : null].filter(Boolean).join(', '))}
                 accessibilityHint="Opens its sets, note and swap"
                 onPress={() => {
                   haptics.tap();
@@ -659,27 +696,53 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 <BlancText variant="title" numberOfLines={large ? undefined : 2}>
                   {current.movement.name}
                 </BlancText>
+                {/* Where the set stands, then what it asks for: the rep target in ink, the one instruction on the card. */}
                 <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                   {cardLine}
+                  {repTarget && !current.movement.superset && !current.movement.substitutesFor ? (
+                    <BlancText variant="secondary" weight="500">
+                      {cardLine ? ' · ' : ''}
+                      {repTarget}
+                    </BlancText>
+                  ) : null}
                 </BlancText>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${current.movement.name}: sets, note and swap`}
-                hitSlop={10}
                 onPress={() => {
                   haptics.tap();
                   openMovement(current.movement.exerciseId);
                 }}
-                style={({ pressed }) => ({ marginTop: 2, marginRight: -4, opacity: pressed ? 0.45 : 1 })}>
-                <SymbolView name="ellipsis.circle" size={24} weight="regular" tintColor={c.graphite} />
+                // A full 44 pt target, the glyph kept on the card's trailing text edge.
+                style={({ pressed }) => ({ width: 44, height: 44, marginTop: -8, marginRight: -12, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
+                {/* The app's one in-content "more": a bare ellipsis in graphite. */}
+                <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.graphite} />
               </Pressable>
             </View>
+            {/* The card's notes are one quiet level with the set line: its size, in graphite. */}
             {current.movement.note ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
+              <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
                 {current.movement.note}
               </BlancText>
             ) : null}
+
+            {/* Last time's numbers sit under the figures they compare with; here, a fresh gain or last time's note. */}
+            {beat?.fresh ? (
+              <BeatLine key={beat.key} gain={beat.gain} style={{ marginTop: 8 }} />
+            ) : lastNote ? (
+              <Animated.View key="note" entering={FadeIn.duration(220)} style={{ marginTop: 4 }}>
+                <BlancText
+                  variant="secondary"
+                  tone="graphite"
+                  numberOfLines={large ? undefined : 2}
+                  accessibilityLabel={`Last note: ${lastNote.note}`}>
+                  {lastNote.note}
+                </BlancText>
+              </Animated.View>
+            ) : null}
+            </View>
+            </Animated.View>
 
             <FigureRow
               size={figure}
@@ -689,6 +752,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   value={draft.weight}
                   unit="lb"
                   size={figure}
+                  caption={lastWeight ? `last ${lastWeight}` : undefined}
+                  spokenCaption={lastWeight ? `Last time, ${lastWeight} pounds` : undefined}
                   accessibilityLabel="Weight in pounds"
                   onChange={(text) => setDraft({ ...draft, weight: text, touched: true })}
                   onFocus={() => setEditing('weight')}
@@ -702,6 +767,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   unit="reps"
                   size={figure}
                   integer
+                  caption={lastReps !== null ? `last ${lastReps}` : undefined}
+                  spokenCaption={lastReps !== null ? `Last time, ${lastReps} reps` : undefined}
                   accessibilityLabel="Reps"
                   onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
                   onFocus={() => setEditing('reps')}
@@ -710,59 +777,42 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               }
             />
 
-            {/* At the accessibility text sizes "Last time" sits under the pills, whole. */}
+            {/* RPE is the one value to set beside the figures; Skip is a quiet word at the far side. */}
             <View
               style={
                 large
-                  ? { alignItems: 'flex-start', gap: 10, marginTop: 12 }
+                  ? { alignItems: 'flex-start', gap: 6, marginTop: 12 }
                   : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }
               }>
-              <View style={{ flexDirection: 'row', gap: 8, ...(large ? { flexWrap: 'wrap' } : null) }}>
-                <Chip
-                  label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
-                  accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
-                  haptic={false}
-                  onPress={pickRpe}
-                />
-                {/* For this workout only; the program keeps it. */}
-                {/* With a set logged it ends the movement early, keeping those sets. */}
-                <Chip
-                  label={current.movement.done > 0 ? 'End early' : 'Skip'}
-                  accessibilityLabel={
-                    current.movement.done > 0
-                      ? `End ${current.movement.name} early, keeping ${current.movement.done} of ${current.movement.sets.length} sets`
-                      : `Skip ${current.movement.name}`
-                  }
-                  accessibilityHint="For this workout only. Undo brings it back."
-                  haptic={false}
-                  onPress={() => {
-                    haptics.tap();
-                    skip(current.movement);
-                  }}
-                />
-              </View>
-              {beat?.fresh ? (
-                <BeatLine key={beat.key} gain={beat.gain} style={large ? undefined : { marginLeft: 12 }} />
-              ) : lastLine ? (
-                <Animated.View key="last" entering={FadeIn.duration(220)} style={large ? undefined : { flexShrink: 1, marginLeft: 12 }}>
-                  <BlancText
-                    variant="meta"
-                    tone="graphite"
-                    numberOfLines={large ? undefined : 1}
-                    adjustsFontSizeToFit={!large}
-                    minimumFontScale={0.8}
-                    // With its unit in words: "Last time, 80 pounds × 10".
-                    accessibilityLabel={speak(`Last time, ${formatSet(last?.weight, last?.reps)}`)}>
-                    Last time {lastLine}
-                  </BlancText>
-                </Animated.View>
-              ) : null}
+              <Chip
+                label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
+                accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
+                haptic={false}
+                onPress={pickRpe}
+              />
+              {/* For this workout only; the program keeps it. With a set logged it ends the movement early, keeping those
+                  sets; with one set left, that set is all it drops, so it says so. */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  current.movement.done === 0
+                    ? `Skip ${current.movement.name}`
+                    : lastSetLeft
+                      ? `Skip the last set of ${current.movement.name}, keeping ${current.movement.done} of ${current.movement.sets.length} sets`
+                      : `End ${current.movement.name} early, keeping ${current.movement.done} of ${current.movement.sets.length} sets`
+                }
+                accessibilityHint="For this workout only. Undo brings it back."
+                hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+                onPress={() => {
+                  haptics.tap();
+                  skip(current.movement);
+                }}
+                style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
+                <BlancText variant="footnote" tone="graphite">
+                  {current.movement.done === 0 ? 'Skip movement' : lastSetLeft ? 'Skip last set' : 'End early'}
+                </BlancText>
+              </Pressable>
             </View>
-            {lastNote ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 10 }}>
-                Last note, {format(parseISO(lastNote.date), 'MMM d')}: {lastNote.note}
-              </BlancText>
-            ) : null}
 
             {failed ? (
               <BlancText variant="footnote" tone="live" style={{ marginTop: 14 }}>
@@ -811,7 +861,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
       <UndoBar
         label={undo && !closing ? `${undo.name} ${undo.endedEarly ? 'ended early' : 'skipped'}` : null}
-        bottom={tabBarCover(true) + 8}
+        bottom={tabBarCover(workoutBar) + 8}
         onUndo={() => {
           if (undo) bringBack(undo, undo.wasCurrent);
         }}
@@ -864,7 +914,7 @@ function Lead({ children }: { children?: ReactNode }) {
   return <View style={{ width: 16, alignItems: 'center' }}>{children}</View>;
 }
 
-/** A saved set beat last time: an up mark and the gain, in ink, for a moment. */
+/** A saved set beat last time: an up mark and the gain, in ink, for a moment; in the note's place, at its size. */
 function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
   const c = useBlanc();
   const large = useLargeText();
@@ -873,8 +923,8 @@ function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
       entering={FadeIn.duration(180)}
       exiting={FadeOut.duration(220)}
       style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }, style]}>
-      <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} />
-      <BlancText variant="meta" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1 }}>
+      <SymbolView name="arrow.up" size={12} weight="bold" tintColor={c.ink} />
+      <BlancText variant="secondary" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1, fontVariant: ['tabular-nums'] }}>
         Beat last time · {gain}
       </BlancText>
     </Animated.View>
@@ -900,7 +950,8 @@ function FigureRow({ weight, reps, size }: { weight: ReactNode; reps: ReactNode;
       tone="graphite"
       accessibilityElementsHidden
       importantForAccessibility="no"
-      style={{ marginBottom: Math.round(size * 0.16) }}>
+      // Centred on the figures, above the captions under them.
+      style={{ marginBottom: Math.round(size * 0.3) + CAPTION_HEIGHT + 5 }}>
       ×
     </BlancText>
   );
@@ -931,22 +982,33 @@ function BigValue({
   onBlur,
   accessibilityLabel,
   integer,
+  caption,
+  spokenCaption,
 }: {
   ref: Ref<TextField>;
   value: string;
   unit: string;
   size: number;
+  /** Written small under the ruled line: last time's value ("last 8"), only while the field holds another. Without it the line stays, empty. */
+  caption?: string;
+  /** The caption in words; given and left out with it. */
+  spokenCaption?: string;
   onChange: (text: string) => void;
   onFocus: () => void;
   onBlur: () => void;
   accessibilityLabel: string;
   integer?: boolean;
 }) {
+  const c = useBlanc();
   const field = useRef<TextField>(null);
+  const [focused, setFocused] = useState(false);
   useImperativeHandle(ref, () => field.current as TextField);
   return (
-    // The unit beside the number is part of the field: a tap there types too.
+    <View>
+    {/* The unit beside the number is part of the field: a tap there types too. */}
     <Pressable accessible={false} onPress={() => field.current?.focus()} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+      {/* A ruled line under the figure, as in a paper log: it can be written in. Ink while typing. */}
+      <View style={{ borderBottomWidth: focused ? 1.5 : 1, borderBottomColor: focused ? c.ink : c.mark, marginBottom: focused ? -0.5 : 0 }}>
       <FigureInput
         ref={field}
         // The key bar below brings − / +, Next and Done; no system bar.
@@ -954,20 +1016,49 @@ function BigValue({
         value={value}
         fontSize={size}
         onChangeText={onChange}
-        onFocus={onFocus}
-        onBlur={onBlur}
+        onFocus={() => {
+          setFocused(true);
+          onFocus();
+        }}
+        onBlur={() => {
+          setFocused(false);
+          onBlur();
+        }}
         keyboardType={integer ? 'number-pad' : 'decimal-pad'}
         selectTextOnFocus
         maxLength={6}
         accessibilityLabel={accessibilityLabel}
       />
-      {/* The field's label names the unit. */}
-      <BlancText variant="secondary" tone="graphite" accessibilityElementsHidden importantForAccessibility="no">
+      </View>
+      {/* The field's label names the unit. React Native can't line a text
+          field's baseline up with text beside it, so the unit is lifted onto
+          the figure's baseline by the measured difference. */}
+      <BlancText
+        variant="secondary"
+        tone="graphite"
+        accessibilityElementsHidden
+        importantForAccessibility="no"
+        style={{ transform: [{ translateY: -Math.round(size * 0.043 * 2) / 2 }] }}>
         {unit}
       </BlancText>
     </Pressable>
+    {/* Last time under its own figure, as a paper log keeps the last session in the margin. */}
+    <BlancText
+      variant="meta"
+      tone="graphite"
+      accessibilityLabel={spokenCaption}
+      accessibilityElementsHidden={!caption}
+      importantForAccessibility={caption ? 'auto' : 'no-hide-descendants'}
+      numberOfLines={1}
+      style={{ marginTop: 5, minHeight: CAPTION_HEIGHT, opacity: caption ? 1 : 0 }}>
+      {caption || ' '}
+    </BlancText>
+    </View>
   );
 }
+
+/** The last-time caption's line under each figure (Menlo 12 on a 16 pt line), kept even when empty so the card doesn't move. */
+const CAPTION_HEIGHT = 16;
 
 /**
  * The key bar's text grows no further than this, like iOS's own bars above

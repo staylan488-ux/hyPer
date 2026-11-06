@@ -221,6 +221,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             }}>
             <SymbolView name="magnifyingglass" size={16} weight="medium" tintColor={c.graphite} />
             <TextInput
+              selectionColor={c.ink}
               ref={searchField}
               value={query}
               onChangeText={setQuery}

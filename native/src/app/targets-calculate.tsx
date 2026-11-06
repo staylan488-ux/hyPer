@@ -401,7 +401,7 @@ function SegmentRow({ label, children }: { label: string; children: ReactNode })
       <BlancText variant="body" style={large ? undefined : { flex: 1 }}>
         {label}
       </BlancText>
-      <Host matchContents style={{ width: 168 }}>
+      <Host matchContents={{ vertical: true }} style={{ width: 168 }}>
         {children}
       </Host>
     </View>
@@ -418,6 +418,7 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
   const fields = (
     <>
       <TextInput
+        selectionColor={c.ink}
         ref={feetField}
         value={feet}
         onChangeText={onFeet}
@@ -435,6 +436,7 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
         ft
       </BlancText>
       <TextInput
+        selectionColor={c.ink}
         ref={inchesField}
         value={inches}
         onChangeText={onInches}

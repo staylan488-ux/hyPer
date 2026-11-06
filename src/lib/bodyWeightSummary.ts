@@ -1,31 +1,16 @@
-// The words around body weight that You shows: the latest weigh-in, the
-// three-week rate and the Log weight sheet's draft. Shared by the web You
-// page and the native app.
+// The words around body weight: the recent read's window, the weekly rate
+// at two decimals, the latest weigh-in and the Log weight sheet's draft.
 import { format } from 'date-fns';
 
-import { WINDOW_DAYS as ADAPTIVE_WINDOW_DAYS } from '@/lib/adaptiveExpenditure';
 import { normalizeDecimalText, parseDecimal } from '@/lib/decimalText';
 import { lbsToKg } from '@/lib/nutritionCalculator';
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
-import { buildWeightTrend, type WeightSampleLike } from '@/lib/weightTrend';
 
 /**
  * The weigh-ins You reads: Body weight's chart shows this many days, and it is
  * enough for a stable trend without pulling a year of rows.
  */
 export const WEIGHT_TREND_WINDOW_DAYS = 90;
-
-/**
- * The full series (charts and the smoothed caption) and the weekly rate,
- * fitted over the same three-week window the coach and the adaptive targets
- * use. With fewer than two weigh-ins in that window there is no rate.
- */
-export function bodyWeightTrends(history: WeightSampleLike[]) {
-  return {
-    trend: buildWeightTrend(history),
-    rate: buildWeightTrend(history, { windowDays: ADAPTIVE_WINDOW_DAYS }),
-  };
-}
 
 /** "+0.42 lb/wk", or null without a rate. A flat rate has no sign. */
 export function weeklyRateLabel(kgPerWeek: number | null, unit: WeightUnit): string | null {

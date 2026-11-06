@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { SymbolView } from 'expo-symbols';
+import { useState, type ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -13,16 +14,20 @@ import { speak, useLargeText } from '~/lib/accessibility';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useStartSession } from '~/lib/session';
-import { useFinishedToday } from '~/lib/today';
+import { useFinishedToday, type FinishedToday } from '~/lib/today';
 import { useBlanc } from '~/theme/blanc';
 
 // Today's training in one card: a title, at most one quiet line, at most one
 // button. Same rule as the web (todayHero), fewer words. Shown on Today and
 // at the top of Train before a session starts. A finished day stays as its
-// record: the session's name and time, and its tally, opening the workout.
+// record, in the live session's skeleton (SessionCard): the session's name
+// and length, its tally, "Done", opening the workout.
 const PLAN_CARD_HEIGHT = 78;
-// A finished day's record: padding 14 + headline 22 + 2 + line 20 + 8 + tally 24 + 14.
-const RECORD_HEIGHT = 104;
+// A finished day's record, as tall as the live card: padding 16 + the day's
+// line 20 + 14 + tally 24 + 16 + the title line 44 (an action's height) + 18.
+const RECORD_HEIGHT = 152;
+/** The title line's height: a button's, so a card without one keeps the live card's height. */
+const TITLE_LINE = 44;
 
 export function PlanCard({
   hero,
@@ -90,19 +95,7 @@ export function PlanCard({
         detail = next ? `Next: ${next}` : null;
         break;
       }
-      // The next session by name only ("Tomorrow · Lower A" → "Lower A"), so the line fits.
-      const at = next ? next.indexOf(' · ') : -1;
-      const nextName = next && at >= 0 ? next.slice(at + 3) : next;
-      title = finished.title;
-      // No set count: the tally under the line shows it.
-      detail = [
-        'Trained today',
-        finished.minutes ? formatMinutes(finished.minutes) : null,
-        nextName ? `Next: ${nextName}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · ');
-      break;
+      return <FinishedCard record={finished} next={next} />;
     }
     case 'flexible':
       title = 'Flexible mode';
@@ -125,8 +118,6 @@ export function PlanCard({
       break;
   }
 
-  const record = hero.kind === 'done' ? finished : null;
-  const openRecord = record ? () => router.push({ pathname: '/train/past', params: { id: record.id } }) : null;
   // A seeded finished day keeps the record's place while History is read.
   const holdingRecord = hero.kind === 'done' && finished === undefined;
   const face = {
@@ -148,11 +139,6 @@ export function PlanCard({
               {detail}
             </BlancText>
           ) : null}
-          {record && record.marks.length > 0 ? (
-            // The finished session's tally, closed: no set is next. Its strokes sit
-            // 8 pt under the room it keeps for a next stroke, so 16 pt below the line.
-            <Tally marks={record.marks} current={null} height={16} style={{ marginTop: 8 }} accessibilityLabel={`${record.sets} of ${record.marks.length} sets logged`} />
-          ) : null}
         </View>
         {action ? (
           <Capsule
@@ -167,26 +153,19 @@ export function PlanCard({
   );
 
   return (
-    <Animated.View key={record ? 'record' : hero.kind} entering={FadeIn.duration(220)}>
-      {place === 'today' || openRecord ? (
+    <Animated.View key={hero.kind} entering={FadeIn.duration(220)}>
+      {place === 'today' ? (
         // On Today the whole card leads to Train, where the day is; its button still acts.
-        // A finished day's record opens that workout, on Today and on Train.
         <Label style={{ marginTop: 18, overflow: 'hidden' }}>
           <Pressable
             // With a button inside, VoiceOver reaches the button on its own.
             accessible={!action}
             accessibilityRole="button"
-            // VoiceOver reads the record as a whole, so the tally's count joins its label.
-            // The record's length reads in words ("1 h 5 min" as "1 hour 5 minutes").
-            accessibilityLabel={speak(
-              [title, detail, record && record.marks.length > 0 ? `${record.sets} of ${record.marks.length} sets logged` : null]
-                .filter(Boolean)
-                .join(', '),
-            )}
-            accessibilityHint={openRecord ? 'Opens the workout' : 'Opens Train'}
+            accessibilityLabel={speak([title, detail].filter(Boolean).join(', '))}
+            accessibilityHint="Opens Train"
             onPress={() => {
               haptics.tap();
-              (openRecord ?? toTrain)();
+              toTrain();
             }}
             style={({ pressed }) => [face, { backgroundColor: pressed ? c.pressed : 'transparent' }]}>
             {content}
@@ -196,5 +175,134 @@ export function PlanCard({
         <Label style={[{ marginTop: 18 }, face]}>{content}</Label>
       )}
     </Animated.View>
+  );
+}
+
+/**
+ * A finished day's record, on Today and on Train, in the live card's
+ * skeleton: the session and its length where the live clock was, the closed
+ * tally, then "Done" where the movement was and the next session under it.
+ * No button: the card opens the workout, and says so with a chevron where the
+ * live card's button was, as every card that opens a screen does.
+ */
+function FinishedCard({ record, next }: { record: FinishedToday; next: string | null }) {
+  const c = useBlanc();
+  // At the accessibility sizes the action slot stacks under the words, where a lone chevron would float.
+  const large = useLargeText();
+  // The next session by name only ("Tomorrow · Lower A" → "Lower A"), so the line fits.
+  const at = next ? next.indexOf(' · ') : -1;
+  const nextName = next && at >= 0 ? next.slice(at + 3) : next;
+  const total = record.marks.length;
+  // Every set logged, the tally says so; a count only for sets left unlogged.
+  const outcome = total > 0 && record.sets < total ? `Done · ${record.sets} of ${total} sets` : 'Done';
+  const length = record.minutes ? formatMinutes(record.minutes) : null;
+  const line = nextName ? `Next: ${nextName}` : null;
+  const counted = total > 0 ? `${record.sets} of ${total} sets logged` : null;
+  return (
+    <Animated.View key="record" entering={FadeIn.duration(220)}>
+      <SessionCard
+        day={record.title}
+        aside={
+          length ? (
+            <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+              {length}
+            </BlancText>
+          ) : null
+        }
+        // Closed: no set is next.
+        tally={counted ? { marks: record.marks, current: null, label: counted } : null}
+        title={outcome}
+        line={line}
+        action={large ? undefined : <SymbolView name="chevron.right" size={13} weight="semibold" tintColor={c.upcoming} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />}
+        // VoiceOver reads the record as one stop, its length in words ("1 h 5 min" as "1 hour 5 minutes").
+        spoken={[record.title, length, 'Done', counted, line].filter(Boolean).join(', ')}
+        hint="Opens the workout"
+        onPress={() => router.push({ pathname: '/train/past', params: { id: record.id } })}
+      />
+    </Animated.View>
+  );
+}
+
+/**
+ * Today's session in one skeleton, live or finished, so finishing changes
+ * the words and not the layout: a quiet header line (the session's name, and
+ * at its right the live clock or, once done, its length), the tally, then the
+ * title line (the movement up now, or "Done") with its quiet line and the
+ * card's one button. The whole card is a button. With `spoken` it is one
+ * VoiceOver stop (a record); without, VoiceOver reads its parts and reaches
+ * the button on its own.
+ */
+export function SessionCard({
+  day,
+  daySpoken,
+  aside,
+  tally,
+  title,
+  line,
+  action,
+  spoken,
+  hint,
+  onPress,
+}: {
+  day: string;
+  /** What VoiceOver hears for the header line, when its parts are read one by one. */
+  daySpoken?: string;
+  /** At the header line's right: the live clock, or the finished session's length. */
+  aside?: ReactNode;
+  tally: { marks: boolean[]; current: number | null; label: string } | null;
+  title: string;
+  line: string | null;
+  action?: ReactNode;
+  /** The whole card's words for VoiceOver, read as one stop. */
+  spoken?: string;
+  hint?: string;
+  onPress: () => void;
+}) {
+  const c = useBlanc();
+  // At the accessibility text sizes the day wraps, the clock moves under it, and the button under the words.
+  const large = useLargeText();
+  return (
+    <Label style={{ marginTop: 18, overflow: 'hidden' }}>
+      <Pressable
+        accessible={spoken !== undefined}
+        accessibilityRole="button"
+        accessibilityLabel={spoken === undefined ? undefined : speak(spoken)}
+        accessibilityHint={hint}
+        onPress={() => {
+          haptics.tap();
+          onPress();
+        }}
+        style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+        <View
+          accessible
+          accessibilityLabel={speak(daySpoken ?? day)}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
+          {/* The session names the card quietly; a long name gives way, the clock always shows. */}
+          <BlancText variant="secondary" weight="500" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
+            {day}
+          </BlancText>
+          {aside}
+        </View>
+
+        {tally ? (
+          // Its strokes sit 8 pt under the room it keeps for a next stroke.
+          <Tally marks={tally.marks} current={tally.current} height={16} style={{ marginTop: 14 }} accessibilityLabel={tally.label} />
+        ) : null}
+
+        <View style={large ? { gap: 12, marginTop: 16 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16, minHeight: TITLE_LINE }}>
+          <View accessible accessibilityLabel={speak(line ? `${title} · ${line}` : title)} style={large ? undefined : { flex: 1, minWidth: 0 }}>
+            <BlancText variant="headline" numberOfLines={large ? undefined : 1}>
+              {title}
+            </BlancText>
+            {line ? (
+              <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
+                {line}
+              </BlancText>
+            ) : null}
+          </View>
+          {action}
+        </View>
+      </Pressable>
+    </Label>
   );
 }

@@ -93,8 +93,8 @@ afterEach(() => {
   host.remove();
 });
 
-const GAINING = 'A reminder when you’re well short of calories or protein for the day. Never sent once you’ve hit them.';
-const PROTEIN = 'A reminder when you’re well short of protein for the day. Never sent once you’ve hit it.';
+const GAINING = 'Reminds you when calories or protein are well below today’s targets. Stops once you reach them.';
+const PROTEIN = 'Reminds you when protein is well below today’s target. Stops once you reach it.';
 const DENIED = 'Notifications are off for hyPer. Allow them in Settings to get this reminder.';
 
 describe('the Fuel reminder card', () => {

@@ -1,7 +1,7 @@
 import { useState, type Ref } from 'react';
 import { Text, TextInput, View, type TextInputProps, type TextStyle } from 'react-native';
 
-import { type as typeScale, useBlanc } from '~/theme/blanc';
+import { figureLead, type as typeScale, useBlanc } from '~/theme/blanc';
 import { FIGURE_MAX_SCALE } from '~/theme/textSize';
 
 import { numberPadReturnKey, type TextField } from './Form';
@@ -29,7 +29,8 @@ export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboar
   ];
 
   return (
-    <View style={{ paddingHorizontal: slop, marginHorizontal: -slop }}>
+    // Pulled left by the first digit's side bearing, so the ink (not the box) starts where the ruled line does.
+    <View style={{ paddingHorizontal: slop, marginLeft: -slop + figureLead(value || placeholder, fontSize), marginRight: -slop }}>
       <Text
         maxFontSizeMultiplier={FIGURE_MAX_SCALE}
         style={[...style, { position: 'absolute', opacity: 0 }]}
@@ -39,6 +40,7 @@ export function FigureInput({ ref, value, fontSize, placeholder = '–', keyboar
         {value || placeholder}
       </Text>
       <TextInput
+        selectionColor={c.ink}
         ref={ref}
         {...rest}
         keyboardType={keyboardType}

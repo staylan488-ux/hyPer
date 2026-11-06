@@ -97,8 +97,8 @@ export const previewCurrentWorkout: Workout = {
     ws(exBench, 1, 100, 8, 8, true, sessionMinutesAgo(19)),
     ws(exBench, 2, 100, 8, 8.5, true, sessionMinutesAgo(15)),
     ws(exBench, 3, 102.5, 6, 9, true, sessionMinutesAgo(10)),
-    ws(exRow, 1, 80, 10, 7, false, null),
-    ws(exRow, 2, 80, 10, 7, false, null),
+    ws(exRow, 1, 80, 10, 7, true, sessionMinutesAgo(6)),
+    ws(exRow, 2, 80, 10, 7.5, true, sessionMinutesAgo(3)),
     ws(exRow, 3, 80, 9, 8, false, null),
     ws(exIncline, 1, 30, 12, 7, false, null),
     ws(exIncline, 2, 30, 11, 8, false, null),
@@ -117,7 +117,7 @@ const lmSeeds: LMSeed[] = [
   ['back', 8, 12, 14, 20, 25, 18, 'mav'],
   ['quads', 6, 8, 10, 16, 20, 9, 'mev_mav'],
   ['hamstrings', 4, 6, 8, 12, 16, 5, 'below_mev'],
-  ['side_delts', 6, 10, 12, 18, 22, 21, 'above_mrv'],
+  ['side_delts', 6, 10, 12, 18, 22, 24, 'above_mrv'],
   ['biceps', 6, 8, 10, 16, 20, 12, 'mav'],
   ['triceps', 6, 8, 10, 16, 20, 10, 'mav'],
   ['glutes', 4, 6, 8, 14, 18, 11, 'mav'],
@@ -132,16 +132,16 @@ const food = (id: string, name: string, cal: number, p: number, c: number, f: nu
   ({ id, name, calories: cal, protein: p, carbs: c, fat: f, serving_size: size, serving_unit: unit, source, fdc_id: source === 'usda' ? `fdc-${id}` : null, user_id: source === 'custom' ? PREVIEW_USER_ID : null });
 
 export const previewFoods: Food[] = [
-  food('f_serving_demo', 'Samosas (serving demo)', 250, 10, 30, 10, 5, 'pieces', 'custom'),
-  food('f_oats', 'Rolled Oats', 150, 5, 27, 3, 40, 'g'),
-  food('f_eggs', 'Whole Eggs', 156, 13, 1, 11, 2, 'large'),
-  food('f_chicken', 'Chicken Breast, grilled', 248, 47, 0, 5, 150, 'g'),
-  food('f_rice', 'White Rice, cooked', 260, 5, 57, 1, 200, 'g'),
-  food('f_yogurt', 'Greek Yogurt, nonfat', 100, 17, 6, 1, 170, 'g'),
+  food('f_serving_demo', 'Samosas', 250, 10, 30, 10, 5, 'pieces', 'custom'),
+  food('f_oats', 'Rolled oats', 150, 5, 27, 3, 40, 'g'),
+  food('f_eggs', 'Whole eggs', 156, 13, 1, 11, 2, 'large'),
+  food('f_chicken', 'Chicken breast, grilled', 248, 47, 0, 5, 150, 'g'),
+  food('f_rice', 'White rice, cooked', 260, 5, 57, 1, 200, 'g'),
+  food('f_yogurt', 'Greek yogurt, nonfat', 100, 17, 6, 1, 170, 'g'),
   food('f_banana', 'Banana', 105, 1, 27, 0, 1, 'medium'),
-  food('f_whey', 'Whey Protein', 120, 24, 3, 2, 1, 'scoop'),
+  food('f_whey', 'Whey protein', 120, 24, 3, 2, 1, 'scoop'),
   food('f_almond', 'Almonds', 164, 6, 6, 14, 28, 'g'),
-  food('f_salmon', 'Salmon Fillet', 280, 39, 0, 13, 170, 'g', 'custom'),
+  food('f_salmon', 'Salmon fillet', 280, 39, 0, 13, 170, 'g', 'custom'),
 ];
 
 type LogSeed = [string, number, NonNullable<import('@/types').NutritionLog['meal_type']>, number, number];
@@ -168,11 +168,45 @@ const previewGroupByLegacyMeal: Record<string, string> = {
   snack: 'ng-snack-1',
 };
 
-export const previewNutritionLogs = logSeeds.map(([foodId, servings, meal, h, m], i) => ({
+const todayLogs = logSeeds.map(([foodId, servings, meal, h, m], i) => ({
   id: `nl${i}`, user_id: PREVIEW_USER_ID, date: PREVIEW_TODAY, food_id: foodId, servings, meal_type: meal,
   group_id: previewGroupByLegacyMeal[meal] ?? null, sort_order: i, source: 'manual', external_id: null, import_batch_id: null,
   created_at: iso(at(now, h, m)), logged_at: iso(at(now, h, m)),
 }));
+
+/* The week before today: five days logged and two left empty, so Progress's
+   nutrition charts show a lived-in week (an average, a missing day). Each
+   day is the same plan scaled a little. */
+const pastDaySeeds: LogSeed[] = [
+  ['f_oats', 1.5, 'breakfast', 7, 30],
+  ['f_eggs', 1.5, 'breakfast', 7, 35],
+  ['f_yogurt', 1, 'breakfast', 7, 40],
+  ['f_chicken', 1.5, 'lunch', 12, 45],
+  ['f_rice', 1.5, 'lunch', 12, 50],
+  ['f_whey', 1, 'snack', 15, 10],
+  ['f_banana', 1, 'snack', 15, 12],
+  ['f_almond', 1, 'snack', 15, 15],
+  ['f_salmon', 1, 'dinner', 19, 30],
+  ['f_rice', 1, 'dinner', 19, 35],
+];
+const pastDays: Array<[daysBack: number, scale: number]> = [[1, 1], [2, 1.08], [3, 0.94], [5, 1.12], [6, 0.98]];
+const pastGroupKinds = [['breakfast', 'meal'], ['lunch', 'meal'], ['snack', 'snack'], ['dinner', 'meal']] as const;
+const previewPastGroups = pastDays.flatMap(([back]) =>
+  pastGroupKinds.map(([meal, kind], order) => ({
+    id: `ng-${back}-${meal}`, user_id: PREVIEW_USER_ID, date: ymd(daysAgo(back)), kind, label: meal === 'snack' ? null : meal, sort_order: order,
+    created_at: iso(daysAgo(back)), updated_at: iso(daysAgo(back)),
+  })),
+);
+const pastLogs = pastDays.flatMap(([back, scale]) =>
+  pastDaySeeds.map(([foodId, servings, meal, h, m], i) => ({
+    id: `nl-${back}-${i}`, user_id: PREVIEW_USER_ID, date: ymd(daysAgo(back)), food_id: foodId, servings: Math.round(servings * scale * 10) / 10, meal_type: meal,
+    group_id: `ng-${back}-${meal}`, sort_order: i, source: 'manual', external_id: null, import_batch_id: null,
+    created_at: iso(at(daysAgo(back), h, m)), logged_at: iso(at(daysAgo(back), h, m)),
+  })),
+);
+previewNutritionGroups.push(...previewPastGroups);
+
+export const previewNutritionLogs = [...todayLogs, ...pastLogs];
 
 /* ── History: completed workouts + their sets over the last fortnight ── */
 const historyPlan: { offset: number; dayId: string; ex: Exercise[]; notes?: Record<string, string> }[] = [

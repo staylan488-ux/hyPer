@@ -18,7 +18,8 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { announce, useAnnounce, useIncreaseContrast, useReduceMotion } from '~/lib/accessibility';
+import { Tally } from '~/components/Tally';
+import { announce, speak, useAnnounce, useLargeText, useReduceMotion } from '~/lib/accessibility';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
@@ -32,12 +33,22 @@ import {
   useHistoryStore,
   workoutsOnDay,
 } from '~/lib/history';
+import { dayEntries } from '~/lib/historyDay';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useSessionModel, type SessionModel } from '~/lib/session';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc, type Palette } from '~/theme/blanc';
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/** Monday first, as the training week and every calendar in the app. */
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+/**
+ * A week's row in the month grid: a 48-point target holding the 34-point day
+ * at its top, the dot 2 points under it, and the rest of the row below, so a
+ * dot sits nearer its own day than the week under it.
+ */
+const DAY_ROW = 48;
+/** A finished workout's tally fits beside its name up to four groups of five; longer ones read in words. */
+const TALLY_MAX_SETS = 20;
 
 /**
  * A length the way the rest of the app writes one ("48 min", "1 h 5 min"), or null without one.
@@ -78,6 +89,9 @@ export default function HistoryScreen() {
     () => sortActivitySessionsByStart(activities.filter((activity) => getActivitySessionDateKey(activity) === day)),
     [activities, day],
   );
+  // One log for the day, earliest first; the workout running now leads.
+  const liveId = live?.workoutId ?? null;
+  const entries = useMemo(() => dayEntries(dayWorkouts, dayActivities, liveId), [dayWorkouts, dayActivities, liveId]);
   const date = parseISO(day);
   const onToday = isToday(date);
   useAnnounce(failed && !loading ? "Couldn't load this month" : null);
@@ -125,13 +139,23 @@ export default function HistoryScreen() {
             ...(syncAvailable
               ? [
                   {
-                    type: 'button' as const,
-                    label: syncing ? 'Syncing…' : 'Sync WHOOP',
-                    icon: { type: 'sfSymbol' as const, name: 'arrow.triangle.2.circlepath' as const },
-                    disabled: syncing,
-                    onPress: () => {
-                      haptics.tap();
-                      void sync();
+                    // Named for what it syncs: a pull down reloads History itself.
+                    type: 'menu' as const,
+                    label: 'History options',
+                    icon: { type: 'sfSymbol' as const, name: 'ellipsis' as const },
+                    menu: {
+                      items: [
+                        {
+                          type: 'action' as const,
+                          label: syncing ? 'Syncing…' : 'Sync WHOOP',
+                          icon: { type: 'sfSymbol' as const, name: 'arrow.triangle.2.circlepath' as const },
+                          disabled: syncing,
+                          onPress: () => {
+                            haptics.tap();
+                            void sync();
+                          },
+                        },
+                      ],
                     },
                   },
                 ]
@@ -142,9 +166,11 @@ export default function HistoryScreen() {
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Calendar month={month} day={day} workouts={workouts} activities={activities} />
 
+        {/* Closer under the calendar than sections usually sit: the heading is the chosen day's, so it reads with the grid. */}
         <Section
           title={format(date, 'EEEE, MMMM d')}
-          accessory={<AddActivityButton day={day} />}>
+          accessory={<AddActivityButton day={day} />}
+          style={{ marginTop: 14 }}>
           <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
             {loading ? (
               <Animated.View key="loading" entering={rowEnter} exiting={blockExit}>
@@ -160,19 +186,19 @@ export default function HistoryScreen() {
               </Animated.View>
             ) : null}
             {!loading &&
-              dayWorkouts.map((workout, index) => (
-                <Animated.View key={workout.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-                  {index > 0 ? <Hairline /> : null}
-                  <WorkoutRow workout={workout} live={live?.workoutId === workout.id ? live : null} />
-                </Animated.View>
-              ))}
-            {!loading &&
-              dayActivities.map((activity, index) => (
-                <Animated.View key={activity.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-                  {index > 0 || dayWorkouts.length > 0 ? <Hairline /> : null}
-                  <ActivityRow activity={activity} sameDay={dayActivities} />
-                </Animated.View>
-              ))}
+              entries.map((entry, index) =>
+                entry.kind === 'workout' ? (
+                  <Animated.View key={entry.workout.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                    {index > 0 ? <Hairline /> : null}
+                    <WorkoutRow workout={entry.workout} live={live?.workoutId === entry.workout.id ? live : null} />
+                  </Animated.View>
+                ) : (
+                  <Animated.View key={entry.activity.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                    {index > 0 ? <Hairline /> : null}
+                    <ActivityRow activity={entry.activity} sameDay={dayActivities} />
+                  </Animated.View>
+                ),
+              )}
           </Label>
         </Section>
       </TabScroll>
@@ -238,7 +264,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
   };
 
   return (
-    <Label style={{ marginTop: 6, paddingTop: 6, paddingBottom: 10, overflow: 'hidden' }}>
+    <Label style={{ marginTop: 6, paddingTop: 4, paddingBottom: 4, overflow: 'hidden' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 18, paddingRight: 6 }}>
         <BlancText variant="headline" style={{ flex: 1 }} accessibilityRole="header">
           {monthName}
@@ -271,7 +297,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
           }}
         />
       </View>
-      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 4 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={{ flexDirection: 'row', paddingHorizontal: 8, marginTop: 2 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         {WEEKDAYS.map((weekday, index) => (
           <BlancText key={index} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {weekday}
@@ -285,7 +311,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
         showsHorizontalScrollIndicator={false}
         scrollsToTop={false}
         // As tall as this month's weeks; the neighbours clip while they slide in.
-        style={{ height: (buildCalendarDays(month).length / 7) * 46 + 2 }}
+        style={{ height: (buildCalendarDays(month).length / 7) * DAY_ROW + 2 }}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
         onScrollBeginDrag={() => {
           arrowTurn.current = false;
@@ -328,7 +354,6 @@ function MonthGrid({
   interactive: boolean;
 }) {
   const c = useBlanc();
-  const contrast = useIncreaseContrast();
   // Each cell's date and words, worked out once per month.
   const cells = useMemo(
     () =>
@@ -355,9 +380,9 @@ function MonthGrid({
           inMonth={cell.inMonth}
           selected={cell.key === day}
           today={cell.key === todayKey}
+          future={cell.key > todayKey}
           lifts={marks.lifts.get(cell.key) ?? 0}
           activities={marks.other.get(cell.key)?.join(', ') ?? ''}
-          contrast={contrast}
           c={c}
         />
       ))}
@@ -373,9 +398,9 @@ function DayCell({
   inMonth,
   selected,
   today,
+  future,
   lifts,
   activities,
-  contrast,
   c,
 }: {
   date: Date;
@@ -384,17 +409,21 @@ function DayCell({
   inMonth: boolean;
   selected: boolean;
   today: boolean;
+  /** After today: in the quieter upcoming grey (4.5:1 or more), still tappable. */
+  future: boolean;
   /** Workouts that day. */
   lifts: number;
   /** The day's activities by name ("Running, Cycling"), or empty. */
   activities: string;
-  contrast: boolean;
   c: Palette;
 }) {
+  // Another month's days leave their places empty, as Calendar's month view
+  // does, so the month visibly ends; the arrows and a swipe turn the page.
+  if (!inMonth) return <View style={{ width: `${100 / 7}%`, height: DAY_ROW }} />;
   const lift = lifts > 0;
   const other = activities.length > 0;
   // The date, then what the dots show: "Tuesday, November 4, today, workout, Running".
-  const spoken = [label, today ? 'today' : null, lift && inMonth ? (lifts > 1 ? `${lifts} workouts` : 'workout') : null, other && inMonth ? activities : null];
+  const spoken = [label, today ? 'today' : null, lift ? (lifts > 1 ? `${lifts} workouts` : 'workout') : null, other ? activities : null];
   return (
     <Pressable
       accessibilityRole="button"
@@ -404,7 +433,7 @@ function DayCell({
         haptics.select();
         selectHistoryDay(date);
       }}
-      style={{ width: `${100 / 7}%`, height: 46, alignItems: 'center', justifyContent: 'center' }}>
+      style={{ width: `${100 / 7}%`, height: DAY_ROW, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 2 }}>
       <View
         style={{
           width: 34,
@@ -412,26 +441,26 @@ function DayCell({
           borderRadius: 17,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: selected && inMonth ? c.ink : 'transparent',
+          backgroundColor: selected ? c.ink : 'transparent',
         }}>
         <BlancText
           variant="body"
-          weight={today || (selected && inMonth) ? '600' : undefined}
+          weight={today || selected ? '600' : undefined}
           // The grid's 34-point circles hold the number; the day's title
           // below carries the date at the full text size.
           maxFontSizeMultiplier={1.3}
           style={{
             fontVariant: ['tabular-nums'],
-            color: selected && inMonth ? c.label : inMonth ? c.ink : c.upcoming,
-            // Increase Contrast keeps the neighbouring months' days legible.
-            opacity: inMonth || contrast ? 1 : 0.55,
+            // Days to come read in the upcoming grey, still clear to tap (a chosen one stays on its disc).
+            color: selected ? c.label : future ? c.upcoming : c.ink,
           }}>
           {number}
         </BlancText>
       </View>
-      <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 1 }}>
-        {lift && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.ink }} /> : null}
-        {other && inMonth ? <View style={{ width: 5, height: 5, borderRadius: 2.5, borderWidth: 1, borderColor: c.graphite }} /> : null}
+      {/* 2 points under the 34-point disc: clear of a chosen day's ink, and plainly its own day's. */}
+      <View style={{ flexDirection: 'row', gap: 3, height: 5, marginTop: 2 }}>
+        {/* One mark for a day with anything in it; the day's list says what. */}
+        {lift || other ? <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: lift ? c.ink : c.graphite }} /> : null}
       </View>
     </Pressable>
   );
@@ -459,39 +488,63 @@ function AddActivityButton({ day }: { day: string }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Add an activity"
-      hitSlop={6}
+      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
       onPress={() => {
         haptics.tap();
         router.push({ pathname: '/activity', params: { day } });
       }}
-      style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'flex-end', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-      <SymbolView name="plus" size={18} weight="semibold" tintColor={c.ink} />
+      // "+ Add", as every in-content add reads ("+ Log food", "+ Log").
+      style={({ pressed }) => ({ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, opacity: pressed ? 0.45 : 1 })}>
+      <SymbolView name="plus" size={13} weight="semibold" tintColor={c.ink} />
+      <BlancText variant="bodyStrong" size={15}>
+        Add
+      </BlancText>
     </Pressable>
   );
 }
 
 
+/** A strength session's sets fit as a tally beside its name: some sets, up to four groups of five, below the accessibility sizes. */
+const tallyFits = (sets: number, large: boolean) => !large && sets > 0 && sets <= TALLY_MAX_SETS;
+
 /**
  * A workout: tap to open; swipe to delete (asks first); hold for the menu.
- * The one running now reads "In progress" by a live dot and opens Train, with no Delete.
+ * Its sets are drawn as a tally on the title's line, the running one's with
+ * the next set's stroke in the live red. The one running now reads "In
+ * progress" by a live dot and opens Train, with no Delete.
  */
 function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionModel | null }) {
   const c = useBlanc();
+  const large = useLargeText();
   const title = historyWorkoutTitle(workout);
   if (live) {
     const train = () => router.dismissTo('/train');
+    const time = formatActivityStartTime(live.startedAt.toISOString());
+    const count = live.sets.length > 0 ? `${live.doneCount} of ${live.sets.length} sets` : live.movements.length === 0 ? 'No movements yet' : null;
+    const tally = tallyFits(live.sets.length, large);
+    // Led by its start time, as every other row of the day is; the live dot
+    // and "In progress" keep the state in words beside the tally, and the
+    // count joins them where no tally is drawn.
+    const detail = [time, 'In progress', tally ? null : count].filter(Boolean).join(' · ');
     return (
       <Row
         title={title}
-        detail={
-          live.sets.length > 0
-            ? `In progress · ${live.doneCount} of ${live.sets.length} sets`
-            : live.movements.length === 0
-              ? 'In progress · No movements yet'
-              : 'In progress'
+        detail={detail}
+        detailMark={<LiveDot c={c} />}
+        accessibilityLabel={speak([title, 'In progress', time, count].filter(Boolean).join(', '))}
+        trailing={
+          tally ? (
+            // The live session's own tally, as Train and Today draw it, on the title's line like a finished row's.
+            <View style={{ alignSelf: 'flex-start', marginTop: 1 }}>
+              <Tally
+                compact
+                marks={live.sets.map((set) => set.completed)}
+                current={live.current?.index ?? null}
+                accessibilityLabel={count ?? ''}
+              />
+            </View>
+          ) : undefined
         }
-        // On the detail line, as Today writes live, so the title keeps the card's text edge.
-        detailMark={<View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />}
         chevron
         onPress={train}
         menu={[{ title: 'Open', symbol: 'arrow.up.right.square', run: train }]}
@@ -501,7 +554,10 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   const progress = progressFromSets(workout.sets);
   const duration = lengthOf(getWorkoutDurationMs(workout));
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
-  const detail = [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
+  // The sets drawn as a small tally on the title's line, where it fits beside
+  // the name; otherwise (no sets, a long session, the accessibility sizes) in words.
+  const tally = tallyFits(progress.totalSets, large);
+  const detail = tally ? duration ?? undefined : [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
   const remove = () => void confirmDeleteWorkout(title, workout.id, { onDeleted: () => announce(`${title} deleted`) });
   const menu: MenuAction[] = [
@@ -512,19 +568,44 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   return (
     <SwipeRow name={title} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
       <View style={{ backgroundColor: c.label }}>
-        <Row title={title} detail={detail} chevron onPress={open} menu={menu} />
+        <Row
+          title={title}
+          detail={detail}
+          accessibilityLabel={tally ? [title, duration, sets].filter(Boolean).join(', ') : undefined}
+          trailing={
+            tally ? (
+              // Its strokes on the title's line, below the room the tally keeps for a next stroke.
+              <View style={detail ? { alignSelf: 'flex-start', marginTop: 1 } : null}>
+                <Tally compact marks={orderedMarks(workout)} current={null} accessibilityLabel={sets} />
+              </View>
+            ) : undefined
+          }
+          chevron
+          onPress={open}
+          menu={menu}
+        />
       </View>
     </SwipeRow>
   );
 }
 
-/** "7:05 AM · 45 min · 3.10 mi · Strain 12.3"; Row speaks it in words. */
+/** One stroke per set, logged ones first, so a session left short reads as done, then not. */
+function orderedMarks(workout: HistoryWorkout): boolean[] {
+  const done = workout.sets.filter((set) => set.completed).length;
+  return workout.sets.map((_, index) => index < done);
+}
+
+/** The live dot before a running workout's detail line ("● 12:23 AM · In progress"), as LiveClock writes live. */
+function LiveDot({ c }: { c: Palette }) {
+  return <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />;
+}
+
+/** "7:05 AM · 45 min · 3.10 mi"; Row speaks it in words. Strain and the rest are on the activity's own screen. */
 function activityDetail(activity: ActivitySession): string {
   return [
     formatActivityStartTime(activity.started_at),
     lengthOf((activity.duration_seconds ?? 0) * 1000),
     formatDistanceMi(activity.distance_m),
-    activity.strain != null ? `Strain ${activity.strain.toFixed(1)}` : null,
   ]
     .filter(Boolean)
     .join(' · ');

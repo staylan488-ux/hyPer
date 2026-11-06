@@ -1,34 +1,43 @@
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { pickInsight, summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
+import { MUSCLE_GROUP_LABELS, type MuscleVolume } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
-import { PlanCard } from '~/components/PlanCard';
+import { LiveClock } from '~/components/LiveClock';
+import { PlanCard, SessionCard } from '~/components/PlanCard';
 import { RollingText } from '~/components/RollingText';
-import { Tally } from '~/components/Tally';
-import { Hairline, Row } from '~/components/Row';
+import { Row } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { TabScroll } from '~/components/TabScroll';
+import { scrolledFromRest, TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
 import { speak, useLargeText } from '~/lib/accessibility';
 import { useAccountRefresh } from '~/lib/accountData';
-import { useIntroRise } from '~/lib/brand';
+import { markAtRest, useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
+import { formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
-import { space, useBlanc } from '~/theme/blanc';
+import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
+
+/**
+ * The Fuel card's height at the standard text size, held while the saved
+ * target is read: 14 above the 56 pt figure's 60 pt line, 10 and the 3 pt
+ * line, 18 and the protein meter (a 20 pt line, 8 and its 3 pt line), 18 below.
+ */
+const FUEL_CARD_HEIGHT = 154;
 
 export default function TodayScreen() {
   const now = useNow(30_000);
@@ -50,6 +59,7 @@ export default function TodayScreen() {
   const rise = useIntroRise();
   const { refreshing, refresh } = useAccountRefresh();
   const large = useLargeText();
+  const c = useBlanc();
 
   return (
     <>
@@ -64,103 +74,91 @@ export default function TodayScreen() {
               hidesSharedBackground: true,
             },
           ],
-          unstable_headerRightItems: () => [
-            {
-              type: 'button',
-              label: 'You',
-              accessibilityLabel: 'Your profile',
-              icon: { type: 'sfSymbol', name: 'person.crop.circle' },
-              onPress: () => {
-                haptics.tap();
-                router.navigate('/you');
-              },
-            },
-          ],
         }}
       />
-      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
+      <TabScroll
+        onScroll={(event) => {
+          // Scrolled past the large title, the corner P steps back with it.
+          const scrolled = scrolledFromRest(event.nativeEvent.contentOffset.y);
+          markAtRest.value = Math.max(0, Math.min(1, 1 - (scrolled - 8) / 36));
+        }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Animated.View style={rise}>
           <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
             {format(now, 'EEEE, MMMM d')}
           </BlancText>
 
-          {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
+          {session ? <SessionLabel session={session} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
 
-          <Section title="Fuel" action={{ title: 'Log food', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
+          {/* A header over one card, as Progress below: the card opens Fuel, its chevron says so. */}
+          <Section title="Fuel" action={{ title: 'Log food', symbol: 'plus', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (
-              // The day's figures open Fuel, where they come from.
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={speak(
-                  `${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Eaten ${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal · protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
-                )}
-                accessibilityHint="Opens Fuel"
-                onPress={() => {
-                  haptics.tap();
-                  router.navigate('/fuel');
-                }}
-                style={({ pressed }) => ({ paddingHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
-                {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
-                  <RollingText variant="figure" size={68} style={{ letterSpacing: -1.5 }}>
-                    {formatWhole(Math.abs(kcalLeft))}
-                  </RollingText>
-                  <Animated.View layout={figureLayout}>
-                    <BlancText variant="secondary" tone="graphite">
-                      {kcalLeft >= 0 ? 'kcal left' : `kcal ${over}`}
-                    </BlancText>
-                  </Animated.View>
-                </View>
-                <View style={large ? { gap: 14, marginTop: 14 } : { flexDirection: 'row', gap: 20, marginTop: 14 }}>
-                  <Meter label="Eaten" value={formatWhole(totals.calories)} of={formatWhole(target.calories)} progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
-                  <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
-                </View>
-              </Pressable>
+              <Label style={{ overflow: 'hidden' }}>
+                {/* The day's figures open Fuel, where they come from. */}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={speak(
+                    `${formatWhole(totals.calories)} / ${formatWhole(target.calories)} kcal eaten, ${formatWhole(Math.abs(kcalLeft))} kcal ${kcalLeft >= 0 ? 'left' : over}. Protein ${formatWhole(totals.protein)} / ${formatWhole(target.protein)} g`,
+                  )}
+                  accessibilityHint="Opens Fuel"
+                  onPress={() => {
+                    haptics.tap();
+                    router.navigate('/fuel');
+                  }}
+                  // The figure's line box carries its own room above the digits, so the top is a little less.
+                  style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+                  {/* The chevron on the figure's line, as You's weight card has it. */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    {/* At the accessibility text sizes the figure stops growing and the words wrap below it. */}
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'baseline', gap: 8, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
+                      <RollingText variant="figure" size={56} style={{ ...restingFigure, letterSpacing: -1.25, marginLeft: figureLead(formatWhole(totals.calories), 56, { tabular: false }) }}>
+                        {formatWhole(totals.calories)}
+                      </RollingText>
+                      <Animated.View layout={figureLayout}>
+                        <BlancText variant="secondary" tone="graphite">
+                          of {formatWhole(target.calories)} kcal
+                        </BlancText>
+                      </Animated.View>
+                    </View>
+                    <SymbolView name="chevron.right" size={13} weight="semibold" tintColor={c.upcoming} style={{ marginRight: -2 }} />
+                  </View>
+                  {/* The day's food as Fuel shows it: the figure eaten, the line filling toward the target. */}
+                  <View style={{ marginTop: 10 }}>
+                    <Track progress={totals.calories / target.calories} warnOver={warnsOverTarget('calories', goal)} />
+                  </View>
+                  <View style={{ marginTop: 18 }}>
+                    <Meter label="Protein" value={formatWhole(totals.protein)} of={`${formatWhole(target.protein)} g`} progress={totals.protein / target.protein} warnOver={warnsOverTarget('protein', goal)} />
+                  </View>
+                </Pressable>
+              </Label>
             ) : !targetRead ? (
-              // Holds the figures' place (68 pt figure and the meters) until the target is read.
-              <View style={{ height: 118 }} />
+              // Holds the card's place (the 56 pt figure, its line and the protein meter) until the target is read.
+              <Label style={{ height: FUEL_CARD_HEIGHT }} />
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityHint="Opens your targets"
-                // One line of text: the slop makes it 44 points tall, short of the sections around it.
-                hitSlop={{ top: 2, bottom: 22 }}
-                onPress={() => {
-                  haptics.tap();
-                  router.push('/you/targets');
-                }}
-                style={({ pressed }) => ({ marginHorizontal: space.gutter, opacity: pressed ? 0.55 : 1 })}>
-                <BlancText variant="secondary" tone="graphite">
-                  Set a calorie target
-                </BlancText>
-              </Pressable>
+              // No target yet: the same card holds one row that asks for one. Row plays the tap's haptic itself.
+              <Label>
+                <Row title="Set a calorie target" chevron onPress={() => router.push('/you/targets')} />
+              </Label>
             )}
           </Section>
 
-          <Section title="This week" action={{ title: 'Progress', onPress: () => router.push('/today/progress') }}>
-            <Label>
-              <Row
-                title="Sessions"
-                value={
-                  plan.weekDone === null
-                    ? undefined
-                    : plan.weekTarget
-                      ? `${plan.weekDone} of ${plan.weekTarget}`
-                      : String(plan.weekDone)
-                }
-              />
-              {week.trained > 0 ? (
-                <>
-                  <Hairline />
-                  <Row
-                    title={`${week.inRange} of ${week.trained} muscles in range`}
-                    detail={insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over)}
-                    chevron
-                    onPress={() => router.push('/today/progress')}
-                  />
-                </>
-              ) : null}
-            </Label>
+          {/* Named for the screen it opens, as Fuel is: the muscles row opens Progress; before a set is logged this week, the header's Open does. */}
+          {/* The week's sessions ride on the heading; the card holds the one row that leads somewhere. */}
+          <Section
+            title="Progress"
+            note={weekNote(plan.weekDone, plan.weekTarget)}
+            action={week.trained > 0 ? undefined : { title: 'Open', onPress: () => router.push('/today/progress') }}>
+            {week.trained > 0 ? (
+              <Label>
+                <Row
+                  title={`${week.inRange} of ${week.trained} trained muscles in range`}
+                  // Every exception the week has, by name: what Progress opens on.
+                  detail={weekExceptions(weekly) ?? (insight ? `${insight.muscle}: ${insight.flag}` : muscleCounts(week.under, week.over))}
+                  chevron
+                  onPress={() => router.push('/today/progress')}
+                />
+              </Label>
+            ) : null}
           </Section>
         </Animated.View>
       </TabScroll>
@@ -168,16 +166,13 @@ export default function TodayScreen() {
   );
 }
 
-function SessionLabel({ session, now }: { session: SessionModel; now: number }) {
-  const c = useBlanc();
-  const minutes = Math.max(0, Math.round((now - session.startedAt.getTime()) / 60_000));
+function SessionLabel({ session }: { session: SessionModel }) {
   const current = session.current;
   // A flexible session starts empty: nothing to finish yet, as on Train,
   // which asks for its first movement.
   const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = () => router.navigate('/train');
-  const large = useLargeText();
   const title = current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log';
   const line = current
     ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
@@ -186,65 +181,26 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       : 'Finish to save the session';
 
   return (
+    // The finished day's record (PlanCard) keeps this skeleton, so finishing changes words, not layout.
     // The whole card returns to the workout; its button resumes or finishes.
-    <Label style={{ marginTop: 18, overflow: 'hidden' }}>
-    <Pressable
-      // VoiceOver reads the card's parts and reaches its button on its own.
-      accessible={false}
-      accessibilityRole="button"
-      onPress={() => {
-        haptics.tap();
-        openWorkout();
-      }}
-      style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      <View
-        accessible
-        accessibilityLabel={speak(`${session.dayName} · In progress · ${formatMinutes(minutes)}`)}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
-        {/* A long day name gives way; the live state always shows. At the
-            accessibility text sizes the name wraps and the live state moves under it. */}
-        <BlancText variant="headline" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
-          {session.dayName}
-        </BlancText>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
-          <BlancText variant="footnote" tone="graphite">
-            In progress · {formatMinutes(minutes)}
-          </BlancText>
-        </View>
-      </View>
-
-      {empty ? null : (
-        <Tally
-          marks={session.sets.map((set) => set.completed)}
-          current={current?.index ?? null}
-          height={16}
-          style={{ marginTop: 14 }}
-          accessibilityLabel={`${session.doneCount} of ${session.sets.length} sets done`}
-        />
-      )}
-
-      <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 14 }} />
-
-      {/* At the accessibility text sizes the button moves under the words. */}
-      <View style={large ? { gap: 12, marginTop: 14 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
-        <View accessible accessibilityLabel={speak(`${title} · ${line}`)} style={large ? undefined : { flex: 1, minWidth: 0 }}>
-          <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
-            {title}
-          </BlancText>
-          <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-            {line}
-          </BlancText>
-        </View>
-        {current || empty ? (
+    <SessionCard
+      day={session.dayName}
+      daySpoken={`${session.dayName} · In progress`}
+      // The workout's clock, as Train and the workout bar keep it.
+      aside={<LiveClock startedAt={session.startedAt} />}
+      tally={empty ? null : { marks: session.sets.map((set) => set.completed), current: current?.index ?? null, label: `${session.doneCount} of ${session.sets.length} sets done` }}
+      title={title}
+      line={line}
+      action={
+        current || empty ? (
           <Capsule title="Resume" onPress={openWorkout} />
         ) : (
           // Every set is logged: Finish finishes here, as it does on Train.
           <Capsule title="Finish" busy={closing} onPress={finish} />
-        )}
-      </View>
-    </Pressable>
-    </Label>
+        )
+      }
+      onPress={openWorkout}
+    />
   );
 }
 
@@ -262,7 +218,7 @@ function Meter({ label, value, of, progress, warnOver }: { label: string; value:
             {value}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {` / ${of}`}
+            {` of ${of}`}
           </BlancText>
         </View>
       </View>
@@ -280,7 +236,23 @@ function setLine(setNumber: number, sets: number, weight: number | null, reps: n
   return load ? `${base} · ${load}` : base;
 }
 
+/** "3 of 4 sessions this week", or "2 sessions this week" without a weekly target. */
+function weekNote(done: number | null, target: number | null | undefined): string | undefined {
+  if (done === null) return undefined;
+  return target ? `${done} of ${target} sessions this week` : `${done} ${done === 1 ? 'session' : 'sessions'} this week`;
+}
+
 /** "2 under · 1 over", leaving out zeros. */
 function muscleCounts(under: number, over: number): string | undefined {
   return [under ? `${under} under` : null, over ? `${over} over` : null].filter(Boolean).join(' · ') || undefined;
+}
+
+/** "Hamstrings below · Side delts over": the trained muscles outside their range this week, by name. */
+function weekExceptions(weekly: MuscleVolume[] | null | undefined): string | undefined {
+  const trained = (weekly ?? []).filter((volume) => volume.weekly_sets > 0);
+  const name = (volume: MuscleVolume) => MUSCLE_GROUP_LABELS[volume.muscle_group] ?? volume.muscle_group;
+  const below = trained.filter((volume) => volume.status === 'below_mev').map(name);
+  const over = trained.filter((volume) => volume.status === 'above_mrv').map(name);
+  const parts = [below.length ? `${below.join(', ')} below` : null, over.length ? `${over.join(', ')} over` : null].filter(Boolean);
+  return parts.length ? parts.join(' · ') : undefined;
 }

@@ -1,12 +1,11 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
-import { accessibilityLabel, disabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { disabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { format, isToday } from 'date-fns';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type NativeStackNavigationProp } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
+import { ActionSheetIOS, Alert, Keyboard, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import Animated from 'react-native-reanimated';
 
 import { toLocalTimeInput } from '@/lib/foodLoggerUtils';
 import { getCompatibleMeasurementUnits } from '@/lib/foodUnits';
@@ -22,9 +21,7 @@ import {
   type MealIngredient,
 } from '@/lib/mealComposition';
 import { getFoodAnalysisMode } from '@/lib/foodTrial';
-import { nutritionGroupLabel } from '@/lib/nutritionGroups';
-import { logMacro } from '@/lib/nutritionMacros';
-import type { PendingEntryId } from '@/lib/pendingEntryId';
+import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
 import { readSavedFoodsCache, writeSavedFoodsCache } from '@/lib/savedFoodsCache';
 import { mealFromLoggedFoods } from '@/lib/savedMealFromLog';
 import { loadSavedMeals } from '@/lib/savedMeals';
@@ -38,7 +35,7 @@ import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Row } from '~/components/Row';
 import { dismissOpenSwipeRow } from '~/components/SwipeRow';
-import { announce, speak, useLargeText } from '~/lib/accessibility';
+import { announce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
 import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
@@ -46,11 +43,11 @@ import { haptics } from '~/lib/haptics';
 import { refusePress } from '~/lib/launch';
 import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
-import { figureLayout } from '~/lib/motion';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
-import { LoggerContext, type ChosenMeta, type LoggerContextValue, type QuickAddState } from '~/fuel/context';
-import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
+import { LoggerContext, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
+import { Empty, SavedTab, SearchField, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
+import { EntryMethods, type EntryMethod } from '~/fuel/EntryMethods';
 import { emptyManual, manualFromFood, manualHasChanges, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
 import { MealReview } from '~/fuel/MealReview';
 import { aiHasDraft, AiTab, aiTakesPhoto, emptyAi, type AiDraft } from '~/fuel/AiTab';
@@ -60,13 +57,26 @@ import { ScanTab } from '~/fuel/ScanTab';
 import { useBlanc } from '~/theme/blanc';
 
 type Tab = 'recent' | 'saved' | 'search' | 'scan' | 'manual' | 'photo';
+/** Recent and Saved are the segments' lists to pick from; Scan, Manual and Photo/Describe are ways to enter a food. */
+type BrowseTab = 'recent' | 'saved';
+const isBrowse = (tab: Tab): tab is BrowseTab => tab === 'recent' || tab === 'saved';
+/** Search foods takes the sheet over from the field above the segments: neither a segment nor an entry method. */
+const isList = (tab: Tab): tab is BrowseTab | 'search' => isBrowse(tab) || tab === 'search';
+/** The segmented control's value while an entry method shows: no segment has it, so none is chosen. */
+const NO_LIST = 'none';
+
+/** The destination line's reach past its 18-point footnote line: 44 points tall to touch, and 16 more each side. */
+const DESTINATION_REACH = { vertical: 13, horizontal: 16 } as const;
+
+/** Fuel's alert for a write that did not go through, as its own report() says it. */
+const CHECK_CONNECTION = 'Check your connection and try again.';
 
 /** A meal's ingredients and amounts, to tell whether it changed. */
 const mealPartsKey = (draft: MealDraft) => draft.ingredients.map((part) => `${part.id}:${part.servings}`).join('|');
 
 /**
  * A new entry today goes to the meal that fits the clock; on another day the
- * clock says nothing about the meal, so it starts Unassigned, as on the web.
+ * clock says nothing about the meal, so it starts in no meal, as on the web.
  * A Snap press supplies the clock and day it actually happened on.
  */
 const suggestFor = (selectedKey: string, list: NutritionGroup[], pressedAt: Date | null = null) =>
@@ -99,8 +109,10 @@ function useClaims(): [number, () => () => void] {
 }
 
 /**
- * Log food, or edit an entry: Recent, Saved, Search (USDA), Scan, Manual and Photo,
- * a review for a chosen food, and the meal builder, by the web logger's rules.
+ * Log food, or edit an entry: Search foods (USDA) above Recent and Saved to
+ * pick from; Barcode, Manual, Photo and Describe (Photo alone on the worker)
+ * to enter a food; a review for a chosen food, and the meal builder, by the
+ * web logger's rules.
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
  * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
  * `saveEntries` (comma-separated logged entries to keep as a new saved meal),
@@ -215,7 +227,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   }, [selectedKey, snapAt]);
 
   // The day's groups can land after the sheet opened (the month was still
-  // loading): pick them up instead of offering only Unassigned.
+  // loading): pick them up instead of offering only No meal.
   const storeGroups = useFuelStore((state) => state.groups);
   useEffect(() => {
     const fromStore = groupsForDay(selectedKey);
@@ -265,7 +277,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [saveClaims, beginSave] = useClaims();
   const saving = saveClaims > 0;
   const [quickAddStates, setQuickAddStates] = useState<Record<string, QuickAddState>>({});
-  const [pendingQuickAdds] = useState(() => new Map<string, PendingEntryId>());
+  const [pendingQuickAdds] = useState(() => new Map<string, PendingQuickAdd>());
   const quickAddFailed = Object.values(quickAddStates).some((state) => state === 'error');
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
@@ -478,7 +490,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   useLeaveGuard(
     (unsaved || saving) && !closing,
     quickAddFailed
-      ? { title: 'Leave this unconfirmed save?', message: 'The food may already be in your log. Retry its + button to confirm it, or check your log before adding it again.' }
+      ? { title: 'Leave without confirming?', message: "A food couldn't be confirmed and may already be in your log. Tap its + to try again." }
       : busy
         ? { title: 'Stop the analysis?', message: 'The result is lost if you close now.' }
         : estimate
@@ -497,15 +509,49 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
   const sameDay = usesDayGroups(when, selectedKey);
   const destination = sameDay ? groups.find((group) => group.id === when.groupId) ?? null : null;
+  // Fuel's addGroup makes the meal on the day Fuel shows, so New meal and New
+  // snack are offered only for that day.
+  const fuelDay = useFuelStore((state) => state.selected);
+  const canAddGroup = sameDay && selectedKey === fuelDay;
+  const addingGroup = useRef(false);
+  // A new meal or snack, made as Fuel makes one, becomes the destination.
+  const addDestination = async (kind: 'meal' | 'snack') => {
+    if (addingGroup.current) return;
+    addingGroup.current = true;
+    const before = new Set(groupsForDay(selectedKey).map((group) => group.id));
+    const ok = await useFuelStore.getState().addGroup(kind).catch(() => false);
+    addingGroup.current = false;
+    if (!ok) {
+      haptics.error();
+      Alert.alert('Not added', CHECK_CONNECTION);
+      return;
+    }
+    haptics.success();
+    const list = groupsForDay(selectedKey);
+    const created = list.find((group) => !before.has(group.id) && group.kind === kind);
+    if (!created) return;
+    setGroups(list);
+    groupTouched.current = true;
+    setWhenState((value) => ({ ...value, groupId: created.id }));
+    // The line changes under VoiceOver's focus without a word: say where food now goes.
+    announce(`${editing ? 'In' : 'Adds to'} ${nutritionGroupTitle(created, list)}`);
+  };
   const chooseDestination = () => {
     haptics.tap();
-    const options = ['Unassigned', ...groups.map((group) => nutritionGroupLabel(group, groups)), 'Cancel'];
+    const added = canAddGroup ? ['New meal', 'New snack'] : [];
+    const options = [NO_MEAL, ...groups.map((group) => nutritionGroupTitle(group, groups)), ...added, 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: 'Add to', options, cancelButtonIndex: options.length - 1 }, (index) => {
       if (index === options.length - 1) return;
+      if (index > groups.length) {
+        void addDestination(index === groups.length + 1 ? 'meal' : 'snack');
+        return;
+      }
       haptics.select();
       setWhen({ ...when, groupId: index === 0 ? null : groups[index - 1].id });
     });
   };
+  /** "today", or the day as "Nov 3". */
+  const dayWords = (date: Date) => (format(date, 'yyyy-MM-dd') === todayKey ? 'today' : format(date, 'MMM d'));
 
   const inMeal = Boolean(meal) && !paused;
   const title = inMeal
@@ -525,23 +571,33 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       : saveFrom && !savedTarget
         ? `From ${saveFrom[0].date === todayKey ? 'today' : format(new Date(`${saveFrom[0].date}T12:00:00`), 'EEE, MMM d')}`
         : null
-    : !sameDay
-      ? `Unassigned on ${format(when.date, 'MMM d')}`
-      : `${editing ? 'In' : 'Adds to'} ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
-  // The meal's running total, from the day Fuel holds: it rolls up as foods are logged into it.
-  const dayLogs = useFuelStore((state) => (state.loadedMonth === selectedKey.slice(0, 7) ? state.logs : null));
-  const groupIds = new Set(groups.map((group) => group.id));
-  const mealKcal =
-    dayLogs && sameDay && !inMeal && !editing
-      ? dayLogs
-          .filter((log) => log.date === selectedKey && (destination ? log.group_id === destination.id : !log.group_id || !groupIds.has(log.group_id)))
-          .reduce((sum, log) => sum + (logMacro(log, 'calories') ?? 0), 0)
-      : 0;
-  const spokenSubtitle = mealKcal > 0 ? `${subtitle}, ${speak(`${formatWhole(mealKcal)} kcal`)}` : subtitle;
+    : // Where the food goes, said positively: the meal set (suggestFor's, or
+      // the one chosen), else the day itself; the line adds no guess of its own.
+      !sameDay
+      ? `${editing ? 'Moves to' : 'Adds to'} ${dayWords(when.date)}`
+      : destination
+        ? `${editing ? 'In' : 'Adds to'} ${nutritionGroupTitle(destination, groups)}`
+        : editing
+          ? NO_MEAL
+          : `Adds to ${dayWords(when.date)}`;
+  // The line says only where food goes; a tap on it changes that.
+  const changesDestination = sameDay && !inMeal;
+
+  // ── Search foods: the field above the segments takes the sheet over ──
+  // Its words live here, so a food's review or an ingredient added keeps them.
+  const [query, setQuery] = useState('');
+  // What showed when Search took over (a list or an entry method), for Cancel to return to.
+  const [beforeSearch, setBeforeSearch] = useState<Tab>('recent');
+  const searching = tab === 'search';
 
   const showTab = (next: Tab) => {
     setTab(next);
     setChosen(null);
+    // Leaving Search by any way (Cancel, Snap a meal) empties its field and puts the keyboard away.
+    if (next !== 'search') {
+      setQuery('');
+      if (tab === 'search') Keyboard.dismiss();
+    }
     // a barcode binding only survives the guided miss → manual path
     if (next !== 'manual') setManual((current) => (current.barcodeBinding ? { ...current, barcodeBinding: null } : current));
   };
@@ -549,6 +605,37 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     if (saving) return;
     haptics.select();
     showTab(next);
+  };
+  // Focusing the field (or typing into it) starts a search; a save running holds the tabs still.
+  const startSearch = () => {
+    if (saving || tab === 'search') return;
+    setBeforeSearch(tab);
+    showTab('search');
+  };
+  const cancelSearch = () => {
+    if (saving) return;
+    haptics.tap();
+    showTab(beforeSearch);
+  };
+
+  // ── Photo and Describe: two doors into the one meal view ──
+  // Photo opens the camera and adds what it takes; Describe puts the cursor in
+  // Your meal. Either can be combined with the other before Analyze meal; only
+  // Snap a meal (below) estimates on its own.
+  const [door, setDoor] = useState<'photo' | 'describe'>('photo');
+  const [addPhotoRequest, setAddPhotoRequest] = useState(0);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const chooseMethod = (method: EntryMethod) => {
+    if (saving) return;
+    if (method === 'photo' || method === 'describe') {
+      if (tab !== 'photo') openTab('photo');
+      else haptics.select();
+      setDoor(method);
+      if (method === 'describe') setFocusRequest((count) => count + 1);
+      else if (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) setAddPhotoRequest((count) => count + 1);
+      return;
+    }
+    if (tab !== method) openTab(method);
   };
 
   // ── Snap a meal (lib/launch.ts) ──
@@ -594,6 +681,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     setSnapAt(at);
     setWhenState(initialWhen(null, selectedKey, groups, suggestFor(selectedKey, groups, at), at));
     showTab('photo');
+    setDoor('photo');
     if (appeared) setCameraRequest((count) => count + 1);
     else cameraPending.current = true;
   });
@@ -607,28 +695,28 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const mealCount = meal && mealTotals ? `${meal.ingredients.length} ingredient${meal.ingredients.length === 1 ? '' : 's'} · ${formatWhole(mealTotals.calories)} kcal` : '';
 
   // Each tab is built on its own, so typing in one never rebuilds another.
-  // Starting a meal is offered with the foods it is built from; a pending meal shows on every tab.
-  const buildMeal = !editing && (meal ? paused : tab === 'recent' || tab === 'saved') ? (
+  // Each list offers one way to make something, under its foods: Recent builds
+  // a meal from them (several foods logged as one entry), Saved makes a new
+  // saved meal. A pending meal takes Recent's place and shows on every tab.
+  const listRow = (title: string, detail: string, onPress: () => void) => (
     <View style={{ marginTop: 14 }}>
       <Label>
-        <Row
-          title={paused ? 'Resume pending meal' : 'Build a meal'}
-          detail={paused ? 'Finish saving the meal you built' : 'Combine several foods into one entry'}
-          chevron
-          disabled={busy || saving}
-          onPress={() => (paused ? setPaused(false) : startMeal())}
-        />
+        <Row title={title} detail={detail} chevron disabled={busy || saving} onPress={onPress} />
       </Label>
     </View>
-  ) : null;
-  const recentTab = tab === 'recent' ? <RecentTab userId={userId} /> : null;
-  const savedTab = tab === 'saved' ? (
-    <SavedTab
-      onNewSavedMeal={() => {
+  );
+  const buildMeal = !editing && !meal && tab === 'recent' ? listRow('Build a meal', 'Combine several foods into one entry', () => startMeal()) : null;
+  const newSavedMeal = !editing && purpose === 'log' && tab === 'saved'
+    ? listRow('New saved meal', 'Macros you enter once, to log in a tap', () => {
         if (saving) return;
         loadManual({ ...emptyManual, saveAsReusable: true });
         setTab('manual');
-      }}
+      })
+    : null;
+  const pendingMeal = !editing && meal && paused ? listRow('Resume pending meal', 'Finish saving the meal you built', () => setPaused(false)) : null;
+  const recentTab = tab === 'recent' ? <RecentTab userId={userId} /> : null;
+  const savedTab = tab === 'saved' ? (
+    <SavedTab
       onEditSavedMeal={(saved) => {
         if (saving) return;
         if (decodeMealComposition(saved.description)) {
@@ -648,7 +736,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       }}
     />
   ) : null;
-  const searchTab = tab === 'search' ? <SearchTab /> : null;
+  const searchTab = tab === 'search' ? <SearchTab query={query} /> : null;
   const scanTab = tab === 'scan' ? (
     <ScanTab
       onCreateProduct={(barcode) => {
@@ -674,6 +762,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
               const handOff = () => {
                 setAi(emptyAi(description));
                 setTab('photo');
+                // the words arrive through Describe's door
+                setDoor('describe');
               };
               if (!aiHasDraft(ai)) {
                 handOff();
@@ -688,6 +778,99 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       }
     />
   ) : null;
+
+  // ── The sheet's head: Search foods, then the lists and the entry methods ──
+  // Search foods, as iOS's search field: focusing it or typing takes the
+  // sheet over, with Cancel beside it to go back.
+  const picking = !chosen && !(meal && mealReview && !paused);
+  const searchRow = picking ? (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <SearchField
+        value={query}
+        onChange={(text) => {
+          setQuery(text);
+          startSearch();
+        }}
+        onFocus={startSearch}
+        // A save holds the tabs still, so the field can't start a search
+        // then; while searching it stays live (a quick add keeps the keyboard up).
+        editable={!saving || searching}
+        placeholder="Search foods"
+        style={{ flex: 1, marginHorizontal: 0, marginTop: 0 }}
+      />
+      {searching ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Ends the search"
+          disabled={saving}
+          hitSlop={8}
+          onPress={cancelSearch}
+          style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: saving ? 0.4 : pressed ? 0.45 : 1 })}>
+          {/* Capped like a bar button, so the field keeps its room. */}
+          <BlancText variant="body" maxFontSizeMultiplier={1.3} numberOfLines={1}>
+            Cancel
+          </BlancText>
+        </Pressable>
+      ) : null}
+    </View>
+  ) : null;
+  // While searching, the results sit right under the field.
+  const lists = picking && !searching ? (
+    <>
+      {/* The lists to pick from. While an entry method is on screen no
+          segment is chosen, so the control never claims a list that
+          isn't showing; a tap on one goes back to it. */}
+      <Host matchContents={{ vertical: true }}>
+        {/* Keep a save's result visible on its original tab. */}
+        <Picker
+          selection={isBrowse(tab) ? tab : NO_LIST}
+          onSelectionChange={(value: BrowseTab | typeof NO_LIST) => {
+            if (value !== NO_LIST) openTab(value);
+          }}
+          modifiers={[pickerStyle('segmented'), disabled(saving)]}>
+          <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
+          <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
+        </Picker>
+      </Host>
+      {/* The ways to enter a food that isn't listed. */}
+      <EntryMethods
+        selected={isList(tab) ? null : tab === 'photo' && gemini ? door : tab}
+        gemini={gemini}
+        photoWaiting={photoWaiting}
+        disabled={saving}
+        onSelect={chooseMethod}
+      />
+    </>
+  ) : null;
+  const mealLine = capturing && meal && mealTotals && !chosen ? (
+    <View
+      style={
+        // At the accessibility sizes Review meal goes under the count instead of squeezing it.
+        large ? { alignItems: 'flex-start', gap: 8, marginHorizontal: 20, marginTop: 12 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }
+      }>
+      {/* The total rolls on one line; at the accessibility sizes it wraps instead. */}
+      {large ? (
+        <BlancText variant="secondary" tone="graphite">
+          {mealCount}
+        </BlancText>
+      ) : (
+        <RollingText variant="secondary" tone="graphite" style={{ flex: 1 }}>
+          {mealCount}
+        </RollingText>
+      )}
+      <Capsule title="Review meal" disabled={meal.ingredients.length === 0 || busy} onPress={() => setMealReview(true)} />
+    </View>
+  ) : null;
+  const errorLine = mealError ? (
+    <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 20, marginTop: 8 }}>
+      {mealError}
+    </BlancText>
+  ) : null;
+  // At the accessibility sizes the segments and the four methods (stacked as
+  // rows) would pin most of the sheet, leaving little for a list, a meal or
+  // results under the keyboard. Only the title and Search foods stay pinned
+  // then; the rest scrolls with what it opens, spaced as when pinned.
+  const scrollsWithContent = large && Boolean(lists || mealLine || errorLine);
 
   return (
     <LoggerContext.Provider value={context}>
@@ -712,34 +895,28 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 {title}
               </BlancText>
               {subtitle ? (
-                // The line re-centres on the figure's spring when the total gains a digit.
-                <Animated.View layout={figureLayout}>
-                  <Pressable
-                    accessibilityRole={sameDay && !inMeal ? 'button' : 'text'}
-                    accessibilityLabel={sameDay && !inMeal ? `${spokenSubtitle}. Change` : spokenSubtitle ?? undefined}
-                    disabled={!sameDay || inMeal}
-                    // a 13-point line, 44 points to touch
-                    hitSlop={{ top: 13, bottom: 13, left: 16, right: 16 }}
-                    onPress={chooseDestination}
-                    style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', opacity: pressed ? 0.5 : 1 })}>
-                    <BlancText variant="footnote" tone="graphite">
-                      {subtitle}
-                    </BlancText>
-                    {mealKcal > 0 ? (
-                      <RollingText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-                        {` · ${formatWhole(mealKcal)}`}
-                      </RollingText>
-                    ) : null}
-                    <Animated.View layout={figureLayout} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      {mealKcal > 0 ? (
-                        <BlancText variant="footnote" tone="graphite">
-                          {' kcal'}
-                        </BlancText>
-                      ) : null}
-                      {sameDay && !inMeal ? <SymbolView name="chevron.down" size={10} weight="semibold" tintColor={c.graphite} style={{ marginLeft: 4 }} /> : null}
-                    </Animated.View>
-                  </Pressable>
-                </Animated.View>
+                <Pressable
+                  accessibilityRole={changesDestination ? 'button' : 'text'}
+                  accessibilityLabel={changesDestination ? `${subtitle}. Change` : subtitle}
+                  disabled={!changesDestination}
+                  onPress={chooseDestination}
+                  // The pressable itself is 44 points tall around the 18-point line
+                  // (and 16 wider each side); the negative margins give the room
+                  // back, so the line and the title stay where they sit.
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: DESTINATION_REACH.vertical,
+                    marginVertical: -DESTINATION_REACH.vertical,
+                    paddingHorizontal: DESTINATION_REACH.horizontal,
+                    marginHorizontal: -DESTINATION_REACH.horizontal,
+                    opacity: pressed ? 0.5 : 1,
+                  })}>
+                  <BlancText variant="footnote" tone="graphite">
+                    {subtitle}
+                  </BlancText>
+                  {changesDestination ? <SymbolView name="chevron.down" size={10} weight="semibold" tintColor={c.graphite} style={{ marginLeft: 4 }} /> : null}
+                </Pressable>
               ) : null}
             </View>
             {/* Save as meal has one way out: closing it cancels. */}
@@ -765,50 +942,24 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             )}
           </View>
 
-          {!chosen && !(meal && mealReview && !paused) ? (
-            <Host matchContents={{ vertical: true }} style={{ marginHorizontal: 16, marginTop: 14 }}>
-              {/* Keep a save's result visible on its original tab. */}
-              <Picker
-                selection={tab}
-                onSelectionChange={(value: Tab) => openTab(value)}
-                modifiers={[pickerStyle('segmented'), disabled(saving)]}>
-                <SwiftText modifiers={[tag('recent')]}>Recent</SwiftText>
-                <SwiftText modifiers={[tag('saved')]}>Saved</SwiftText>
-                <SwiftText modifiers={[tag('search')]}>Search</SwiftText>
-                <SwiftText modifiers={[tag('scan')]}>Scan</SwiftText>
-                <SwiftText modifiers={[tag('manual')]}>Manual</SwiftText>
-                <SwiftText modifiers={[tag('photo'), ...(!gemini && photoWaiting ? [accessibilityLabel('Photo, estimate waiting')] : [])]}>
-                  {gemini ? 'AI' : photoWaiting ? 'Photo •' : 'Photo'}
-                </SwiftText>
-              </Picker>
-            </Host>
-          ) : null}
-
-          {capturing && meal && mealTotals && !chosen ? (
-            <View
-              style={
-                // At the accessibility sizes Review meal goes under the count instead of squeezing it.
-                large ? { alignItems: 'flex-start', gap: 8, marginHorizontal: 20, marginTop: 12 } : { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 20, marginTop: 12 }
-              }>
-              {/* The total rolls on one line; at the accessibility sizes it wraps instead. */}
-              {large ? (
-                <BlancText variant="secondary" tone="graphite">
-                  {mealCount}
-                </BlancText>
-              ) : (
-                <RollingText variant="secondary" tone="graphite" style={{ flex: 1 }}>
-                  {mealCount}
-                </RollingText>
-              )}
-              <Capsule title="Review meal" disabled={meal.ingredients.length === 0 || busy} onPress={() => setMealReview(true)} />
+          {searchRow ? (
+            <View style={{ marginHorizontal: 16, marginTop: 14, gap: 10 }}>
+              {searchRow}
+              {large ? null : lists}
             </View>
           ) : null}
-          {mealError ? (
-            <BlancText variant="footnote" tone="live" style={{ marginHorizontal: 20, marginTop: 8 }}>
-              {mealError}
-            </BlancText>
-          ) : null}
+          {large ? null : mealLine}
+          {large ? null : errorLine}
         </View>
+        {/* Unpinned at the accessibility sizes. The negative margin gives back
+            the pinned head's 8-point foot, so each part keeps its pinned spacing. */}
+        {scrollsWithContent ? (
+          <View style={{ marginTop: -8, paddingBottom: 8 }}>
+            {lists ? <View style={{ marginHorizontal: 16, marginTop: 10, gap: 10 }}>{lists}</View> : null}
+            {mealLine}
+            {errorLine}
+          </View>
+        ) : null}
 
         {meal && mealReview && !paused ? (
           <MealReview
@@ -846,9 +997,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
           />
         ) : (
           <View key={captureKey}>
-            {buildMeal}
+            {/* The foods to repeat come first; the list's way to make something follows them. */}
             {recentTab}
             {savedTab}
+            {buildMeal}
+            {newSavedMeal}
+            {pendingMeal}
             {searchTab}
             {scanTab}
             {manualTab}
@@ -859,11 +1013,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             the next ingredient capture drops the old analysis. */}
         {gemini ? (
           <View key={`ai-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
-            <AiTab draft={ai} setDraft={(update) => setAi(update)} cameraRequest={cameraRequest} />
+            <AiTab draft={ai} setDraft={(update) => setAi(update)} cameraRequest={cameraRequest} addPhotoRequest={addPhotoRequest} focusRequest={focusRequest} />
           </View>
         ) : (
           <View key={`photo-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
-            <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} cameraRequest={cameraRequest} />
+            <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} cameraRequest={cameraRequest} addPhotoRequest={addPhotoRequest} />
           </View>
         )}
       </KeyboardAwareScrollView>

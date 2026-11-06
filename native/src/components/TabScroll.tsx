@@ -3,7 +3,7 @@ import { Platform, ScrollView, Settings, View, type ScrollViewProps } from 'reac
 import { initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { scrollRoomExtra } from '~/lib/scrollRoom';
-import { useHasLiveSession } from '~/lib/session';
+import { useWorkoutBarShown } from '~/lib/workoutBar';
 
 import { dismissOpenSwipeRow } from './SwipeRow';
 
@@ -15,6 +15,11 @@ const NAV_BAR_WITH_LARGE_TITLE = 106;
 const TAB_BAR = 49;
 const WORKOUT_ACCESSORY = 56;
 const windowInsets = initialWindowMetrics?.insets ?? { top: 59, bottom: 34 };
+
+/** How far a tab page has scrolled from rest, under a large title. */
+export function scrolledFromRest(offsetY: number): number {
+  return offsetY + windowInsets.top + NAV_BAR_WITH_LARGE_TITLE;
+}
 
 /** How much of a tab page the tab bar (and the workout bar above it) covers at the foot. */
 export function tabBarCover(accessory: boolean): number {
@@ -35,7 +40,8 @@ type TabScrollProps = Omit<ScrollViewProps, 'contentContainerStyle'> & {
  * ([scroll room](../lib/scrollRoom.ts)); pages that fit are left alone.
  */
 export function TabScroll({ children, onLayout, ...props }: TabScrollProps) {
-  const accessory = useHasLiveSession();
+  // The workout bar's height counts only while it is showing (it steps aside on Today and Train).
+  const accessory = useWorkoutBarShown((state) => state.shown);
   const [viewport, setViewport] = useState(0);
   const [content, setContent] = useState(0);
   const extra =

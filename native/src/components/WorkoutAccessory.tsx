@@ -11,6 +11,7 @@ import { useNow, useSessionModel } from '~/lib/session';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
+import { LiveClock } from './LiveClock';
 
 /**
  * The bar's height is iOS's own, so its text grows only a little with the
@@ -58,7 +59,9 @@ export function WorkoutAccessory() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={speak(`${session.dayName}, ${spokenStatus}. ${resting || paused ? 'Open rest timer.' : 'Open workout.'}`)}
+      accessibilityLabel={speak(
+        `${session.dayName}, ${spokenStatus}${resting || paused ? '' : `, ${spokenClock(Math.max(0, (now - session.startedAt.getTime()) / 1000))}`}. ${resting || paused ? 'Open rest timer.' : 'Open workout.'}`,
+      )}
       onPress={() => {
         haptics.tap();
         router.navigate('/train');
@@ -66,32 +69,47 @@ export function WorkoutAccessory() {
       }}
       style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 }}>
       {placement === 'inline' ? (
-        <BlancText variant="footnote" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
-          {(resting || paused) && left !== null ? formatClock(left) : session.dayName}
-        </BlancText>
+        // Beside the shrunk tab bar there is room for one line: what's up now (or the rest), and the clock.
+        <>
+          <BlancText
+            variant="footnote"
+            weight="600"
+            numberOfLines={1}
+            maxFontSizeMultiplier={ACCESSORY_MAX_SCALE}
+            style={{ flex: 1, minWidth: 0, fontVariant: ['tabular-nums'] }}>
+            {resting || paused || !session.current ? status : `${session.current.movement.name} · Set ${session.current.setNumber}`}
+          </BlancText>
+          {resting || paused ? null : <LiveClock startedAt={session.startedAt} variant="footnote" tone="ink" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} />}
+        </>
       ) : (
         <>
+          {/* What's up now leads, as in the shrunk bar; the session's name follows. */}
           <View style={{ flex: 1, minWidth: 0 }}>
-            <BlancText variant="footnote" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE}>
-              {session.dayName}
-            </BlancText>
             {session.current && !resting && !paused ? (
               // A long name is cut at its end; the set count always shows.
               <View style={{ flexDirection: 'row' }}>
-                <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ flexShrink: 1 }}>
+                <BlancText variant="footnote" weight="600" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ flexShrink: 1 }}>
                   {session.current.movement.name}
                 </BlancText>
-                <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
+                <BlancText variant="footnote" weight="600" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
                   {` · Set ${session.current.setNumber} of ${session.current.movement.sets.length}`}
                 </BlancText>
               </View>
             ) : (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
+              <BlancText variant="footnote" weight="600" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
                 {status}
               </BlancText>
             )}
+            <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={ACCESSORY_MAX_SCALE}>
+              {session.dayName}
+            </BlancText>
           </View>
-          <SymbolView name={resting ? 'timer' : paused ? 'pause.fill' : 'play.fill'} size={17} tintColor={c.ink} />
+          {resting || paused ? (
+            <SymbolView name="timer" size={17} tintColor={c.ink} />
+          ) : (
+            // The workout's clock, where a media bar would put play: the bar opens the workout, it doesn't play anything.
+            <LiveClock startedAt={session.startedAt} variant="footnote" tone="ink" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} />
+          )}
         </>
       )}
     </Pressable>

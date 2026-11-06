@@ -72,6 +72,7 @@ export function RecentTab({ userId }: { userId: string }) {
   return (
     <LayoutAnimationConfig key={version} skipEntering skipExiting>
       <View>
+        {/* The figures' column goes unlabelled, as in Fuel's lists; VoiceOver says calories on each row. */}
         {foods.length > 0 ? (
           <Label style={{ marginTop: 14, overflow: 'hidden' }} exiting={blockExit} layout={rowLayout}>
             {foods.map((recent, index) => (

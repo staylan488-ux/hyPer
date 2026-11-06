@@ -2,17 +2,17 @@ import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState, useSyncExternalStore } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { getLogDate } from '@/lib/nutritionLogUtils';
-import { fuelDaySummary, fuelDayTitle, warnsOverTarget, type FuelMacro } from '@/lib/fuelSummary';
+import { fuelDaySummary, warnsOverTarget, type FuelMacro } from '@/lib/fuelSummary';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { decodeMealComposition } from '@/lib/mealComposition';
 import { weekDays } from '@/lib/nutritionCalendar';
 import { canReorderNutritionGroup, offersMoveToPreviousDay } from '@/lib/nutritionDay';
-import { nutritionGroupLabel } from '@/lib/nutritionGroups';
+import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
 import { servingLabel, sortLedgerEntries } from '@/lib/nutritionLedger';
 import { logMacro, sumMacros } from '@/lib/nutritionMacros';
 import { alreadyOnDay } from '@/lib/repeatEntries';
@@ -26,7 +26,7 @@ import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { RollingText } from '~/components/RollingText';
-import { Hairline, Row } from '~/components/Row';
+import { Hairline, Row, type DetailParts } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
@@ -38,9 +38,15 @@ import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey,
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useYouMealsStore } from '~/lib/you';
-import { space, useBlanc } from '~/theme/blanc';
+import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
 const logFood = (day: string, group?: string) => router.push({ pathname: '/log-food', params: group ? { day, group } : { day } });
+
+/** The month sheet, from the date under the title. */
+const openMonth = () => {
+  haptics.tap();
+  router.push('/fuel-month');
+};
 
 const CHECK_CONNECTION = 'Check your connection and try again.';
 
@@ -149,6 +155,11 @@ export default function FuelScreen() {
   const grown = useWindowDimensions().fontScale > 1;
   const loadFailed = status === 'error' && !loaded;
   useAnnounce(loadFailed ? "This day's food could not load. Pull down to try again." : null);
+  const c = useBlanc();
+  // Every day is written as Today writes its date ("Monday, November 2"), with the year only when it differs.
+  const dayLine = format(selectedDate, selectedDate.getFullYear() === new Date().getFullYear() ? 'EEEE, MMMM d' : 'EEEE, MMMM d, yyyy');
+  // A day with nothing logged shows no figures (no 0 kcal, no 0 g): only Nothing logged and Log food.
+  const empty = loaded && logs.length === 0;
 
   // The day's groups in order, Unassigned first when it has entries. Empty
   // named meals stay out of the way; a meal or snack added by hand stays.
@@ -173,16 +184,8 @@ export default function FuelScreen() {
       <Stack.Screen
         options={{
           title: 'Fuel',
+          // The date under the title opens the month, so + stands alone.
           unstable_headerRightItems: () => [
-            {
-              type: 'button',
-              label: 'Calendar',
-              icon: { type: 'sfSymbol', name: 'calendar' },
-              onPress: () => {
-                haptics.tap();
-                router.push('/fuel-month');
-              },
-            },
             {
               type: 'button',
               label: 'Log food',
@@ -196,65 +199,90 @@ export default function FuelScreen() {
         }}
       />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
-          {fuelDayTitle(selectedDate)}
-        </BlancText>
+        {/* The date under the large title is the month's button, with the
+            small chevron Log food's destination line has. It stays in the
+            page, so the native large title keeps its collapse. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={dayLine}
+          accessibilityHint="Opens the month"
+          // a 15-point line, 44 points to touch
+          hitSlop={{ top: 12, bottom: 12, left: space.gutter, right: 16 }}
+          onPress={openMonth}
+          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginHorizontal: space.gutter, marginTop: 2, opacity: pressed ? 0.5 : 1 })}>
+          <BlancText variant="secondary" tone="graphite" style={{ flexShrink: 1 }}>
+            {dayLine}
+          </BlancText>
+          <SymbolView name="chevron.down" size={11} weight="semibold" tintColor={c.graphite} style={{ marginLeft: 4 }} />
+        </Pressable>
 
         <WeekStrip selected={selectedDate} dayKcal={dayKcal} target={kcalTarget} goal={goal} todayKey={todayKey} />
 
-        {/* The day's figure and the macros open the targets, the numbers they measure against. */}
-        <Pressable
-          accessibilityRole="button"
-          // The figure, its target and the line under it, as one fact.
-          accessibilityLabel={speak(
-            kcalTarget
-              ? loaded
-                ? `${formatWhole(totals.calories)} of ${formatWhole(kcalTarget)} kcal${live ? ` · ${summary.logLine}` : ''}`
-                : `Target ${formatWhole(kcalTarget)} kcal`
-              : loaded
-                ? `${formatWhole(totals.calories)} kcal`
-                : 'Calories',
-          )}
-          accessibilityHint={kcalTarget ? 'Edits your calorie target' : 'Sets your calorie target'}
-          onPress={() => editTarget('calories')}
-          style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 18, opacity: pressed ? 0.55 : 1 })}>
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
-            {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
-            <RollingText variant="figure" size={88} style={{ letterSpacing: -2.5 }}>
-              {loaded ? formatWhole(totals.calories) : '–'}
-            </RollingText>
-            <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
-              <BlancText variant="secondary" tone="graphite">
-                {kcalTarget ? `of ${formatWhole(kcalTarget)} kcal` : 'kcal'}
-              </BlancText>
-            </Animated.View>
-          </View>
-          {kcalTarget ? (
-            <View style={{ marginTop: 10 }}>
-              <Track progress={totals.calories / kcalTarget} warnOver={warnsOverTarget('calories', goal)} />
-            </View>
-          ) : null}
-          {kcalTarget && live && loaded ? (
-            <BlancText variant="secondary" tone={summary.kcalOverWarns ? 'live' : 'graphite'} style={{ marginTop: 10 }}>
-              {summary.logLine}
-            </BlancText>
-          ) : null}
-          {!kcalTarget && targetKnown ? (
-            <BlancText variant="secondary" tone="graphite" style={{ marginTop: 10 }}>
-              Set a calorie target
-            </BlancText>
-          ) : null}
-        </Pressable>
-
-        <Section title="Macros">
-          <Label style={{ overflow: 'hidden' }}>
-            <MacroRow macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
+        {/* The day's figure, its line and the macros are one card, so every
+            line starts at the card's inset; each part opens the targets, the
+            numbers they measure against. */}
+        {empty ? null : (
+          <Label style={{ overflow: 'hidden', marginTop: 12 }}>
+            <Pressable
+              accessibilityRole="button"
+              // The figure, its target and the line under it, as one fact.
+              accessibilityLabel={speak(
+                kcalTarget
+                  ? loaded
+                    ? `${formatWhole(totals.calories)} of ${formatWhole(kcalTarget)} kcal${live ? ` · ${summary.logLine}` : ''}`
+                    : `Target ${formatWhole(kcalTarget)} kcal`
+                  : loaded
+                    ? `${formatWhole(totals.calories)} kcal`
+                    : 'Calories',
+              )}
+              accessibilityHint={kcalTarget ? 'Edits your calorie target' : 'Sets your calorie target'}
+              onPress={() => editTarget('calories')}
+              // As Today's Fuel card: the figure's line box carries its own room above the digits, so the top is a little less.
+              style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, ...(grown ? { flexWrap: 'wrap' } : null) }}>
+                {/* never a 0 that only means "not loaded yet"; a logged food rolls the digits */}
+                <RollingText variant="figure" size={56} style={{ ...restingFigure, letterSpacing: -1.25, marginLeft: figureLead(loaded ? formatWhole(totals.calories) : '–', 56, { tabular: false }) }}>
+                  {loaded ? formatWhole(totals.calories) : '–'}
+                </RollingText>
+                <Animated.View layout={figureLayout} style={grown ? { flexShrink: 1 } : undefined}>
+                  <BlancText variant="secondary" tone="graphite">
+                    {kcalTarget ? `of ${formatWhole(kcalTarget)} kcal` : 'kcal'}
+                  </BlancText>
+                </Animated.View>
+              </View>
+              {/* The line appears with the day's food, at its value: it holds its
+                  place while the day loads rather than filling from a 0 it never was. */}
+              {kcalTarget ? (
+                <View style={{ marginTop: 10, height: 3 }}>
+                  {loaded ? <Track progress={totals.calories / kcalTarget} warnOver={warnsOverTarget('calories', goal)} /> : null}
+                </View>
+              ) : null}
+              {!kcalTarget && targetKnown ? (
+                <BlancText variant="secondary" tone="graphite" style={{ marginTop: 10 }}>
+                  Set a calorie target
+                </BlancText>
+              ) : null}
+            </Pressable>
             <Hairline />
-            <MacroRow macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} />
-            <Hairline />
-            <MacroRow macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} />
+            {/* The macros sit side by side under the figure, so the day's food starts on the first screen.
+                At the accessibility text sizes they stack as rows. */}
+            {grown ? (
+              <>
+                <MacroRow macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
+                <Hairline />
+                <MacroRow macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} />
+                <Hairline />
+                <MacroRow macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} />
+              </>
+            ) : (
+              <View style={{ flexDirection: 'row' }}>
+                <MacroColumn macro="protein" value={totals.protein} target={target?.protein || null} loaded={loaded} goal={goal} />
+                <MacroColumn macro="carbs" value={totals.carbs} target={target?.carbs || null} loaded={loaded} goal={goal} edge />
+                <MacroColumn macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} edge />
+              </View>
+            )}
           </Label>
-        </Section>
+        )}
 
         {/* One day's list: rows and meals fold away and close up when removed.
             Moving to another day swaps the whole list without that motion. */}
@@ -262,12 +290,12 @@ export default function FuelScreen() {
           <View>
             {unassigned.length > 0 ? (
               <Animated.View key="unassigned" entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title="Unassigned" logs={unassigned} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
+                <MealSection title={NO_MEAL} logs={unassigned} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ) : null}
             {sections.map(({ group, logs: entries }) => (
               <Animated.View key={group.id} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                <MealSection title={nutritionGroupLabel(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
+                <MealSection title={nutritionGroupTitle(group, groups)} group={group} logs={entries} groups={groups} lateNight={lateNight} day={selected} todayKey={todayKey} />
               </Animated.View>
             ))}
 
@@ -278,10 +306,10 @@ export default function FuelScreen() {
               </Animated.View>
             ) : null}
 
-            {/* Another meal is for a day that has begun. */}
+            {/* More food for a day that has begun; a new meal or snack is made in Log food's destination menu. */}
             {loaded && logs.length > 0 ? (
               <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
-                <Capsule title="Add meal or snack" variant="quiet" onPress={() => addMealOrSnack()} style={{ alignSelf: 'center' }} />
+                <Capsule title="Log food" variant="quiet" onPress={() => logFood(selected)} style={{ alignSelf: 'center' }} />
               </Animated.View>
             ) : null}
           </View>
@@ -297,16 +325,10 @@ export default function FuelScreen() {
   );
 }
 
-function addMealOrSnack() {
-  ActionSheetIOS.showActionSheetWithOptions({ title: 'Add a meal or snack', options: ['Meal', 'Snack', 'Cancel'], cancelButtonIndex: 2 }, (index) => {
-    if (index === 2) return;
-    report(useFuelStore.getState().addGroup(index === 0 ? 'meal' : 'snack'), 'Not added');
-  });
-}
-
 /**
- * Sunday-first week; swipe for the week before or after. Future days are not
- * selectable. Under each date, how far its food went toward the target.
+ * Monday-first week, the training week's; swipe for the week before or after.
+ * Future days are not selectable. Under each date, the chosen one too, how
+ * far its food went toward the target.
  */
 function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
   selected: Date;
@@ -343,7 +365,7 @@ function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
   return (
     <GestureDetector gesture={swipe}>
       {/* Each day is its own button, so VoiceOver can pick any of them. */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 16 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 12 }}>
         {/* Keyed by weekday, so a week change updates the same buttons and VoiceOver keeps its place. */}
         {days.map((day, index) => {
           const key = dayKey(day);
@@ -367,7 +389,7 @@ function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
                 haptics.select();
                 useFuelStore.getState().select(key);
               }}
-              style={({ pressed }) => ({ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.35 : pressed ? 0.5 : 1 })}>
+              style={({ pressed }) => ({ width: 46, alignItems: 'center', gap: 6, paddingVertical: 4, opacity: future ? 0.55 : pressed ? 0.5 : 1 })}>
               <BlancText variant="footnote" tone="graphite" maxFontSizeMultiplier={DAY_CELL_TEXT_MAX}>
                 {format(day, 'EEEEE')}
               </BlancText>
@@ -389,7 +411,11 @@ function WeekStrip({ selected, dayKcal, target, goal, todayKey }: {
                   {format(day, 'd')}
                 </BlancText>
               </View>
-              <DayMark logged={kcal !== undefined} kcal={kcal} target={target} goal={goal} />
+              {/* Every day shows its food under the date, the chosen one too: on the
+                  ground below its circle, so a day with food never reads as empty. */}
+              <View style={{ marginTop: 3 }}>
+                <DayMark logged={kcal !== undefined} kcal={kcal} target={target} goal={goal} />
+              </View>
             </Pressable>
           );
         })}
@@ -446,7 +472,7 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
     ActionSheetIOS.showActionSheetWithOptions(
       {
         title,
-        message: !group.label ? 'Deleting it moves its foods to Unassigned.' : undefined,
+        message: !group.label ? 'Its foods stay on the day, in no meal.' : undefined,
         options,
         cancelButtonIndex: actions.length,
         destructiveButtonIndex: destructive >= 0 ? destructive : undefined,
@@ -460,6 +486,8 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
   return (
     <Section
       title={title}
+      // A day's meals read as one ledger: closer together than a screen's sections.
+      style={{ marginTop: 20 }}
       note={logs.length > 0 ? `${formatWhole(kcal)} kcal` : undefined}
       accessory={
         group || copyable || savable ? (
@@ -472,7 +500,7 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
               groupMenu();
             }}
             style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'flex-end', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-            <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.ink} />
+            <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.graphite} />
           </Pressable>
         ) : undefined
       }>
@@ -493,7 +521,12 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
   );
 }
 
-function entryDetail(log: FoodLog): string {
+/**
+ * An entry's quiet line in parts: what was eaten leads, then the protein, the
+ * time and the source word. Only the amount gives way on a narrow line, so
+ * the time and "Estimate" (which says how to read the calories) stay whole.
+ */
+function entryDetail(log: FoodLog): DetailParts {
   const parts = decodeMealComposition(log.food?.description);
   const time = format(getLogDate(log), 'h:mm a');
   const amount = parts ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
@@ -501,7 +534,7 @@ function entryDetail(log: FoodLog): string {
   // As the web's ledger does, an AI estimate says so (one word, so the line stays quiet).
   const raw = log.source as string | undefined;
   const source = raw === 'gemini_estimate' || raw === 'gemini_trial' ? 'Estimate' : raw === 'gemini_label' ? 'From label' : null;
-  return [time, amount, protein > 0 ? `${formatWhole(protein)} g protein` : null, source].filter(Boolean).join(' · ');
+  return [amount, ...[protein > 0 ? `${formatWhole(protein)} g protein` : null, time, source].filter((part): part is string => Boolean(part))];
 }
 
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */
@@ -516,8 +549,8 @@ function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: 
   // Move to opens the day's other meals; the hold menu, the swipe's More
   // and VoiceOver all offer the same list.
   const targets: { id: string | null; label: string }[] = [
-    { id: null, label: 'Unassigned' },
-    ...groups.map((group) => ({ id: group.id, label: nutritionGroupLabel(group, groups) })),
+    { id: null, label: NO_MEAL },
+    ...groups.map((group) => ({ id: group.id, label: nutritionGroupTitle(group, groups) })),
   ].filter((targetGroup) => targetGroup.id !== (log.group_id ?? null));
   const menu: MenuAction[] = [
     { title: 'Edit', symbol: 'pencil', run: edit },
@@ -558,7 +591,7 @@ function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: 
           value={kcal}
           onPress={edit}
           menu={menu}
-          accessibilityLabel={`${name}, ${detail}, ${kcal} kcal`}
+          accessibilityLabel={`${name}, ${detail.join(' · ')}, ${kcal} kcal`}
         />
       </View>
     </SwipeRow>
@@ -598,11 +631,61 @@ function MacroRow({ macro, value, target, loaded, goal }: {
             {loaded ? formatWhole(value) : '–'}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {target ? ` / ${formatWhole(target)} g` : loaded ? ' g' : ''}
+            {target ? ` of ${formatWhole(target)} g` : loaded ? ' g' : ''}
           </BlancText>
         </View>
       </View>
-      {target ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : null}
+      {/* Its place is held while the day loads, so the line appears at its value. */}
+      {target ? loaded ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : <View style={{ height: 3 }} /> : null}
     </Pressable>
   );
 }
+
+/** One macro of three side by side: its name, the grams against the target and its line; a tap opens that target. */
+function MacroColumn({ macro, value, target, loaded, goal, edge }: {
+  macro: Exclude<FuelMacro, 'calories'>;
+  value: number;
+  target: number | null;
+  loaded: boolean;
+  goal: NutritionGoal | undefined;
+  /** A hairline on its leading side, between it and the column before. */
+  edge?: boolean;
+}) {
+  const c = useBlanc();
+  const name = MACRO_NAMES[macro];
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={loaded ? speak(`${name}, ${formatWhole(value)}${target ? ` of ${formatWhole(target)}` : ''} g`) : name}
+      accessibilityHint={`Edits your ${name.toLowerCase()} target`}
+      onPress={() => editTarget(macro)}
+      style={({ pressed }) => ({
+        flex: 1,
+        // The first column's words start where the meal cards' do, and the last
+        // column's bar ends where the calorie bar above it does: the card's 18.
+        paddingLeft: 18,
+        paddingRight: 18,
+        paddingTop: 13,
+        paddingBottom: 15,
+        backgroundColor: pressed ? c.pressed : 'transparent',
+        borderLeftWidth: edge ? StyleSheet.hairlineWidth : 0,
+        borderLeftColor: c.hairline,
+      })}>
+      <BlancText variant="footnote" tone="graphite">
+        {name}
+      </BlancText>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 3, marginBottom: 9 }}>
+        <RollingText variant="bodyStrong" style={{ fontVariant: ['tabular-nums'] }}>
+          {loaded ? formatWhole(value) : '–'}
+        </RollingText>
+        <BlancText variant="footnote" tone="graphite" numberOfLines={1} style={{ fontVariant: ['tabular-nums'], flexShrink: 1 }}>
+          {target ? ` of ${formatWhole(target)} g` : loaded ? ' g' : ''}
+        </BlancText>
+      </View>
+      {/* Without a target, or while the day loads, the line's place is held. */}
+      {target && loaded ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : <View style={{ height: 3 }} />}
+    </Pressable>
+  );
+}
+
+/** A meal's name on Fuel: "Snack" while it is the day's only snack, "Snack 2" once there are more. */

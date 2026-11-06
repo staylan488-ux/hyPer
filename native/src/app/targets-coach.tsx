@@ -137,6 +137,7 @@ export default function TargetsCoachSheet() {
 
       <Label style={{ marginTop: 20, padding: 14 }}>
         <TextInput
+          selectionColor={c.ink}
           value={goals}
           onChangeText={(text) => {
             setError(null);

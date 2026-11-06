@@ -102,7 +102,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   confirmation's `auth/callback` exchanges its code there.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
-  the live workout, header items with SF Symbols, Expo UI SwiftUI controls,
+  the live workout (it leads with the movement and set and the live clock, and
+  steps aside on Today's and Train's roots, which show the workout themselves,
+  except on Train during a rest; tab pages size their foot from
+  `useWorkoutBarShown`), header items with SF Symbols, Expo UI SwiftUI controls,
   `expo-glass-effect`, `expo-haptics`, context menus, `ActionSheetIOS`,
   `Alert`.
 
@@ -111,13 +114,26 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - [Tokens and type roles](../../../native/src/theme/blanc.ts): the system font only.
   Section 20/600, title 24/600, body 17, secondary 15, footnote 13, Menlo 12 for
   label details; big figures in SF Pro Thin (weight 200, tabular digits).
+  Figures at rest (Today's and Fuel's 56 pt kcal, Body weight's 56 pt and
+  You's 44 pt weight) use `restingFigure` (proportional digits, so a "1"
+  leaves no gap) and `figureLead` (pulls the first digit's ink onto the text
+  edge); counting figures keep tabular digits. Train's 72 pt weight and reps
+  sit on a ruled line (ink while typing) with Menlo "last 60" captions under
+  each field, shown only while the field differs from last time (the line's
+  height stays); the rep target is in ink on the line under the movement, and
+  the card's notes sit at that line's 15 pt graphite (one quiet level). The
+  card's whole header fades under the compact bar before the bar names the
+  movement. Every text field draws its caret and selection in ink
+  (`selectionColor={c.ink}`).
   Text fields take `field` (one line, with `lineBreakModeIOS="tail"`) or
   `fieldLines` (wrapping), never body: React Native reuses a field's native
   view, and iOS drew the new placeholder with the last one's letter spacing (a
   big figure's, squeezing the letters together) unless the field names its own
   (`tests/nativeTextFields.test.ts` checks).
 - Chalk ground, white labels, black ink, graphite for secondary text. No accent
-  colour; red only for live state, errors, over-limit and the brand P.
+  colour; red only for live state, errors, over-limit and the brand P, and it
+  is one red: `live` and `brand` share a value in each palette (the P's brick
+  in light; the design council's call on 2026-11-05).
   Over-limit follows the saved nutrition goal through the shared
   `warnsOverTarget` (`src/lib/fuelSummary.ts`): protein past target is never
   red, and while bulking or lean bulking nothing past target is (calories read
@@ -127,14 +143,59 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - The white [Label](../../../native/src/components/Label.tsx) is the one container
   (10 pt continuous corners). Sections are separated by space, rows by hairlines
   with an iOS press highlight. Ink capsules are primary actions; quiet fill
-  capsules are secondary.
+  capsules are secondary. A chosen chip is lifted on the fill like a segmented
+  control's choice (label colour, hairline edge), so a sheet's one filled shape
+  stays its main button. One way for each repeated idea: the live workout's
+  clock is `LiveClock` (live dot, ticking m:ss) everywhere; a value against its
+  target reads "130 of 190 g"; in-content "more" is a bare graphite ellipsis;
+  in-content adds read "+ Verb"; chart labels are the system font with tabular
+  digits (Menlo only under Train's figures and in expanded Progress rows). Switches are ink
+  (`switchOn`), never iOS green. One-line rows are 52 pt in regular weight; a
+  row with a detail line is 60 pt with a medium title and its value on the
+  title's line. Sheets' round buttons (`GlassButton`) are a quiet fill in every
+  sheet.
 - The brand mark is the red italic P ([BrandMark](../../../native/src/components/BrandMark.tsx),
   Fraunces Mark Medium Italic, approved 2026-10-26): the app icon, Today's top-left
   corner and the sign-in and offline emblem. Fraunces appears nowhere else.
 - The set [Tally](../../../native/src/components/Tally.tsx) counts sets like a
-  paper training log: one stroke per set in groups of five, the next set's stroke
-  taller, a finished group closed with a diagonal. Use it for set progress and
-  finished-session summaries only, never as a logo or decoration.
+  paper training log: one stroke per set in groups of five, logged strokes in
+  ink, the next set's stroke taller (about half again) and in the live red,
+  still to do in `mark`, a finished group closed with a diagonal. One grammar
+  everywhere: a finished movement recedes through its name, never its strokes.
+  Use it for set progress and finished-session summaries only, never as a
+  logo or decoration.
+- Data marks (past bars, weigh-in dots, a rail's in-range band, the target's
+  dashes) are `mark` at full strength, 3:1 or more in every palette; the
+  current period is ink and over is red. No opacity tricks: hierarchy comes
+  from size and weight. Chart keys are left-aligned with the card title.
+  Progress's nutrition charts show the seven days before today, named by
+  their dates ("Oct 30–Nov 5"), with the average of the logged days; their
+  targets' figures sit in a column beside the bars, as Body weight's scale
+  does, and one key names the dashed line. Bar charts read one bar at a
+  time like Body weight (tap, tap again to let go, or hold and slide): the
+  header shows that bar's date and value and the bar turns ink; they are
+  adjustable for VoiceOver. A chart still loading shows one graphite spinner
+  in its space, and a failed first read a short line with a quiet Retry. The
+  hollow ring ("No entry") appears only where an unlogged day isn't zero
+  (Nutrition); an untrained week is 0 h, a 2 pt tick in `mark`. Training time
+  dates its first and last week only. The muscle figure pair fills about 70% of its
+  card: below range a graphite 1.25 pt outline, in range `mark`, over red.
+  Day marks (Fuel's week strip, the month sheet) are 28 × 4 pt, ink over
+  `mark`, red past target only where the goal warns, nothing on an unlogged
+  day, and the selected day keeps its mark. Every week and calendar starts on
+  Monday (`TRAINING_WEEK`, M T W T F S S). Bars appear at their value and
+  animate only changes. A row's detail passes parts when its end matters
+  (time, Estimate), so only the first part (the amount) truncates.
+- Every screen section is a `Section` header over one Label; no footnote
+  group labels. Today's sections are named for the screens they open (Fuel,
+  Progress), and its session card has one layout live and done (header with
+  day and clock or length, tally, title line, quiet line, action). Fuel's
+  figure, bar and macros are one Label. Session complete is top-anchored:
+  the day as the large title, one quiet line ("Session complete · day ·
+  time", or "5 of 9 sets · …" when short, never "complete"), then the tally,
+  "N sets beat last time" in ink, Volume, Time and Best set. A card that opens a screen shows a chevron (on a figure card,
+  on the figure's line) and uses the `pressed` fill. A segmented control's
+  `Host` matches its contents vertically only, with an explicit width.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
   layouts or signature details (the owner ruled out copying Maison Margiela's
   stitches and numbered label on 2026-10-26).
@@ -176,9 +237,35 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
   nutritionDay, savedMeals, recentFoods, repeatEntries, savedMealFromLog); never copy them into
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
-  `native/src/fuel`) with Recent, Saved, Search, Scan, Manual and Photo, a
-  review for a chosen food, and the meal builder (Scan opens the camera only
-  when Scan barcode is tapped, the owner's call on 2026-10-27). Recent opens
+  `native/src/fuel`) with a Search foods field above its Recent and Saved
+  segments (typing takes the sheet over; Cancel returns to what was showing;
+  matching saved meals list first, then USDA's, and only results for the
+  words in the field show) and the
+  entry methods Barcode, Manual, Photo and Describe (a symbol over each name)
+  as a quiet row under them (`native/src/fuel/EntryMethods.tsx`), a review
+  for a chosen food, and the meal builder. Photo and Describe are two doors
+  into the one meal view, where a photo and a long description can be
+  combined (the owner's call on 2026-11-05): Photo opens the camera at once
+  and adds what it takes, Describe puts the cursor in Your meal, and nothing
+  is estimated until Analyze meal; only Snap a meal estimates on its own. A
+  device set to the worker gets Photo alone. Search stays a food search. The
+  line under the title says where food goes ("Adds to today", "Adds to
+  Lunch"); its menu offers No meal, the day's meals, New meal and New snack
+  (on Fuel's day). "No meal" (`NO_MEAL`) names foods outside a meal
+  everywhere, and a lone unnamed snack is "Snack" (`nutritionGroupTitle`).
+  The line names only where food goes, never a total, in a 44 pt target.
+  The chosen entry method is lifted like a chosen Chip. No food list carries
+  a kcal heading. Recent ends in Build a meal; Saved has no Edit mode (each
+  meal swipes and holds for Edit and Delete) and ends in New saved meal. At
+  the accessibility sizes only the title, destination and Search foods stay
+  pinned. An added photo's corner shows a white ellipsis for its menu. A quick add's tick
+  belongs to one day and meal; a failed one says "Couldn't confirm. Tap + to
+  try again." and its retry reuses its first entry id, time and meal.
+  Fuel's date line opens the month (its chevron says so) and "+" stands alone
+  in the bar; a day with food ends on a quiet Log food. Fuel's rows read
+  amount · protein · time · source.
+  Barcode opens its camera only when Scan barcode is tapped (the owner's call
+  on 2026-10-27). Recent opens
   first: four weeks of the log, most often eaten lately first, + logs the
   usual amount and a tap reviews at it; a swipe hides a food on this device
   until it is logged again. A day's entries swipe for More and Delete and hold
@@ -190,6 +277,21 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   once it was changed; not offered for one saved meal as saved). Barcode scanning is VisionKit through `native/modules/hyper-barcode`
   (unavailable in the simulator: type the digits there). Pod install needs
   `LANG=en_US.UTF-8`.
+- Photo's Add photo opens the camera at once, full screen, with no Take
+  photo or Choose from library sheet first (the owner's call on 2026-11-05).
+  iOS's camera picker has no library button, so the camera is hyPer's own
+  ([food-camera](../../../native/src/app/food-camera.tsx), `expo-camera`,
+  photos only with no microphone permission), opened through `pickFoodPhoto`
+  and `openFoodCamera` (`native/src/fuel/foodCamera.ts`), which settles once
+  the screen has gone. Black chrome in either appearance (the dark palette):
+  close top left, the flash top right, the shutter centred at the foot and
+  the photo library bottom left (iOS's photo picker, which needs no library
+  permission; cancelling it returns to the camera). A shot shows Retake and
+  Use Photo. Camera access is asked as the screen opens; refused, or with no
+  camera (the simulator), the screen says so with Choose from library right
+  under the words (and Open Settings when refused); the library button bottom
+  left still works, and closing it leaves the reason under Photo.
+  A photo already added keeps its own menu (Replace photo, Remove photo).
 - "This should work, and it does" (the owner, 2026-10-27; app-wide audit
   2026-10-28): every list item that can be removed swipes left for its actions
   ([SwipeRow](../../../native/src/components/SwipeRow.tsx)): the destructive
@@ -220,8 +322,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   to refresh, and a small destructive button with no swipe behind it asks
   first.
 - Food AI: the owner logs with Gemini (the web logger's hosted mode), so the
-  native app defaults to it (AI tab, Manual's hand-off, Describe amount); a
-  device set to the worker gets the Photo tab instead.
+  native app defaults to it (Photo and Describe, Manual's hand-off, Describe
+  amount); a device set to the worker gets the worker's photo view under the same Photo button.
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
   from ⋯ on the current card, a finished movement's row, or a hold (lifted and let go) on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12
@@ -249,7 +351,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm
   choices, saved through the shared `buildPlanSchedule`; saving bumps
   `useScheduleRevision` so open screens re-read it) and Program, which
-  holds the training mode. Flexible mode names the session or starts a quick
+  holds the training mode and, in Program days with a program, Adaptive
+  scheduling. Flexible mode names the session or starts a quick
   start; the session grows with Add movement, the pencil renames it, and
   Finish offers to keep it as a quick start. Adding and removing movements is
   a flexible-session feature, as on the web.
@@ -280,7 +383,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the
-  movement's rest length (1, 2, 3 or 5 min, or a custom time) or end it. The
+  movement's rest length or end it. The length is set only on the presets
+  track (1:00, 1:30, 2:00, 3:00, 5:00, then Custom, chosen for any other
+  length; a 44 pt touch band around a 38 pt fill); the big time is display
+  only, in proportional digits while idle and tabular while it runs. The
   rest is the web's stored rest session (`src/lib/restTimer.ts`), so it
   survives leaving Train and relaunching. Lengths are kept per movement through
   the shared `src/lib/restPreferences.ts`, as on the web (own length, else the
@@ -334,13 +440,16 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   removing extension files. The run card and the home-screen widgets live in
   the same extension (below).
 - Program lives in Train's stack (`train/program`, `train/program-view`)
-  and holds the training mode. Editing goes through the shared
+  and holds the training mode and Adaptive scheduling. Editing goes through the shared
   `splitEditStore` in the `program-edit` page sheet (its own stack: the
   program, then a day); `usePreventRemove` in its layout asks before
   unsaved edits go, through `discardSplitEdit(confirmAlert)`. Sets and
   reps (`program-exercise`), reorder (`program-reorder`) and the picker
   (`swap` with `program=add|swap|superset`) are root sheets over it and
   change the draft only; nothing is written until Save or Create.
+- History draws strength sessions, finished or live, as a tally (the live
+  one's next stroke red, its state in words beside the live dot); a finished
+  session's reveal stays within 700 ms with one haptic at the end.
 - History lives in Train's stack (`train/history`, `train/past`,
   `train/activity-view` for an activity's numbers, notes and a run's splits)
   and Progress
@@ -354,8 +463,11 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `account`, `about`) plus root sheets (`log-weight`, `targets-edit`,
   `targets-calculate`, `targets-coach`, `saved-meal`). Body weight's chart
   reads 1M, 3M (the default), 6M, 1Y or All on a calendar axis ending today,
-  and Recent ends in All weigh-ins (every one, by month, with each month's
-  average); both come from one paged read of every weigh-in
+  Recent starts at the weigh-in before the figure's (left out with only one)
+  and always ends in All weigh-ins (every one, by month, with each month's
+  average); You's card reads the default 3M range through
+  `weightRangeSummary` ("+0.3 lb/wk since Aug 9"), its sparkline over the same
+  days; both come from one paged read of every weigh-in
   (`loadWeights({ all: true })`, rules in `src/lib/weightHistory.ts`), joined
   to the 90-day read that every log and sync repeats. A gain reads like a
   loss, signed and in ink. Screen state shared
@@ -423,8 +535,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   hold still until it lands, and so does a quick add left unconfirmed (its
   retry would close with the meal). Camera access turned off shows Open Settings
   under the error. Train only switches tabs when nothing covers them and never
-  starts a workout. One system picker at a time (`pickFoodPhoto`), none while a
-  photo's action sheet is up (`showPhotoChoices`). Intents that open the app
+  starts a workout. One camera or picker at a time (`pickFoodPhoto`), none while
+  a photo's menu is up (`showPhotoChoices`). Intents that open the app
   compile into the app (the control's also into the extension), App Shortcuts
   only into the app, never into a pod.
 - A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
@@ -498,9 +610,10 @@ flow, read the shared rule in `src/lib` it uses and the tests that cover it.
   then `xcrun simctl io <udid> screenshot <file>`. Check light and dark
   (`xcrun simctl ui <udid> appearance dark`). `-hyperAction launch:snap-meal`
   (or `launch:log-food`, `launch:train`) posts a press as iOS hands one over;
-  the simulator has no camera, so Snap a meal stops at "The camera isn't
-  available here." `-hyperAction fuelReminder` sets a Fuel reminder a minute
-  ahead and logs what iOS holds. A new local module (such as `hyper-launch`)
+  the simulator has no camera, so Snap a meal's camera screen says "The
+  camera isn’t available here." with its photo library button still working
+  (`-hyperRoute /food-camera` opens that screen alone). `-hyperAction
+  fuelReminder` sets a Fuel reminder a minute ahead and logs what iOS holds. A new local module (such as `hyper-launch`)
   needs `pod install`, which prebuild runs.
 - Accessibility: `xcrun simctl ui <udid> content_size accessibility-extra-extra-extra-large`
   shows AX5 (`large` is the default) and `xcrun simctl ui <udid> increase_contrast enabled`

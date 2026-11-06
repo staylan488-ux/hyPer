@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, TextInput, View, type ViewStyle } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -20,7 +20,7 @@ import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { closeOpenSwipeRow, SwipeRow, useSwipeActions } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
-import { saveFoodEntry } from '~/lib/foodLogger';
+import { saveFoodEntry, type When } from '~/lib/foodLogger';
 import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useFuelStore } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
@@ -30,6 +30,9 @@ import { type as typeScale, useBlanc } from '~/theme/blanc';
 import { useLogger, type QuickAddState } from './context';
 
 export type AddState = QuickAddState;
+
+/** A quick add whose save did not answer: it may have landed, and + retries the same entry. */
+const QUICK_ADD_UNCONFIRMED = "Couldn't confirm. Tap + to try again.";
 
 /** How many USDA searches and portions this session keeps. */
 const USDA_CACHE_LIMIT = 50;
@@ -96,43 +99,55 @@ export function spokenMacros(
   return speak(`${round(totals.calories)} kcal · protein ${round(totals.protein)} g · carbs ${round(totals.carbs)} g · fat ${round(totals.fat)} g`);
 }
 
-/** A search or filter field in the quiet fill capsule. */
-export function SearchField({ value, onChange, placeholder, onSubmit, autoFocus }: {
+/**
+ * A search or filter field in the quiet fill capsule, iOS 26's rounded search
+ * field. `style` places it (it sits 16 points in and 12 down by default).
+ */
+export function SearchField({ value, onChange, placeholder, onSubmit, onFocus, editable, style }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   onSubmit?: () => void;
-  /** Picking the tab means typing next. */
-  autoFocus?: boolean;
+  onFocus?: () => void;
+  editable?: boolean;
+  style?: ViewStyle;
 }) {
   const c = useBlanc();
   const large = useLargeText();
   return (
     <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        // The field's text grows at the accessibility sizes; the capsule grows with it.
-        ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
-        marginHorizontal: 16,
-        marginTop: 12,
-        paddingHorizontal: 14,
-        borderRadius: 22,
-        borderCurve: 'continuous',
-        backgroundColor: c.fill,
-      }}>
-      <SymbolView name="magnifyingglass" size={16} weight="medium" tintColor={c.graphite} />
+      style={[
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          // The field's text grows at the accessibility sizes; the capsule grows with it.
+          ...(large ? { minHeight: 44, paddingVertical: 8 } : { height: 44 }),
+          marginHorizontal: 16,
+          marginTop: 12,
+          paddingHorizontal: 14,
+          borderRadius: 22,
+          borderCurve: 'continuous',
+          backgroundColor: c.fill,
+          opacity: editable === false ? 0.4 : 1,
+        },
+        style,
+      ]}>
+      {/* The field is named for VoiceOver; the glyph is only its look. */}
+      <SymbolView name="magnifyingglass" size={16} weight="medium" tintColor={c.graphite} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
       <TextInput
+        selectionColor={c.ink}
         value={value}
         onChangeText={onChange}
         onSubmitEditing={onSubmit}
-        autoFocus={autoFocus}
+        onFocus={onFocus}
+        editable={editable}
         placeholder={placeholder}
         placeholderTextColor={c.graphite}
         returnKeyType="search"
         clearButtonMode="while-editing"
         autoCorrect={false}
+        accessibilityRole="search"
         accessibilityLabel={placeholder}
         lineBreakModeIOS="tail"
         style={[typeScale.field, { flex: 1, color: c.ink, padding: 0 }]}
@@ -155,7 +170,7 @@ export function foodLine(food: Food, servings = 1, amount?: string | null, compo
 }
 
 /** One food: tap to review it; the round button logs it at once (one serving unless `servings` says). */
-export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, onDelete, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
+export function FoodRow({ food, state, opening, onOpen, onAdd, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
   food: Food;
   state?: AddState;
   /** A built meal, when the list has already decoded it. */
@@ -170,10 +185,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
   showBasis?: boolean;
   onOpen: () => void;
   onAdd?: () => void;
-  editing?: boolean;
-  onEdit?: () => void;
-  onDelete?: () => void;
-  /** What a hold offers, as iOS's context menu (not while editing). */
+  /** What a hold offers, as iOS's context menu. */
   menu?: MenuAction[];
   onLongPress?: () => void;
 }) {
@@ -181,26 +193,28 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
   const large = useLargeText();
   // VoiceOver offers the hold menu's items (or the long-press action) and
   // the swipe actions the menu does not cover as the row's own.
-  const held = menu && menu.length > 0 && !editing ? menuAccessibility(menu) : null;
+  const held = menu && menu.length > 0 ? menuAccessibility(menu) : null;
   const heldLabels = new Set(held ? ['More', ...held.actions.map((action) => action.label)] : []);
   const swipe = (useSwipeActions() ?? []).filter((action) => !heldLabels.has(action.label));
   const actions = [
-    ...(held ? held.actions : onLongPress && !editing ? [{ name: 'longpress', label: 'More actions' }] : []),
+    ...(held ? held.actions : onLongPress ? [{ name: 'longpress', label: 'More actions' }] : []),
     ...swipe.map((action) => ({ name: `swipe:${action.label}`, label: action.label })),
   ];
-  const longPress = held ? (hasHoldMenu ? undefined : () => showActionSheet(food.name, menu ?? [])) : editing ? undefined : onLongPress;
+  const longPress = held ? (hasHoldMenu ? undefined : () => showActionSheet(food.name, menu ?? [])) : onLongPress;
   const kcal = formatWhole(food.calories * servings);
   // The highlight takes the whole row, the round button's end too, as an iOS cell's does.
   const [pressed, setPressed] = useState(false);
+  // A failed quick add may still have landed, so the row says only what is
+  // known; its retry reuses the same entry id, so it can't log twice.
   const line = state === 'error'
-    ? 'Not saved. Tap + to try again.'
+    ? QUICK_ADD_UNCONFIRMED
     : state === 'done'
       ? 'Added'
       : detail
         ? detail
         : foodLine(food, servings, showBasis ? food.serving_label ?? `${formatMeasurementAmount(food.serving_size || 100)} ${food.serving_unit || 'g'}` : null, composed);
   // The same line in words: "150 g · 31 g protein" as "150 grams, 31 grams protein", "+" as Add.
-  const spokenLine = state === 'error' ? 'Not saved. Add it again to retry.' : speak(line);
+  const spokenLine = state === 'error' ? "Couldn't confirm. Use Add to try again." : speak(line);
   const row = (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 16, backgroundColor: pressed ? c.pressed : c.label }}>
       <Pressable
@@ -219,7 +233,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           // a tap while another row stands open only closes that row, as in Mail
           if (closeOpenSwipeRow()) return;
           haptics.tap();
-          (editing ? onEdit : onOpen)?.();
+          onOpen();
         }}
         onLongPress={
           longPress
@@ -240,7 +254,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
           paddingVertical: 10,
           paddingLeft: 18,
           // with no round button the row keeps its 32 points, so kcal stays in its column
-          paddingRight: editing || onAdd || opening ? 12 : 44,
+          paddingRight: onAdd || opening ? 12 : 44,
         }}>
         {/* At the accessibility sizes the lines wrap and the kcal goes under them instead of squeezing them. */}
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -258,15 +272,14 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
             </BlancText>
           ) : null}
         </View>
+        {/* On the food name's line, as Fuel's day list sets it. */}
         {large ? null : (
-          <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+          <BlancText variant="secondary" tone="graphite" style={[{ fontVariant: ['tabular-nums'] }, line ? { alignSelf: 'flex-start', marginTop: 2 } : null]}>
             {kcal}
           </BlancText>
         )}
       </Pressable>
-      {editing ? (
-        <RoundButton symbol="trash" label={`Delete ${food.name}`} onPress={() => onDelete?.()} />
-      ) : onAdd || opening ? (
+      {onAdd || opening ? (
         <RoundButton
           symbol={state === 'done' ? 'checkmark' : 'plus'}
           label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added` : `Add ${food.name}`}
@@ -288,7 +301,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, editing, onEdit, 
 
 /** A quiet disc with an ink mark; the food just logged gets the ink disc and its tick. */
 function RoundButton({ symbol, label, busy, done, onPress }: {
-  symbol: 'plus' | 'checkmark' | 'trash';
+  symbol: 'plus' | 'checkmark';
   label: string;
   busy?: boolean;
   /** Already logged: the tick stays put so a second tap can't log it twice. */
@@ -327,22 +340,36 @@ function RoundButton({ symbol, label, busy, done, onPress }: {
   );
 }
 
+/** A quick add's key: where it lands (the entry's day and meal), then the food's own key. */
+function quickAddKey(when: When, food: string): string {
+  const day = when.date;
+  return `${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}:${when.groupId ?? ''}|${food}`;
+}
+
 /**
  * One-tap logging from a list: one serving now (or the amount given), into the
- * sheet's meal. Each food keeps its retry-safe id until its save is confirmed.
+ * sheet's meal. Each food keeps its state per destination, so one added to
+ * Breakfast can still go to Lunch, and keeps its retry-safe id and first
+ * destination until its save is confirmed.
  */
 export function useQuickAdd() {
   const logger = useLogger();
-  const { quickAddStates: added, setQuickAddStates: setAdded, pendingQuickAdds: pendingIds } = logger;
+  const { quickAddStates: states, setQuickAddStates: setStates, pendingQuickAdds: pendingAdds } = logger;
+  // The rows see only this destination's states, by food.
+  const here = quickAddKey(logger.when, '');
+  const added: Record<string, AddState> = {};
+  if (logger.purpose === 'log') {
+    for (const [key, state] of Object.entries(states)) if (key.startsWith(here)) added[key.slice(here.length)] = state;
+  }
   // `add` reads the sheet as last drawn from here, so it stays one function
   // and a list redraws only the row whose state changed.
-  const drawn = useRef({ added, logger });
+  const drawn = useRef({ states, logger });
   useLayoutEffect(() => {
-    drawn.current = { added, logger };
+    drawn.current = { states, logger };
   });
 
-  const add = useCallback(async (key: string, food: Food, options: { servings?: number; source?: string } = {}) => {
-    const { added: states, logger: sheet } = drawn.current;
+  const add = useCallback(async (foodKey: string, food: Food, options: { servings?: number; source?: string } = {}) => {
+    const { states: drawnStates, logger: sheet } = drawn.current;
     const servings = options.servings ?? 1;
     if (sheet.purpose === 'ingredients') {
       try {
@@ -354,47 +381,52 @@ export function useQuickAdd() {
       }
       return;
     }
-    const current = states[key];
-    if (current === 'saving' || current === 'done') return;
+    const key = quickAddKey(sheet.when, foodKey);
+    const kept = pendingAdds.get(key);
+    // One write at a time for a food and meal, read now rather than as drawn,
+    // so a second tap before the redraw can't start another; a confirmed one stays done.
+    if (kept?.inFlight || drawnStates[key] === 'done') return;
+    // A retry after an unconfirmed save writes that same entry: its id (the
+    // write upserts on it, so it can't log twice), its time and its meal.
+    const attempt = kept ?? { pending: createPendingEntryId(), when: sheet.when, groups: sheet.groups, inFlight: false };
+    attempt.inFlight = true;
+    pendingAdds.set(key, attempt);
     const release = sheet.beginSave();
-    const pending = pendingIds.get(key) ?? createPendingEntryId();
-    pendingIds.set(key, pending);
-    setAdded((state) => ({ ...state, [key]: 'saving' }));
+    setStates((state) => ({ ...state, [key]: 'saving' }));
     const saved = await saveQuickAdd(food, {
       servings,
       source: options.source ?? chosenFoodLogSource(food),
-      when: sheet.when,
-      groups: sheet.groups,
-      pending,
+      when: attempt.when,
+      groups: attempt.groups,
+      pending: attempt.pending,
     });
+    attempt.inFlight = false;
     if (!saved) {
       haptics.error();
-      setAdded((state) => ({ ...state, [key]: 'error' }));
+      setStates((state) => ({ ...state, [key]: 'error' }));
       release();
-      announce(`${food.name} not saved`);
+      announce(`Couldn't confirm ${food.name}`);
       return;
     }
-    pendingIds.delete(key);
+    pendingAdds.delete(key);
     haptics.success();
-    setAdded((state) => ({ ...state, [key]: 'done' }));
+    setStates((state) => ({ ...state, [key]: 'done' }));
     release();
     // The row says so too, but VoiceOver stays on the + it pressed.
     announce(`${food.name} added`);
     // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
     void useFuelStore.getState().refreshAfterWrite();
-  }, [pendingIds, setAdded]);
-  return { added: logger.purpose === 'ingredients' ? {} : added, add, enabled: !logger.editing };
+  }, [pendingAdds, setStates]);
+  return { added, add, enabled: !logger.editing };
 }
 
-/** Saved meals: filter, review, quick add; Edit to change or delete them. */
-export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
-  onNewSavedMeal: () => void;
-  onEditSavedMeal: (meal: Food) => void;
-}) {
+/**
+ * Saved meals: review, quick add; each meal swipes (or holds) for Edit and
+ * Delete, which VoiceOver offers as the row's own actions. A new saved meal is
+ * the sheet's row under the list, as Build a meal is under Recent.
+ */
+export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) => void }) {
   const logger = useLogger();
-  const large = useLargeText();
-  const [filter, setFilter] = useState('');
-  const [managing, setManaging] = useState(false);
   const { added, add: quickAdd, enabled } = useQuickAdd();
   const meals = logger.savedMeals;
 
@@ -427,17 +459,9 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
     await logger.reloadSavedMeals();
   };
   const remove = (meal: Food) => void retire(meal);
-  // The Edit list's small trash button is one tap with no swipe behind it, so it asks.
-  const confirmRetire = (meal: Food) => {
-    Alert.alert(`Delete ${meal.name}?`, 'It leaves your saved meals. Past logged entries stay unchanged.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void retire(meal) },
-    ]);
-  };
 
-  const visible = filterSavedMeals(meals ?? [], filter).filter((meal) => !hidden.has(meal.id));
-  const canManage = Boolean(meals && meals.length > 0) && logger.purpose === 'log';
-  const canCreate = logger.purpose === 'log' && !logger.editing;
+  // The sheet's Search foods field finds saved meals as well, so this list has no filter of its own.
+  const visible = (meals ?? []).filter((meal) => !hidden.has(meal.id));
   const rows = visible.map((meal, index) => (
     <SavedRow
       key={meal.id}
@@ -446,12 +470,10 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
       state={added[meal.id]}
       purpose={logger.purpose}
       quickAdd={enabled}
-      managing={managing}
       onOpen={open}
       onAdd={add}
       onEdit={onEditSavedMeal}
       onRemove={remove}
-      onConfirmRemove={confirmRetire}
     />
   ));
 
@@ -459,58 +481,34 @@ export function SavedTab({ onNewSavedMeal, onEditSavedMeal }: {
   return (
     <LayoutAnimationConfig skipEntering skipExiting>
       <View>
-        <SearchField value={filter} onChange={setFilter} placeholder="Filter saved meals" />
-        {canManage || canCreate ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'flex-end',
-              alignItems: 'center',
-              gap: 20,
-              paddingHorizontal: 20,
-              marginTop: 4,
-              minHeight: 44,
-              // the two words wrap rather than squeeze at the accessibility sizes
-              ...(large ? { flexWrap: 'wrap' } : null),
-            }}>
-            {canManage ? <TextAction title={managing ? 'Done' : 'Edit'} onPress={() => setManaging(!managing)} /> : null}
-            {canCreate ? <TextAction title="New" onPress={onNewSavedMeal} /> : null}
-          </View>
+        {visible.length > 0 ? (
+          // 14 points down, where Recent's card starts.
+          <Label style={{ marginTop: 14, overflow: 'hidden' }} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
+            {rows}
+          </Label>
         ) : null}
-        {/* A new filter swaps the rows without motion; a deleted meal slides away. */}
-        <LayoutAnimationConfig key={filter} skipEntering skipExiting>
-          <View>
-            {visible.length > 0 ? (
-              <Label style={{ marginTop: canManage || canCreate ? 4 : 14, overflow: 'hidden' }} entering={rowEnter} exiting={blockExit} layout={rowLayout}>
-                {rows}
-              </Label>
-            ) : null}
-            {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
-            {meals !== null && visible.length === 0 ? (
-              <Animated.View entering={rowEnter} layout={rowLayout}>
-                <Empty text={filter.trim() ? 'No saved meals match.' : 'No saved meals yet.'} />
-              </Animated.View>
-            ) : null}
-          </View>
-        </LayoutAnimationConfig>
+        {meals === null ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
+        {meals !== null && visible.length === 0 ? (
+          <Animated.View entering={rowEnter} layout={rowLayout}>
+            <Empty text="No saved meals yet." />
+          </Animated.View>
+        ) : null}
       </View>
     </LayoutAnimationConfig>
   );
 }
 
-/** One saved meal; drawn again only when its own meal, state or the list's mode changes. */
-function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, onAdd, onEdit, onRemove, onConfirmRemove }: {
+/** One saved meal; drawn again only when its own meal or state changes. */
+function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onEdit, onRemove }: {
   meal: Food;
   divided: boolean;
   state?: AddState;
   purpose: 'log' | 'ingredients';
   quickAdd: boolean;
-  managing: boolean;
   onOpen: (meal: Food) => void;
   onAdd: (meal: Food) => void;
   onEdit: (meal: Food) => void;
   onRemove: (meal: Food) => void;
-  onConfirmRemove: (meal: Food) => void;
 }) {
   // Decoded once for the quick add, the menu and the row's line.
   const composed = Boolean(decodeMealComposition(meal.description));
@@ -534,16 +532,13 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, o
       state={state}
       onOpen={() => onOpen(meal)}
       onAdd={canQuickAdd ? () => onAdd(meal) : undefined}
-      editing={managing}
-      onEdit={() => onEdit(meal)}
-      onDelete={() => onConfirmRemove(meal)}
       menu={menu}
     />
   );
   return (
     <Animated.View entering={rowEnter} exiting={rowExit} layout={rowLayout}>
       {divided ? <Hairline /> : null}
-      {purpose === 'log' && !managing ? (
+      {purpose === 'log' ? (
         <SwipeRow
           name={meal.name}
           actions={[
@@ -559,29 +554,15 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, managing, onOpen, o
   );
 }
 
-function TextAction({ title, onPress }: { title: string; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      hitSlop={10}
-      onPress={() => {
-        haptics.tap();
-        onPress();
-      }}
-      style={({ pressed }) => ({ opacity: pressed ? 0.45 : 1, minHeight: 44, justifyContent: 'center' })}>
-      <BlancText variant="bodyStrong" size={15}>
-        {title}
-      </BlancText>
-    </Pressable>
-  );
-}
-
-/** USDA search: results as you type (two letters or more), with Retry on failure. */
-export function SearchTab() {
+/**
+ * USDA search results for the words in Log food's Search foods field (two
+ * letters or more), with Retry on failure. The sheet owns the field and its
+ * words, so they outlast a food's review and an ingredient added.
+ */
+export function SearchTab({ query }: { query: string }) {
   const logger = useLogger();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Food[] | null>(null);
-  const [state, setState] = useState<'idle' | 'searching' | 'error'>('idle');
+  // USDA's last answer, with the words it answers (no foods: the search failed).
+  const [found, setFound] = useState<{ query: string; foods: Food[] | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, enabled } = useQuickAdd();
@@ -594,11 +575,18 @@ export function SearchTab() {
     if (!opening) return;
     return beginRead();
   }, [opening, beginRead]);
+  // Only an answer to the words in the field shows. Once they change, the
+  // last words' results give way to the spinner, so no row on screen (or its +)
+  // belongs to other words.
+  const answer = trimmed.length >= 2 && found?.query === trimmed ? found : null;
+  const results = answer?.foods ?? null;
+  const failed = answer !== null && answer.foods === null;
+  const searching = trimmed.length >= 2 && answer === null;
   // Results land a moment after typing stops: VoiceOver says how many.
   useAnnounce(
-    state === 'error'
+    failed
       ? 'The search failed.'
-      : state === 'idle' && results !== null
+      : results !== null
         ? results.length === 0
           ? 'No USDA matches.'
           : `${results.length} result${results.length === 1 ? '' : 's'}`
@@ -606,24 +594,15 @@ export function SearchTab() {
   );
 
   useEffect(() => {
-    if (trimmed.length < 2) {
-      setResults(null);
-      setState('idle');
-      return;
-    }
-    setState('searching');
+    if (trimmed.length < 2) return;
     let current = true;
     const timer = setTimeout(() => {
       searchUsda(trimmed)
         .then((foods) => {
-          if (!current) return;
-          setResults(foods);
-          setState('idle');
+          if (current) setFound({ query: trimmed, foods });
         })
         .catch(() => {
-          if (!current) return;
-          setResults(null);
-          setState('error');
+          if (current) setFound({ query: trimmed, foods: null });
         });
     }, 350);
     return () => {
@@ -631,6 +610,13 @@ export function SearchTab() {
       clearTimeout(timer);
     };
   }, [trimmed, attempt]);
+
+  // Your own saved meals that match come first, found as you type; USDA's follow.
+  const saved = trimmed.length >= 2 ? filterSavedMeals(logger.savedMeals ?? [], trimmed) : [];
+  const openSaved = (meal: Food) => {
+    if (logger.purpose === 'log' && decodeMealComposition(meal.description)) logger.composeMeal(meal);
+    else logger.chooseFood(meal);
+  };
 
   const open = async (food: Food) => {
     if (opening) return;
@@ -641,11 +627,36 @@ export function SearchTab() {
   };
   const add = (key: string, food: Food) => void quickAdd(key, food);
 
+  // Named only while both kinds show, so a list of one kind carries no heading.
+  const both = saved.length > 0 && Boolean(results && results.length > 0);
   return (
     <View>
-      <SearchField value={query} onChange={setQuery} placeholder="Search USDA foods" autoFocus />
+      {saved.length > 0 ? (
+        <>
+          {both ? <GroupCaption>Saved</GroupCaption> : null}
+          <Label style={{ marginTop: 6, overflow: 'hidden' }}>
+            {saved.map((meal, index) => {
+              const composed = Boolean(decodeMealComposition(meal.description));
+              return (
+                <View key={meal.id}>
+                  {index > 0 ? <Hairline /> : null}
+                  <FoodRow
+                    food={meal}
+                    composed={composed}
+                    state={added[meal.id]}
+                    onOpen={() => openSaved(meal)}
+                    onAdd={enabled && !composed ? () => add(meal.id, meal) : undefined}
+                  />
+                </View>
+              );
+            })}
+          </Label>
+        </>
+      ) : null}
+      {both ? <GroupCaption>Foods</GroupCaption> : null}
       {results && results.length > 0 ? (
-        <Label style={{ marginTop: 14, overflow: 'hidden' }}>
+        // 14 points under the field, past the sheet header's own 8.
+        <Label style={{ marginTop: 6, overflow: 'hidden' }}>
           {results.map((food, index) => {
             const key = food.fdc_id || food.id;
             return (
@@ -665,18 +676,35 @@ export function SearchTab() {
           })}
         </Label>
       ) : null}
-      {state === 'searching' ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
-      {state === 'idle' && trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
-      {state === 'idle' && results !== null && results.length === 0 ? <Empty text="No USDA matches." /> : null}
-      {state === 'error' ? (
+      {searching ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
+      {trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
+      {results !== null && results.length === 0 && saved.length === 0 ? <Empty text="No USDA matches." /> : null}
+      {failed ? (
         <View style={{ alignItems: 'center', gap: 14, marginTop: 32 }}>
           <BlancText variant="secondary" tone="graphite">
             The search failed. Check your connection.
           </BlancText>
-          <Capsule title="Retry" variant="quiet" onPress={() => setAttempt((value) => value + 1)} />
+          <Capsule
+            title="Retry"
+            variant="quiet"
+            onPress={() => {
+              // the spinner, not the failure, while it tries again
+              setFound(null);
+              setAttempt((value) => value + 1);
+            }}
+          />
         </View>
       ) : null}
     </View>
+  );
+}
+
+/** The small heading over saved matches and USDA's, in the sheet's column-label style. */
+function GroupCaption({ children }: { children: string }) {
+  return (
+    <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 14, marginHorizontal: 20 }}>
+      {children}
+    </BlancText>
   );
 }
 

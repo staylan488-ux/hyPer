@@ -6,7 +6,7 @@ import Animated from 'react-native-reanimated';
 import { normalizeDecimalText } from '@/lib/decimalText';
 import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
-import { nutritionGroupLabel } from '@/lib/nutritionGroups';
+import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
 import { assertComposedMealOptions, saveComposedMeal } from '@/lib/saveMealComposition';
 import { savedMealNamed } from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
@@ -73,7 +73,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         const destination = await resolveMealDestination(draft.groupId, userId, draft.date);
         if (!destination.groupId) {
           update({ groupId: null });
-          setError('That destination is no longer available. The meal is now Unassigned; review it and save again.');
+          setError('That meal is gone, so this now adds to no meal. Review it and save again.');
           haptics.error();
           return;
         }
@@ -100,7 +100,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
   };
 
   const chooseGroup = () => {
-    const options = ['Unassigned', ...groups.map((candidate) => nutritionGroupLabel(candidate, groups)), 'Cancel'];
+    const options = [NO_MEAL, ...groups.map((candidate) => nutritionGroupTitle(candidate, groups)), 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: 'Add to', options, cancelButtonIndex: options.length - 1 }, (index) => {
       if (index === options.length - 1) return;
       haptics.select();
@@ -197,7 +197,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
                 onChange={(date) => update({ time: format(date, 'HH:mm') })}
               />
               <Hairline />
-              <Row form title="Add to" value={group ? nutritionGroupLabel(group, groups) : 'Unassigned'} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
+              <Row form title="Add to" value={group ? nutritionGroupTitle(group, groups) : NO_MEAL} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
               <Hairline />
               <ToggleRow label="Save as reusable meal" value={draft.saveAsReusableMeal} disabled={frozen} onChange={(saveAsReusableMeal) => update({ saveAsReusableMeal })} />
             </Label>
@@ -276,6 +276,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
           </BlancText>
         </View>
         <TextInput
+          selectionColor={c.ink}
           ref={field}
           value={value}
           editable={!disabled}

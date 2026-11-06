@@ -145,16 +145,24 @@ export function weightChartTicks(startDay: string, slots: number): WeightChartTi
  * a loss, with its sign and no judgement: whether it is good depends on the goal.
  */
 export function weightChangeLabel(series: WeightTrendPoint[], unit: WeightUnit): string | null {
-  if (series.length < 2) return null;
-  const first = series[0];
-  const last = series[series.length - 1];
-  const from = day(first.date);
-  // "Apr 10" stays together when the line wraps at the largest text sizes.
-  const since = format(from, from.getFullYear() === day(last.date).getFullYear() ? 'MMM d' : 'MMM d, yyyy').replace(' ', '\u00a0');
-  const change = kgToUnit(last.ewmaKg - first.ewmaKg, unit);
+  const since = weightSinceLabel(series);
+  if (!since) return null;
+  const change = kgToUnit(series[series.length - 1].ewmaKg - series[0].ewmaKg, unit);
   const shown = Math.abs(change).toFixed(1);
-  if (Number(shown) === 0) return `No change since ${since}`;
-  return `${change > 0 ? '+' : '−'}${shown} ${unit} since ${since}`;
+  if (Number(shown) === 0) return `No change ${since}`;
+  return `${change > 0 ? '+' : '−'}${shown} ${unit} ${since}`;
+}
+
+/**
+ * Where the days shown start, as the change names them: "since Aug 7"
+ * ("since Mar 2, 2025" from another year). Null with fewer than two days.
+ */
+export function weightSinceLabel(series: WeightTrendPoint[]): string | null {
+  if (series.length < 2) return null;
+  const from = day(series[0].date);
+  const to = day(series[series.length - 1].date);
+  // "Apr 10" stays together when the line wraps at the largest text sizes.
+  return `since ${format(from, from.getFullYear() === to.getFullYear() ? 'MMM d' : 'MMM d, yyyy').replace(' ', '\u00a0')}`;
 }
 
 /** Under two weeks the change says enough: a weekly rate from a few days would be mostly noise. */

@@ -325,6 +325,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
           {describeOpen ? (
             <View style={{ paddingVertical: 16, paddingHorizontal: 18, gap: 12 }}>
               <TextInput
+                selectionColor={c.ink}
                 value={description}
                 onChangeText={(text) => setDescription(text.slice(0, DESCRIBE_LIMIT))}
                 placeholder="e.g. Chipotle chicken bowl with white rice, black beans and guacamole"
@@ -453,6 +454,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
               <BlancText variant="body">Servings</BlancText>
             </View>
             <TextInput
+              selectionColor={c.ink}
               value={draft.servings}
               onChangeText={(text) => setDraft((current) => ({ ...current, servings: text }))}
               keyboardType="decimal-pad"

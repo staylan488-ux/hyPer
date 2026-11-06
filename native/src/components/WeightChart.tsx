@@ -4,17 +4,23 @@ import { useWindowDimensions, View, type AccessibilityActionEvent } from 'react-
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Line, Path } from 'react-native-svg';
 
-import { indexAtX, linearScale, monotonePath, paddedDomain, xAtIndex } from '@/lib/chartGeometry';
+import { indexAtX, linearScale, monotonePath, xAtIndex } from '@/lib/chartGeometry';
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import { weightChartTicks, type WeightChartPoint, type WeightChartWindow } from '@/lib/weightHistory';
 import type { WeightTrendPoint } from '@/lib/weightTrend';
-import { speak, spokenUnit, useIncreaseContrast, useLargeText } from '~/lib/accessibility';
+import { speak, spokenUnit, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
+import { sparklineDomain, weightScale } from '~/lib/weightChartScale';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 
+// The full chart's top scale line sits this far down, so its label draws whole.
 const PAD_Y = 8;
+// The sparkline's room above and below: its end dot's radius and a little more.
+const SPARK_PAD_Y = 4;
+// The weigh-in dots' largest radius; the lowest one keeps a little more than this above the axis.
+const DOT_RADIUS = 2;
 // The full chart's days start and end this far in, so the first and last
 // day's dots (and the chosen day's ring) draw whole: iOS clips the drawing
 // to its frame.
@@ -26,17 +32,23 @@ const AXIS_GAP = 4;
 const AXIS_MAX_SCALE = 1.3;
 // About how wide a footnote character draws, to keep labels from running together.
 const AXIS_CHAR = 7.2;
+// The weight scale on the right: its column, and the room between it and the line.
+const SCALE_COLUMN = 34;
+const SCALE_GAP = 8;
 
 /**
- * The smoothed body-weight line with the day's weigh-ins as dots (a mis-read
- * hollow). The full chart reads any day: tap it (tap that day again to let
+ * The smoothed body-weight line in ink with the day's weigh-ins as dots in
+ * `mark` at full strength (a mis-read hollow, its ring the same tone): 3:1 or
+ * more on the card in every palette, the line leading by its weight. The full chart reads any day: tap it (tap that day again to let
  * go), or hold and slide; VoiceOver swipes up and down through the days. The
  * day read is the chart's value, which VoiceOver speaks as it changes, so the
  * readout line above is hidden from it. Given a `calendar` (Body weight's
  * ranges), the days sit on a calendar axis with dates under it, so the line
  * starts where the weigh-ins do and stops at the last one. The compact one is
- * a quiet sparkline: the line alone, scaled to the line, so a slow trend
- * still shows, ending on a dot at the latest trend.
+ * a quiet sparkline: the line alone, scaled tightly to the line, so a few
+ * weeks' trend shows its shape, ending on a dot at the latest trend. The
+ * full chart has a quiet weight scale on the right, round weights that
+ * enclose every dot with the lowest as the axis, and a key under the dates.
  */
 export function WeightChart({
   points,
@@ -64,8 +76,6 @@ export function WeightChart({
   const c = useBlanc();
   const large = useLargeText();
   const { fontScale } = useWindowDimensions();
-  // Increase Contrast draws the weigh-in dots at full strength.
-  const contrast = useIncreaseContrast();
   const [width, setWidth] = useState(0);
   // The day read, by date, for the days it was read in: another range starts from its summary.
   const view = calendar ? `${calendar.startDay}/${calendar.slots}` : 'last';
@@ -84,45 +94,57 @@ export function WeightChart({
   }, [points, days, calendar]);
   const ticks = useMemo(() => (calendar && !compact ? weightChartTicks(calendar.startDay, calendar.slots) : []), [calendar, compact]);
 
-  const padX = compact ? 0 : PAD_X;
-  const plotWidth = Math.max(1, width - 2 * padX);
+  // The sparkline keeps room for its end dot, so the dot is never cut in half.
+  const padX = compact ? 4 : PAD_X;
+  // The full chart keeps a column on the right for its scale.
+  const plotRight = compact ? width : width - SCALE_COLUMN - SCALE_GAP;
+  const plotWidth = Math.max(1, plotRight - 2 * padX);
   const geometry = useMemo(() => {
     if (series.length === 0 || width <= 0) return null;
     const toUnit = (kg: number) => kgToUnit(kg, unit);
     const values = series.flatMap((point) => [
       toUnit(point.ewmaKg),
-      ...(!compact && point.observedKg != null ? [toUnit(point.observedKg)] : []),
+      // The sparkline holds its weigh-ins too, so they sit inside it.
+      ...(point.observedKg != null && !(compact && point.isOutlier) ? [toUnit(point.observedKg)] : []),
     ]);
     // At least 2 lb (1 kg) top to bottom, half that for the sparkline.
     const minSpan = (unit === 'lb' ? 2 : 1) / (compact ? 2 : 1);
-    const y = linearScale(paddedDomain(values, 0.14, minSpan), [height - PAD_Y, PAD_Y]);
+    // The full chart's lowest scale line is its axis, on the bottom edge.
+    const bottom = height - 0.5;
+    const scale = compact ? null : weightScale(values, { minSpan, plotHeight: bottom - PAD_Y, clearance: DOT_RADIUS + 1.5 });
+    const domain = scale ? scale.domain : sparklineDomain(values, minSpan);
+    const y = linearScale(domain, compact ? [height - SPARK_PAD_Y, SPARK_PAD_Y] : [bottom, PAD_Y]);
     const x = (slot: number) => padX + xAtIndex(slot, plotWidth, slots, 'point');
     // Dots shrink as the days crowd together, so a year reads as a band around the line.
-    const radius = Math.max(1.25, Math.min(2.5, (plotWidth / Math.max(1, slots)) * 0.9));
+    const radius = Math.max(1.25, Math.min(DOT_RADIUS, (plotWidth / Math.max(1, slots)) * 0.9));
     const line = series.map((point) => ({ x: x(point.slot), y: y(toUnit(point.ewmaKg)) }));
-    const dots = compact
-      ? []
-      : series.flatMap((point, index) =>
-          point.observedKg == null ? [] : [{ index, x: line[index].x, y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
-        );
+    // The sparkline shows its weigh-ins behind the trend (mis-reads left out), as the full chart does.
+    const dots = series.flatMap((point, index) =>
+      point.observedKg == null || (compact && point.isOutlier) ? [] : [{ index, x: line[index].x, y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
+    );
     const axis = ticks.map((tick) => ({ ...tick, x: x(tick.slot) }));
-    return { line, path: monotonePath(line), dots, radius, axis };
+    const grid = scale ? scale.ticks.map((value, index) => ({ value, y: y(value), axis: index === 0, label: value.toFixed(scale.step < 1 ? 1 : 0) })) : [];
+    return { line, path: monotonePath(line), dots, radius, axis, grid };
   }, [series, slots, width, plotWidth, padX, height, unit, compact, ticks]);
 
-  // Labels that would run into the one before or past the edge are left out.
+  // A label may run on past the plot's edge into the gap before the weight
+  // scale, so the month a range runs into (Nov 1 on a 3M range ending Nov 6)
+  // is named; one that would reach the scale's column, under its lowest
+  // figure, or run into the label before it is left out.
   const axisLabels = useMemo(() => {
     if (!geometry) return [];
     const char = AXIS_CHAR * Math.min(fontScale, AXIS_MAX_SCALE);
+    const room = plotRight + SCALE_GAP;
     const shown: Array<{ slot: number; label: string; x: number }> = [];
     let end = -Infinity;
     for (const tick of geometry.axis) {
       const right = tick.x + AXIS_GAP + tick.label.length * char;
-      if (tick.x < end + 8 || right > width) continue;
+      if (tick.x < end + 8 || right > room) continue;
       shown.push(tick);
       end = right;
     }
     return shown;
-  }, [geometry, fontScale, width]);
+  }, [geometry, fontScale, plotRight]);
 
   // Without a calendar the chart needs two days; with one, an empty range still shows its days.
   if (series.length < (calendar && !compact ? 0 : 2)) return null;
@@ -218,17 +240,20 @@ export function WeightChart({
           })}>
       {width > 0 ? (
         <Svg width={width} height={height} style={{ overflow: 'visible' }}>
-          {compact ? null : <Line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke={c.hairline} strokeWidth={1} />}
+          {/* The lowest scale line is the axis the dates hang from; a range with no weigh-ins keeps the axis alone. */}
+          {!compact && !geometry ? <Line x1={0} x2={plotRight} y1={height - 0.5} y2={height - 0.5} stroke={c.hairline} strokeWidth={1} /> : null}
+          {geometry?.grid.map((tick) => (
+            <Line key={tick.value} x1={0} x2={plotRight} y1={tick.y} y2={tick.y} stroke={c.hairline} strokeWidth={tick.axis ? 1 : 0.5} />
+          ))}
           {geometry?.dots.map((dot) => (
             <Circle
               key={dot.index}
               cx={dot.x}
               cy={dot.y}
-              r={geometry.radius}
-              fill={dot.outlier ? 'none' : c.graphite}
-              stroke={dot.outlier ? c.graphite : 'none'}
+              r={compact ? 1.25 : geometry.radius}
+              fill={dot.outlier ? 'none' : c.mark}
+              stroke={dot.outlier ? c.mark : 'none'}
               strokeWidth={1}
-              opacity={contrast ? 1 : 0.6}
             />
           ))}
           {geometry && geometry.line.length > 1 ? (
@@ -245,6 +270,26 @@ export function WeightChart({
           ) : null}
         </Svg>
       ) : null}
+      {/* The weight scale, for sight; VoiceOver reads each day's weight instead. */}
+      {geometry?.grid.map((tick) => (
+        <View
+          key={tick.value}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={{ position: 'absolute', right: 0, width: SCALE_COLUMN, top: tick.y - 8, height: 16, justifyContent: 'center' }}>
+          <BlancText
+            variant="footnote"
+            tone="graphite"
+            size={12}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            maxFontSizeMultiplier={AXIS_MAX_SCALE}
+            style={{ textAlign: 'right', fontVariant: ['tabular-nums'] }}>
+            {tick.label}
+          </BlancText>
+        </View>
+      ))}
     </View>
   );
 
@@ -275,6 +320,34 @@ export function WeightChart({
           ))}
         </View>
       ) : null}
+      {compact ? null : (
+        // What the marks are, for sight; VoiceOver's day reading names the weigh-in and the trend.
+        <View
+          style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, rowGap: 4, marginTop: 8 }}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants">
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 14, height: 2, borderRadius: 1, backgroundColor: c.ink }} />
+            <BlancText variant="footnote" tone="graphite">
+              Trend
+            </BlancText>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ width: 2 * DOT_RADIUS, height: 2 * DOT_RADIUS, borderRadius: DOT_RADIUS, backgroundColor: c.mark }} />
+            <BlancText variant="footnote" tone="graphite">
+              Weigh-ins
+            </BlancText>
+          </View>
+          {series.some((point) => point.isOutlier) ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 2 * DOT_RADIUS + 1, height: 2 * DOT_RADIUS + 1, borderRadius: DOT_RADIUS + 0.5, borderWidth: 1, borderColor: c.mark }} />
+              <BlancText variant="footnote" tone="graphite">
+                Mis-read
+              </BlancText>
+            </View>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 }

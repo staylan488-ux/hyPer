@@ -100,7 +100,7 @@ async function renderFuel({ compile = false } = {}) {
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
     '~/lib/motion': {},
     '~/lib/you': { useYouMealsStore },
-    '~/theme/blanc': { useBlanc: () => ({}), space: { gutter: 20 } },
+    '~/theme/blanc': { useBlanc: () => ({}), space: { gutter: 20 }, figureLead: () => 0 },
   }, { compile }).default;
   root = createRoot(document.createElement('div'));
   const render = () => act(async () => { root!.render(createElement(Fuel)); });

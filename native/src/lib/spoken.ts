@@ -54,6 +54,8 @@ export function speak(text: string): string {
     .replace(/\u00a0/g, ' ')
     .replace(/\s*·\s*/g, ', ')
     .replace(/(\d)\s*[–—]\s*(\d)/g, '$1 to $2')
+    // Date ranges across months: "Oct 29–Nov 4".
+    .replace(/(\d)\s*[–—]\s*(?=(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b)/g, '$1 to ')
     .replace(/(\d) \/ (\d)/g, '$1 of $2')
     // Rates: "+0.42 lb/wk", "7:59 /mi".
     .replace(/ ?\/(wk|week)\b/g, ' a week')

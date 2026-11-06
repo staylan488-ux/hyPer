@@ -53,6 +53,8 @@ const hasProp = (tag: string, prop: string) => new RegExp(`\\s${prop}[=\\s/>]`).
 describe('VoiceOver words for Blanc shorthand', () => {
   it('reads middle dots as pauses, ranges as "to" and units as words', () => {
     expect(speak('Set 2 of 3 · 8–10 reps')).toBe('Set 2 of 3, 8 to 10 reps');
+    expect(speak('Oct 29–Nov 4 · 5 days logged')).toBe('Oct 29 to Nov 4, 5 days logged');
+    expect(speak('Nov 1–7')).toBe('Nov 1 to 7');
     expect(speak('Now · 3 × 8–12 · last 135 × 8')).toBe('Now, 3 × 8 to 12, last 135 × 8');
     expect(speak('135 lb × 8')).toBe('135 pounds × 8');
     expect(speak('1 lb')).toBe('1 pound');
@@ -197,6 +199,15 @@ describe('contrast', () => {
     }
   });
 
+  it('keeps marks to read (tally strokes to do, past bars, weigh-in dots) at 3:1 or more on chalk and labels', () => {
+    for (const name of ['light', 'dark', 'lightContrast', 'darkContrast']) {
+      const colours = palette(name);
+      for (const surface of ['ground', 'label']) {
+        expect(contrast(colours.mark, colours[surface]), `${name} mark on ${surface}`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
   it('keeps the chalk, the labels and the P as they are with Increase Contrast', () => {
     expect(palette('lightContrast').ground).toBe(palette('light').ground);
     expect(palette('lightContrast').label).toBe(palette('light').label);
@@ -249,6 +260,24 @@ describe('native accessibility', () => {
         return iconOnly && !named ? [`${name}:${text.slice(0, start).split('\n').length}`] : [];
       }),
     );
+    expect(wrong).toEqual([]);
+  });
+
+  it('plays one haptic per tap: no extra tap or select on controls that play their own', () => {
+    // Row, Capsule, GlassButton and Chip (unless haptic={false}) play a haptic themselves.
+    const own = ['Row', 'Capsule', 'GlassButton', 'Chip'].flatMap((name) => elements(name));
+    expect(own.length).toBeGreaterThan(40);
+    const wrong = own
+      .filter(({ tag }) => !/\shaptic=\{false\}/.test(tag))
+      .filter(({ tag }) => /onPress=\{[^]*?haptics\.(tap|select)\(/.test(tag))
+      .map(({ where }) => where);
+    expect(wrong).toEqual([]);
+  });
+
+  it("draws every text field's caret and selection in ink: Blanc has no blue", () => {
+    const fields = elements('TextInput');
+    expect(fields.length).toBeGreaterThan(15);
+    const wrong = fields.filter(({ tag }) => !/selectionColor=\{c\.ink\}/.test(tag) && !/\scaretHidden/.test(tag)).map(({ where }) => where);
     expect(wrong).toEqual([]);
   });
 

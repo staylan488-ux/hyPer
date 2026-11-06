@@ -1,6 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, View } from 'react-native';
+import { Alert, ScrollView, View } from 'react-native';
 
 import { parseRestInput } from '@/lib/restTimer';
 import { BlancText } from '~/components/BlancText';
@@ -23,10 +22,27 @@ import {
   useRestStore,
 } from '~/lib/rest';
 import { useNow, useSessionModel } from '~/lib/session';
-import { space, useBlanc } from '~/theme/blanc';
+import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
-/** The web app's presets; anything else is a custom length. */
-const PRESETS = [60, 120, 180, 300];
+/**
+ * The lengths offered on the track, the 90 s default among them; anything
+ * else is a custom length, chosen under Custom.
+ */
+const PRESETS = [60, 90, 120, 180, 300];
+
+/**
+ * Each choice on the track shares its width out, as a segmented control's do
+ * (a 44 pt target at the least): at the standard text size all six fit one
+ * line on the narrowest iPhone, 375 pt.
+ */
+const TRACK_CHIP = { flexGrow: 1, minWidth: 44, paddingHorizontal: 8 };
+
+/**
+ * The clear band above and below the track's fill: 34 pt chips on a 2 pt
+ * pad make a 38 pt fill, and 3 pt more each way makes the 44 pt a chip's
+ * hitSlop needs to reach inside the track's bounds.
+ */
+const TRACK_REACH = 3;
 
 /** Seconds left on the rest just after a button changed it. */
 function restLeftNow(): number {
@@ -56,9 +72,6 @@ export default function RestSheet() {
   // The movement's saved length; +30 s changes only this rest.
   const length = restSecondsFor(exerciseId, prefs, chosen);
   const custom = !PRESETS.includes(length);
-  // A custom length keeps its place while the sheet is open, so picking a preset never moves the chips.
-  const [kept, setKept] = useState<number | null>(() => (custom ? length : null));
-  const extra = custom ? length : kept;
 
   const choose = (seconds: number) => {
     haptics.select();
@@ -81,7 +94,6 @@ export default function RestSheet() {
               Alert.alert('Not a rest length', 'Use 0:05 to 60:00, like 1:30 or 4.');
               return;
             }
-            if (!PRESETS.includes(seconds)) setKept(seconds);
             choose(seconds);
           },
         },
@@ -92,8 +104,11 @@ export default function RestSheet() {
     );
   };
 
-  const figure = running || paused ? left : length;
-  const caption = running ? 'left' : paused ? 'paused' : 'Rest length';
+  // No rest under way: the time shown is the length, at rest. Paused keeps the countdown's digits, so Pause and Resume don't reflow it.
+  const idle = !running && !paused;
+  const figure = idle ? length : left;
+  // Stopped, the time is the length and needs no word; the line stays, so starting a rest doesn't resize the sheet.
+  const caption = running ? 'left' : paused ? 'paused' : null;
 
   // The buttons' results, for VoiceOver: the figure changes, or the buttons
   // change under its focus, without a word.
@@ -144,59 +159,85 @@ export default function RestSheet() {
         <View style={{ width: 44 }} />
       </View>
 
-      {/* The big time is the rest length: tap it to type another, like Custom. */}
-      <Pressable
-        onPress={chooseCustom}
-        style={({ pressed }) => ({ alignItems: 'center', marginTop: 18, opacity: pressed ? 0.5 : 1 })}
+      {/* The big time only reads: the length, or the rest left. The track below is the one way to change the length. */}
+      <View
         accessible
-        accessibilityRole="button"
-        accessibilityHint="Change the rest length"
+        accessibilityRole="text"
         accessibilityLabel={
           running
             ? `${spokenClock(figure)} of rest left`
             : paused
               ? `Rest paused, ${spokenClock(figure)} left`
               : `Rest length, ${spokenClock(figure)}`
-        }>
-        {/* Counts down like the Clock app's timer: each second rolls. */}
-        <RollingText variant="figure" size={84} tone={paused ? 'graphite' : 'ink'} style={{ letterSpacing: -2, textAlign: 'center' }}>
+        }
+        style={{ alignItems: 'center', marginTop: 18 }}>
+        {/* Counts down like the Clock app's timer: each second rolls, on tabular digits so they don't jitter. With
+            no rest under way the length rests in proportional digits, so its "1" leaves no gap ("1 :30"). */}
+        {/* Centred by its ink: a tabular "1" would otherwise sit the time off to the right. */}
+        <RollingText
+          variant="figure"
+          size={84}
+          tone={paused ? 'graphite' : 'ink'}
+          style={{ ...(idle ? restingFigure : null), letterSpacing: -2, textAlign: 'center', marginLeft: figureLead(formatClock(figure), 84, { tabular: !idle }) }}>
           {formatClock(figure)}
         </RollingText>
-        <BlancText variant="secondary" tone="graphite">
-          {caption}
+        <BlancText variant="secondary" tone="graphite" style={caption ? undefined : { opacity: 0 }}>
+          {caption ?? ' '}
         </BlancText>
-      </Pressable>
+      </View>
 
-      {/* Lengths in order: a custom one takes its place among the presets, and a tap on it types another.
-          At the accessibility text sizes the lengths wrap onto more lines. */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 22, paddingHorizontal: space.inset, ...(large ? { flexWrap: 'wrap' } : null) }}>
-        {(extra !== null ? [...PRESETS, extra].sort((a, b) => a - b) : PRESETS).map((seconds) =>
-          seconds === extra ? (
-            <Chip
-              key="custom"
-              label={formatClock(extra)}
-              accessibilityLabel={`Custom, ${spokenClock(extra)}`}
-              selected={length === extra}
-              tabular
-              haptic={false}
-              accessibilityHint={length === extra ? 'Type another length' : undefined}
-              style={{ minWidth: 58 }}
-              onPress={length === extra ? chooseCustom : () => choose(extra)}
-            />
-          ) : (
-            <Chip
-              key={seconds}
-              label={formatClock(seconds)}
-              accessibilityLabel={spokenClock(seconds)}
-              selected={length === seconds}
-              tabular
-              haptic={false}
-              style={{ minWidth: 58 }}
-              onPress={() => choose(seconds)}
-            />
-          ),
-        )}
-        {extra !== null ? null : <Chip label="Custom" tabular haptic={false} accessibilityHint="Type a rest length" style={{ minWidth: 58 }} onPress={chooseCustom} />}
+      {/* The lengths share one track, as a segmented control's choices do, so the chosen one reads at a glance;
+          Custom, last, types any other and reads as chosen while the length is none of the presets. The track
+          spans the sheet's inset like Start rest below, and wraps only when its lengths outgrow one line.
+          A chip's reach (its hitSlop) ends at the track's edge, so the track is a clear 44 pt band around the
+          fill it draws, and its margins take the band back out: it looks and sits as the 38 pt fill alone. */}
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 2,
+          marginTop: 22 - TRACK_REACH,
+          marginBottom: -TRACK_REACH,
+          marginHorizontal: space.inset,
+          paddingHorizontal: 2,
+          paddingVertical: 2 + TRACK_REACH,
+        }}>
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: TRACK_REACH,
+            bottom: TRACK_REACH,
+            left: 0,
+            right: 0,
+            borderRadius: 19,
+            borderCurve: 'continuous',
+            backgroundColor: c.fill,
+          }}
+        />
+        {PRESETS.map((seconds) => (
+          <Chip
+            key={seconds}
+            label={formatClock(seconds)}
+            accessibilityLabel={spokenClock(seconds)}
+            selected={length === seconds}
+            tabular
+            inTrack
+            haptic={false}
+            style={TRACK_CHIP}
+            onPress={() => choose(seconds)}
+          />
+        ))}
+        <Chip
+          label="Custom"
+          accessibilityLabel={custom ? `Custom, ${spokenClock(length)}` : 'Custom'}
+          accessibilityHint="Type a rest length"
+          selected={custom}
+          inTrack
+          haptic={false}
+          style={TRACK_CHIP}
+          onPress={chooseCustom}
+        />
       </View>
 
       {/* At the accessibility text sizes the buttons stack, each as wide as the sheet. */}
@@ -233,7 +274,8 @@ export default function RestSheet() {
       {content}
     </ScrollView>
   ) : (
-    <View onMagicTap={magicTap} style={{ backgroundColor: c.ground, paddingBottom: 36 }}>
+    // The floating sheet keeps its own inset from the screen's foot: the button needs only its side margin below it.
+    <View onMagicTap={magicTap} style={{ backgroundColor: c.ground, paddingBottom: 16 }}>
       {content}
     </View>
   );

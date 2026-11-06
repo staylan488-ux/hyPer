@@ -12,6 +12,12 @@ export type ChosenMeta = { source: 'barcode'; barcode: string; provider: Barcode
 
 export type QuickAddState = 'saving' | 'done' | 'error';
 
+/**
+ * A quick add not confirmed yet: its retry-safe id, and the time, meal and
+ * day groups it was first sent with, so a retry writes that same entry.
+ */
+export type PendingQuickAdd = { pending: PendingEntryId; when: When; groups: NutritionGroup[]; inFlight: boolean };
+
 export type LoggerContextValue = {
   /** Logging entries, or adding ingredients to a meal being built. */
   purpose: 'log' | 'ingredients';
@@ -37,10 +43,14 @@ export type LoggerContextValue = {
   beginRead: () => () => void;
   /** Holds the sheet open while a save runs; the returned cleanup releases only that claim, once. */
   beginSave: () => () => void;
-  /** List saves survive switching tabs or opening a food review. */
+  /**
+   * List saves survive switching tabs or opening a food review. Each is kept
+   * by its destination (day and meal) and food, so a food added to Breakfast
+   * can still be added to Lunch.
+   */
   quickAddStates: Record<string, QuickAddState>;
   setQuickAddStates: Dispatch<SetStateAction<Record<string, QuickAddState>>>;
-  pendingQuickAdds: Map<string, PendingEntryId>;
+  pendingQuickAdds: Map<string, PendingQuickAdd>;
 };
 
 export const LoggerContext = createContext<LoggerContextValue | null>(null);

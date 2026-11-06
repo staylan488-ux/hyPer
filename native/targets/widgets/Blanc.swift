@@ -18,17 +18,17 @@ struct Blanc {
     ink: Color(hex: 0x0B0B0B),
     graphite: Color(hex: 0x66665F),
     track: Color(hex: 0xDCDBD6),
-    live: Color(hex: 0xD23B2E),
+    live: Color(hex: 0xA8352A),
     brand: Color(hex: 0xA8352A)
   )
   static let dark = Blanc(
     ground: .black,
-    label: Color(hex: 0x141414),
+    label: Color(hex: 0x1C1C1B),
     ink: Color(hex: 0xF4F4F2),
     graphite: Color(hex: 0xA3A39C),
-    track: Color(hex: 0x2B2B29),
-    live: Color(hex: 0xFF5A4C),
-    brand: Color(hex: 0xE58477)
+    track: Color(hex: 0x363634),
+    live: Color(hex: 0xE0604F),
+    brand: Color(hex: 0xE0604F)
   )
 
   static func of(_ scheme: ColorScheme) -> Blanc { scheme == .dark ? dark : light }

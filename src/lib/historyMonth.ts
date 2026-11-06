@@ -2,7 +2,7 @@ import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from 'date-
 
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
-import { getWorkoutStartDate, getWorkoutStartDateKey, resolveEditedSetCompletedAt, resolveWorkoutTitle } from '@/lib/workoutSessions';
+import { getWorkoutStartDate, getWorkoutStartDateKey, resolveEditedSetCompletedAt, resolveWorkoutTitle, TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySession, ExerciseSubstitution, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
@@ -14,13 +14,16 @@ export interface HistoryWorkout extends Workout {
   day_label?: string | null;
 }
 
-/** A month grid starting on Sunday, padded with the neighbouring months' days. */
+/**
+ * A month grid starting on Monday (the training week's first day), padded
+ * with the neighbouring months' days.
+ */
 export function buildCalendarDays(baseDate: Date): Date[] {
   const monthStart = startOfMonth(baseDate);
-  const endDate = endOfWeek(endOfMonth(baseDate));
+  const endDate = endOfWeek(endOfMonth(baseDate), TRAINING_WEEK);
 
   const days: Date[] = [];
-  let day = startOfWeek(monthStart);
+  let day = startOfWeek(monthStart, TRAINING_WEEK);
   while (day <= endDate) {
     days.push(day);
     day = addDays(day, 1);

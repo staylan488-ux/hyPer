@@ -21,28 +21,37 @@ export const palettes = {
     upcoming: '#707069',
     hairline: 'rgba(0, 0, 0, 0.09)',
     track: '#DCDBD6',
+    /** Marks to read but not lead (tally strokes still to do, past bars, weigh-in dots): 3:1 or more on chalk and labels. */
+    mark: '#878680',
     fill: '#ECEBE6',
     pressed: '#E7E6E1',
     capsule: '#0B0B0B',
     onCapsule: '#FFFFFF',
-    live: '#D23B2E',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#0B0B0B',
+    // One red: the P's, also for live, over and errors.
+    live: '#A8352A',
     brand: '#A8352A',
   },
   dark: {
     ground: '#000000',
-    label: '#141414',
+    label: '#1C1C1B',
     labelEdge: 'rgba(255, 255, 255, 0.07)',
     ink: '#F4F4F2',
     graphite: '#A3A39C',
     upcoming: '#8C8C86',
     hairline: 'rgba(255, 255, 255, 0.11)',
-    track: '#2B2B29',
-    fill: '#1F1F1E',
-    pressed: '#232322',
-    capsule: '#F4F4F2',
+    track: '#363634',
+    mark: '#7A7A73',
+    fill: '#2C2C2A',
+    pressed: '#30302E',
+    // A touch below ink, so the main button isn't the brightest slab in a dim room.
+    capsule: '#E6E6E2',
     onCapsule: '#0B0B0B',
-    live: '#FF5A4C',
-    brand: '#E58477',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#A3A39C',
+    live: '#E0604F',
+    brand: '#E0604F',
   },
   // With Increase Contrast on (Settings, Accessibility, Display & Text Size),
   // as iOS's own colours do: the same chalk and labels, with darker (in dark,
@@ -58,28 +67,34 @@ export const palettes = {
     upcoming: '#57574F',
     hairline: 'rgba(0, 0, 0, 0.22)',
     track: '#BDBCB6',
+    mark: '#7A7973',
     fill: '#E3E2DC',
     pressed: '#D8D7D1',
     capsule: '#000000',
     onCapsule: '#FFFFFF',
-    live: '#B3281D',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#000000',
+    live: '#A8352A',
     brand: '#A8352A',
   },
   darkContrast: {
     ground: '#000000',
-    label: '#1A1A1A',
+    label: '#222221',
     labelEdge: 'rgba(255, 255, 255, 0.24)',
     ink: '#FFFFFF',
     graphite: '#C9C9C3',
     upcoming: '#B2B2AC',
     hairline: 'rgba(255, 255, 255, 0.28)',
     track: '#4D4D4A',
-    fill: '#2E2E2C',
-    pressed: '#383836',
+    mark: '#85857D',
+    fill: '#38383A',
+    pressed: '#424240',
     capsule: '#FFFFFF',
     onCapsule: '#000000',
-    live: '#FF5A4C',
-    brand: '#E58477',
+    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    switchOn: '#C9C9C3',
+    live: '#FF6F61',
+    brand: '#E0604F',
   },
 } as const;
 
@@ -139,14 +154,35 @@ export const type = {
 } satisfies Record<string, TextStyle>;
 
 export const space = {
-  /** Screen edge to text. */
-  gutter: 20,
+  /** Screen edge to text on the ground: the large title's edge, which the cards share. */
+  gutter: 16,
   /** Screen edge to a label card. */
   inset: 16,
   /** Between sections. */
-  section: 30,
+  section: 26,
 } as const;
 
 export const radius = {
   label: 10,
 } as const;
+
+/**
+ * How far to pull a big Thin figure left so its first digit's ink, not its
+ * box, sits on the text edge. A tabular "1" is centred in a wide advance
+ * (about an eighth of the size on either side); other digits carry a little
+ * side bearing too.
+ */
+export function figureLead(text: string, size: number, opts?: { tabular?: boolean }): number {
+  const first = text.trim().charAt(0);
+  if (!/[0-9]/.test(first)) return 0;
+  // Proportional digits (a hero that only rolls now and then) keep the "1" narrow, with a small bearing like the rest.
+  const tabular = opts?.tabular ?? true;
+  return -Math.round(size * (tabular && first === '1' ? 0.12 : 0.04));
+}
+
+/**
+ * Figures shown at rest rather than counting: proportional digits, so a "1"
+ * doesn't leave a gap before the next digit ("1 ,342"). Counting figures
+ * (clocks, fields being typed in) keep the figure role's tabular digits.
+ */
+export const restingFigure = { fontVariant: [] as TextStyle['fontVariant'] };

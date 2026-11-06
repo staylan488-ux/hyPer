@@ -18,7 +18,8 @@ import { dayKey, useFuelStore } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/** Monday first, as the training week and every calendar in the app. */
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 /**
  * The days of `month` with food logged: null when they could not be read,
@@ -73,7 +74,7 @@ const sameKcal = (next: Map<string, number> | null) => (shown: Map<string, numbe
   shown && next && shown.size === next.size && [...next].every(([key, kcal]) => shown.get(key) === kcal) ? shown : next;
 
 /**
- * Jump to a day: a Sunday-first month with a mark on days that have food (the
+ * Jump to a day: a Monday-first month with a mark on days that have food (the
  * week strip's: how far toward the target in the month Fuel holds, a dot in
  * another month, whose dates alone are read).
  */

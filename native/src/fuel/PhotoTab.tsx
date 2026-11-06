@@ -1,7 +1,5 @@
-import * as Device from 'expo-device';
 import { Image } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable, Image as RNImage, TextInput, View, type ActionSheetIOSOptions } from 'react-native';
@@ -47,9 +45,11 @@ import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { useLogger } from './context';
+import { CAMERA_OFF, choosePhotoFromLibrary, openFoodCamera, type PickedPhoto } from './foodCamera';
 import { WhenBlock } from './WhenBlock';
 
-export type PickedPhoto = { uri: string; width: number; height: number };
+export { CAMERA_OFF, CAMERA_UNAVAILABLE } from './foodCamera';
+export type { PickedPhoto } from './foodCamera';
 
 export type PhotoDraft = {
   photos: Partial<Record<PhotoAnalysisAngle, PickedPhoto>>;
@@ -73,19 +73,14 @@ export const emptyPhoto = (): PhotoDraft => ({
   summary: '',
 });
 
-/** Said when camera access is refused (both analysis tabs). */
-export const CAMERA_OFF = 'Camera access is off. Allow Camera for hyPer in Settings, then try again.';
-/** The simulator has no camera; UIKit would close the app rather than open one. */
-export const CAMERA_UNAVAILABLE = 'The camera isn’t available here.';
-
-// One system picker at a time: a second (Snap a meal while Add photo is open) would stack on the first.
+// One picker at a time: a second (Snap a meal while Add photo's camera is open) would stack on the first.
 let pickerUp = false;
-// Add photo's choices (or a photo's own menu) are up: a camera presented now would sit on them.
+// A photo's own menu is up: a camera presented now would sit on it.
 let choosingPhoto = false;
-/** The camera, the photo library, the camera prompt or Add photo's choices are on screen. */
+/** The camera screen (and the library it opens), the camera prompt or a photo's menu are on screen. */
 export const foodPickerUp = () => pickerUp || choosingPhoto;
 
-/** A photo's action sheet (Take photo, Choose from library, Remove photo); the callback runs for every answer, Cancel included. */
+/** A photo's action sheet (Replace photo, Remove photo); the callback runs for every answer, Cancel included. */
 export function showPhotoChoices(options: ActionSheetIOSOptions, onChoice: (index: number) => void): void {
   choosingPhoto = true;
   ActionSheetIOS.showActionSheetWithOptions(options, (index) => {
@@ -93,24 +88,22 @@ export function showPhotoChoices(options: ActionSheetIOSOptions, onChoice: (inde
     onChoice(index);
   });
 }
-/** A tab closed under its choices never hears back from them. */
+/** A tab closed under a photo's menu never hears back from it. */
 export const dropPhotoChoices = (): void => {
   choosingPhoto = false;
 };
 
-/** A photo from the camera (asking for access the first time) or the library. Null when cancelled or a picker is already up. */
+/**
+ * A photo from hyPer's camera screen, which opens at once with the photo
+ * library a tap away (bottom left), or straight from the library. Null when
+ * cancelled or a picker is already up; the camera screen closed while it could
+ * not be used (access off, no camera) throws why.
+ */
 export async function pickFoodPhoto(source: 'camera' | 'library'): Promise<PickedPhoto | null> {
   if (pickerUp) return null;
-  if (source === 'camera' && !Device.isDevice) throw new Error(CAMERA_UNAVAILABLE);
   pickerUp = true;
   try {
-    if (source === 'camera' && !(await ImagePicker.requestCameraPermissionsAsync()).granted) throw new Error(CAMERA_OFF);
-    const options = { mediaTypes: ['images'] as ImagePicker.MediaType[], quality: 1, exif: false };
-    const result = source === 'camera' ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
-    const asset = result.canceled ? null : result.assets[0];
-    if (!asset) return null;
-    if (asset.type && asset.type !== 'image') throw new Error('Please choose an image file.');
-    return { uri: asset.uri, width: asset.width, height: asset.height };
+    return await (source === 'camera' ? openFoodCamera() : choosePhotoFromLibrary());
   } finally {
     pickerUp = false;
   }
@@ -144,18 +137,20 @@ function readCombinePreference(): boolean {
 }
 
 /** Photo: one or two photos of the plate, analyzed by the food worker, then reviewed item by item. */
-export function PhotoTab({ draft, setDraft, cameraRequest = 0 }: {
+export function PhotoTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0 }: {
   draft: PhotoDraft;
   setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void;
   /** Snap a meal: each new value opens the camera, then analyzes the photo (log-food.tsx). */
   cameraRequest?: number;
+  /** Log food's Photo button: each new value opens the camera for the next empty view, with nothing analyzed until Analyze. */
+  addPhotoRequest?: number;
 }) {
   const logger = useLogger();
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysisGate] = useState(createRequestGate);
   useEffect(() => () => analysisGate.invalidate(), [analysisGate]);
-  // Closed under Add photo's choices: they never answer, so Snap a meal stops waiting for them.
+  // Closed under a photo's menu: it never answers, so Snap a meal stops waiting for it.
   useEffect(() => dropPhotoChoices, []);
   const { beginBusy } = logger;
   // Claims the sheet only while this tab's own lookup runs.
@@ -164,31 +159,45 @@ export function PhotoTab({ draft, setDraft, cameraRequest = 0 }: {
     return beginBusy();
   }, [analyzing, beginBusy]);
 
+  const takePhoto = async (angle: PhotoAnalysisAngle) => {
+    setError(null);
+    try {
+      const photo = await pickFoodPhoto('camera');
+      if (!photo) return;
+      haptics.select();
+      setDraft((current) => ({ ...current, photos: { ...current.photos, [angle]: photo } }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
+    }
+  };
+  // Log food's Photo button: the camera for the next empty view; the analysis waits for Analyze.
+  const seenAddPhoto = useRef(addPhotoRequest);
+  const addPhotoNow = useEffectEvent(() => {
+    const angle: PhotoAnalysisAngle | null = !draft.photos.top ? 'top' : !draft.photos.side ? 'side' : null;
+    if (!angle || analyzing || foodPickerUp() || !photoTakesPhoto(draft)) return;
+    void takePhoto(angle);
+  });
+  useEffect(() => {
+    if (addPhotoRequest === seenAddPhoto.current) return;
+    seenAddPhoto.current = addPhotoRequest;
+    addPhotoNow();
+  }, [addPhotoRequest]);
+  // An empty view opens the camera at once; a photo already there offers to replace or remove it.
   const pick = (angle: PhotoAnalysisAngle) => {
-    const options = ['Take photo', 'Choose from library', ...(draft.photos[angle] ? ['Remove photo'] : []), 'Cancel'];
-    showPhotoChoices(
-      { options, cancelButtonIndex: options.length - 1, destructiveButtonIndex: draft.photos[angle] ? 2 : undefined },
-      async (index) => {
-        if (index === options.length - 1) return;
-        setError(null);
-        if (index === 2) {
-          setDraft((current) => {
-            const photos = { ...current.photos };
-            delete photos[angle];
-            return { ...current, photos };
-          });
-          return;
-        }
-        try {
-          const photo = await pickFoodPhoto(index === 0 ? 'camera' : 'library');
-          if (!photo) return;
-          haptics.select();
-          setDraft((current) => ({ ...current, photos: { ...current.photos, [angle]: photo } }));
-        } catch (cause) {
-          setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
-        }
-      },
-    );
+    if (!draft.photos[angle]) {
+      void takePhoto(angle);
+      return;
+    }
+    showPhotoChoices({ options: ['Replace photo', 'Remove photo', 'Cancel'], cancelButtonIndex: 2, destructiveButtonIndex: 1 }, (index) => {
+      if (index === 0) void takePhoto(angle);
+      if (index !== 1) return;
+      setError(null);
+      setDraft((current) => {
+        const photos = { ...current.photos };
+        delete photos[angle];
+        return { ...current, photos };
+      });
+    });
   };
 
   const usePreviewPlate = () => {
@@ -323,7 +332,7 @@ function PhotoSlot({ title, detail, photo, busy, onPress }: { title: string; det
       accessibilityRole="button"
       accessibilityLabel={photo ? `${title}, meal photo added` : `Add ${title.toLowerCase()} photo`}
       // the quiet line under the title
-      accessibilityHint={photo ? 'Retakes or removes it' : detail}
+      accessibilityHint={photo ? 'Replaces or removes it' : detail}
       accessibilityState={{ disabled: busy, busy: Boolean(photo) && busy }}
       disabled={busy}
       onPress={() => {
@@ -343,7 +352,7 @@ function PhotoSlot({ title, detail, photo, busy, onPress }: { title: string; det
       <View style={{ flex: 1 }}>
         <BlancText variant="bodyStrong">{title}</BlancText>
         <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2 }}>
-          {photo ? 'Tap to retake or remove' : detail}
+          {photo ? 'Tap to replace or remove' : detail}
         </BlancText>
       </View>
     </Pressable>
@@ -487,6 +496,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
                   {/* At the accessibility sizes the name takes the whole line and the grams sit under it. */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
                     <TextInput
+                      selectionColor={c.ink}
                       value={item.name}
                       onChangeText={(name) => updateItem(item.id, { name, groundedFood: null, persistedFoodId: undefined })}
                       accessibilityLabel="Food"
@@ -635,6 +645,7 @@ function GramsInput({ grams, label, onChange }: { grams: number; label: string; 
   const { text, onChangeText } = useDecimalText(grams, (value) => onChange(Math.max(0, value)));
   return (
     <TextInput
+      selectionColor={c.ink}
       value={text}
       onChangeText={onChangeText}
       keyboardType="decimal-pad"
