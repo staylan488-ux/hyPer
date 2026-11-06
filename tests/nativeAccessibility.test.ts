@@ -252,6 +252,17 @@ describe('native accessibility', () => {
     expect(wrong).toEqual([]);
   });
 
+  it('plays one haptic per tap: no extra tap or select on controls that play their own', () => {
+    // Row, Capsule, GlassButton and Chip (unless haptic={false}) play a haptic themselves.
+    const own = ['Row', 'Capsule', 'GlassButton', 'Chip'].flatMap((name) => elements(name));
+    expect(own.length).toBeGreaterThan(40);
+    const wrong = own
+      .filter(({ tag }) => !/\shaptic=\{false\}/.test(tag))
+      .filter(({ tag }) => /onPress=\{[^]*?haptics\.(tap|select)\(/.test(tag))
+      .map(({ where }) => where);
+    expect(wrong).toEqual([]);
+  });
+
   it('names or hides every image', () => {
     const images = elements('Image');
     // A SwiftUI Image (Expo UI) takes these as modifiers instead of props.

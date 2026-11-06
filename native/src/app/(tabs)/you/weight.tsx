@@ -212,14 +212,8 @@ export default function WeightScreen() {
                 footer={
                   // Until every weigh-in is read, there may be more than these.
                   !allRead || entries.length > RECENT ? (
-                    <Row
-                      title="All weigh-ins"
-                      chevron
-                      onPress={() => {
-                        haptics.tap();
-                        router.push('/you/weigh-ins');
-                      }}
-                    />
+                    // Row plays the tap's haptic itself.
+                    <Row title="All weigh-ins" chevron onPress={() => router.push('/you/weigh-ins')} />
                   ) : undefined
                 }
               />

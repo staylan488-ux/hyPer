@@ -28,8 +28,16 @@ const noop = () => {};
 // shrink to fit, and a box's height.
 const Text = ({ children, adjustsFontSizeToFit }: PropsWithChildren<{ adjustsFontSizeToFit?: boolean }>) =>
   createElement('span', adjustsFontSizeToFit ? { 'data-shrinks': 'true' } : null, children);
-const View = ({ children, style }: PropsWithChildren<{ style?: { height?: number | string } }>) =>
-  createElement('div', style?.height !== undefined ? { 'data-height': String(style.height) } : null, children);
+const View = ({ children, style }: PropsWithChildren<{ style?: { height?: number | string; bottom?: number | string; alignItems?: string } }>) =>
+  createElement(
+    'div',
+    {
+      ...(style?.height !== undefined ? { 'data-height': String(style.height) } : null),
+      ...(style?.bottom !== undefined ? { 'data-bottom': String(style.bottom) } : null),
+      ...(style?.alignItems !== undefined ? { 'data-align': style.alignItems } : null),
+    },
+    children,
+  );
 
 let pull: () => void;
 const fetchTrainingHours = vi.fn();
@@ -98,7 +106,7 @@ async function open() {
     '@/stores/appStore': { initialAppData, useAppStore: appStore },
     '@/types': types,
     '~/components/BlancText': { BlancText: Text },
-    '~/components/Capsule': { Capsule: Empty },
+    '~/components/Capsule': { Capsule: ({ title, onPress }: { title: string; onPress: () => void }) => createElement('button', { onClick: onPress }, title) },
     '~/components/Label': { Label: Wrap },
     '~/components/MuscleFigure': { MuscleFigure: Empty },
     '~/components/Row': { Hairline: Empty },
@@ -146,12 +154,21 @@ describe('Progress after a failed read', () => {
     await refresh();
     expect(shown()).toContain('1 h 30 min');
     expect(shown()).not.toContain('Week to date0 min');
+    // the chart stays, and says it is not fresh
+    expect(shown()).toContain('Couldn’t refresh. Pull down to try again.');
   });
 
-  it('draws no chart of empty weeks when the first read fails', async () => {
+  it('draws no chart of empty weeks when the first read fails, says so, and offers Retry', async () => {
     fetchTrainingHours.mockResolvedValueOnce(null);
     await open();
     expect(shown()).not.toContain('Week to date');
+    expect(shown()).toContain('Training time couldn’t load.');
+    const retry = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Retry');
+    expect(retry).toBeDefined();
+    await act(async () => { retry!.click(); });
+    await act(async () => { for (let tick = 0; tick < 10; tick += 1) await Promise.resolve(); });
+    expect(shown()).toContain('Week to date');
+    expect(shown()).not.toContain('Training time couldn’t load.');
   });
 
   it('never says nothing was trained when this week’s volume could not be read', async () => {
@@ -298,6 +315,21 @@ describe("Progress's scale and target figures", () => {
       expect(label?.dataset.shrinks, text).toBeUndefined();
       expect(Number(boxHeight(label)), text).toBeGreaterThan(0);
     }
+  });
+
+  it('keeps a target figure on its own line when the last days run past it, moving to the clear end', async () => {
+    // The last three days well past 2,600; the first days clear.
+    nutrition = lastWeek({ 0: 3400, 1: 3300, 2: 3200 }).map((day) => ({ ...day, protein: 0 }));
+    appStore.setState({ macroTarget: { calories: 2600, protein: 190 } });
+    await open();
+    const label = figure('2600 target');
+    expect(label).toBeDefined();
+    // the box that places it: at the target's own height, on the left end
+    let box = label?.parentElement;
+    while (box && box.dataset.bottom === undefined) box = box.parentElement;
+    const max = Math.max(1, 2600 * 1.3, 3400);
+    expect(box?.dataset.bottom).toBe(`${(2600 / max) * 100}%`);
+    expect(box?.dataset.align).toBe('flex-start');
   });
 
   it('names no target while none is set', async () => {

@@ -43,6 +43,8 @@ export default function ProgressScreen() {
   // means this account's week was read, by this screen or any other.
   const volumeRead = useAppStore((state) => state.weeklyVolume !== initialAppData.weeklyVolume);
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
+  // A read that fails says so: with nothing shown yet it offers Retry; over a chart already drawn, the chart stays and a line says it couldn't refresh.
+  const [hoursFailed, setHoursFailed] = useState(false);
   const [open, setOpen] = useState<MuscleGroup | null>(null);
   // Pull to refresh reads everything again; the nutrition block remounts to refetch.
   const [round, setRound] = useState(0);
@@ -53,9 +55,15 @@ export default function ProgressScreen() {
   const load = useCallback(async () => {
     await Promise.all([
       Promise.resolve(useAppStore.getState().calculateWeeklyVolume()).catch(() => {}),
-      fetchTrainingHours().then((points) => {
-        if (active.current && points) setHours(points);
-      }),
+      fetchTrainingHours()
+        .then((points) => {
+          if (!active.current) return;
+          if (points) setHours(points);
+          setHoursFailed(!points);
+        })
+        .catch(() => {
+          if (active.current) setHoursFailed(true);
+        }),
       useAppStore.getState().fetchMacroTarget(),
     ]);
   }, []);
@@ -67,6 +75,17 @@ export default function ProgressScreen() {
       active.current = false;
     };
   }, [load]);
+
+  // VoiceOver hears a failure it can't see happen.
+  useAnnounce(hoursFailed ? (hours ? 'Training time couldn’t refresh.' : 'Training time couldn’t load.') : null);
+
+  const retryHours = async () => {
+    setHoursFailed(false);
+    const points = await fetchTrainingHours().catch(() => null);
+    if (!active.current) return;
+    if (points) setHours(points);
+    setHoursFailed(!points);
+  };
 
   const refresh = async () => {
     setRefreshing(true);
@@ -146,7 +165,28 @@ export default function ProgressScreen() {
         </Section>
 
         <Section title="Training time" note="Last 8 weeks">
-          <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>{hours ? <HoursChart points={hours} /> : <View style={{ height: 150 }} />}</Label>
+          <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
+            {hours ? (
+              <>
+                <HoursChart points={hours} />
+                {hoursFailed ? (
+                  <BlancText variant="footnote" tone="graphite" style={{ marginTop: 10 }}>
+                    Couldn’t refresh. Pull down to try again.
+                  </BlancText>
+                ) : null}
+              </>
+            ) : hoursFailed ? (
+              // Not the blank space of a read still running: what happened, and a way to try again.
+              <View style={{ minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                <BlancText variant="secondary" tone="graphite">
+                  Training time couldn’t load.
+                </BlancText>
+                <Capsule title="Retry" variant="quiet" onPress={() => void retryHours()} />
+              </View>
+            ) : (
+              <View style={{ height: 150 }} />
+            )}
+          </Label>
         </Section>
 
         <NutritionSection key={round} />
@@ -407,7 +447,7 @@ const SCALE_BOX = 26;
  * stacked charts line up. `bottom` is its line; `above` lifts it to sit just
  * above `bottom` instead, where a bar would run into it on the line.
  */
-function ScaleLabel({ bottom, above = false, children }: { bottom: `${number}%`; above?: boolean; children: string }) {
+function ScaleLabel({ bottom, above = false, side = 'right', children }: { bottom: `${number}%`; above?: boolean; side?: 'right' | 'left'; children: string }) {
   const c = useBlanc();
   return (
     <View
@@ -418,12 +458,12 @@ function ScaleLabel({ bottom, above = false, children }: { bottom: `${number}%`;
         right: 0,
         bottom,
         height: SCALE_BOX,
-        alignItems: 'flex-end',
+        alignItems: side === 'right' ? 'flex-end' : 'flex-start',
         // Centred on the line, or resting just above it.
         ...(above ? { marginBottom: 3, justifyContent: 'flex-end' } : { marginBottom: -SCALE_BOX / 2, justifyContent: 'center' }),
       }}>
       {/* Sized to the figure, never shrunk to fit. */}
-      <View style={{ paddingLeft: SCALE_GAP, backgroundColor: c.label }}>
+      <View style={side === 'right' ? { paddingLeft: SCALE_GAP, backgroundColor: c.label } : { paddingRight: SCALE_GAP, backgroundColor: c.label }}>
         <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={1.3} style={{ fontVariant: ['tabular-nums'] }}>
           {children}
         </BlancText>
@@ -683,12 +723,13 @@ function MacroBars({
   const singleWhen = singleDay ? (singleDay.date === todayKey ? 'Today' : format(parseISO(singleDay.date), 'MMM d')) : '';
   const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
-  // The target's figure sits on its line at the plot's right end, over the
-  // last few days' bars; where one reaches up under it, the figure sits just
-  // above the line and that bar instead, so a bar never runs into it.
-  const reach = Math.max(0, ...days.slice(-3).map((day) => day[macro]));
-  const lifted = (reach / max) * MACRO_PLOT > (target / max) * MACRO_PLOT - SCALE_CLEAR;
-  const targetLabelAt = lifted ? Math.max(target, reach) : target;
+  // The target's figure always sits on its own line, so it names the right
+  // height. It takes the line's right end unless the last few days' bars
+  // reach up under it there; then the left end, where the first days' bars
+  // are clear; with both ends crowded it stays at the right, drawn over the bar.
+  const crowds = (days3: DailyNutrition[]) =>
+    (Math.max(0, ...days3.map((day) => day[macro])) / max) * MACRO_PLOT > (target / max) * MACRO_PLOT - SCALE_CLEAR;
+  const labelSide: 'right' | 'left' = crowds(days.slice(-3)) && !crowds(days.slice(0, 3)) ? 'left' : 'right';
   return (
     <View
       accessible
@@ -756,7 +797,7 @@ function MacroBars({
         </View>
         {/* Over the bars, so a bar never covers it. */}
         {target > 0 ? (
-          <ScaleLabel bottom={`${(targetLabelAt / max) * 100}%`} above={lifted}>
+          <ScaleLabel bottom={`${(target / max) * 100}%`} side={labelSide}>
             {`${formatWhole(target)} target`}
           </ScaleLabel>
         ) : null}
