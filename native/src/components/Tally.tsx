@@ -15,7 +15,7 @@ type TallyProps = {
   height?: number;
   /** The small size for a list row: thin strokes, height 12, tight gaps. */
   compact?: boolean;
-  /** Draw the strokes in one by one as it appears, each group's diagonal after its fifth. */
+  /** Draw the strokes in one by one as it appears, each group's diagonal after its fifth, with one haptic as the last lands. */
   drawIn?: boolean;
   accessibilityLabel: string;
   style?: ViewStyle;
@@ -28,6 +28,19 @@ const GROUP = 5;
 /** Drawing in: wait for a full-screen modal to slide in, then one stroke every 45 ms. */
 const DRAW_START = 350;
 const DRAW_STEP = 45;
+/**
+ * However many sets, every stroke and diagonal starts drawing within this of
+ * the first, so a long session's reveal stays as quick as a short one's: its
+ * strokes come closer together instead (30 sets, about 23 ms apart).
+ */
+export const DRAW_SPAN = 700;
+/** About when the last stroke's spring lands after it starts: the reveal's one haptic plays then. */
+const DRAW_LAND = 120;
+
+/** The time between strokes drawing in, for a tally of `count` sets. */
+function drawStep(count: number): number {
+  return count > 0 ? Math.min(DRAW_STEP, DRAW_SPAN / count) : DRAW_STEP;
+}
 
 /**
  * How much taller a compact tally's next stroke stands, and so the room it
@@ -61,6 +74,22 @@ export function Tally({ marks, current, height: tall, compact, drawIn, accessibi
     if (index % GROUP === 0) groups.push([]);
     groups[groups.length - 1].push(index);
   });
+  const step = drawStep(marks.length);
+  const isClosed = (indexes: number[]) => indexes.length === GROUP && indexes.every((index) => marks[index]);
+  // The last mark to draw in: the final group's diagonal when it closes, else the final stroke.
+  const lastGroup = groups[groups.length - 1];
+  const lastMark = lastGroup && isClosed(lastGroup) ? marks.length : marks.length - 1;
+  const landed = DRAW_START + lastMark * step + DRAW_LAND;
+
+  // One haptic as the reveal completes, not a tick per group: a long session
+  // would otherwise buzz all the way through it. Drawn at once (Reduce
+  // Motion), there is no reveal to feel.
+  const count = marks.length;
+  useEffect(() => {
+    if (!draw || count === 0) return;
+    const timer = setTimeout(haptics.land, landed);
+    return () => clearTimeout(timer);
+  }, [draw, count, landed]);
 
   return (
     <View
@@ -72,23 +101,20 @@ export function Tally({ marks, current, height: tall, compact, drawIn, accessibi
         { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', columnGap: size.groupGap, rowGap: size.rowGap, minHeight: height + size.grow },
         style,
       ]}>
-      {groups.map((indexes, groupIndex) => {
-        const closed = indexes.length === GROUP && indexes.every((index) => marks[index]);
-        return (
-          // Each group keeps room for the taller next stroke, so wrapped lines never shift.
-          <View key={groupIndex} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: size.gap, minHeight: height + size.grow }}>
-            {indexes.map((index) => (
-              <Stroke key={index} logged={marks[index]} next={index === current} height={height} size={size} appear={draw ? DRAW_START + index * DRAW_STEP : null} />
-            ))}
-            <ClosingStroke
-              closed={closed}
-              height={height}
-              size={size}
-              appear={draw ? DRAW_START + (indexes[indexes.length - 1] + 1) * DRAW_STEP : null}
-            />
-          </View>
-        );
-      })}
+      {groups.map((indexes, groupIndex) => (
+        // Each group keeps room for the taller next stroke, so wrapped lines never shift.
+        <View key={groupIndex} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: size.gap, minHeight: height + size.grow }}>
+          {indexes.map((index) => (
+            <Stroke key={index} logged={marks[index]} next={index === current} height={height} size={size} appear={draw ? DRAW_START + index * step : null} />
+          ))}
+          <ClosingStroke
+            closed={isClosed(indexes)}
+            height={height}
+            size={size}
+            appear={draw ? DRAW_START + (indexes[indexes.length - 1] + 1) * step : null}
+          />
+        </View>
+      ))}
     </View>
   );
 }
@@ -125,19 +151,13 @@ function Stroke({ logged, next, height, size, appear }: { logged: boolean; next:
   );
 }
 
-/** The diagonal that closes a finished group of five; drawn in after `appear` ms, with a tick. */
+/** The diagonal that closes a finished group of five; drawn in after `appear` ms. */
 function ClosingStroke({ closed, height, size, appear }: { closed: boolean; height: number; size: Size; appear: number | null }) {
   const c = useBlanc();
   const drawn = useSharedValue(closed && appear === null ? 1 : 0);
 
   useEffect(() => {
-    if (appear === null || !closed) {
-      drawn.value = withSpring(closed ? 1 : 0, spring);
-      return;
-    }
-    drawn.value = withDelay(appear, withSpring(1, drawSpring));
-    const tick = setTimeout(haptics.select, appear);
-    return () => clearTimeout(tick);
+    drawn.value = appear === null || !closed ? withSpring(closed ? 1 : 0, spring) : withDelay(appear, withSpring(1, drawSpring));
   }, [closed, appear, drawn]);
 
   // Five strokes span 4 gaps plus five widths: about 34 pt, 23.5 compact.

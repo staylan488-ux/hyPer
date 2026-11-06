@@ -19,8 +19,10 @@ export type HeadingSpan = { top: number; bottom: number };
  * passed under. iOS 26's soft scroll edge leaves the page legible under the
  * bar, so a heading that only slid under would still read beneath a bar
  * showing the same words; it fades out instead, and the bar names it only at
- * 0. Measured spans, so a two-line name or a larger text size moves the point
- * with it. Not measured yet, it shows in full.
+ * 0. The span is the heading's whole block (on Train's set card the name,
+ * the set line and the note under it), so no line of it is left legible
+ * under the bar's title. Measured spans, so a two-line name, a note or a
+ * larger text size moves the point with it. Not measured yet, it shows in full.
  */
 export function headingShown(scrolled: number, heading: HeadingSpan | null): number {
   if (!heading) return 1;

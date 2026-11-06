@@ -94,6 +94,12 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draf
   };
 }
 
+/** A field's value isn't last time's figure (or the field is empty), so last time's caption under it says something new. */
+function differsFromLast(text: string, last: number): boolean {
+  const value = parseNumber(text);
+  return value === null || Math.abs(value - last) > 1e-6;
+}
+
 /** The set card's figures at their largest: the row keeps this height whatever size they step down to. */
 const FIGURE_SIZE = 72;
 
@@ -203,8 +209,14 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
-  const lastWeight = last && typeof last.weight === 'number' && last.weight > 0 ? formatLoad(last.weight) : null;
-  const lastReps = last && typeof last.reps === 'number' && Number.isFinite(last.reps) ? last.reps : null;
+  const lastLoad = last && typeof last.weight === 'number' && last.weight > 0 ? last.weight : null;
+  const lastRepCount = last && typeof last.reps === 'number' && Number.isFinite(last.reps) ? last.reps : null;
+  // Last time's figure shows under its field only while the field holds
+  // another value: "last 80" under an 80 only repeats the figure, "last 8"
+  // under a 9 says something. Hidden, it keeps its line, so nothing moves,
+  // and it comes back as soon as the field is edited away from last time's.
+  const lastWeight = lastLoad !== null && draft && differsFromLast(draft.weight, lastLoad) ? formatLoad(lastLoad) : null;
+  const lastReps = lastRepCount !== null && draft && differsFromLast(draft.reps, lastRepCount) ? lastRepCount : null;
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
   const cardLine = current
     ? [
@@ -335,28 +347,30 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const [titleIsMovement, setTitleIsMovement] = useState(false);
   const barTitle = titleIsMovement && current ? current.movement.name : dayName;
 
-  // Scrolled up, the bar names the movement being logged. The card's name
-  // fades as it crosses under the collapsed bar, and the bar takes it only
-  // once it is gone, so the name never reads twice (iOS 26's soft edge leaves
-  // the page legible under the bar). Where the name sits is measured on the
-  // page, so a two-line name, a wrapped tally above or a larger text size
-  // moves the point with it.
+  // Scrolled up, the bar names the movement being logged. The card's whole
+  // header block (its name, the set line and the note under them) fades as
+  // it crosses under the collapsed bar, and the bar takes the name only once
+  // all of it is gone, so no line of it reads under the bar's title (iOS 26's
+  // soft edge leaves the page legible under the bar). Where the block sits is
+  // measured on the page, so a two-line name, a note, a wrapped tally above
+  // or a larger text size moves the point with it.
   const page = useRef<ComponentRef<typeof View>>(null);
-  const nameRef = useRef<ComponentRef<typeof View>>(null);
-  const nameSpan = useRef<HeadingSpan | null>(null);
-  const nameShown = useSharedValue(1);
-  const nameStyle = useAnimatedStyle(() => ({ opacity: nameShown.get() }));
+  const headerRef = useRef<ComponentRef<typeof View>>(null);
+  const headerSpan = useRef<HeadingSpan | null>(null);
+  const headerShown = useSharedValue(1);
+  const headerStyle = useAnimatedStyle(() => ({ opacity: headerShown.get() }));
   const followScroll = (offsetY: number) => {
-    const shown = headingShown(scrolledFromRest(offsetY), nameSpan.current);
-    nameShown.set(shown);
-    const pastName = shown === 0;
-    if (pastName !== titleIsMovement) setTitleIsMovement(pastName);
+    const shown = headingShown(scrolledFromRest(offsetY), headerSpan.current);
+    headerShown.set(shown);
+    const pastHeader = shown === 0;
+    if (pastHeader !== titleIsMovement) setTitleIsMovement(pastHeader);
   };
-  // Again whenever the name or the card moves: a new movement, a longer name, the tally above wrapping.
-  const measureName = () => {
-    if (!nameRef.current || !page.current) return;
-    nameRef.current.measureLayout(page.current, (_x, y, _width, height) => {
-      nameSpan.current = { top: y, bottom: y + height };
+  // Again whenever the block or the card moves or resizes: a new movement, a
+  // longer name, a note arriving or giving way to "Beat last time", the tally above wrapping.
+  const measureHeader = () => {
+    if (!headerRef.current || !page.current) return;
+    headerRef.current.measureLayout(page.current, (_x, y, _width, height) => {
+      headerSpan.current = { top: y, bottom: y + height };
       followScroll(scrollOffset.current);
     });
   };
@@ -554,12 +568,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         actions={actions}
       />
     );
-    return swipe.length > 0 ? (
+    // Always inside its SwipeRow (swipe off when it has no actions), so logging a
+    // movement's last set doesn't remount the row and snap its tally.
+    return (
       <SwipeRow name={movement.name} actions={swipe}>
         <View style={{ backgroundColor: c.label }}>{row}</View>
       </SwipeRow>
-    ) : (
-      row
     );
   };
   const addMovement = () => router.push({ pathname: '/swap', params: { mode: 'add' } });
@@ -655,10 +669,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         </View>
 
         {current && draft ? (
-          <View ref={cardRef} collapsable={false} onLayout={measureName}>
+          <View ref={cardRef} collapsable={false} onLayout={measureHeader}>
           <Label style={{ marginTop: 14, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
             {/* Keyed by movement so a switch fades the new movement in instead of jumping. */}
             <Animated.View key={current.movement.exerciseId} entering={FadeIn.duration(220)}>
+            {/* The header block fades as it passes under the collapsed bar, which then names the movement. */}
+            <Animated.View style={headerStyle}>
+            <View ref={headerRef} collapsable={false} onLayout={measureHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
               {/* The name and its line open the movement's sets, note and swap, like ⋯. */}
               <Pressable
@@ -674,14 +691,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   openMovement(current.movement.exerciseId);
                 }}
                 style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.55 : 1 })}>
-                {/* Fades as it passes under the collapsed bar, which then names the movement. */}
-                <Animated.View style={nameStyle}>
-                  <View ref={nameRef} collapsable={false} onLayout={measureName}>
-                    <BlancText variant="title" numberOfLines={large ? undefined : 2}>
-                      {current.movement.name}
-                    </BlancText>
-                  </View>
-                </Animated.View>
+                <BlancText variant="title" numberOfLines={large ? undefined : 2}>
+                  {current.movement.name}
+                </BlancText>
                 {/* Where the set stands, then what it asks for: the rep target in ink, the one instruction on the card. */}
                 <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                   {cardLine}
@@ -706,8 +718,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.graphite} />
               </Pressable>
             </View>
+            {/* The card's notes are one quiet level with the set line: its size, in graphite. */}
             {current.movement.note ? (
-              <BlancText variant="footnote" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
+              <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
                 {current.movement.note}
               </BlancText>
             ) : null}
@@ -718,7 +731,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             ) : lastNote ? (
               <Animated.View key="note" entering={FadeIn.duration(220)} style={{ marginTop: 4 }}>
                 <BlancText
-                  variant="footnote"
+                  variant="secondary"
                   tone="graphite"
                   numberOfLines={large ? undefined : 2}
                   accessibilityLabel={`Last note: ${lastNote.note}`}>
@@ -726,6 +739,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 </BlancText>
               </Animated.View>
             ) : null}
+            </View>
+            </Animated.View>
 
             <FigureRow
               size={figure}
@@ -894,7 +909,7 @@ function Lead({ children }: { children?: ReactNode }) {
   return <View style={{ width: 16, alignItems: 'center' }}>{children}</View>;
 }
 
-/** A saved set beat last time: an up mark and the gain, in ink, for a moment. */
+/** A saved set beat last time: an up mark and the gain, in ink, for a moment; in the note's place, at its size. */
 function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
   const c = useBlanc();
   const large = useLargeText();
@@ -903,8 +918,8 @@ function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
       entering={FadeIn.duration(180)}
       exiting={FadeOut.duration(220)}
       style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }, style]}>
-      <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} />
-      <BlancText variant="footnote" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1, fontVariant: ['tabular-nums'] }}>
+      <SymbolView name="arrow.up" size={12} weight="bold" tintColor={c.ink} />
+      <BlancText variant="secondary" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1, fontVariant: ['tabular-nums'] }}>
         Beat last time · {gain}
       </BlancText>
     </Animated.View>
@@ -969,8 +984,9 @@ function BigValue({
   value: string;
   unit: string;
   size: number;
-  /** Written small under the ruled line: last time's value, and for reps the target ("8–10 · last 9"). */
+  /** Written small under the ruled line: last time's value ("last 8"), only while the field holds another. Without it the line stays, empty. */
   caption?: string;
+  /** The caption in words; given and left out with it. */
   spokenCaption?: string;
   onChange: (text: string) => void;
   onFocus: () => void;

@@ -172,6 +172,9 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
       }}>
       <ReanimatedSwipeable
         ref={swipeable}
+        // A row whose actions run out (a movement's last set logged) stays mounted with the
+        // swipe turned off, so what it holds (a tally mid-spring) doesn't remount.
+        enabled={actions.length > 0}
         // The row follows the finger one to one, as iOS lists do.
         friction={1}
         rightThreshold={44}

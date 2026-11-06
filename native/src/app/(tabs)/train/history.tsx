@@ -499,9 +499,14 @@ function AddActivityButton({ day }: { day: string }) {
 }
 
 
+/** A strength session's sets fit as a tally beside its name: some sets, up to four groups of five, below the accessibility sizes. */
+const tallyFits = (sets: number, large: boolean) => !large && sets > 0 && sets <= TALLY_MAX_SETS;
+
 /**
  * A workout: tap to open; swipe to delete (asks first); hold for the menu.
- * The one running now reads "In progress" by a live dot and opens Train, with no Delete.
+ * Its sets are drawn as a tally on the title's line, the running one's with
+ * the next set's stroke in the live red. The one running now reads "In
+ * progress" by a live dot and opens Train, with no Delete.
  */
 function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionModel | null }) {
   const c = useBlanc();
@@ -509,19 +514,32 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   const title = historyWorkoutTitle(workout);
   if (live) {
     const train = () => router.dismissTo('/train');
-    // Led by its start time, as every other row of the day is.
-    const progress =
-      live.sets.length > 0 ? `${live.doneCount} of ${live.sets.length} sets` : live.movements.length === 0 ? 'No movements yet' : undefined;
-    const detail = [formatActivityStartTime(live.startedAt.toISOString()), progress].filter(Boolean).join(' · ') || undefined;
+    const time = formatActivityStartTime(live.startedAt.toISOString());
+    const count = live.sets.length > 0 ? `${live.doneCount} of ${live.sets.length} sets` : live.movements.length === 0 ? 'No movements yet' : null;
+    const tally = tallyFits(live.sets.length, large);
+    // Led by its start time, as every other row of the day is; the live dot
+    // and "In progress" keep the state in words beside the tally, and the
+    // count joins them where no tally is drawn.
+    const detail = [time, 'In progress', tally ? null : count].filter(Boolean).join(' · ');
     return (
       <Row
         title={title}
-        // At the accessibility sizes the state joins the detail line under the title, in words.
-        detail={large ? ['In progress', detail].filter(Boolean).join(' · ') : detail}
-        accessibilityLabel={speak([title, 'In progress', detail].filter(Boolean).join(', '))}
-        // As Today writes live: the dot before the state, on the right, so the
-        // title and its detail keep the card's text edge.
-        trailing={large ? undefined : <LiveState c={c} beside={Boolean(detail)} />}
+        detail={detail}
+        detailMark={<LiveDot c={c} />}
+        accessibilityLabel={speak([title, 'In progress', time, count].filter(Boolean).join(', '))}
+        trailing={
+          tally ? (
+            // The live session's own tally, as Train and Today draw it, on the title's line like a finished row's.
+            <View style={{ alignSelf: 'flex-start', marginTop: 1 }}>
+              <Tally
+                compact
+                marks={live.sets.map((set) => set.completed)}
+                current={live.current?.index ?? null}
+                accessibilityLabel={count ?? ''}
+              />
+            </View>
+          ) : undefined
+        }
         chevron
         onPress={train}
         menu={[{ title: 'Open', symbol: 'arrow.up.right.square', run: train }]}
@@ -533,7 +551,7 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
   const sets = progress.completed ? `${progress.totalSets} sets` : `${progress.completedSets} of ${progress.totalSets} sets`;
   // The sets drawn as a small tally on the title's line, where it fits beside
   // the name; otherwise (no sets, a long session, the accessibility sizes) in words.
-  const tally = !large && progress.totalSets > 0 && progress.totalSets <= TALLY_MAX_SETS;
+  const tally = tallyFits(progress.totalSets, large);
   const detail = tally ? duration ?? undefined : [duration, progress.totalSets > 0 ? sets : 'No sets'].filter(Boolean).join(' · ');
   const open = () => router.push({ pathname: '/train/past', params: { id: workout.id } });
   const remove = () => void confirmDeleteWorkout(title, workout.id, { onDeleted: () => announce(`${title} deleted`) });
@@ -572,16 +590,9 @@ function orderedMarks(workout: HistoryWorkout): boolean[] {
   return workout.sets.map((_, index) => index < done);
 }
 
-/** "● In progress" at a live row's right; beside a detail line it sits on the title's line, as a value does. */
-function LiveState({ c, beside }: { c: Palette; beside: boolean }) {
-  return (
-    <View style={[{ flexDirection: 'row', alignItems: 'center', gap: 7 }, beside ? { alignSelf: 'flex-start', marginTop: 2 } : null]}>
-      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
-      <BlancText variant="secondary" tone="graphite">
-        In progress
-      </BlancText>
-    </View>
-  );
+/** The live dot before a running workout's detail line ("● 12:23 AM · In progress"), as LiveClock writes live. */
+function LiveDot({ c }: { c: Palette }) {
+  return <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />;
 }
 
 /** "7:05 AM · 45 min · 3.10 mi"; Row speaks it in words. Strain and the rest are on the activity's own screen. */

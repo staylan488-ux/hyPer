@@ -48,6 +48,23 @@ describe('the card name under Train\'s collapsed bar', () => {
     expect(headingShown(236, stacked)).toBe(0);
   });
 
+  it('fades the card\'s whole header block, set line and note too, before the bar names the movement', () => {
+    // The name (30), the set line under it (2 + 20) and last time's note (4 + 20).
+    const block: Span = { top: 66, bottom: 142 };
+    expect(headingShown(block.top + LARGE_TITLE_FOLD, block)).toBe(1);
+    // Where the name alone had gone, the set line and the note still show
+    // under the bar, so the bar keeps the day's name a while longer.
+    expect(headingShown(oneLine.bottom + LARGE_TITLE_FOLD, block)).toBeGreaterThan(0);
+    expect(headingShown(block.bottom + LARGE_TITLE_FOLD - 1, block)).toBeGreaterThan(0);
+    expect(headingShown(block.bottom + LARGE_TITLE_FOLD, block)).toBe(0);
+    // At an accessibility size the block is taller and starts lower; the point moves with it.
+    const stacked: Span = { top: 112, bottom: 312 };
+    expect(headingShown(stacked.top + LARGE_TITLE_FOLD, stacked)).toBe(1);
+    expect(headingShown(block.bottom + LARGE_TITLE_FOLD, stacked)).toBeGreaterThan(0.5);
+    expect(headingShown(stacked.bottom + LARGE_TITLE_FOLD - 1, stacked)).toBeGreaterThan(0);
+    expect(headingShown(stacked.bottom + LARGE_TITLE_FOLD, stacked)).toBe(0);
+  });
+
   it('shows in full until the name has been measured', () => {
     expect(headingShown(0, null)).toBe(1);
     expect(headingShown(1000, null)).toBe(1);
