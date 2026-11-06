@@ -27,8 +27,13 @@ export const palettes = {
     pressed: '#E7E6E1',
     capsule: '#0B0B0B',
     onCapsule: '#FFFFFF',
-    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    /**
+     * A switch turned on: an ink capsule, never iOS's green (Blanc has no
+     * accent). In dark it turns over as the main button does, a light track
+     * with a dark knob, so on never reads as another grey beside off.
+     */
     switchOn: '#0B0B0B',
+    switchThumbOn: '#FFFFFF',
     // One red: the P's, also for live, over and errors.
     live: '#A8352A',
     brand: '#A8352A',
@@ -48,8 +53,13 @@ export const palettes = {
     // A touch below ink, so the main button isn't the brightest slab in a dim room.
     capsule: '#E6E6E2',
     onCapsule: '#0B0B0B',
-    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
-    switchOn: '#A3A39C',
+    /**
+     * A switch turned on: an ink capsule, never iOS's green (Blanc has no
+     * accent). In dark it turns over as the main button does, a light track
+     * with a dark knob, so on never reads as another grey beside off.
+     */
+    switchOn: '#E6E6E2',
+    switchThumbOn: '#0B0B0B',
     live: '#E0604F',
     brand: '#E0604F',
   },
@@ -72,8 +82,13 @@ export const palettes = {
     pressed: '#D8D7D1',
     capsule: '#000000',
     onCapsule: '#FFFFFF',
-    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
+    /**
+     * A switch turned on: an ink capsule, never iOS's green (Blanc has no
+     * accent). In dark it turns over as the main button does, a light track
+     * with a dark knob, so on never reads as another grey beside off.
+     */
     switchOn: '#000000',
+    switchThumbOn: '#FFFFFF',
     live: '#A8352A',
     brand: '#A8352A',
   },
@@ -91,8 +106,13 @@ export const palettes = {
     pressed: '#424240',
     capsule: '#FFFFFF',
     onCapsule: '#000000',
-    /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
-    switchOn: '#C9C9C3',
+    /**
+     * A switch turned on: an ink capsule, never iOS's green (Blanc has no
+     * accent). In dark it turns over as the main button does, a light track
+     * with a dark knob, so on never reads as another grey beside off.
+     */
+    switchOn: '#FFFFFF',
+    switchThumbOn: '#000000',
     live: '#FF6F61',
     brand: '#E0604F',
   },

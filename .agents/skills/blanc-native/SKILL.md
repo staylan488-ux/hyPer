@@ -150,7 +150,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   target reads "130 of 190 g"; in-content "more" is a bare graphite ellipsis;
   in-content adds read "+ Verb"; chart labels are the system font with tabular
   digits (Menlo only under Train's figures and in expanded Progress rows). Switches are ink
-  (`switchOn`), never iOS green. One-line rows are 52 pt in regular weight; a
+  (`switchOn`), never iOS green; in dark they turn over like the ink capsule
+  (light track, dark knob, `switchThumbOn`), so on never reads as grey. One-line rows are 52 pt in regular weight; a
   row with a detail line is 60 pt with a medium title and its value on the
   title's line. Sheets' round buttons (`GlassButton`) are a quiet fill in every
   sheet.

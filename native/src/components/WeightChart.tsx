@@ -124,7 +124,13 @@ export function WeightChart({
     );
     const axis = ticks.map((tick) => ({ ...tick, x: x(tick.slot) }));
     const grid = scale ? scale.ticks.map((value, index) => ({ value, y: y(value), axis: index === 0, label: value.toFixed(scale.step < 1 ? 1 : 0) })) : [];
-    return { line, path: monotonePath(line), dots, radius, axis, grid };
+    // A long break leaves the days without a line: it stops there and starts again.
+    const runs: Array<typeof line> = [];
+    series.forEach((point, index) => {
+      if (index === 0 || point.slot - series[index - 1].slot > 1) runs.push([]);
+      runs[runs.length - 1].push(line[index]);
+    });
+    return { line, path: runs.map(monotonePath).join(''), dots, radius, axis, grid };
   }, [series, slots, width, plotWidth, padX, height, unit, compact, ticks]);
 
   // A label may run on past the plot's edge into the gap before the weight
@@ -149,7 +155,6 @@ export function WeightChart({
   // Without a calendar the chart needs two days; with one, an empty range still shows its days.
   if (series.length < (calendar && !compact ? 0 : 2)) return null;
 
-  const first = series[0]?.slot ?? 0;
   const indexOfActive = active === null ? -1 : series.findIndex((point) => point.date === active);
   const choose = (index: number) =>
     setActive((current) => {
@@ -157,11 +162,11 @@ export function WeightChart({
       if (current !== date) haptics.select();
       return date;
     });
-  // The day under a finger, or the nearest one with the line, before its first day or after its last.
+  // The day under a finger, or the nearest one with the line: before its first day, after its last or in a break.
   const indexAt = (x: number) => {
     const slot = indexAtX(x - padX, plotWidth, slots, 'point');
     if (slot === null || series.length === 0) return null;
-    return Math.min(series.length - 1, Math.max(0, slot - first));
+    return nearestSlot(series, slot);
   };
   const select = (x: number) => {
     const index = indexAt(x);
@@ -350,4 +355,16 @@ export function WeightChart({
       )}
     </View>
   );
+}
+
+/** The index of the day nearest `slot` (the earlier on a tie); `series` is sorted by slot. */
+function nearestSlot(series: WeightChartPoint[], slot: number): number {
+  let lo = 0;
+  let hi = series.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (series[mid].slot < slot) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo > 0 && slot - series[lo - 1].slot <= series[lo].slot - slot ? lo - 1 : lo;
 }

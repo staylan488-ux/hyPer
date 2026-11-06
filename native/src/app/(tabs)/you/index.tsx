@@ -8,7 +8,7 @@ import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-nati
 import Animated from 'react-native-reanimated';
 
 import { formatWeight } from '@/lib/weightDisplayCore';
-import { DEFAULT_WEIGHT_RANGE, weightRange } from '@/lib/weightHistory';
+import { DEFAULT_WEIGHT_RANGE, weightLatestRunDays, weightRange } from '@/lib/weightHistory';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
@@ -153,12 +153,12 @@ function Initials({ text }: { text: string }) {
   );
 }
 
-/** Body weight's default range: the card says what its chart line says. */
-const CARD_RANGE_DAYS = weightRange(DEFAULT_WEIGHT_RANGE).days;
+/** The most the card looks back: Body weight's default range. */
+const CARD_RANGE_DAYS = weightRange(DEFAULT_WEIGHT_RANGE).days ?? 90;
 
 /**
- * The latest weigh-in, its weekly rate over Body weight's default range and
- * that range's line; Log adds one.
+ * The latest weigh-in, its weekly rate over the latest run of weigh-ins (at
+ * most Body weight's default range) and that run's line; Log adds one.
  */
 function WeightCard() {
   const c = useBlanc();
@@ -168,22 +168,28 @@ function WeightCard() {
   const unit = useWeightStore((state) => state.unit);
   const large = useLargeText();
   // The weigh-ins Body weight reads (every one once the full read lands), so
-  // the rate and its span match its chart line: "+0.3 lb/wk since Aug 8",
-  // from where the weigh-ins start when they don't go back that far.
+  // the rate and its span match its chart line: "+0.3 lb/wk since Aug 8".
+  // After a break of more than four weeks the card starts where the weigh-ins
+  // start again, so one weigh-in months before doesn't flatten the line.
   const everything = useAllWeighIns();
   const entries = everything ?? history;
   const { trend, line: trendLine } = useMemo(() => bodyWeightLine(entries), [entries]);
   const todayKey = useCurrentDayKey();
-  const { calendar, since, rate } = useMemo(() => weightRangeSummary(trendLine, CARD_RANGE_DAYS, todayKey, unit), [trendLine, todayKey, unit]);
+  const { calendar, change, since, rate } = useMemo(
+    () => weightRangeSummary(trendLine, weightLatestRunDays(trendLine, CARD_RANGE_DAYS, todayKey), todayKey, unit),
+    [trendLine, todayKey, unit],
+  );
   const latest = entries[0] ?? null;
   const latestDate = latest ? new Date(latest.measured_at) : null;
+  // Under two weeks there's no rate yet: the change says enough ("+0.8 lb since Oct 27").
   const line = rate && since
     ? `${rate} ${since}`
-    : latestDate
-      ? dayKey(latestDate) === todayKey
-        ? 'Today'
-        : format(latestDate, 'MMM d')
-      : null;
+    : change ??
+      (latestDate
+        ? dayKey(latestDate) === todayKey
+          ? 'Today'
+          : format(latestDate, 'MMM d')
+        : null);
 
   return (
     <Section title="Body weight" action={{ title: 'Log', symbol: 'plus', onPress: () => router.push('/log-weight') }}>
