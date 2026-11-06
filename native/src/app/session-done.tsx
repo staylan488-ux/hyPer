@@ -112,13 +112,9 @@ export default function SessionDone() {
             <BlancText variant="title" size={30} accessibilityRole="header" style={{ marginTop: summary.marks.length > 0 ? 22 : 0, lineHeight: 36 }}>
               {summary.dayName}
             </BlancText>
-            <BlancText
-              variant="meta"
-              size={13}
-              tone="graphite"
-              accessibilityLabel={format(summary.startedAt, 'EEEE, MMMM d, h:mm a')}
-              style={{ marginTop: 4 }}>
-              {format(summary.startedAt, 'EEE · MMM d · h:mm a')}
+            {/* System type, as every other screen writes a date; Menlo stays under Train's figures. */}
+            <BlancText variant="secondary" tone="graphite" accessibilityLabel={format(summary.startedAt, 'EEEE, MMMM d, h:mm a')} style={{ marginTop: 4 }}>
+              {format(summary.startedAt, 'EEEE, MMMM d · h:mm a')}
             </BlancText>
 
             <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 20 }} />
@@ -131,10 +127,10 @@ export default function SessionDone() {
                   accessibilityLabel={speak(`${label}, ${spoken ?? value}`)}
                   // At the accessibility text sizes the value moves under its label when both don't fit.
                   style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, ...(large ? { flexWrap: 'wrap', columnGap: 12 } : { gap: 12 }) }}>
-                  <BlancText variant="meta" size={14} tone="graphite">
+                  <BlancText variant="secondary" tone="graphite">
                     {label}
                   </BlancText>
-                  <BlancText variant="meta" size={14}>
+                  <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
                     {value}
                   </BlancText>
                 </View>
@@ -142,8 +138,7 @@ export default function SessionDone() {
               {summary.best ? (
                 // Read with the Best set row above.
                 <BlancText
-                  variant="meta"
-                  size={12}
+                  variant="footnote"
                   tone="graphite"
                   numberOfLines={large ? undefined : 1}
                   accessibilityElementsHidden
