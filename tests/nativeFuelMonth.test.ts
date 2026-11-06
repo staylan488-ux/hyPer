@@ -72,6 +72,19 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
 const FAILED = 'Couldn’t load this month. Tap to try again.';
 
 describe('Fuel month sheet', () => {
+  it('starts its weeks on Monday, as the training week and History do: M T W T F S S', async () => {
+    const sheet = await openMonthSheet([]);
+    // November 2026 begins on a Sunday, so the 1st ends the first row after six empty places.
+    const first = [...sheet.container.querySelectorAll('button')].find((button) => button.getAttribute('aria-label') === 'Sunday, November 1')!;
+    const cell = first.parentElement!;
+    const grid = cell.parentElement!;
+    expect([...grid.children].indexOf(cell)).toBe(6);
+    expect([...grid.children].slice(0, 6).every((place) => place.textContent === '')).toBe(true);
+    expect(grid.children[7].textContent).toBe('2');
+    const header = grid.previousElementSibling!;
+    expect([...header.children].map((letter) => letter.textContent)).toEqual(['M', 'T', 'W', 'T', 'F', 'S', 'S']);
+  });
+
   it('says another month could not load instead of showing it empty, and tries again on a tap', async () => {
     const sheet = await openMonthSheet([
       Promise.resolve({ data: null, error: new Error('offline') }),

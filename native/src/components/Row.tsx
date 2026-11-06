@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { speak, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -10,9 +10,23 @@ import { BlancText } from './BlancText';
 import { HoldMenu, hasHoldMenu, menuAccessibility, showActionSheet, type MenuAction } from './HoldMenu';
 import { closeOpenSwipeRow, useSwipeActions } from './SwipeRow';
 
+/**
+ * A detail line in parts, read as one line joined by " · " ("60 g · 8 g
+ * protein · 7:30 AM · Estimate"). On one line only the first part is cut
+ * short, so the rest (a time, a word that changes how the figure reads)
+ * always shows whole.
+ */
+export type DetailParts = readonly [shrinks: string, ...whole: string[]];
+
+/** A detail's words as one line, as it reads at the large sizes and to VoiceOver. */
+function detailLine(detail: string | DetailParts | undefined): string | undefined {
+  return typeof detail === 'string' || detail === undefined ? detail : detail.filter(Boolean).join(' · ');
+}
+
 type RowProps = {
   title: string;
-  detail?: string;
+  /** The quiet line under the title: words, or parts whose first is the one cut short. */
+  detail?: string | DetailParts;
   /** A small mark before the detail line, such as the live dot. */
   detailMark?: ReactNode;
   value?: string;
@@ -45,9 +59,12 @@ type RowProps = {
  * the accessibility text sizes its words wrap and the value moves under the
  * title, as in iOS's own lists, instead of being cut short.
  */
-export function Row({ title, detail, detailMark, value, leading, trailing, chevron, quiet, destructive, form, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
+export function Row({ title, detail: given, detailMark, value, leading, trailing, chevron, quiet, destructive, form, onPress, menu, onLongPress, disabled, actions: extra = [], accessibilityLabel }: RowProps) {
   const c = useBlanc();
   const large = useLargeText();
+  const detail = detailLine(given);
+  // In parts on one line, the first gives way; at the large sizes the line wraps whole.
+  const parts = typeof given !== 'string' && given && given.length > 1 && given[0] && !large ? given : null;
   // Spoken as its words only: icons such as the chevron add nothing, and
   // shorthand reads as words ("3 × 8–12 · last 135 lb" as "3 × 8 to 12,
   // last 135 pounds").
@@ -87,10 +104,16 @@ export function Row({ title, detail, detailMark, value, leading, trailing, chevr
         {detail && detailMark ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 1 }}>
             {detailMark}
-            <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ flexShrink: 1 }}>
-              {detail}
-            </BlancText>
+            {parts ? (
+              <PartsLine parts={parts} style={{ flex: 1 }} />
+            ) : (
+              <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ flexShrink: 1 }}>
+                {detail}
+              </BlancText>
+            )}
           </View>
+        ) : parts ? (
+          <PartsLine parts={parts} style={{ marginTop: 1 }} />
         ) : detail ? (
           <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
             {detail}
@@ -178,6 +201,27 @@ export function Row({ title, detail, detailMark, value, leading, trailing, chevr
     </HoldMenu>
   ) : (
     row
+  );
+}
+
+/**
+ * A detail in parts on one line: the first part (an amount) is cut short with
+ * an ellipsis while the rest stays whole beside it; only a rest wider than
+ * the whole line is cut, at its end. The row's label speaks the full line.
+ */
+function PartsLine({ parts: [shrinks, ...whole], style }: { parts: DetailParts; style?: ViewStyle }) {
+  const rest = whole.filter(Boolean).join(' · ');
+  return (
+    <View style={[{ flexDirection: 'row', minWidth: 0 }, style]}>
+      <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ flexShrink: 1 }}>
+        {shrinks}
+      </BlancText>
+      {rest ? (
+        <BlancText variant="secondary" tone="graphite" numberOfLines={1} style={{ flexShrink: 0, maxWidth: '100%' }}>
+          {` · ${rest}`}
+        </BlancText>
+      ) : null}
+    </View>
   );
 }
 

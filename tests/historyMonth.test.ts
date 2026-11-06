@@ -30,13 +30,25 @@ function set(exerciseId: string, setNumber: number, overrides: Partial<WorkoutSe
 }
 
 describe('buildCalendarDays', () => {
-  it('starts on Sunday and pads whole weeks', () => {
+  it('starts on Monday, as the training week does, and pads whole weeks', () => {
     const days = buildCalendarDays(new Date(2026, 9, 15));
-    expect(days[0].getDay()).toBe(0);
+    expect(days[0].getDay()).toBe(1);
+    expect(days[days.length - 1].getDay()).toBe(0);
     expect(days.length % 7).toBe(0);
-    // October 2026 starts on a Thursday and ends on a Saturday.
-    expect(days[0].getDate()).toBe(27);
-    expect(days[days.length - 1].getDate()).toBe(31);
+    // October 2026 starts on a Thursday and ends on a Saturday: Monday, September 28 to Sunday, November 1.
+    expect(days[0].getDate()).toBe(28);
+    expect(days[days.length - 1].getDate()).toBe(1);
+    expect(days).toHaveLength(35);
+  });
+
+  it('starts a month that begins on a Sunday with the six days before it', () => {
+    // November 2026 begins on a Sunday: its first week is Monday, October 26 to Sunday, November 1.
+    const days = buildCalendarDays(new Date(2026, 10, 15));
+    expect(days[0]).toEqual(new Date(2026, 9, 26));
+    expect(days[6]).toEqual(new Date(2026, 10, 1));
+    // It ends on Monday, November 30, padded through Sunday, December 6.
+    expect(days[days.length - 1]).toEqual(new Date(2026, 11, 6));
+    expect(days).toHaveLength(42);
   });
 });
 

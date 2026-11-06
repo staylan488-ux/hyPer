@@ -39,7 +39,8 @@ import { useSessionModel, type SessionModel } from '~/lib/session';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc, type Palette } from '~/theme/blanc';
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/** Monday first, as the training week and every calendar in the app. */
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 /** A week's row in the month grid: a 44-point target holding the 34-point day, 4 points of clearance and its dot. */
 const DAY_ROW = 44;
 /** A finished workout's tally fits beside its name up to four groups of five; longer ones read in words. */

@@ -186,3 +186,22 @@ describe('History\'s strength sessions', () => {
     expect(row('Lower A').querySelector('[data-tally]')).toBeNull();
   });
 });
+
+describe("History's month grid", () => {
+  // The month's cells, in grid order, for each of the three pages (last, this, next month).
+  const grids = () => [...host.querySelectorAll('div')].filter((node) => node.children.length >= 28 && node.children.length % 7 === 0);
+
+  it('starts its weeks on Monday, as the training week and Fuel do: M T W T F S S', async () => {
+    await open();
+    const header = [...host.querySelectorAll('div')].find(
+      (node) => node.children.length === 7 && [...node.children].every((child) => /^[A-Z]$/.test(child.textContent ?? '')),
+    );
+    expect([...header!.children].map((child) => child.textContent)).toEqual(['M', 'T', 'W', 'T', 'F', 'S', 'S']);
+    // November 2026 begins on a Sunday: six empty places, then the 1st ends the first row.
+    const november = [...grids()[1].children].map((cell) => cell.textContent);
+    expect(november.slice(0, 7)).toEqual(['', '', '', '', '', '', '1']);
+    expect(november[7]).toBe('2');
+    // December begins on a Tuesday, the second place.
+    expect([...grids()[2].children].map((cell) => cell.textContent).slice(0, 2)).toEqual(['', '1']);
+  });
+});

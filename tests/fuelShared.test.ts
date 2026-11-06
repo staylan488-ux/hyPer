@@ -32,7 +32,7 @@ import { lookupBarcode } from '@/lib/barcodeLookup';
 import { amountError, amountForUnit, formatMacroInput, servingsForAmount } from '@/lib/foodUnits';
 import { fuelDaySummary, fuelDayTitle, fuelTargets, overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { resolveManualFood } from '@/lib/manualFood';
-import { buildCalendarDays, weekDays } from '@/lib/nutritionCalendar';
+import { buildCalendarDays, getDateKey, weekDays } from '@/lib/nutritionCalendar';
 import { offersMoveToPreviousDay } from '@/lib/nutritionDay';
 import { servingLabel, sortLedgerEntries, sourceLabel } from '@/lib/nutritionLedger';
 import { buildPhotoHint, groundPhotoItems, logPhotoItems, photoItemStatus, photoItemTotals, photoLogsOneEntry, type PhotoReviewItem } from '@/lib/photoReview';
@@ -378,11 +378,20 @@ describe('day ledger and calendar', () => {
     expect(sortLedgerEntries(entries).map((entry) => entry.id)).toEqual(['a', 'c', 'b']);
   });
 
-  it('builds Sunday-first weeks and months', () => {
+  const dateKeys = (days: Date[]) => days.map(getDateKey);
+
+  it('builds Monday-first weeks and months, as the training week runs', () => {
     const days = buildCalendarDays(new Date(2026, 9, 15));
-    expect(days[0].getDay()).toBe(0);
+    expect(days[0].getDay()).toBe(1);
+    expect(days[days.length - 1].getDay()).toBe(0);
     expect(days.length % 7).toBe(0);
-    expect(weekDays(new Date(2026, 9, 27)).map((day) => day.getDate())).toEqual([25, 26, 27, 28, 29, 30, 31]);
+    // October 2026 starts on a Thursday and ends on a Saturday: Monday, September 28 to Sunday, November 1.
+    expect(dateKeys([days[0], days[days.length - 1]])).toEqual(['2026-09-28', '2026-11-01']);
+    // Tuesday, October 27 sits in Monday 26 to Sunday 1.
+    expect(weekDays(new Date(2026, 9, 27)).map((day) => day.getDate())).toEqual([26, 27, 28, 29, 30, 31, 1]);
+    // A Sunday ends its week rather than starting the next one.
+    expect(weekDays(new Date(2026, 10, 8)).map((day) => day.getDate())).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(weekDays(new Date(2026, 10, 9))[0].getDate()).toBe(9);
   });
 
   it('offers Move to yesterday only before 05:00 on today with a late entry', () => {
