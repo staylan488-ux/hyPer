@@ -234,7 +234,7 @@ describe("Progress's nutrition header", () => {
     await open();
     expect(shown()).toContain('Avg 2000 kcal');
     expect(shown()).toContain('Nutrition Last 7 days');
-    expect(shown()).not.toContain('logged');
+    expect(shown()).not.toMatch(/\d+ days? logged/);
     // Nothing is missing, so the key for the nothing-recorded mark is left out.
     expect(shown()).not.toContain('No entry');
   });

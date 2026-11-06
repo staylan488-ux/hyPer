@@ -534,7 +534,12 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         : null
     : !sameDay
       ? `Unassigned on ${format(when.date, 'MMM d')}`
-      : `${editing ? 'In' : 'Adds to'} ${destination ? nutritionGroupLabel(destination, groups) : 'Unassigned'}`;
+      : // Without a meal it says so in words: "Unassigned" is the list's name for the group, not a sentence.
+        destination
+        ? `${editing ? 'In' : 'Adds to'} ${nutritionGroupLabel(destination, groups)}`
+        : editing
+          ? 'In no meal'
+          : 'Adds to no meal';
   // The meal's running total, from the day Fuel holds: it rolls up as foods are logged into it.
   const dayLogs = useFuelStore((state) => (state.loadedMonth === selectedKey.slice(0, 7) ? state.logs : null));
   const groupIds = new Set(groups.map((group) => group.id));

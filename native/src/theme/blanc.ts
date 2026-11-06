@@ -45,7 +45,8 @@ export const palettes = {
     mark: '#7A7A73',
     fill: '#2C2C2A',
     pressed: '#30302E',
-    capsule: '#F4F4F2',
+    // A touch below ink, so the main button isn't the brightest slab in a dim room.
+    capsule: '#E6E6E2',
     onCapsule: '#0B0B0B',
     /** A switch turned on: ink, never iOS's green (Blanc has no accent). */
     switchOn: '#A3A39C',

@@ -11,6 +11,7 @@ import { useNow, useSessionModel } from '~/lib/session';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
+import { LiveClock } from './LiveClock';
 
 /**
  * The bar's height is iOS's own, so its text grows only a little with the
@@ -78,7 +79,7 @@ export function WorkoutAccessory() {
             style={{ flex: 1, minWidth: 0, fontVariant: ['tabular-nums'] }}>
             {resting || paused || !session.current ? status : `${session.current.movement.name} · Set ${session.current.setNumber}`}
           </BlancText>
-          {resting || paused ? null : <LiveClock seconds={Math.max(0, (now - session.startedAt.getTime()) / 1000)} />}
+          {resting || paused ? null : <LiveClock startedAt={session.startedAt} variant="footnote" tone="ink" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} />}
         </>
       ) : (
         <>
@@ -107,23 +108,10 @@ export function WorkoutAccessory() {
             <SymbolView name="timer" size={17} tintColor={c.ink} />
           ) : (
             // The workout's clock, where a media bar would put play: the bar opens the workout, it doesn't play anything.
-            <LiveClock seconds={Math.max(0, (now - session.startedAt.getTime()) / 1000)} />
+            <LiveClock startedAt={session.startedAt} variant="footnote" tone="ink" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} />
           )}
         </>
       )}
     </Pressable>
-  );
-}
-
-/** The live workout's clock behind the live dot, the same in the full bar and beside the shrunk tab bar. */
-function LiveClock({ seconds }: { seconds: number }) {
-  const c = useBlanc();
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
-      <BlancText variant="footnote" weight="600" maxFontSizeMultiplier={ACCESSORY_MAX_SCALE} style={{ fontVariant: ['tabular-nums'] }}>
-        {formatClock(seconds)}
-      </BlancText>
-    </View>
   );
 }

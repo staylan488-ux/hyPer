@@ -394,13 +394,13 @@ const SCALE_CLEAR = 12;
 
 /**
  * The scale figure's box, in points: taller than its line at the largest
- * size it grows to (Menlo 12's 16 pt line at 1.3×), so the figure always has
- * room. A box of no height made iOS shrink the text to fit it, to nothing.
+ * size it grows to (the footnote's 18 pt line at 1.3×), so the figure always
+ * has room. A box of no height made iOS shrink the text to fit it, to nothing.
  */
-const SCALE_BOX = 22;
+const SCALE_BOX = 26;
 
 /**
- * A chart's scale or target figure, in Menlo like Train's numeric details:
+ * A chart's scale or target figure, in the system font with lined-up digits as every chart label is:
  * at the right end of the line it names, centred on it as the body-weight
  * chart sets its scale. The card shows behind it, so the line stops just
  * short of the figure while every plot still runs the card's full width and
@@ -424,7 +424,7 @@ function ScaleLabel({ bottom, above = false, children }: { bottom: `${number}%`;
       }}>
       {/* Sized to the figure, never shrunk to fit. */}
       <View style={{ paddingLeft: SCALE_GAP, backgroundColor: c.label }}>
-        <BlancText variant="meta" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={1.3}>
+        <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={1.3} style={{ fontVariant: ['tabular-nums'] }}>
           {children}
         </BlancText>
       </View>
@@ -565,10 +565,10 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
         </ScaleLabel>
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, ...wrap }}>
-        <BlancText variant="meta" tone="graphite">
+        <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
           {points[0]?.label}
         </BlancText>
-        <BlancText variant="meta" tone="graphite" style={right}>
+        <BlancText variant="footnote" tone="graphite" style={[right, { fontVariant: ['tabular-nums'] }]}>
           {current?.label}
         </BlancText>
         {/*
@@ -582,7 +582,7 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
               <View key={point.weekStart} style={{ flex: 1 }}>
                 {index === middle ? (
                   <BlancText
-                    variant="meta"
+                    variant="footnote"
                     tone="graphite"
                     numberOfLines={1}
                     style={{ position: 'absolute', left: '50%', width: MIDDLE_TICK, marginLeft: -MIDDLE_TICK / 2, textAlign: 'center' }}>
@@ -594,7 +594,7 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
           </View>
         ) : null}
       </View>
-      {points.some((point) => point.totalMinutes <= 0) ? <NothingKey>No training</NothingKey> : null}
+      {points.some((point) => point.totalMinutes <= 0) ? <NothingKey>No training logged</NothingKey> : null}
     </View>
   );
 }
@@ -759,7 +759,7 @@ function MacroBars({
       </View>
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
         {days.map((day) => (
-          <BlancText key={day.date} variant="meta" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
+          <BlancText key={day.date} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
             {format(parseISO(day.date), 'EEEEE')}
           </BlancText>
         ))}

@@ -1,4 +1,4 @@
-import { Pressable, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, type ViewStyle } from 'react-native';
 
 import { useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -7,7 +7,7 @@ import { useBlanc } from '~/theme/blanc';
 import { BlancText } from './BlancText';
 
 /**
- * A choice capsule: an ink ring when selected, quiet fill otherwise. Choosing ticks
+ * A choice capsule: lifted on the fill when selected, as a segmented control's choice; quiet fill otherwise. Choosing ticks
  * (a value change); a hold can offer more, as a VoiceOver action too. Without
  * `selected` it is a quiet action pill (Add RPE, Skip) in the same metrics.
  */
@@ -62,14 +62,16 @@ export function Chip({ label, selected, onPress, onLongPress, tabular, haptic = 
           borderRadius: 17,
           alignItems: 'center',
           justifyContent: 'center',
-          // Chosen is an ink ring on the label colour, so a sheet's one filled shape stays its main button.
+          // Chosen reads as a segmented control's choice: the label colour lifted on the fill with a hairline edge,
+          // so a sheet's one filled shape stays its main button.
           backgroundColor: selected ? c.label : pressed ? c.pressed : c.fill,
-          borderWidth: 1.5,
-          borderColor: selected ? c.ink : 'transparent',
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: selected ? c.labelEdge : 'transparent',
+          ...(selected ? { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } } : null),
         },
         style,
       ]}>
-      <BlancText variant="footnote" weight="600" tone="ink" style={tabular ? { fontVariant: ['tabular-nums'] } : undefined}>
+      <BlancText variant="footnote" weight={selected ? '700' : '600'} tone="ink" style={tabular ? { fontVariant: ['tabular-nums'] } : undefined}>
         {label}
       </BlancText>
     </Pressable>

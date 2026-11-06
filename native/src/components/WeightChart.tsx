@@ -108,7 +108,8 @@ export function WeightChart({
     const toUnit = (kg: number) => kgToUnit(kg, unit);
     const values = series.flatMap((point) => [
       toUnit(point.ewmaKg),
-      ...(!compact && point.observedKg != null ? [toUnit(point.observedKg)] : []),
+      // The sparkline holds its weigh-ins too, so they sit inside it.
+      ...(point.observedKg != null && !(compact && point.isOutlier) ? [toUnit(point.observedKg)] : []),
     ]);
     // At least 2 lb (1 kg) top to bottom, half that for the sparkline.
     const minSpan = (unit === 'lb' ? 2 : 1) / (compact ? 2 : 1);
@@ -121,11 +122,10 @@ export function WeightChart({
     // Dots shrink as the days crowd together, so a year reads as a band around the line.
     const radius = Math.max(1.25, Math.min(DOT_RADIUS, (plotWidth / Math.max(1, slots)) * 0.9));
     const line = series.map((point) => ({ x: x(point.slot), y: y(toUnit(point.ewmaKg)) }));
-    const dots = compact
-      ? []
-      : series.flatMap((point, index) =>
-          point.observedKg == null ? [] : [{ index, x: line[index].x, y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
-        );
+    // The sparkline shows its weigh-ins faintly behind the trend (mis-reads left out), as the full chart does.
+    const dots = series.flatMap((point, index) =>
+      point.observedKg == null || (compact && point.isOutlier) ? [] : [{ index, x: line[index].x, y: y(toUnit(point.observedKg)), outlier: point.isOutlier }],
+    );
     const axis = ticks.map((tick) => ({ ...tick, x: x(tick.slot) }));
     const grid = scale ? scale.ticks.map((value, index) => ({ value, y: y(value), axis: index === 0, label: value.toFixed(scale.step < 1 ? 1 : 0) })) : [];
     return { line, path: monotonePath(line), dots, radius, axis, grid };
@@ -250,8 +250,8 @@ export function WeightChart({
               key={dot.index}
               cx={dot.x}
               cy={dot.y}
-              r={geometry.radius}
-              fill={dot.outlier ? 'none' : c.graphite}
+              r={compact ? 1.25 : geometry.radius}
+              fill={dot.outlier ? 'none' : compact ? c.mark : c.graphite}
               stroke={dot.outlier ? c.graphite : 'none'}
               strokeWidth={1}
               opacity={dotOpacity}

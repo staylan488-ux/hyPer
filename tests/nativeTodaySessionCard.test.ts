@@ -49,6 +49,7 @@ async function open() {
       Capsule: ({ title, onPress }: { title: string; onPress: () => void }) => createElement('button', { onClick: onPress }, title),
     },
     '~/components/Label': { Label: Wrap },
+    '~/components/LiveClock': { LiveClock: () => null },
     '~/components/PlanCard': { PlanCard: Empty },
     '~/components/RollingText': { RollingText: Wrap },
     '~/components/Tally': { Tally: Empty },

@@ -133,15 +133,15 @@ const food = (id: string, name: string, cal: number, p: number, c: number, f: nu
 
 export const previewFoods: Food[] = [
   food('f_serving_demo', 'Samosas (serving demo)', 250, 10, 30, 10, 5, 'pieces', 'custom'),
-  food('f_oats', 'Rolled Oats', 150, 5, 27, 3, 40, 'g'),
-  food('f_eggs', 'Whole Eggs', 156, 13, 1, 11, 2, 'large'),
-  food('f_chicken', 'Chicken Breast, grilled', 248, 47, 0, 5, 150, 'g'),
-  food('f_rice', 'White Rice, cooked', 260, 5, 57, 1, 200, 'g'),
-  food('f_yogurt', 'Greek Yogurt, nonfat', 100, 17, 6, 1, 170, 'g'),
+  food('f_oats', 'Rolled oats', 150, 5, 27, 3, 40, 'g'),
+  food('f_eggs', 'Whole eggs', 156, 13, 1, 11, 2, 'large'),
+  food('f_chicken', 'Chicken breast, grilled', 248, 47, 0, 5, 150, 'g'),
+  food('f_rice', 'White rice, cooked', 260, 5, 57, 1, 200, 'g'),
+  food('f_yogurt', 'Greek yogurt, nonfat', 100, 17, 6, 1, 170, 'g'),
   food('f_banana', 'Banana', 105, 1, 27, 0, 1, 'medium'),
-  food('f_whey', 'Whey Protein', 120, 24, 3, 2, 1, 'scoop'),
+  food('f_whey', 'Whey protein', 120, 24, 3, 2, 1, 'scoop'),
   food('f_almond', 'Almonds', 164, 6, 6, 14, 28, 'g'),
-  food('f_salmon', 'Salmon Fillet', 280, 39, 0, 13, 170, 'g', 'custom'),
+  food('f_salmon', 'Salmon fillet', 280, 39, 0, 13, 170, 'g', 'custom'),
 ];
 
 type LogSeed = [string, number, NonNullable<import('@/types').NutritionLog['meal_type']>, number, number];

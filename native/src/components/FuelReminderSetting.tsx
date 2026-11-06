@@ -22,7 +22,7 @@ const REMINDER_RANGE = { min: reminderTimeDate(REMINDER_EARLIEST), max: reminder
  * grows, so the cards below never cover Open Settings on their way down.
  */
 /** `rows`: the food settings that share its card (You's Targets, Saved meals, Food analysis), above the switch. */
-export function FuelReminderSetting({ rows }: { rows?: ReactNode } = {}) {
+export function FuelReminderSetting({ rows, top = space.section }: { rows?: ReactNode; top?: number } = {}) {
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const ready = useFuelReminderStore((state) => state.userId !== null && state.userId === userId);
   const settings = useFuelReminderStore((state) => state.settings);
@@ -33,7 +33,7 @@ export function FuelReminderSetting({ rows }: { rows?: ReactNode } = {}) {
   const time = useMemo(() => reminderTimeDate(settings.minutes), [settings.minutes]);
   return (
     // One group with the food settings above it, its note as the group's footer.
-    <Animated.View layout={rowLayout} style={{ marginTop: space.section }}>
+    <Animated.View layout={rowLayout} style={{ marginTop: top }}>
       <Label layout={rowLayout} style={{ overflow: 'hidden' }}>
         {rows ? (
           <>

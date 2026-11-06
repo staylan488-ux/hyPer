@@ -138,8 +138,13 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - The white [Label](../../../native/src/components/Label.tsx) is the one container
   (10 pt continuous corners). Sections are separated by space, rows by hairlines
   with an iOS press highlight. Ink capsules are primary actions; quiet fill
-  capsules are secondary. A chosen chip is an ink ring on the label colour, so
-  a sheet's one filled shape stays its main button. Switches are ink
+  capsules are secondary. A chosen chip is lifted on the fill like a segmented
+  control's choice (label colour, hairline edge), so a sheet's one filled shape
+  stays its main button. One way for each repeated idea: the live workout's
+  clock is `LiveClock` (live dot, ticking m:ss) everywhere; a value against its
+  target reads "130 of 190 g"; in-content "more" is a bare graphite ellipsis;
+  in-content adds read "+ Verb"; chart labels are the system font with tabular
+  digits (Menlo only under Train's figures and in expanded Progress rows). Switches are ink
   (`switchOn`), never iOS green. One-line rows are 52 pt in regular weight; a
   row with a detail line is 60 pt with a medium title and its value on the
   title's line. Sheets' round buttons (`GlassButton`) are a quiet fill in every

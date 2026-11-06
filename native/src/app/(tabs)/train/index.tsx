@@ -18,6 +18,7 @@ import { DragList } from '~/components/DragList';
 import { FigureInput } from '~/components/FigureInput';
 import { FormNote, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
+import { LiveClock } from '~/components/LiveClock';
 import { PlanCard } from '~/components/PlanCard';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -30,12 +31,12 @@ import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { useWorkoutBarShown } from '~/lib/workoutBar';
-import { formatLoad, formatMinutes, formatRepRange, formatSet, formatTarget } from '~/lib/format';
+import { formatLoad, formatRepRange, formatSet, formatTarget } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
 import { restSecondsFor, startRest } from '~/lib/rest';
-import { liveSessionModel, useFocusStore, useNow, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { liveSessionModel, useFocusStore, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
@@ -110,28 +111,6 @@ export default function TrainScreen() {
   const session = useSessionModel();
   if (!session) return <StartWorkout />;
   return <LiveWorkout session={session} />;
-}
-
-/** The session clock; ticks on its own so the screen around it stays still. */
-function Elapsed({ startedAt }: { startedAt: Date }) {
-  const c = useBlanc();
-  const now = useNow(1000);
-  const elapsed = Math.max(0, (now - startedAt.getTime()) / 1000);
-  return (
-    // Behind the live dot, as on Today's card and the workout bar.
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
-    <BlancText
-      variant="secondary"
-      tone="graphite"
-      // The clock in words; the tally just below reads the sets.
-      accessibilityLabel={`Workout time, ${spokenClock(elapsed)}`}
-      style={{ fontVariant: ['tabular-nums'] }}>
-      {/* Minutes, as Today's card says it: a ticking m:ss here read like a time of day. */}
-      {formatMinutes(Math.floor(elapsed / 60))}
-    </BlancText>
-    </View>
-  );
 }
 
 function LiveWorkout({ session }: { session: SessionModel }) {
@@ -647,7 +626,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
           ) : (
             <View />
           )}
-          <Elapsed startedAt={session.startedAt} />
+          <LiveClock startedAt={session.startedAt} variant="secondary" />
         </View>
 
         {current && draft ? (
@@ -693,7 +672,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   openMovement(current.movement.exerciseId);
                 }}
                 style={({ pressed }) => ({ marginTop: 2, marginRight: -4, opacity: pressed ? 0.45 : 1 })}>
-                <SymbolView name="ellipsis.circle" size={24} weight="regular" tintColor={c.graphite} />
+                {/* The app's one in-content "more": a bare ellipsis in graphite. */}
+                <SymbolView name="ellipsis" size={17} weight="semibold" tintColor={c.graphite} />
               </Pressable>
             </View>
             {current.movement.note ? (

@@ -12,6 +12,7 @@ import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { LiveClock } from '~/components/LiveClock';
 import { PlanCard } from '~/components/PlanCard';
 import { RollingText } from '~/components/RollingText';
 import { Tally } from '~/components/Tally';
@@ -23,7 +24,7 @@ import { speak, useLargeText } from '~/lib/accessibility';
 import { useAccountRefresh } from '~/lib/accountData';
 import { markAtRest, useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
-import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
+import { formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
@@ -79,7 +80,7 @@ export default function TodayScreen() {
             {format(now, 'EEEE, MMMM d')}
           </BlancText>
 
-          {session ? <SessionLabel session={session} now={now} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
+          {session ? <SessionLabel session={session} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} />}
 
           <Section title="Fuel" action={{ title: 'Log food', symbol: 'plus', onPress: () => router.push({ pathname: '/log-food', params: { day: today() } }) }}>
             {target && kcalLeft !== null ? (
@@ -159,9 +160,8 @@ export default function TodayScreen() {
   );
 }
 
-function SessionLabel({ session, now }: { session: SessionModel; now: number }) {
+function SessionLabel({ session }: { session: SessionModel }) {
   const c = useBlanc();
-  const minutes = Math.max(0, Math.round((now - session.startedAt.getTime()) / 60_000));
   const current = session.current;
   // A flexible session starts empty: nothing to finish yet, as on Train,
   // which asks for its first movement.
@@ -190,7 +190,7 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
       style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
       <View
         accessible
-        accessibilityLabel={speak(`${session.dayName} · In progress · ${formatMinutes(minutes)}`)}
+        accessibilityLabel={speak(`${session.dayName} · In progress`)}
         style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
         {/* A long day name gives way; the live state always shows. At the
             accessibility text sizes the name wraps and the live state moves under it. */}
@@ -198,13 +198,8 @@ function SessionLabel({ session, now }: { session: SessionModel; now: number }) 
         <BlancText variant="secondary" weight="500" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>
           {session.dayName}
         </BlancText>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
-          {/* The live dot says in progress; the words would repeat it. */}
-          <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {formatMinutes(minutes)}
-          </BlancText>
-        </View>
+        {/* The workout's clock, as Train and the workout bar keep it. */}
+        <LiveClock startedAt={session.startedAt} />
       </View>
 
       {empty ? null : (
@@ -253,7 +248,7 @@ function Meter({ label, value, of, progress, warnOver }: { label: string; value:
             {value}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {` / ${of}`}
+            {` of ${of}`}
           </BlancText>
         </View>
       </View>

@@ -607,7 +607,7 @@ function MacroRow({ macro, value, target, loaded, goal }: {
             {loaded ? formatWhole(value) : '–'}
           </RollingText>
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {target ? ` / ${formatWhole(target)} g` : loaded ? ' g' : ''}
+            {target ? ` of ${formatWhole(target)} g` : loaded ? ' g' : ''}
           </BlancText>
         </View>
       </View>
@@ -653,7 +653,7 @@ function MacroColumn({ macro, value, target, loaded, goal, edge }: {
           {loaded ? formatWhole(value) : '–'}
         </RollingText>
         <BlancText variant="footnote" tone="graphite" numberOfLines={1} style={{ fontVariant: ['tabular-nums'], flexShrink: 1 }}>
-          {target ? ` / ${formatWhole(target)} g` : loaded ? ' g' : ''}
+          {target ? ` of ${formatWhole(target)} g` : loaded ? ' g' : ''}
         </BlancText>
       </View>
       {target ? <Track progress={value / target} warnOver={warnsOverTarget(macro, goal)} /> : <View style={{ height: 4 }} />}

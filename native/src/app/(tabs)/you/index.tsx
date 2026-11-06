@@ -95,7 +95,9 @@ export default function YouScreen() {
         <WeightCard />
 
         {/* Food: targets, saved meals, analysis and the evening reminder, one group. */}
+        <GroupHeading>Food</GroupHeading>
         <FuelReminderSetting
+          top={0}
           rows={
             <>
               <Row
@@ -122,9 +124,11 @@ export default function YouScreen() {
         />
 
         {/* Food, then training, then the app itself. */}
+        <GroupHeading>Training</GroupHeading>
         <SchedulingSetting />
 
-        <Label layout={rowLayout} style={{ marginTop: space.section }}>
+        <GroupHeading>App</GroupHeading>
+        <Label layout={rowLayout}>
           <Row title="Connections" value={connections} chevron onPress={() => router.push('/you/connections')} />
           <Hairline />
           <AppearanceRow />
@@ -312,7 +316,7 @@ function SchedulingSetting() {
   };
 
   return (
-    <Animated.View layout={rowLayout} style={{ marginTop: space.section }}>
+    <Animated.View layout={rowLayout}>
       <Label>
         <ToggleRow list label="Adaptive scheduling" value={enabled} disabled={saving || !userId} onChange={(next) => void toggle(next)} />
       </Label>
@@ -322,5 +326,18 @@ function SchedulingSetting() {
           : 'Upcoming workouts and rest days follow the program days you complete. Off keeps your saved schedule.'}
       </FormNote>
     </Animated.View>
+  );
+}
+
+/** A settings group's quiet heading, on its card's text edge, as iOS's grouped lists name theirs. */
+function GroupHeading({ children }: { children: string }) {
+  return (
+    <BlancText
+      variant="footnote"
+      tone="graphite"
+      accessibilityRole="header"
+      style={{ marginTop: space.section, marginBottom: 6, marginHorizontal: space.inset + 18 }}>
+      {children}
+    </BlancText>
   );
 }

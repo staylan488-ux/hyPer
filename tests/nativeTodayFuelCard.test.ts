@@ -59,6 +59,7 @@ async function open() {
     '~/components/BrandMark': { BrandMark: Empty, HEADER_MARK_SIZE: 30, headerMarkSlot: {} },
     '~/components/Capsule': { Capsule: Empty },
     '~/components/Label': { Label: Wrap },
+    '~/components/LiveClock': { LiveClock: () => null },
     '~/components/PlanCard': { PlanCard: Empty },
     '~/components/RollingText': { RollingText: Text },
     '~/components/Tally': { Tally: Empty },
@@ -131,6 +132,6 @@ describe('Today’s Fuel card', () => {
     expect(card?.getAttribute('aria-label')).toBe('0 of 2000 calories eaten, 2000 calories left. Protein 0 of 150 grams');
     expect(shown()).toContain('0of 2000 kcal');
     // Today shows the calories left and the protein meter; nothing of yesterday's 40 g.
-    expect(shown()).toContain('Protein0 / 150 g');
+    expect(shown()).toContain('Protein0 of 150 g');
   });
 });

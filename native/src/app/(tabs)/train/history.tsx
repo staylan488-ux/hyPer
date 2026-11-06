@@ -483,13 +483,17 @@ function AddActivityButton({ day }: { day: string }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="Add an activity"
-      hitSlop={6}
+      hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
       onPress={() => {
         haptics.tap();
         router.push({ pathname: '/activity', params: { day } });
       }}
-      style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'flex-end', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-      <SymbolView name="plus" size={18} weight="semibold" tintColor={c.ink} />
+      // "+ Add", as every in-content add reads ("+ Log food", "+ Log").
+      style={({ pressed }) => ({ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, opacity: pressed ? 0.45 : 1 })}>
+      <SymbolView name="plus" size={13} weight="semibold" tintColor={c.ink} />
+      <BlancText variant="bodyStrong" size={15}>
+        Add
+      </BlancText>
     </Pressable>
   );
 }
