@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState, type ComponentRef } from 'react';
 import { Alert, Linking, Pressable, TextInput, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
@@ -77,13 +77,15 @@ const round1 = (value: number) => Math.round(value * 10) / 10;
  * photos (a plate or a nutrition label), answer one follow-up question if
  * asked, then review each food and log it.
  */
-export function AiTab({ draft, setDraft, cameraRequest = 0, analyzeRequest = 0 }: {
+export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0, focusRequest = 0 }: {
   draft: AiDraft;
   setDraft: (update: (draft: AiDraft) => AiDraft) => void;
   /** Snap a meal: each new value opens the camera, then analyzes the photo (log-food.tsx). */
   cameraRequest?: number;
-  /** Each change runs the estimate on the draft's words at once (Search's "Estimate" row). */
-  analyzeRequest?: number;
+  /** Log food's Photo button: each new value opens the camera and adds what it takes, with nothing estimated until Analyze meal. */
+  addPhotoRequest?: number;
+  /** Log food's Describe button: each new value puts the cursor in Your meal. */
+  focusRequest?: number;
 }) {
   const c = useBlanc();
   const large = useLargeText();
@@ -197,17 +199,28 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, analyzeRequest = 0 }
     void snap();
   }, [cameraRequest]);
 
-  // Search's Estimate row hands its words over and asks for the estimate in the same step.
-  const seenAnalyze = useRef(analyzeRequest);
-  const analyzeNow = useEffectEvent(() => {
-    announce('Analyzing meal');
-    void analyze();
+  // Photo and Describe are two doors into this one view: Photo adds a photo
+  // (the words can follow), Describe starts with the words (a photo can
+  // follow). Neither runs the estimate; Analyze meal does.
+  const seenAddPhoto = useRef(addPhotoRequest);
+  const addPhotoNow = useEffectEvent(() => {
+    if (busy !== null || foodPickerUp() || !aiTakesPhoto(draft)) return;
+    void addPhoto();
   });
   useEffect(() => {
-    if (analyzeRequest === seenAnalyze.current) return;
-    seenAnalyze.current = analyzeRequest;
-    analyzeNow();
-  }, [analyzeRequest]);
+    if (addPhotoRequest === seenAddPhoto.current) return;
+    seenAddPhoto.current = addPhotoRequest;
+    addPhotoNow();
+  }, [addPhotoRequest]);
+  const hintField = useRef<ComponentRef<typeof TextInput>>(null);
+  const seenFocus = useRef(focusRequest);
+  useEffect(() => {
+    if (focusRequest === seenFocus.current) return;
+    seenFocus.current = focusRequest;
+    // after the tab switch has drawn the field
+    const timer = setTimeout(() => hintField.current?.focus(), 50);
+    return () => clearTimeout(timer);
+  }, [focusRequest]);
 
   const clearEstimate = () => {
     setError(null);
@@ -399,6 +412,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, analyzeRequest = 0 }
         <Section title="Your meal" style={{ marginTop: 0 }}>
           <Label>
             <TextInput
+              ref={hintField}
               value={draft.hint}
               onChangeText={(text) => setDraft((current) => ({ ...current, hint: text.slice(0, LIMIT) }))}
               editable={busy === null}

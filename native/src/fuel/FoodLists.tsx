@@ -17,7 +17,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { HoldMenu, hasHoldMenu, menuAccessibility, showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { Label } from '~/components/Label';
-import { Hairline, Row } from '~/components/Row';
+import { Hairline } from '~/components/Row';
 import { closeOpenSwipeRow, SwipeRow, useSwipeActions } from '~/components/SwipeRow';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry } from '~/lib/foodLogger';
@@ -577,13 +577,8 @@ function TextAction({ title, onPress }: { title: string; onPress: () => void }) 
   );
 }
 
-/**
- * USDA search: results as you type (two letters or more), with Retry on
- * failure. With `onEstimate`, the words typed can also be estimated as a
- * meal ("chicken salad, large"), the row above the results.
- */
-export function SearchTab({ onEstimate }: { onEstimate?: (text: string) => void } = {}) {
-  const c = useBlanc();
+/** USDA search: results as you type (two letters or more), with Retry on failure. */
+export function SearchTab() {
   const logger = useLogger();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Food[] | null>(null);
@@ -649,22 +644,9 @@ export function SearchTab({ onEstimate }: { onEstimate?: (text: string) => void 
 
   return (
     <View>
-      <SearchField value={query} onChange={setQuery} placeholder={onEstimate ? 'Search foods or describe a meal' : 'Search USDA foods'} autoFocus />
-      {/* Typing is also how a meal is described: the words become an estimate, as Photo's view makes one. */}
-      {onEstimate && trimmed.length >= 2 ? (
-        <Label style={{ marginTop: 14, overflow: 'hidden' }}>
-          <Row
-            title={`Estimate “${trimmed}”`}
-            detail="Works out the foods and amounts"
-            leading={<SymbolView name="text.bubble" size={17} weight="medium" tintColor={c.ink} />}
-            chevron
-            accessibilityLabel={`Estimate ${trimmed} as a meal`}
-            onPress={() => onEstimate(trimmed)}
-          />
-        </Label>
-      ) : null}
+      <SearchField value={query} onChange={setQuery} placeholder="Search USDA foods" autoFocus />
       {results && results.length > 0 ? (
-        <Label style={{ marginTop: onEstimate ? 10 : 14, overflow: 'hidden' }}>
+        <Label style={{ marginTop: 14, overflow: 'hidden' }}>
           {results.map((food, index) => {
             const key = food.fdc_id || food.id;
             return (

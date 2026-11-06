@@ -85,7 +85,7 @@ type ManualProps = { draft: ManualDraft; setDraft: (update: (draft: ManualDraft)
 type PhotoDraft = { photos: Record<string, unknown>; items: photoReview.PhotoReviewItem[]; summary: string };
 type PhotoProps = { draft: PhotoDraft; setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void; cameraRequest?: number };
 type AiDraft = { hint: string; photos: unknown[]; result: unknown; items: Array<foodTrial.TrialFoodItem & { key: string }> };
-type AiProps = { cameraRequest?: number; analyzeRequest?: number; draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void };
+type AiProps = { cameraRequest?: number; addPhotoRequest?: number; focusRequest?: number; draft: AiDraft; setDraft: (update: (draft: AiDraft) => AiDraft) => void };
 type Choices = { options: { options: string[] }; callback: (index: number) => Promise<void> | void };
 type Asset = { uri: string; width: number; height: number; type: string };
 type PickerResult = { canceled: boolean; assets: Asset[] };
@@ -143,7 +143,6 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     sections: Record<string, SectionProps>;
     /** The tab on screen, across the segmented lists and the entry methods; a change goes to whichever holds the name. */
     picker?: { selection: string; onSelectionChange: (tab: string) => void; disabled?: boolean };
-    search?: { onEstimate?: (text: string) => void };
     /** Recent | Saved | Search, as drawn. */
     segments?: { selection: string; onSelectionChange: (tab: string) => void; disabled?: boolean; tags: string[] };
     /** Scan, Manual and Describe/Photo, as drawn. */
@@ -356,12 +355,12 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     './context': { useLogger },
     './WhenBlock': { WhenBlock: Empty },
     './FoodLists': { spokenMacros: () => '' },
-    '~/fuel/FoodLists': { Empty: ({ text }: { text: string }) => text, SearchTab: (props: NonNullable<typeof captured.search>) => { captured.search = props; return null; }, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
+    '~/fuel/FoodLists': { Empty: ({ text }: { text: string }) => text, SearchTab: Empty, SavedTab: (props: NonNullable<typeof captured.saved>) => { captured.saved = props; return null; } },
     '~/fuel/FoodReview': { FoodReview: (props: { food: Food }) => { captured.foodReview = props; return null; } },
     '~/fuel/RecentTab': { RecentTab: Empty },
     '~/fuel/EntryMethods': { EntryMethods: (props: NonNullable<typeof captured.methods>) => { captured.methods = props; return null; } },
     '~/fuel/AiTab': {
-      emptyAi: (hint = '') => ({ hint, answer: '', photos: [], result: null, items: [] }),
+      emptyAi: () => ({ hint: '', answer: '', photos: [], result: null, items: [] }),
       aiHasDraft: (draft: { hint: string; photos: unknown[]; result: unknown }) => Boolean(draft.hint) || draft.photos.length > 0 || draft.result !== null,
       aiTakesPhoto: (draft: { photos: unknown[]; result: unknown }) => draft.result === null && draft.photos.length < 2,
       AiTab: (props: AiProps) => { captured.ai = props; return createElement(Probe); },
@@ -687,7 +686,8 @@ describe('native food logger transitions', () => {
     expect(h.captured.guard!.on).toBe(false);
     await act(async () => { h.captured.manual!.onGeminiHandoff!('chicken and rice'); });
     expect(h.alert).not.toHaveBeenCalled();
-    expect(h.captured.picker!.selection).toBe('photo');
+    // Manual's words arrive on the meal view through Describe's door
+    expect(h.captured.picker!.selection).toBe('describe');
     let release!: () => void;
     await act(async () => { release = h.captured.context!.beginBusy(); });
     await act(async () => { h.lookup.resolve({ status: 'stale' }); });
@@ -714,7 +714,7 @@ describe('native food logger transitions', () => {
     await h.render();
     expect(h.captured.segments!.tags).toEqual(['recent', 'saved', 'search']);
     expect(h.captured.methods).toMatchObject({ selected: null, gemini: true, photoWaiting: false, disabled: false });
-    for (const method of ['scan', 'manual', 'photo']) {
+    for (const method of ['scan', 'manual', 'photo', 'describe']) {
       await act(async () => { h.captured.methods!.onSelect(method); });
       expect(h.captured.methods!.selected).toBe(method);
       // No segment carries this value, so none is drawn as chosen.
@@ -725,6 +725,45 @@ describe('native food logger transitions', () => {
     await act(async () => { h.captured.segments!.onSelectionChange('saved'); });
     expect(h.captured.segments!.selection).toBe('saved');
     expect(h.captured.methods!.selected).toBeNull();
+  });
+
+  it('opens the camera from Photo and the words from Describe, on one meal view, with nothing estimated on its own', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.appear();
+    await act(async () => { h.captured.methods!.onSelect('photo'); });
+    expect(h.captured.methods!.selected).toBe('photo');
+    expect(h.captured.ai!.addPhotoRequest).toBe(1);
+    expect(h.captured.ai!.focusRequest).toBe(0);
+    // Snap a meal's own request (which estimates at once) is left alone
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+    // Describe is the same view: the words, with the photo kept
+    await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, photos: [{ uri: 'cam', width: 10, height: 10 }] })); });
+    await act(async () => { h.captured.methods!.onSelect('describe'); });
+    expect(h.captured.methods!.selected).toBe('describe');
+    expect(h.captured.ai!.focusRequest).toBe(1);
+    expect(h.captured.ai!.addPhotoRequest).toBe(1);
+    expect(h.captured.ai!.draft.photos).toHaveLength(1);
+    // Photo again adds a second photo; never once the view holds an estimate
+    await act(async () => { h.captured.methods!.onSelect('photo'); });
+    expect(h.captured.ai!.addPhotoRequest).toBe(2);
+    await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, result: { items: [], summary: 'Eggs' } })); });
+    await act(async () => { h.captured.methods!.onSelect('photo'); });
+    expect(h.captured.ai!.addPhotoRequest).toBe(2);
+    expect(h.captured.ai!.cameraRequest).toBe(0);
+  });
+
+  it('gives the photo worker Photo alone, which takes the first view without analyzing it', async () => {
+    const h = loggerHarness({ worker: true });
+    await h.render();
+    await h.appear();
+    expect(h.captured.methods!.gemini).toBe(false);
+    await act(async () => { h.captured.methods!.onSelect('photo'); });
+    await h.flush();
+    expect(h.openCamera).toHaveBeenCalledOnce();
+    await h.shoot();
+    expect(h.captured.photo!.draft.photos).toEqual({ top: { uri: 'cam', width: 10, height: 10 } });
+    expect(h.analyze).not.toHaveBeenCalled();
   });
 
   it('tells the entry methods when the worker’s photo estimate waits on another tab', async () => {
@@ -1018,8 +1057,6 @@ describe('native food logger: Snap a meal', () => {
     await h.render();
     await h.appear();
     await h.tab('photo');
-    // Photo opens the camera at once while its view is empty
-    expect(h.captured.ai!.cameraRequest).toBe(1);
     await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, hint: 'Two eggs on toast' })); });
     expect(h.captured.guard!.on).toBe(true);
     h.when.mockReturnValueOnce({ date: new Date('2026-11-03T12:34:00'), time: '12:34', groupId: 'g-lunch' });
@@ -1027,41 +1064,8 @@ describe('native food logger: Snap a meal', () => {
     expect(h.refusePress).not.toHaveBeenCalled();
     expect(h.when).toHaveBeenLastCalledWith(null, '2026-11-03', [], 'g-lunch', expect.any(Date));
     expect(h.captured.context!.when).toMatchObject({ time: '12:34', groupId: 'g-lunch' });
-    expect(h.captured.ai!.cameraRequest).toBe(2);
+    expect(h.captured.ai!.cameraRequest).toBe(1);
     expect(h.captured.ai!.draft.hint).toBe('Two eggs on toast');
-  });
-
-  it('estimates words typed in Search as a meal, on the Photo view, without opening the camera', async () => {
-    const h = loggerHarness();
-    await h.render();
-    await h.appear();
-    await h.tab('search');
-    expect(h.captured.search!.onEstimate).toBeDefined();
-    await act(async () => { h.captured.search!.onEstimate!('chicken salad, large'); });
-    expect(h.captured.picker!.selection).toBe('photo');
-    expect(h.captured.ai!.draft.hint).toBe('chicken salad, large');
-    expect(h.captured.ai!.analyzeRequest).toBe(1);
-    expect(h.captured.ai!.cameraRequest).toBe(0);
-  });
-
-  it('asks before an estimate from Search replaces a meal already started on Photo', async () => {
-    const h = loggerHarness();
-    await h.render();
-    await h.appear();
-    await h.tab('photo');
-    await act(async () => { h.captured.ai!.setDraft((draft) => ({ ...draft, hint: 'Two eggs on toast' })); });
-    await h.tab('search');
-    await act(async () => { h.captured.search!.onEstimate!('chicken salad'); });
-    expect(h.captured.ai!.draft.hint).toBe('Two eggs on toast');
-    expect(h.captured.ai!.analyzeRequest).toBe(0);
-  });
-
-  it('offers no Search estimate on a device set to the photo worker', async () => {
-    const h = loggerHarness({ worker: true });
-    await h.render();
-    await h.appear();
-    await h.tab('search');
-    expect(h.captured.search!.onEstimate).toBeUndefined();
   });
 
   type Harness = ReturnType<typeof loggerHarness>;
@@ -1082,12 +1086,10 @@ describe('native food logger: Snap a meal', () => {
     await h.appear();
     await setup(h);
     const selection = h.captured.picker!.selection;
-    // (choosing Photo in a setup opens the camera itself; the press must add nothing)
-    const camera = h.captured.ai!.cameraRequest;
     await h.ask();
     expect(h.refusePress).toHaveBeenCalledOnce();
     expect(h.captured.picker!.selection).toBe(selection);
-    expect(h.captured.ai!.cameraRequest).toBe(camera);
+    expect(h.captured.ai!.cameraRequest).toBe(0);
   });
 
   it('refuses while a description typed in Manual’s Describe with AI would be lost', async () => {
@@ -1129,36 +1131,26 @@ describe('native food logger: Snap a meal', () => {
     expect(h.refusePress).toHaveBeenCalledOnce();
   });
 
-  it('opens the camera straight from Photo and from Add photo, with no choices asked first, and holds a press off while it is up', async () => {
+  it('opens the camera straight from Add photo, with no choices asked first, and holds a press off while it is up', async () => {
     const h = loggerHarness({ worker: true });
     await h.render();
     await h.appear();
-    // Photo opens the camera at once while its view is empty
     await h.tab('photo');
-    await h.flush();
+    await h.press('Add top view photo');
     expect(h.captured.choices).toBeUndefined();
     expect(h.openCamera).toHaveBeenCalledOnce();
-    expect(h.captured.photo!.cameraRequest).toBe(1);
-    // a Snap press while it is up is held off
     await h.ask();
     expect(h.refusePress).not.toHaveBeenCalled();
-    expect(h.captured.photo!.cameraRequest).toBe(1);
-    // closed with nothing taken: the tab is as it was
+    expect(h.captured.photo!.cameraRequest).toBe(0);
+    // closed with nothing taken: the tab is as it was, and the next press opens the camera again
     await h.press('Close');
     await h.flush();
     expect(h.captured.photo!.draft.photos).toEqual({});
     expect(h.text()).not.toContain('Camera');
-    // Add photo opens the same camera, still with no choices asked first
-    await h.press('Add top view photo');
-    expect(h.captured.choices).toBeUndefined();
-    expect(h.openCamera).toHaveBeenCalledTimes(2);
-    await h.press('Close');
-    await h.flush();
-    // the next Snap press opens it again and analyzes what it takes
     await h.ask();
     await h.flush();
-    expect(h.captured.photo!.cameraRequest).toBe(2);
-    expect(h.openCamera).toHaveBeenCalledTimes(3);
+    expect(h.captured.photo!.cameraRequest).toBe(1);
+    expect(h.openCamera).toHaveBeenCalledTimes(2);
     await h.shoot();
     expect(h.analyze).toHaveBeenCalledOnce();
   });
@@ -1168,9 +1160,6 @@ describe('native food logger: Snap a meal', () => {
     await h.render();
     await h.appear();
     await h.tab('photo');
-    // Photo opened the camera at once; close it to add from the slot instead
-    await h.press('Close');
-    await h.flush();
     await h.press('Add top view photo');
     await h.shoot();
     expect(h.captured.photo!.draft.photos).toEqual({ top: { uri: 'cam', width: 10, height: 10 } });
@@ -1178,10 +1167,10 @@ describe('native food logger: Snap a meal', () => {
     expect(h.captured.choices!.options.options).toEqual(['Replace photo', 'Remove photo', 'Cancel']);
     await h.ask();
     expect(h.refusePress).not.toHaveBeenCalled();
-    expect(h.captured.photo!.cameraRequest).toBe(1);
+    expect(h.captured.photo!.cameraRequest).toBe(0);
     // Replace photo: the same camera, whose library gives the new one
     await act(async () => { await h.captured.choices!.callback(0); });
-    expect(h.openCamera).toHaveBeenCalledTimes(3);
+    expect(h.openCamera).toHaveBeenCalledTimes(2);
     await h.press('Photo library');
     await h.flush();
     expect(h.library).toHaveBeenCalledOnce();
@@ -1190,7 +1179,7 @@ describe('native food logger: Snap a meal', () => {
     await h.press('Top view, meal photo added');
     await act(async () => { await h.captured.choices!.callback(1); });
     expect(h.captured.photo!.draft.photos).toEqual({});
-    expect(h.openCamera).toHaveBeenCalledTimes(3);
+    expect(h.openCamera).toHaveBeenCalledTimes(2);
   });
 
   it('adds a photo from the camera screen’s library on AI, and stays on the camera when the library is cancelled', async () => {

@@ -5,16 +5,19 @@ import { BlancText } from '~/components/BlancText';
 import { useLargeText } from '~/lib/accessibility';
 import { useBlanc } from '~/theme/blanc';
 
-export type EntryMethod = 'scan' | 'manual' | 'photo';
+export type EntryMethod = 'scan' | 'manual' | 'photo' | 'describe';
 
 type Method = { id: EntryMethod; title: string; symbol: SFSymbol; spoken: string };
 
 /**
- * The three ways to enter a food that isn't in a list yet, under Log food's
- * Recent | Saved | Search. The one on screen sits on white like the
- * segmented control's chosen segment; the others are quiet fills.
- * `gemini`: the analysis tab takes photos and a typed description (Describe);
- * a device set to the worker gets Photo, with a dot while an estimate waits.
+ * The ways to enter a food that isn't in a list yet, under Log food's
+ * Recent | Saved | Search, each a small symbol over its name. The one on
+ * screen sits on white like the segmented control's chosen segment; the
+ * others are quiet. `gemini`: Photo and Describe are two doors into the one
+ * meal view (a photo first, or words first; both can be combined before the
+ * estimate). A device set to the worker gets Photo only, with a dot while an
+ * estimate waits. A press on the open door still reaches `onSelect`: Photo
+ * then adds another photo and Describe returns to the words.
  */
 export function EntryMethods({
   selected,
@@ -34,12 +37,15 @@ export function EntryMethods({
   const methods: Method[] = [
     { id: 'scan', title: 'Barcode', symbol: 'barcode.viewfinder', spoken: 'Scan a barcode' },
     { id: 'manual', title: 'Manual', symbol: 'square.and.pencil', spoken: 'Enter manually' },
-    gemini
-      ? { id: 'photo', title: 'Photo', symbol: 'camera', spoken: 'Photo of a meal, or describe it in words' }
-      : { id: 'photo', title: 'Photo', symbol: 'camera', spoken: photoWaiting ? 'Photo, estimate waiting' : 'Photo' },
+    ...(gemini
+      ? [
+          { id: 'photo', title: 'Photo', symbol: 'camera', spoken: 'Photo of a meal' } satisfies Method,
+          { id: 'describe', title: 'Describe', symbol: 'text.bubble', spoken: 'Describe a meal in words' } satisfies Method,
+        ]
+      : [{ id: 'photo', title: 'Photo', symbol: 'camera', spoken: photoWaiting ? 'Photo, estimate waiting' : 'Photo' } satisfies Method]),
   ];
   return (
-    // At the accessibility text sizes the three stack, so each title stays whole.
+    // At the accessibility text sizes they stack as rows, so each title stays whole.
     <View style={large ? { gap: 8 } : { flexDirection: 'row', gap: 8 }}>
       {methods.map((method) => {
         const on = selected === method.id;
@@ -50,28 +56,27 @@ export function EntryMethods({
             accessibilityLabel={method.spoken}
             accessibilityState={{ selected: on, disabled }}
             disabled={disabled}
-            onPress={() => {
-              if (!on) onSelect(method.id);
-            }}
+            onPress={() => onSelect(method.id)}
             style={({ pressed }) => ({
               flex: large ? undefined : 1,
-              minHeight: 44,
-              paddingHorizontal: 10,
-              paddingVertical: large ? 10 : 0,
-              borderRadius: 22,
+              minHeight: large ? 44 : 56,
+              paddingHorizontal: large ? 14 : 4,
+              paddingVertical: large ? 10 : 7,
+              borderRadius: large ? 22 : 14,
               borderCurve: 'continuous',
-              flexDirection: 'row',
+              // a symbol over its name, so four fit across; side by side at the accessibility sizes
+              flexDirection: large ? 'row' : 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 6,
+              gap: large ? 8 : 4,
               // Actions, not a second segmented control: no fill at rest; the open one sits on the label colour.
               backgroundColor: on ? c.label : pressed ? c.pressed : 'transparent',
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: on ? c.labelEdge : 'transparent',
               opacity: disabled ? 0.4 : 1,
             })}>
-            <SymbolView name={method.symbol} size={17} weight={on ? 'semibold' : 'medium'} tintColor={c.ink} />
-            <BlancText variant="secondary" weight={on ? '600' : '500'} numberOfLines={large ? undefined : 1} style={large ? { flexShrink: 1 } : undefined}>
+            <SymbolView name={method.symbol} size={20} weight={on ? 'semibold' : 'medium'} tintColor={c.ink} />
+            <BlancText variant={large ? 'secondary' : 'footnote'} weight={on ? '600' : '500'} numberOfLines={large ? undefined : 1} style={large ? { flexShrink: 1 } : undefined}>
               {method.title}
             </BlancText>
             {method.id === 'photo' && photoWaiting ? <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.ink }} /> : null}

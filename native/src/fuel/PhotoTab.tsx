@@ -137,11 +137,13 @@ function readCombinePreference(): boolean {
 }
 
 /** Photo: one or two photos of the plate, analyzed by the food worker, then reviewed item by item. */
-export function PhotoTab({ draft, setDraft, cameraRequest = 0 }: {
+export function PhotoTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0 }: {
   draft: PhotoDraft;
   setDraft: (update: (draft: PhotoDraft) => PhotoDraft) => void;
   /** Snap a meal: each new value opens the camera, then analyzes the photo (log-food.tsx). */
   cameraRequest?: number;
+  /** Log food's Photo button: each new value opens the camera for the next empty view, with nothing analyzed until Analyze. */
+  addPhotoRequest?: number;
 }) {
   const logger = useLogger();
   const [analyzing, setAnalyzing] = useState(false);
@@ -168,6 +170,18 @@ export function PhotoTab({ draft, setDraft, cameraRequest = 0 }: {
       setError(cause instanceof Error ? cause.message : 'Could not open the camera.');
     }
   };
+  // Log food's Photo button: the camera for the next empty view; the analysis waits for Analyze.
+  const seenAddPhoto = useRef(addPhotoRequest);
+  const addPhotoNow = useEffectEvent(() => {
+    const angle: PhotoAnalysisAngle | null = !draft.photos.top ? 'top' : !draft.photos.side ? 'side' : null;
+    if (!angle || analyzing || foodPickerUp() || !photoTakesPhoto(draft)) return;
+    void takePhoto(angle);
+  });
+  useEffect(() => {
+    if (addPhotoRequest === seenAddPhoto.current) return;
+    seenAddPhoto.current = addPhotoRequest;
+    addPhotoNow();
+  }, [addPhotoRequest]);
   // An empty view opens the camera at once; a photo already there offers to replace or remove it.
   const pick = (angle: PhotoAnalysisAngle) => {
     if (!draft.photos[angle]) {

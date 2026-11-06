@@ -51,7 +51,7 @@ import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, type ChosenMeta, type LoggerContextValue, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
-import { EntryMethods } from '~/fuel/EntryMethods';
+import { EntryMethods, type EntryMethod } from '~/fuel/EntryMethods';
 import { emptyManual, manualFromFood, manualHasChanges, ManualTab, type ManualDraft } from '~/fuel/ManualTab';
 import { MealReview } from '~/fuel/MealReview';
 import { aiHasDraft, AiTab, aiTakesPhoto, emptyAi, type AiDraft } from '~/fuel/AiTab';
@@ -563,6 +563,26 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     showTab(next);
   };
 
+  // ── Photo and Describe: two doors into the one meal view ──
+  // Photo opens the camera and adds what it takes; Describe puts the cursor in
+  // Your meal. Either can be combined with the other before Analyze meal; only
+  // Snap a meal (below) estimates on its own.
+  const [door, setDoor] = useState<'photo' | 'describe'>('photo');
+  const [addPhotoRequest, setAddPhotoRequest] = useState(0);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const chooseMethod = (method: EntryMethod) => {
+    if (saving) return;
+    if (method === 'photo' || method === 'describe') {
+      if (tab !== 'photo') openTab('photo');
+      else haptics.select();
+      setDoor(method);
+      if (method === 'describe') setFocusRequest((count) => count + 1);
+      else if (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) setAddPhotoRequest((count) => count + 1);
+      return;
+    }
+    if (tab !== method) openTab(method);
+  };
+
   // ── Snap a meal (lib/launch.ts) ──
   // The camera comes up once the sheet has (iOS can't present it mid-slide),
   // and again when Snap a meal is pressed with this sheet on top.
@@ -606,6 +626,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     setSnapAt(at);
     setWhenState(initialWhen(null, selectedKey, groups, suggestFor(selectedKey, groups, at), at));
     showTab('photo');
+    setDoor('photo');
     if (appeared) setCameraRequest((count) => count + 1);
     else cameraPending.current = true;
   });
@@ -633,43 +654,6 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       </Label>
     </View>
   ) : null;
-  // Words go to the Photo view, which estimates from a photo, words or both.
-  // Asks before replacing a meal already started there.
-  const describeInPhotoView = (description: string, then?: () => void) => {
-    if (saving) return;
-    if (busy) {
-      Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
-      return;
-    }
-    const handOff = () => {
-      setAi(emptyAi(description));
-      showTab('photo');
-      then?.();
-    };
-    if (!aiHasDraft(ai)) {
-      handOff();
-      return;
-    }
-    Alert.alert('Replace the current AI meal?', 'Unsaved work on the AI tab will be discarded.', [
-      { text: 'Keep', style: 'cancel' },
-      { text: 'Replace', style: 'destructive', onPress: handOff },
-    ]);
-  };
-  // Search's Estimate row: the typed words, estimated at once.
-  const [analyzeRequest, setAnalyzeRequest] = useState(0);
-  const estimateWords = (text: string) => {
-    haptics.tap();
-    describeInPhotoView(text, () => setAnalyzeRequest((count) => count + 1));
-  };
-  // Photo opens the camera at once while its view is empty; with a meal already
-  // started there it just shows it.
-  const chooseMethod = (method: Tab) => {
-    if (saving) return;
-    const fresh = method === 'photo' && (gemini ? !aiHasDraft(ai) : !photo.photos.top && photo.items.length === 0);
-    openTab(method);
-    if (fresh) setCameraRequest((count) => count + 1);
-  };
-
   const recentTab = tab === 'recent' ? <RecentTab userId={userId} /> : null;
   const savedTab = tab === 'saved' ? (
     <SavedTab
@@ -697,7 +681,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       }}
     />
   ) : null;
-  const searchTab = tab === 'search' ? <SearchTab onEstimate={gemini ? estimateWords : undefined} /> : null;
+  const searchTab = tab === 'search' ? <SearchTab /> : null;
   const scanTab = tab === 'scan' ? (
     <ScanTab
       onCreateProduct={(barcode) => {
@@ -711,8 +695,32 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       draft={manual}
       setDraft={(update) => setManual(update)}
       onDescribeText={describedInManual}
-      // the hand-off is a tab switch too
-      onGeminiHandoff={gemini ? (description) => describeInPhotoView(description) : undefined}
+      onGeminiHandoff={
+        gemini
+          ? (description) => {
+              // the hand-off is a tab switch too
+              if (saving) return;
+              if (busy) {
+                Alert.alert('Analysis still running', 'Wait for the current AI analysis to finish, then try again.');
+                return;
+              }
+              const handOff = () => {
+                setAi(emptyAi(description));
+                setTab('photo');
+                // the words arrive through Describe's door
+                setDoor('describe');
+              };
+              if (!aiHasDraft(ai)) {
+                handOff();
+                return;
+              }
+              Alert.alert('Replace the current AI meal?', 'Unsaved work on the AI tab will be discarded.', [
+                { text: 'Keep', style: 'cancel' },
+                { text: 'Replace', style: 'destructive', onPress: handOff },
+              ]);
+            }
+          : undefined
+      }
     />
   ) : null;
 
@@ -812,7 +820,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
               </Host>
               {/* The ways to enter a food that isn't listed. */}
               <EntryMethods
-                selected={isBrowse(tab) ? null : tab}
+                selected={isBrowse(tab) ? null : tab === 'photo' && gemini ? door : tab}
                 gemini={gemini}
                 photoWaiting={photoWaiting}
                 disabled={saving}
@@ -897,11 +905,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             the next ingredient capture drops the old analysis. */}
         {gemini ? (
           <View key={`ai-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
-            <AiTab draft={ai} setDraft={(update) => setAi(update)} cameraRequest={cameraRequest} analyzeRequest={analyzeRequest} />
+            <AiTab draft={ai} setDraft={(update) => setAi(update)} cameraRequest={cameraRequest} addPhotoRequest={addPhotoRequest} focusRequest={focusRequest} />
           </View>
         ) : (
           <View key={`photo-${captureKey}`} style={!chosen && !(meal && mealReview && !paused) && tab === 'photo' ? undefined : { display: 'none' }}>
-            <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} cameraRequest={cameraRequest} />
+            <PhotoTab draft={photo} setDraft={(update) => setPhoto(update)} cameraRequest={cameraRequest} addPhotoRequest={addPhotoRequest} />
           </View>
         )}
       </KeyboardAwareScrollView>
