@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as zustand from 'zustand';
 
+import * as analysisProgress from '@/lib/analysisProgress';
 import * as barcodes from '@/lib/barcodes';
 import * as decimalText from '@/lib/decimalText';
 import * as foodTrial from '@/lib/foodTrial';
@@ -497,6 +498,8 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
       ...imports,
       '@/lib/foodTrial': { ...foodTrial, getFoodAnalysisMode: () => 'gemini' },
       '@/lib/foodTrialReview': foodTrialReview,
+      '@/lib/analysisProgress': analysisProgress,
+      './AnalysisProgress': { AnalysisProgress: Empty },
       './PhotoTab': photoModule,
     });
     imports['~/fuel/AiTab'] = { ...aiModule, AiTab: (props: AiProps) => {

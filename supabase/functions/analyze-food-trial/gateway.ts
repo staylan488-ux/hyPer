@@ -1,5 +1,6 @@
 import { normalizeCoachInput, type CoachInput } from './coach.ts';
 import { normalizeServingInput, type ServingInput } from './serving.ts';
+import { sseEvent, type ProgressListener } from './progress.ts';
 
 export interface MealInput {
   images: { angle: 'top' | 'side'; imageBase64: string; mimeType: string }[];
@@ -22,10 +23,13 @@ interface Dependencies {
   config: TrialConfig;
   authenticate(token: string): Promise<string | null>;
   ledger: TrialLedger;
-  analyze(input: MealInput): Promise<unknown>;
+  /** Runs the meal analysis; `onProgress` hears its steps when the app asked to follow them. */
+  analyze(input: MealInput, onProgress?: ProgressListener): Promise<unknown>;
   interpretServing?(input: ServingInput): Promise<unknown>;
   suggestTargets?(input: CoachInput): Promise<unknown>;
   now?: () => number;
+  /** Keeps a streamed analysis running to its saved result if the app goes away. */
+  waitUntil?(work: Promise<unknown>): void;
 }
 
 interface SavedResponse { status: number; body: Record<string, unknown> }
@@ -34,7 +38,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
 // Change the content namespace when the analysis pipeline changes, while retaining
 // the same daily quota objects. A provider change must never refresh the quota.
-export const ANALYSIS_VERSION = 'gemini-tavily-v2';
+export const ANALYSIS_VERSION = 'gemini-tavily-v3';
 
 export function validateConfig(config: TrialConfig): void {
   if (!Number.isInteger(config.maxAttempts) || config.maxAttempts < 1 || config.maxAttempts > 40
@@ -147,6 +151,10 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       if (!userId || !UUID.test(userId)) return respond(401, { code: 'unauthorized', error: 'Sign in to analyze a meal.' });
       const body = await boundedJson(request);
       if (body.action !== undefined && body.action !== 'analyze' && body.action !== 'status' && body.action !== 'interpret-serving' && body.action !== 'suggest-targets') throw new RequestError(400, 'invalid_request', 'Unknown food analysis action.');
+      // `progress: true` follows a meal analysis step by step (streamAnalysis).
+      // It is not part of the meal, so a followed and a plain request share one result.
+      if (body.progress !== undefined && typeof body.progress !== 'boolean') throw new RequestError(400, 'invalid_request', 'Invalid progress option.');
+      const follow = body.progress === true;
       // Identity comes only from getUser. Each UTC date gets its own fixed quota.
       const date = new Date(now()).toISOString().slice(0, 10);
       const base = `food-v1/${userId.toLowerCase()}/${date}`;
@@ -195,12 +203,12 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       for (let index = 0; index < config.maxAttempts; index++) {
         if (await ledger.insert(`${base}/slots/${index}.json`, claim)) { reserved = true; break; }
       }
-      let response: SavedResponse;
-      if (!reserved) response = { status: 429, body: { code: 'daily_quota_exhausted', error: 'Today’s food analysis request limit has been reached. It resets at midnight UTC.', requestId, analysisVersion } };
-      else {
+      // Runs the reserved request and saves its outcome, success or failure.
+      const complete = async (onProgress?: ProgressListener): Promise<SavedResponse> => {
+        let response: SavedResponse;
         try {
           const result = !('action' in input)
-            ? await deps.analyze(input)
+            ? await (onProgress ? deps.analyze(input, onProgress) : deps.analyze(input))
             : input.action === 'suggest-targets' ? await deps.suggestTargets!(input) : await deps.interpretServing!(input);
           if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error('Invalid model result');
           // The adapter returns normalized meal JSON and provenance. Explicitly
@@ -215,12 +223,52 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
           const usage = error && typeof error === 'object' && 'usage' in error ? error.usage : undefined;
           response = { status: 502, body: { code: 'analysis_failed', error: 'Analysis did not finish successfully. This attempt remains counted; review or enter the meal manually.', requestId, analysisVersion, ...(usage ? { usage } : {}) } };
         }
+        if (!await ledger.insert(resultPath, response)) throw new Error('Result already exists');
+        return response;
+      };
+      if (!reserved) {
+        const response: SavedResponse = { status: 429, body: { code: 'daily_quota_exhausted', error: 'Today’s food analysis request limit has been reached. It resets at midnight UTC.', requestId, analysisVersion } };
+        if (!await ledger.insert(resultPath, response)) throw new Error('Result already exists');
+        return respond(response.status, response.body);
       }
-      if (!await ledger.insert(resultPath, response)) throw new Error('Result already exists');
+      if (follow && !('action' in input)) return streamAnalysis(complete);
+      const response = await complete();
       return respond(response.status, response.body);
     } catch (error) {
       if (error instanceof RequestError) return respond(error.status, { error: error.message, code: error.code });
-      return respond(503, { code: 'analysis_unavailable', error: 'Food analysis is temporarily unavailable. No automatic paid retry will run.' });
+      return respond(503, { code: 'analysis_unavailable', error: UNAVAILABLE });
+    }
+
+    /**
+     * The app asked to follow the analysis: answer at once with server-sent
+     * events, one per step, then the saved outcome as the last event
+     * ({ type: 'result', status, body }, the same status and body a plain
+     * request gets). The analysis runs to its saved result even if the app
+     * goes away, so asking again replays it.
+     */
+    function streamAnalysis(complete: (onProgress: ProgressListener) => Promise<SavedResponse>): Response {
+      const encoder = new TextEncoder();
+      const pipe: { channel?: ReadableStreamDefaultController<Uint8Array> } = {};
+      let open = true;
+      const send = (value: unknown) => {
+        if (!open || !pipe.channel) return;
+        try { pipe.channel.enqueue(encoder.encode(sseEvent(value))); } catch { open = false; }
+      };
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) { pipe.channel = controller; },
+        cancel() { open = false; },
+      });
+      const work = (async () => {
+        let outcome: SavedResponse;
+        try { outcome = await complete(step => send({ type: 'progress', ...step })); }
+        catch { outcome = { status: 503, body: { code: 'analysis_unavailable', error: UNAVAILABLE } }; }
+        send({ type: 'result', status: outcome.status, body: outcome.body });
+        if (open) { open = false; try { pipe.channel?.close(); } catch { /* already gone */ } }
+      })();
+      deps.waitUntil?.(work);
+      return new Response(stream, { status: 200, headers: { ...headers, 'Content-Type': 'text/event-stream; charset=utf-8', 'X-Accel-Buffering': 'no' } });
     }
   };
 }
+
+const UNAVAILABLE = 'Food analysis is temporarily unavailable. No automatic paid retry will run.';

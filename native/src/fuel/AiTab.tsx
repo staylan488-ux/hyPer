@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useEffectEvent, useRef, useState, type ComponentRef } from 'react';
-import { Alert, Linking, Pressable, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Linking, Pressable, TextInput, View } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
+import { advanceTrail, startTrail, type AnalysisTrail } from '@/lib/analysisProgress';
 import { buildClarifiedMealHint, isValidTrialReview } from '@/lib/foodTrialReview';
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import {
@@ -34,6 +35,7 @@ import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
+import { AnalysisProgress } from './AnalysisProgress';
 import { useLogger } from './context';
 import { CAMERA_OFF, dropPhotoChoices, foodPickerUp, pickFoodPhoto, prepareImage, showPhotoChoices, type PickedPhoto } from './PhotoTab';
 import { WhenBlock } from './WhenBlock';
@@ -92,6 +94,8 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
   const logger = useLogger();
   const [busy, setBusyState] = useState<'analysis' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // What the analysis is doing, step by step, and when Analyze was tapped.
+  const [trail, setTrail] = useState<{ steps: AnalysisTrail; startedAt: number } | null>(null);
   // the food opened for adjusting, by its key
   const [open, setOpen] = useState<string | null>(null);
   // retry-safe ids per food (by its key) until its save is confirmed
@@ -140,6 +144,10 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
     if (busy || (!clarify && !draft.hint.trim() && photos.length === 0)) return;
     setBusyState('analysis');
     setError(null);
+    // The steps show where the button was; the keyboard would cover them.
+    Keyboard.dismiss();
+    const meal = { photos: photos.length, hint: draft.hint };
+    setTrail({ steps: startTrail(meal), startedAt: Date.now() });
     try {
       const hint = clarify ? buildClarifiedMealHint(draft.hint, result?.clarification || result?.summary || '', draft.answer) : draft.hint;
       if (clarify) setDraft((current) => ({ ...current, clarificationUsed: true }));
@@ -151,6 +159,9 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
         hint: isPreviewActive() && hint.trim().length < 5 ? 'Preview meal' : hint,
         accessToken: await workerAccessToken(),
         ...(clarify ? { clarificationUsed: true } : {}),
+        onProgress: (step) => {
+          if (live.current) setTrail((current) => current && { ...current, steps: advanceTrail(current.steps, step, meal) });
+        },
       });
       if (!live.current) return;
       haptics.success();
@@ -172,6 +183,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
       setError(cause instanceof Error ? cause.message : 'Could not analyze the meal.');
     } finally {
       setBusyState(null);
+      setTrail(null);
     }
   };
 
@@ -428,20 +440,24 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
               style={[typeScale.fieldLines, { color: c.ink, minHeight: 88, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 16 }]}
             />
           </Label>
-          <FormNote>Photo, text, or both. Include the amount and any added oil or sauce you know about.</FormNote>
+          {/* While it runs, only what is being analyzed stays, so the steps sit higher. */}
+          {trail ? null : <FormNote>Photo, text, or both. Include the amount and any added oil or sauce you know about.</FormNote>}
         </Section>
-        {photoControls}
+        {trail && draft.photos.length === 0 ? null : photoControls}
         {errorNote}
-        <View style={{ paddingHorizontal: space.inset, marginTop: 22 }}>
-          <Capsule
-            title={busy === 'analysis' ? 'Analyzing…' : 'Analyze meal'}
-            size="large"
-            fill
-            busy={busy === 'analysis'}
-            disabled={!draft.hint.trim() && draft.photos.length === 0}
-            onPress={() => void analyze()}
-          />
-        </View>
+        {trail ? (
+          <AnalysisProgress trail={trail.steps} startedAt={trail.startedAt} />
+        ) : (
+          <View style={{ paddingHorizontal: space.inset, marginTop: 22 }}>
+            <Capsule
+              title="Analyze meal"
+              size="large"
+              fill
+              disabled={busy !== null || (!draft.hint.trim() && draft.photos.length === 0)}
+              onPress={() => void analyze()}
+            />
+          </View>
+        )}
       </View>
     );
   }
@@ -481,17 +497,21 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
         {photoControls}
         <FormNote>Add a meal or nutrition label photo. Up to two photos. Remove a photo to replace it.</FormNote>
         {errorNote}
-        {/* At the accessibility sizes the two capsules stack, full width, instead of squeezing. */}
-        <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
-          <Capsule title="Change meal" variant="quiet" size="large" disabled={busy !== null} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
-          <Capsule
-            title={draft.clarificationUsed ? 'Retry estimate' : draft.answer.trim() || draft.photos.length ? 'Update estimate' : 'Use an estimate'}
-            size="large"
-            busy={busy === 'analysis'}
-            onPress={() => void analyze({ clarify: true })}
-            style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
-          />
-        </View>
+        {trail ? (
+          <AnalysisProgress trail={trail.steps} startedAt={trail.startedAt} />
+        ) : (
+          // At the accessibility sizes the two capsules stack, full width, instead of squeezing.
+          <View style={{ flexDirection: large ? 'column' : 'row', gap: 10, paddingHorizontal: space.inset, marginTop: 20 }}>
+            <Capsule title="Change meal" variant="quiet" size="large" disabled={busy !== null} onPress={changeMeal} style={large ? { alignSelf: 'stretch' } : undefined} />
+            <Capsule
+              title={draft.clarificationUsed ? 'Retry estimate' : draft.answer.trim() || draft.photos.length ? 'Update estimate' : 'Use an estimate'}
+              size="large"
+              disabled={busy !== null}
+              onPress={() => void analyze({ clarify: true })}
+              style={large ? { alignSelf: 'stretch' } : { flex: 1, alignSelf: 'stretch' }}
+            />
+          </View>
+        )}
       </View>
     );
   }

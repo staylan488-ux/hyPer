@@ -82,6 +82,8 @@ describe('Gemini + independent web food pipeline', () => {
     const gemini = requests.filter(r => r.url.includes('googleapis'));
     expect(gemini).toHaveLength(3);
     expect(gemini.every(r => r.url.endsWith('/gemini-3.8-flash:generateContent') && r.body.store === false && !r.body.tools)).toBe(true);
+    // Medium thinking for the food reasoning; low for picking which pages to read.
+    expect(gemini.map(r => r.body.generationConfig.thinkingConfig.thinkingLevel)).toEqual(['MEDIUM', 'LOW', 'MEDIUM']);
     const search = requests.find(r => r.url.endsWith('/search'))!.body;
     expect(search).toMatchObject({ query: 'Fixture samosas nutrition facts serving size', auto_parameters: false, include_answer: false, include_usage: true, search_depth: 'basic' });
     expect(JSON.stringify(requests.filter(r => r.url.includes('tavily')))).not.toMatch(/Sinan|bulking|gemini-key|imageBase64/);
@@ -106,6 +108,31 @@ describe('Gemini + independent web food pipeline', () => {
     expect(result.usage).toMatchObject({ modelCalls: 1, promptTokens: 5000, thinkingTokens: 1000, estimatedTokenUsd: 0.01125, knownEstimatedTokenUsd: 0.01125,
       webResearch: { searchRequests: 0, extractedUrls: 0, reportedCredits: 0, knownReportedCredits: 0, estimatedCredits: 0, complete: true } });
     expect(result.originalText).not.toMatch(/hidden thoughts|labelSupport/);
+  });
+  it('reports each step of a researched meal as it starts, and how long each took', async () => {
+    vi.stubGlobal('fetch', researchFetch());
+    const steps: unknown[] = [];
+    const result = await analyzeMeal({ ...input, hint: 'I ate six Fixture samosas.' }, 'gemini-key', 'tavily-key', step => steps.push(step));
+    expect(steps).toEqual([
+      { step: 'look' },
+      { step: 'search', products: ['Fixture samosas'] },
+      { step: 'compare', pages: 1 },
+      { step: 'read', sites: ['example.com'] },
+      { step: 'estimate' },
+    ]);
+    expect(Object.keys(result.usage.stepMs ?? {}).sort()).toEqual(['extract', 'finalizer', 'planner', 'search', 'selection']);
+    expect(Object.values(result.usage.stepMs ?? {}).every(ms => Number.isInteger(ms) && ms >= 0)).toBe(true);
+    // Steps hold public product names and hostnames only, never the person's words or the page.
+    expect(JSON.stringify(steps)).not.toMatch(/I ate|PRIVATE|example\.com\/samosas/);
+  });
+  it('reports only the first look for a familiar meal, and a failing listener never stops the analysis', async () => {
+    const eggs = { ...item, productIndex: null, name: 'Boiled eggs', quantity: 2, basisQuantity: 1, evidence: 'estimate', amountQuote: '', labelSupport: { ...labelSupport, origin: 'none' } };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(envelope({ products: [], needsFoodIdentity: false, ...meal([eggs]) }))));
+    const listener = vi.fn(() => { throw new Error('screen gone'); });
+    const result = await analyzeMeal({ hint: 'two boiled eggs', images: [] }, 'g', 't', listener);
+    expect(listener.mock.calls).toEqual([[{ step: 'look' }]]);
+    expect(result.items[0].name).toBe('Boiled eggs');
+    expect(Object.keys(result.usage.stepMs ?? {})).toEqual(['planner']);
   });
   it('includes the same nutrition basis rules when the first interpretation can complete the meal', () => {
     const body = buildPlanningRequest({ hint: 'two eggs', images: [] });
