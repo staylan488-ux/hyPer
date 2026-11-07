@@ -369,6 +369,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     (food?: Food, editSaved = false) => {
       const next = makeDraft(food);
       next.saveAsReusableMeal = editSaved;
+      // A saved meal opened to log is already saved: its review offers no second save.
+      if (food) next.method = 'saved';
       const target = editSaved ? food : undefined;
       const targetKey = target ? `saved:${target.id}` : editing ? `edit:${editing.id}` : 'new';
       setSavedTarget(target);

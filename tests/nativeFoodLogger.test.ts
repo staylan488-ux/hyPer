@@ -163,6 +163,8 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     inputs: Record<string, Input>;
     pressables: Record<string, Press>;
     sections: Record<string, SectionProps>;
+    /** Switches drawn, by label. */
+    toggles: Record<string, { label: string; value: boolean }>;
     /** The tab on screen, across the segmented lists and the entry methods; a change goes to whichever holds the name. */
     picker?: { selection: string; onSelectionChange: (tab: string) => void; disabled?: boolean };
     /** Recent | Saved | Search, as drawn. */
@@ -186,7 +188,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     search?: { query: string };
     /** The sheet's scroll view as last drawn: its children and which of them stay pinned. */
     scroll?: PropsWithChildren<{ stickyHeaderIndices?: number[] }>;
-  } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {} };
+  } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {}, toggles: {} };
   Object.defineProperty(captured, 'picker', {
     get: () => {
       const { segments, methods } = captured;
@@ -373,7 +375,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/components/Row': { Row: (props: Button) => { captured.buttons[props.title] = props; return null; }, Hairline: Empty },
     '~/components/SwipeRow': { dismissOpenSwipeRow: noop, closeOpenSwipeRow: () => false, SwipeRow: Wrap, useSwipeActions: () => [] },
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => ({ actions: [], run: () => false }) },
-    '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: Empty, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
+    '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: (props: { label: string; value: boolean }) => { captured.toggles[props.label] = props; return null; }, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
     '~/components/Stepper': { Stepper: Empty },
     '~/lib/format': { formatWhole: String },
@@ -662,6 +664,33 @@ describe('editing measured food entries', () => {
 });
 
 describe('native food logger transitions', () => {
+  it('offers Save as reusable meal for a new built meal, never for a saved meal opened to log', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.click('Build a meal');
+    await act(async () => { h.captured.context!.addIngredients([composition.createMealIngredient(milk, 1, 'milk-part')]); });
+    await h.click('Review meal');
+    expect(h.captured.toggles['Save as reusable meal']).toMatchObject({ value: false });
+    await act(async () => { h.captured.review!.update({ name: 'Milk bowl' }); });
+    // Discarded, so the saved meal doesn't open over this one.
+    await h.close();
+    composition.clearMealDraft('user-a', 'new');
+
+    const saved = loggerHarness();
+    await saved.render();
+    await act(async () => { saved.captured.context!.composeMeal(recipe); });
+    expect(saved.captured.review!.draft.name).toBe(recipe.name);
+    expect(saved.captured.sections.When).toBeDefined();
+    expect(saved.captured.toggles['Save as reusable meal']).toBeUndefined();
+    // Closed and opened again, the kept draft still knows it came from Saved.
+    await saved.close();
+    await saved.render();
+    expect(saved.captured.review!.draft.method).toBe('saved');
+    expect(saved.captured.toggles['Save as reusable meal']).toBeUndefined();
+    await saved.click('Log meal');
+    expect(saved.saveMeal).toHaveBeenCalledWith(expect.objectContaining({ saveAsReusableMeal: false }), 'user-a', expect.anything());
+  });
+
   it('keeps Saved → Edit separate from the entry that originally opened the sheet', async () => {
     const h = loggerHarness({ editing: true });
     await h.render();

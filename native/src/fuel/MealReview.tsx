@@ -198,8 +198,13 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
               />
               <Hairline />
               <Row form title="Add to" value={group ? nutritionGroupTitle(group, groups) : NO_MEAL} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />
-              <Hairline />
-              <ToggleRow label="Save as reusable meal" value={draft.saveAsReusableMeal} disabled={frozen} onChange={(saveAsReusableMeal) => update({ saveAsReusableMeal })} />
+              {/* A meal opened from Saved is saved already; Edit saved meal changes it. */}
+              {draft.method === 'saved' ? null : (
+                <>
+                  <Hairline />
+                  <ToggleRow label="Save as reusable meal" value={draft.saveAsReusableMeal} disabled={frozen} onChange={(saveAsReusableMeal) => update({ saveAsReusableMeal })} />
+                </>
+              )}
             </Label>
           </Section>
         ) : null}
