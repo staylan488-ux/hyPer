@@ -4,7 +4,7 @@ import { averageLoggedDays } from '@/hooks/useWeeklyNutrition';
 import { buildCoachingCall, coachMuscles } from '@/lib/volumeCoaching';
 import type { MuscleVolume } from '@/types';
 
-// Progress's rules are shared by the web Coaching page and native Progress.
+// Progress's rules.
 
 const landmark = { mv: 4, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
 const volume = (muscle_group: string, weekly_sets: number, status: MuscleVolume['status'], withLandmark = true) =>

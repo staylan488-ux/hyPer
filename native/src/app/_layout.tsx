@@ -47,8 +47,7 @@ takeNativeLaunch();
 // A tap on the Fuel reminder, or its Snap a meal button, becomes the same press
 // the moment it lands, at launch or later (lib/fuelReminder.ts).
 followReminderTaps();
-// Otherwise restore the saved session (Keychain) and follow auth changes, as
-// the web app does on launch.
+// Otherwise restore the saved session (Keychain) and follow auth changes.
 if (!isPreviewActive()) void useAuthStore.getState().initialize();
 // Keep the launch screen up until the intro takes over, or without the intro
 // until it is known whether someone is signed in.

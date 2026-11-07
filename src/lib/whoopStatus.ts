@@ -1,5 +1,4 @@
-// What You and History say about the WHOOP connection, shared by the web and
-// native apps.
+// What You and History say about the WHOOP connection.
 import { formatDistanceStrict } from 'date-fns';
 
 import type { WhoopSyncResult } from '@/lib/whoopSync';

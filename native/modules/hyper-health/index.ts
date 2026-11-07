@@ -23,9 +23,8 @@ const native = (): HyperHealthNative =>
   (loaded ??= (require('expo') as ExpoModules).requireNativeModule<HyperHealthNative>('HyperHealth'));
 
 /**
- * Apple Health body weight, the same calls as the Capacitor app's HyperHealth
- * plugin (ios/App/App/HyperHealthPlugin.swift), so the shared
- * src/lib/healthWeights sync runs unchanged.
+ * Apple Health body weight, the same calls the Capacitor app's HyperHealth
+ * plugin took, so the shared src/lib/healthWeights sync runs unchanged.
  */
 export const HyperHealth = {
   requestBodyMeasurementAccess: () => native().requestBodyMeasurementAccess(),

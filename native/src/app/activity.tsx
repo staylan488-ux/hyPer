@@ -27,7 +27,7 @@ function startDay(day?: string): string {
   return day && day < today ? day : today;
 }
 
-/** Adds or edits an activity: type, name, day, start, length and notes, with the web's rules. */
+/** Adds or edits an activity: type, name, day, start, length and notes, with the shared src/lib/activitySessions rules. */
 export default function ActivitySheet() {
   const c = useBlanc();
   // The date picker ends on today, moving on at midnight while the sheet is open.

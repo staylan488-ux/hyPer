@@ -5,8 +5,10 @@
 // - `@/…` resolves to ../src; `~/…` is this app's src.
 // - Packages imported from ../src resolve from this app's node_modules, so there
 //   is one React, one Zustand and one Supabase client.
-// - A few browser- or Capacitor-only modules are swapped for native versions
-//   from src/platform, whether they are imported by alias or relative path.
+// - A few shared modules that need the phone (haptics, notifications, the
+//   Keychain session and so on) are swapped for native versions from
+//   src/platform, whether they are imported by alias or relative path. The
+//   shared file must still exist: the swap matches the path it resolves to.
 const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
 
@@ -35,12 +37,6 @@ for (const [shared, native] of Object.entries(replacements)) {
   }
 }
 
-/** Packages the shared code imports that this app replaces outright. */
-const packageReplacements = {
-  '@capacitor/core': path.join(platformDir, 'capacitorShim.ts'),
-  '@capacitor/app': path.join(platformDir, 'capacitorShim.ts'),
-};
-
 const config = getDefaultConfig(projectRoot);
 // The Gemini food analyzer's shapes and serving rules live with its edge
 // function and are shared with this app through src/lib/foodTrial.
@@ -51,9 +47,6 @@ const upstreamResolve = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const resolve = upstreamResolve ?? context.resolveRequest;
-  if (packageReplacements[moduleName]) {
-    return { type: 'sourceFile', filePath: packageReplacements[moduleName] };
-  }
   let request = moduleName;
   let requestContext = context;
 

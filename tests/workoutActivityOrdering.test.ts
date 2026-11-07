@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createWorkoutActivitySync } from '@/lib/workoutActivitySync';
+
+// The order the workout's Live Activity calls reach iOS in. The app runs these
+// rules over its own module (native/src/platform/liveActivity.ts).
+
 type Deferred = { resolve: () => void; reject: (error: Error) => void };
 
 const native = vi.hoisted(() => {
@@ -20,20 +25,14 @@ const native = vi.hoisted(() => {
   };
 });
 
-vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => true },
-  registerPlugin: () => native.plugin,
-}));
-
 const flush = async () => {
   for (let i = 0; i < 10; i += 1) await Promise.resolve();
 };
 
 const session = (detailLine: string) => ({ exerciseName: 'Bench Press', detailLine, sessionStartedAtEpochMs: 1 });
 
-async function loadModule() {
-  vi.resetModules();
-  return import('@/lib/liveActivity');
+function loadModule() {
+  return createWorkoutActivitySync(native.plugin);
 }
 
 describe('workout Live Activity ordering', () => {
@@ -47,7 +46,7 @@ describe('workout Live Activity ordering', () => {
   });
 
   it('sends the newest snapshot last when syncs arrive quickly', async () => {
-    const activity = await loadModule();
+    const activity = loadModule();
     activity.syncWorkoutActivity(session('set 1'));
     await flush();
     activity.syncWorkoutActivity(session('set 2 (stale)'));
@@ -59,10 +58,10 @@ describe('workout Live Activity ordering', () => {
   });
 
   it('never sends a sync after end()', async () => {
-    const activity = await loadModule();
+    const activity = loadModule();
     activity.syncWorkoutActivity(session('set 3'));
     await flush();
-    // Rest pill unmount cleanup, then the Workout page ends the card.
+    // The rest is cleared, then the workout ends the card.
     activity.syncWorkoutActivityRest(null);
     activity.endWorkoutActivity();
     native.pending[0].resolve();
@@ -74,7 +73,7 @@ describe('workout Live Activity ordering', () => {
   });
 
   it('keeps going after a rejected sync', async () => {
-    const activity = await loadModule();
+    const activity = loadModule();
     activity.syncWorkoutActivity(session('set 1'));
     await flush();
     native.pending[0].reject(new Error('ActivityKit unavailable'));
@@ -86,7 +85,7 @@ describe('workout Live Activity ordering', () => {
   });
 
   it('collapses syncs made during an in-flight call into one follow-up with the latest state', async () => {
-    const activity = await loadModule();
+    const activity = loadModule();
     activity.syncWorkoutActivity(session('set 1'));
     await flush();
     activity.syncWorkoutActivity(session('set 2'));
@@ -104,7 +103,7 @@ describe('workout Live Activity ordering', () => {
 
   it('does not let a native call that never settles freeze later updates', async () => {
     vi.useFakeTimers();
-    const activity = await loadModule();
+    const activity = loadModule();
     activity.syncWorkoutActivity(session('set 1'));
     await flush();
     activity.endWorkoutActivity();

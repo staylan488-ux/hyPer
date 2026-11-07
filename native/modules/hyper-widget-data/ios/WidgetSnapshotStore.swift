@@ -12,8 +12,8 @@ enum WidgetSnapshotStore {
   static let key = "hyper.widgetSnapshot"
   /// The app's URL scheme (app.config.js "scheme"); widgets and the run card
   /// open screens through it. The released app (app.hyper.mobile, extension
-  /// app.hyper.mobile.HyperWidgets) answers to the Capacitor app's scheme; the
-  /// side-by-side test app (app.hyper.native) to its own.
+  /// app.hyper.mobile.HyperWidgets) answers to the scheme the Capacitor app
+  /// used; the side-by-side test app (app.hyper.native) to its own.
   static let appScheme: String = {
     let bundle = Bundle.main.bundleIdentifier ?? ""
     return bundle == "app.hyper.mobile" || bundle.hasPrefix("app.hyper.mobile.") ? "app.hyper.mobile" : "hyper-native"

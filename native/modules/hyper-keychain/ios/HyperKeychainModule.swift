@@ -3,10 +3,10 @@ import Foundation
 import Security
 
 // The auth session's Keychain items, written exactly as the Capacitor app's
-// HyperAuthPlugin writes them: a generic password with service
+// HyperAuthPlugin wrote them: a generic password with service
 // "<bundle ID>.auth", account = the storage key, readable after first unlock,
-// this device only. When this app takes over the app.hyper.mobile bundle ID,
-// it reads the sessions that app saved.
+// this device only. Under the app.hyper.mobile bundle ID it reads the sessions
+// that app saved, so the 2.0 update kept people signed in.
 //
 // Results come back as dictionaries rather than thrown errors, so the JS side
 // can rebuild the plugin's error codes and OSStatus for the shared diagnostics.

@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-/// The run's audio cues, the same tones as the web app's src/lib/runTrackerCues.ts:
+/// The run's audio cues, the same tones as the shared src/lib/runTrackerCues.ts:
 /// a lap is a double 880 Hz blip, a sprint start rises and a sprint end falls,
 /// each a soft triangle wave. They mix over music and play with the screen
 /// locked (the audio background mode), since a runner hears them with the
@@ -70,7 +70,7 @@ final class RunCuePlayer {
   }
 
   /// The tones as one buffer: each rises from silence in 20 ms and fades away
-  /// exponentially, as the web cue's gain ramps do.
+  /// exponentially, as the gain ramps in src/lib/runTrackerCues.ts do.
   private func render(_ tones: [Tone]) -> AVAudioPCMBuffer? {
     let total = (tones.map { $0.at + $0.duration }.max() ?? 0) + 0.05
     let frames = AVAudioFrameCount(total * sampleRate)

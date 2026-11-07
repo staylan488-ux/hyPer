@@ -1,5 +1,4 @@
-// What the run tracker shows, shared by the web page (pages/RunTracker.tsx)
-// and the native run screen: mode names, auto-split choices, pace and
+// What the run tracker shows: mode names, auto-split choices, pace and
 // distance wording, the live status line, the finished run's splits and the
 // private GPS diagnostics export. The engine itself is lib/runTracker.ts.
 import {

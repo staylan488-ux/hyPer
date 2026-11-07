@@ -37,7 +37,7 @@ Use this inquiry text, adjusting only facts that are not yet true:
 
 ## Required product architecture
 
-- The iPhone and web clients call Hyper's authenticated backend, never FatSecret directly.
+- The iPhone app calls Hyper's authenticated backend, never FatSecret directly.
 - FatSecret requires OAuth token requests through an allow-listed proxy. Hosted Supabase Edge Functions do not provide stable outbound IPs, so production needs a very small static-egress proxy or a written FatSecret exception.
 - The proxy owns the FatSecret client ID/secret and returns only the requested response to the authenticated Hyper backend.
 - Barcode requests use `food.find_id_for_barcode.v2`, a zero-padded GTIN-13, `region=US`, `format=json`, and `flag_default_serving=true`.

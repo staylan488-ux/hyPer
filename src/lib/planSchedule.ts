@@ -47,7 +47,7 @@ export interface PlanScheduleChoices {
   flexDayIndex: number;
 }
 
-/** Turns the editor's choices into the schedule to save, for the web and native editors alike. */
+/** Turns the editor's choices into the schedule to save. */
 export function buildPlanSchedule(
   split: { id: string; days_per_week: number; days: readonly unknown[] },
   choices: PlanScheduleChoices,

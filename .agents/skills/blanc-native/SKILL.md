@@ -19,15 +19,17 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   components live in `native/`, and only logic worth sharing or testing goes in
   `src/lib`, `src/stores` or `src/hooks`.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
-  cannot run in React Native: the Supabase client, native bridge, OAuth, preview
-  flag, haptics, keep-awake, rest notifications, the workout Live Activity,
-  focused-field commit, app visibility, run cues, plus Capacitor shims. The
+  need the phone: the Supabase client, native bridge, OAuth, preview flag,
+  haptics, keep-awake, rest notifications, the workout Live Activity,
+  focused-field commit, app visibility and run cues. The shared file stays as
+  a default for tests and type-checks (most do nothing) and must keep the
+  exports shared code imports; Metro resolves it before swapping it. The
   bridge's `NativeHealth` is `native/modules/hyper-health` (HealthKit body
-  weight) and `NativeRun` is `native/modules/hyper-run` (the GPS recorder),
-  both ports of the Capacitor plugins, so `hasNativeHealth()` and
-  `hasNativeRun()` are true here while `isNativeIOS()` (the Capacitor shell)
-  stays false. Add a swap rather than importing React Native
-  into `src`. TypeScript mirrors the swaps in `native/tsconfig.json` paths.
+  weight) and `NativeRun` is `native/modules/hyper-run` (the GPS recorder), so
+  `hasNativeHealth()` and `hasNativeRun()` are true here while `isNativeIOS()`
+  (the retired Capacitor shell) stays false. Add a swap rather than importing
+  React Native into `src`. TypeScript mirrors the swaps in
+  `native/tsconfig.json` paths.
 - Shared code that reacts to the app coming back or going away uses
   `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
 - The native Supabase client keeps the web client's safety: `timedFetch`
@@ -65,7 +67,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   (History is never kept). Bump `LAUNCH_SNAPSHOT_VERSION` when a kept type
   changes in a way a screen reads.
 - The live workout follows the shared session plan rules in `src/lib/sessionPlan.ts`
-  (order, swaps, set ranges), the same ones the web Train page uses. Writes go
+  (order, swaps, set ranges), the same ones the web Train page used. Writes go
   through the store's own actions (`logSet`, `addWorkoutSet`,
   `removeLastUncompletedSet`, `substituteWorkoutExercise`,
   `switchBackWorkoutExercise`); movement notes use the shared `noteAutosave`
@@ -328,8 +330,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
   from ⋯ on the current card, a finished movement's row, or a hold (lifted and let go) on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12
-  whatever the program says (the owner's call on 2026-10-26; the web keeps to
-  the program's range; only unfinished sets are removed), the note, and swap
+  whatever the program says (the owner's call on 2026-10-26; the web app kept
+  to the program's range; only unfinished sets are removed), the note, and swap
   or skip for this workout, switch back or bring back. In a flexible session the same sheet pairs
   a superset, unlinks it, or removes the movement (logged sets stay in the
   workout). Last time's note for the movement shows under the
@@ -408,7 +410,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   event, on return to the front and before a rest reads as over. In the app, rest ends with a haptic and the sound, no
   banner. The shared `restTimerWorkoutGuard` clears a rest whose workout ends
   elsewhere and on sign-out. Card updates go through the shared ordering rules
-  in `src/lib/workoutActivitySync.ts` (also behind the web shell's card).
+  in `src/lib/workoutActivitySync.ts`.
 - Fuel reminder ([lib/fuelReminder.ts](../../../native/src/lib/fuelReminder.ts),
   rules in `fuelReminderPlan.ts`; the owner's pick, 2026-11-04): off by
   default, an evening time in You (5:00 PM to 11:00 PM, 8:00 PM to start), kept
@@ -474,7 +476,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   loss, signed and in ink. Screen state shared
   between them lives in `native/src/lib/you.ts`; the rules come from
   `settingsUx`, `bodyWeightSummary`, `nutritionWizard`, `healthWeights`,
-  `whoopStatus` and `foodTrialUsage`, which the web You page also uses. The
+  `whoopStatus` and `foodTrialUsage`. The
   calculator and coach hand their numbers to the edit sheet (`stageTargets`);
   nothing is saved until Save there. Appearance (Automatic, Light, Dark) keeps
   the web's `hyper-theme` key and applies through `Appearance.setColorScheme`
@@ -482,7 +484,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   with the return address `app.hyper.mobile://settings` (the only one the
   whoop-oauth function accepts; the sheet catches it, so it never reaches the
   other app). The tab layout runs the shared WHOOP foreground sync and Apple
-  Health weight sync, as the web shell does.
+  Health weight sync.
 - Run (`native/src/app/run.tsx`, a full-screen modal from Train's ⋯ menu,
   You's Start a run, or the run card): set up (Long run or Splits, auto-split,
   a simulated route in sample mode), live (the current split's pace, time,

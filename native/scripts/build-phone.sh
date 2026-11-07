@@ -5,15 +5,15 @@
 #   native/scripts/build-phone.sh                # build and check only
 #   native/scripts/build-phone.sh <device-id>    # then install and open
 # By default it builds the test app "hyPer Native" (app.hyper.native), which
-# installs beside the Capacitor app. HYPER_APP=release builds the released app
-# (app.hyper.mobile), which REPLACES the installed hyPer app: only with the
-# owner's approval. ios/ must be prebuilt for the same variant
+# installs beside the released hyPer app. HYPER_APP=release builds the
+# released app (app.hyper.mobile), which REPLACES the installed hyPer app: only
+# with the owner's approval. ios/ must be prebuilt for the same variant
 # (HYPER_APP=… npx expo prebuild --platform ios --clean).
 # `xcrun devicectl list devices` shows the device id.
 #
-# The Supabase URL, anon key and food photo worker URL come from the web app's .env (in the main
-# checkout, which worktrees share) and go only into this build's environment;
-# nothing is printed or written to the repo. Run
+# The Supabase URL, anon key and food photo worker URL come from the repository
+# root .env (in the main checkout, which worktrees share) and go only into this
+# build's environment; nothing is printed or written to the repo. Run
 # `npx expo prebuild --platform ios --clean` in native/ first if ios/ is missing
 # or the native setup changed. The Release frameworks stay in place afterwards:
 # run `scripts/use-rn-core.sh Debug` before the next simulator build.

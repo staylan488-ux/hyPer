@@ -1,6 +1,5 @@
 // Program on native: open the shared editor, act on programs and quick starts
-// through the shared store actions, and ask with iOS's own alerts where the
-// web uses its confirm sheet or window prompts.
+// through the shared store actions, and ask with iOS's own alerts.
 import { router } from 'expo-router';
 import { Alert } from 'react-native';
 import { create } from 'zustand';
@@ -18,7 +17,7 @@ import type { FlexDayTemplate, Split, Workout } from '@/types';
 import { formatTarget } from './format';
 import { haptics } from './haptics';
 
-/** The web's confirm question as an iOS alert. */
+/** A shared confirm question (src/lib/confirmDialog) as an iOS alert. */
 export function confirmAlert({ title, message, confirmLabel = 'OK', cancelLabel = 'Cancel', destructive }: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     Alert.alert(title, message, [
@@ -149,9 +148,9 @@ function markDeleting(id: string, deleting: boolean) {
 }
 
 /**
- * Asks first, as on the web. Once Delete is chosen the program leaves the
- * list and `onConfirmed` runs (its own screen closes there); a failure brings
- * it back. Resolves true once deleted.
+ * Asks first. Once Delete is chosen the program leaves the list and
+ * `onConfirmed` runs (its own screen closes there); a failure brings it back.
+ * Resolves true once deleted.
  */
 export async function deleteProgram(split: Split, onConfirmed?: () => void): Promise<boolean> {
   if (refuseUntilWorkoutLoaded()) return false;

@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isAppVisible, onAppHidden, onAppVisible } from '@/lib/appVisibility';
 
 // Shared hooks learn that the app came back or went away through this helper;
-// on the web it follows the page's visibility and unload.
+// the default (the app swaps in iOS app state) follows the page's visibility
+// and unload.
 function fakePage(state: DocumentVisibilityState = 'visible') {
   const doc = Object.assign(new EventTarget(), { visibilityState: state });
   const win = new EventTarget();
@@ -28,7 +29,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('app visibility on the web', () => {
+describe('app visibility from the page', () => {
   it('counts as visible outside a browser', () => {
     expect(isAppVisible()).toBe(true);
   });

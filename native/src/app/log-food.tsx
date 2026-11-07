@@ -76,7 +76,7 @@ const mealPartsKey = (draft: MealDraft) => draft.ingredients.map((part) => `${pa
 
 /**
  * A new entry today goes to the meal that fits the clock; on another day the
- * clock says nothing about the meal, so it starts in no meal, as on the web.
+ * clock says nothing about the meal, so it starts in no meal.
  * A Snap press supplies the clock and day it actually happened on.
  */
 const suggestFor = (selectedKey: string, list: NutritionGroup[], pressedAt: Date | null = null) =>
@@ -111,8 +111,7 @@ function useClaims(): [number, () => () => void] {
 /**
  * Log food, or edit an entry: Search foods (USDA) above Recent and Saved to
  * pick from; Barcode, Manual, Photo and Describe (Photo alone on the worker)
- * to enter a food; a review for a chosen food, and the meal builder, by the
- * web logger's rules.
+ * to enter a food; a review for a chosen food, and the meal builder.
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
  * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
  * `saveEntries` (comma-separated logged entries to keep as a new saved meal),
@@ -307,7 +306,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     void reloadSavedMeals();
   }, [reloadSavedMeals]));
 
-  // ── Meal builder (web MealLogger) ──
+  // ── Meal builder ──
   const [savedTarget, setSavedTarget] = useState<Food | undefined>();
   // Saving logged entries as a meal starts from those entries every time:
   // closing it is cancelling, so nothing is kept for next time.
@@ -430,7 +429,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       updateMeal({ ingredients: [...meal.ingredients, ...next] });
       // The capture starts over below, so VoiceOver loses its place: say what was added.
       announce(next.length === 1 ? `${next[0].food.name} added to the meal` : `${next.length} ingredients added to the meal`);
-      // the capture starts fresh for the next ingredient, as the web logger remounts
+      // the capture starts fresh for the next ingredient
       setChosen(null);
       loadManual(emptyManual);
       setPhoto(emptyPhoto());

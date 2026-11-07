@@ -76,8 +76,8 @@ export function liveSessionModel(): SessionModel | null {
 
 /**
  * Mounted once (tab layout): the live workout's day plan (swaps, order, a
- * flexible session's movements) follows the workout, as the web Train page
- * does. Resuming through Start leaves the store without one otherwise.
+ * flexible session's movements) follows the workout. Resuming through Start
+ * leaves the store without one otherwise.
  */
 export function useWorkoutDayPlan() {
   const workoutId = useAppStore((state) => state.currentWorkout?.id ?? null);
@@ -101,8 +101,8 @@ const NO_TARGETS: PreviousWorkoutSetMap = {};
 
 /**
  * Mounted once (tab layout): looks up last time's numbers while a workout is
- * live, from the shared lookup. As on the web: a failed lookup tries again on
- * the next logged set.
+ * live, from the shared lookup. A failed lookup tries again on the next
+ * logged set.
  */
 export function usePreviousTargetsLookup(session: SessionModel | null) {
   const userId = useAuthStore((state) => state.user?.id ?? null);

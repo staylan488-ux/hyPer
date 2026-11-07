@@ -2,10 +2,10 @@ import { withTimeout } from '@/lib/withTimeout';
 
 /**
  * The workout's Live Activity (lock screen and Dynamic Island), kept in step
- * with the app: one card per live workout. Platform-free, so the web app's
- * Capacitor plugin (src/lib/liveActivity.ts) and the native app's Expo module
- * share these ordering rules. iOS ticks the clocks itself from absolute times;
- * updates are needed only when the state changes.
+ * with the app: one card per live workout. Platform-free ordering rules; the
+ * app runs them through its own module (native/src/platform/liveActivity.ts).
+ * iOS ticks the clocks itself from absolute times; updates are needed only
+ * when the state changes.
  */
 export interface WorkoutActivityState {
   exerciseName: string;
@@ -124,8 +124,8 @@ export function createWorkoutActivitySync(bridge: WorkoutActivityBridge): Workou
 }
 
 /**
- * The card's second line, the same on web and native: the set that's up, sets
- * done of planned, and the session's tonnage once there is any.
+ * The card's second line: the set that's up, sets done of planned, and the
+ * session's tonnage once there is any.
  */
 export function workoutActivityDetailLine({
   nextSetNumber,

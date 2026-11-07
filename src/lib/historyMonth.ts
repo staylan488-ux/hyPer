@@ -6,7 +6,7 @@ import { getWorkoutStartDate, getWorkoutStartDateKey, resolveEditedSetCompletedA
 import { useAppStore } from '@/stores/appStore';
 import type { ActivitySession, ExerciseSubstitution, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
-// History's rules, shared by the web History page and the native History screens.
+// History's rules, used by the History screens.
 
 /** A month's workout with the names History titles it by. */
 export interface HistoryWorkout extends Workout {

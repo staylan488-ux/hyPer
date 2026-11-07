@@ -41,8 +41,7 @@ function spokenSegmentDistance(distanceM: number | null): string | null {
 
 /**
  * One activity as History keeps it: what WHOOP or the run recorder measured,
- * its notes, and a run's splits (the web History's expanded row). Edit opens
- * the activity sheet.
+ * its notes, and a run's splits. Edit opens the activity sheet.
  */
 export default function ActivityViewScreen() {
   const c = useBlanc();
@@ -118,8 +117,8 @@ export default function ActivityViewScreen() {
     ...(activity.energy_kcal != null ? [['Energy', `${Math.round(activity.energy_kcal)} kcal`] as [string, string]] : []),
     ['Source', SOURCE_LABELS[activity.source] ?? activity.source],
   ];
-  // As on the web: only the recording's own laps are splits; a WHOOP record
-  // absorbed into a run adds its numbers, not rows. One segment is the whole run.
+  // Only the recording's own laps are splits; a WHOOP record absorbed into a run
+  // adds its numbers, not rows. One segment is the whole run.
   const splits = (segments ?? []).filter((segment) => segment.source === activity.source);
   const edit = () => router.push({ pathname: '/activity', params: { id: activity.id } });
 

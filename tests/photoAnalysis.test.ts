@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/preview/flag', () => ({
   isPreviewActive: () => false,
-  isAppSandboxActive: () => false,
 }));
 
 const supabaseMock = vi.hoisted(() => ({

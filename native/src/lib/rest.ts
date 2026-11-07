@@ -1,8 +1,8 @@
-// The rest between sets, kept the way the web app keeps it (src/lib/restTimer):
-// one stored rest that runs, pauses or runs out, and outlives screens and app
-// launches. It starts after a set saves or from the timer button in Train's
-// header. Each movement keeps its own length, shared with the web app
-// (src/lib/restPreferences): its own, else the last chosen, else 90 s.
+// The rest between sets, kept by the shared src/lib/restTimer rule: one stored
+// rest that runs, pauses or runs out, and outlives screens and app launches.
+// It starts after a set saves or from the timer button in Train's header. Each
+// movement keeps its own length (the shared src/lib/restPreferences): its own,
+// else the last chosen, else 90 s.
 //
 // While a rest runs, a "Rest over" notification is scheduled for its end and
 // the workout's Live Activity counts it down on the lock screen. Both follow
@@ -53,7 +53,7 @@ import { applyRestControls } from './restControls';
 import { liveSessionModel } from './session';
 
 type RestState = {
-  /** The rest in progress, as the web app stores it. A finished one reads as no rest. */
+  /** The rest in progress, as src/lib/restTimer stores it. A finished one reads as no rest. */
   session: RestTimerSession | null;
   /** Rest lengths by movement, for the signed-in person. */
   prefs: RestPreferences;
@@ -79,7 +79,7 @@ export function restSecondsFor(
   return chosen ?? getLastUsedRestSeconds(prefs) ?? DEFAULT_REST_SECONDS;
 }
 
-/** The set that's up, as the "Rest over" notification names it (the web's words). */
+/** The set that's up, as the "Rest over" notification names it. */
 export function restLabel(movementName: string, setNumber: number): string {
   return `${movementName} · set ${setNumber}`;
 }
@@ -123,8 +123,8 @@ export function stopRest() {
 }
 
 /**
- * Sets a movement's rest length and keeps it for that movement, as the web
- * does. A rest in progress starts over, running, at the new length.
+ * Sets a movement's rest length and keeps it for that movement. A rest in
+ * progress starts over, running, at the new length.
  */
 export function setRestLength(exerciseId: string | null, seconds: number) {
   const userId = useAuthStore.getState().user?.id;

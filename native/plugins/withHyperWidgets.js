@@ -249,7 +249,7 @@ const withWidgetTarget = (config) =>
       IPHONEOS_DEPLOYMENT_TARGET: appSetting(project, 'IPHONEOS_DEPLOYMENT_TARGET') ?? '16.4',
       LD_RUNPATH_SEARCH_PATHS: quote('$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks'),
       MARKETING_VERSION: quote(config.ios?.version ?? config.version ?? '1.0'),
-      // The released app keeps the Capacitor extension's registered ID (app.config.js).
+      // The released app keeps the extension ID the Capacitor app registered (app.config.js).
       PRODUCT_BUNDLE_IDENTIFIER: config.extra?.widgetBundleIdentifier ?? `${config.ios.bundleIdentifier}.widgets`,
       PRODUCT_NAME: quote('$(TARGET_NAME)'),
       SKIP_INSTALL: 'YES',

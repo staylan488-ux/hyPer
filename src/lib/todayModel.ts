@@ -1,6 +1,5 @@
 import { addDays, format, parseISO } from 'date-fns';
 import { getWorkoutResumeSet } from '@/lib/workoutFocus';
-import type { CapsuleGlyph } from '@/lib/commandCapsule';
 import { plannedDayForDate, type PlanSchedule, type ScheduleWorkout } from '@/lib/planSchedule';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import {
@@ -47,6 +46,9 @@ export const TODAY_ACTION_PATHS: Record<Exclude<TodayAction, 'retry'>, string> =
   nutrition: '/nutrition',
   program: '/train/program',
 };
+
+/** The mark on Today's primary action. */
+export type CapsuleGlyph = 'arrow' | 'plus' | 'check';
 
 export interface TodayCapsuleModel {
   key: string;
@@ -240,7 +242,7 @@ export interface TodayHeroInput {
   adaptiveSchedulingEnabled: boolean;
 }
 
-/** What Today's hero shows. Shared by the web and native Today screens. */
+/** What Today's hero shows. */
 export function todayHero(input: TodayHeroInput): HeroState {
   const {
     heroLoading,

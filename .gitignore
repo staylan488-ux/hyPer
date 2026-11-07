@@ -9,7 +9,6 @@ lerna-debug.log*
 
 node_modules
 dist
-dist-ssr
 *.local
 .tmp/
 
@@ -39,6 +38,8 @@ CLAUDE.md
 !/.claude/skills/supabase-deploy
 !/.claude/skills/blanc-native
 CLAUDE.local.md
+/.claude/settings.local.json
+/.claude/worktrees/
 
 # Editor directories and files
 .vscode/*

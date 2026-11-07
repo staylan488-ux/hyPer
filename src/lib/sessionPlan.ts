@@ -1,6 +1,6 @@
-// A live workout's movements as planned, shared by the web Train page and the
-// native app. A workout with its own session plan (workout_day_plans: flexible
-// sessions, swaps, reorders) follows that plan; otherwise the program day.
+// A live workout's movements as planned. A workout with its own session plan
+// (workout_day_plans: flexible sessions, swaps, reorders) follows that plan;
+// otherwise the program day.
 import { parseSetRangeNotes, type SetRangeNotesResult } from '@/lib/setRangeNotes';
 import type { ExerciseSubstitution, FlexiblePlanItem, SplitExercise, WorkoutDayPlan, WorkoutSet } from '@/types';
 

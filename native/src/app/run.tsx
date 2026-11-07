@@ -59,10 +59,10 @@ import { holdRunLinks } from '~/lib/launchLink';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, useBlanc } from '~/theme/blanc';
 
-// A GPS run, as the web's /train/run: set up (mode and auto-split), live
-// (pace, time, distance; Split, Rest and Hold to finish), then the finished
-// run to save or discard. The engine, recovery and recorder rules are shared
-// (useRunTracker, lib/runTracker, lib/nativeRunSource); recording goes through
+// A GPS run: set up (mode and auto-split), live (pace, time, distance; Split,
+// Rest and Hold to finish), then the finished run to save or discard. The
+// engine, recovery and recorder rules are shared (useRunTracker,
+// lib/runTracker, lib/nativeRunSource); recording goes through
 // modules/hyper-run, which keeps going with the screen locked and puts the run
 // on the lock screen with Split, Rest and Finish.
 

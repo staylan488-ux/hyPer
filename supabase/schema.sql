@@ -1,5 +1,5 @@
 -- Reference snapshot of the public schema, rebuilt from supabase/migrations
--- through 20260802120000 on 2026-09-26 (not checked against a production dump).
+-- through 20261012120000 on 2026-10-12 (not checked against a production dump).
 -- The migrations are the source of truth. This file is for reading: it is not
 -- meant to be replayed on top of the migrations or against production.
 

@@ -47,9 +47,9 @@ import { afterProgramSaved, confirmAlert, liveWorkoutDayId, refuseRemovingLiveDa
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
- * Creating and editing share one editor, as on the web. A new program starts
- * at the chooser (guided or blank), which only fills the draft; nothing is
- * created until Create.
+ * Creating and editing share one editor. A new program starts at the chooser
+ * (guided or blank), which only fills the draft; nothing is created until
+ * Create.
  */
 export default function ProgramEditScreen() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();

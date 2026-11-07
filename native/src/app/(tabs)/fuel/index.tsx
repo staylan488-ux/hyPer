@@ -531,7 +531,7 @@ function entryDetail(log: FoodLog): DetailParts {
   const time = format(getLogDate(log), 'h:mm a');
   const amount = parts ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
   const protein = Math.round(logMacro(log, 'protein') ?? 0);
-  // As the web's ledger does, an AI estimate says so (one word, so the line stays quiet).
+  // An AI estimate says so (one word, so the line stays quiet).
   const raw = log.source as string | undefined;
   const source = raw === 'gemini_estimate' || raw === 'gemini_trial' ? 'Estimate' : raw === 'gemini_label' ? 'From label' : null;
   return [amount, ...[protein > 0 ? `${formatWhole(protein)} g protein` : null, time, source].filter((part): part is string => Boolean(part))];

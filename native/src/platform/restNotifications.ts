@@ -1,7 +1,7 @@
 // Replaces ../src/lib/restNotifications.ts (see metro.config.js): the "Rest
 // over" notification, scheduled for the rest's end so it reaches you with the
-// phone locked or the app in the background. Same words and single slot as the
-// web app's. Local only: the app asks for no push permission.
+// phone locked or the app in the background, in a single slot. Local only: the
+// app asks for no push permission.
 import * as Notifications from 'expo-notifications';
 
 import { isFuelReminderId } from '~/lib/fuelReminderPlan';

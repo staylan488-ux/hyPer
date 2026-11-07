@@ -1,6 +1,5 @@
 /**
- * How Program describes programs and quick starts, shared by the web Program
- * page and the native app.
+ * How Program describes programs and quick starts.
  */
 import { parseSetRangeNotes } from '@/lib/setRangeNotes';
 import type { FlexDayTemplate, FlexiblePlanItem, Split, SplitExercise } from '@/types';

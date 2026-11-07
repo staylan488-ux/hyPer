@@ -19,8 +19,8 @@ platform :ios do
     )
 
     # The next build number after the highest on TestFlight, whoever shipped it
-    # (the Capacitor app's builds included). app.config.js gives it to the app
-    # and the widget extension alike.
+    # (the retired Capacitor app's builds included). app.config.js gives it to
+    # the app and the widget extension alike.
     next_build = latest_testflight_build_number(
       api_key: api_key,
       app_identifier: "app.hyper.mobile",

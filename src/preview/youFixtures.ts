@@ -3,19 +3,6 @@ import { PREVIEW_USER_ID } from './previewData';
 
 export type YouPreviewState = 'populated' | 'empty';
 
-export function getYouPreviewState(): YouPreviewState | null {
-  if (!import.meta.env.DEV || typeof window === 'undefined') return null;
-  const requested = new URLSearchParams(window.location.search).get('youState');
-  const state = requested === 'empty' || requested === 'populated'
-    ? requested
-    : window.location.pathname === '/preview/you' ? 'populated' : null;
-  try {
-    if (state) window.sessionStorage.setItem('hyper-you-preview-state', state);
-    const saved = state ?? window.sessionStorage.getItem('hyper-you-preview-state');
-    return saved === 'empty' || saved === 'populated' ? saved : null;
-  } catch { return state; }
-}
-
 /** Days before today with a sample weigh-in, newest first. */
 const SAMPLE_WEIGH_IN_DAYS = Array.from({ length: 210 }, (_, index) => index).filter(
   (index) => index < 14 || (index % 7 !== 3 && index % 7 !== 5 && (index < 100 || index >= 110)),

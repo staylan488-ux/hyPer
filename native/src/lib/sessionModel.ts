@@ -1,7 +1,7 @@
 // Pure: the live workout as the screens need it. No React, no React Native, so
-// the web test suite can cover it (tests/nativeSessionModel.test.ts). Order,
+// the root test suite can cover it (tests/nativeSessionModel.test.ts). Order,
 // targets, swaps and superset rounds follow the shared session plan rules
-// (src/lib/sessionPlan), the same ones the web Train page uses.
+// (src/lib/sessionPlan).
 import { nextWorkoutSet } from '@/lib/workoutFocus';
 import {
   orderSessionSets,
@@ -81,8 +81,7 @@ export type SessionModel = {
 
 /**
  * A movement may hold 1 to 12 sets in a session, whatever its program says
- * (the owner's call; the web keeps to the program's range). Only unfinished
- * sets are ever removed.
+ * (the owner's call). Only unfinished sets are ever removed.
  */
 export const MAX_SETS = 12;
 
@@ -138,8 +137,7 @@ export function sessionModelCache() {
 /**
  * Groups the workout's sets into movements in session order, and picks the set
  * the next log applies to: the first unlogged set of the focused movement, or
- * else the next one in turn, with superset rounds alternating A1, B1, A2, B2
- * as on the web.
+ * else the next one in turn, with superset rounds alternating A1, B1, A2, B2.
  */
 export function buildSessionModel(
   workout: Workout | null,
@@ -158,7 +156,7 @@ export function buildSessionModel(
   const ranges = sessionSetRanges(planned);
   const notes = parseWorkoutNotes(workout.notes).movementNotes;
   // A movement taken out of a flexible session keeps its logged sets in the
-  // totals but leaves the list, as on the web.
+  // totals but leaves the list.
   const removed = new Set(flexible ? planned.filter((exercise) => exercise.hidden).map((exercise) => exercise.exercise_id) : []);
   // Skipped for this workout, as saved in the plan or still saving.
   const markedSkipped = (exerciseId: string) => skips[exerciseId] ?? plans.get(exerciseId)?.skipped === true;
@@ -240,7 +238,7 @@ export function buildSessionModel(
 /**
  * After a set is logged: the movement that is up next (a superset's partner
  * for the same round, else more of the same movement, else the next in turn),
- * and whether to rest. A superset rests only after B, as on the web.
+ * and whether to rest. A superset rests only after B.
  */
 export function afterLoggedSet(
   session: Pick<SessionModel, 'movements' | 'pairings'>,

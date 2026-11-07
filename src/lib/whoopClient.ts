@@ -1,6 +1,6 @@
 // Production transport for the WHOOP pipeline: thin wrappers over the
-// whoop-oauth / whoop-sync Edge Functions. Never used in /preview — the mock
-// client has no functions API; preview swaps in fixture ports instead.
+// whoop-oauth / whoop-sync Edge Functions. Never used in preview mode — the
+// mock client has no functions API; preview swaps in fixture ports instead.
 import { supabase } from '@/lib/supabase';
 import type { WhoopFetchBatchParams, WhoopFetchBatchResult } from '@/lib/whoopSync';
 import type { WhoopWorkoutRecord } from '@/lib/whoopImport';
@@ -14,7 +14,7 @@ function extractError(data: unknown): string | null {
   return body && typeof body.error === 'string' ? body.error : null;
 }
 
-// returns the WHOOP consent URL to redirect the browser to
+// returns the WHOOP consent URL for the sign-in sheet to open
 export async function startWhoopConnect(returnTo?: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('whoop-oauth', {
     body: { action: 'start', ...(returnTo ? { returnTo } : {}) },

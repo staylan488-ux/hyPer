@@ -36,8 +36,7 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-example
-
-# generated native folders
+# generated native folders and fastlane's build output
 /ios
 /android
+/build

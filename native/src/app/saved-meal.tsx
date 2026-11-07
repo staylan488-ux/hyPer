@@ -29,9 +29,9 @@ const MACROS: { key: Exclude<keyof Draft, 'name'>; label: string; unit: string }
 const oneDecimal = (value: unknown) => String(Math.round((Number(value) || 0) * 10) / 10);
 
 /**
- * Edits a saved meal's name and numbers for future logs. As on the web, the
- * changed meal is saved as a new one and the old one retired, so past logs
- * keep what they were.
+ * Edits a saved meal's name and numbers for future logs. The changed meal is
+ * saved as a new one and the old one retired, so past logs keep what they
+ * were.
  */
 export default function SavedMealSheet() {
   const c = useBlanc();

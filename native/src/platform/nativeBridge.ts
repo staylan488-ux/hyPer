@@ -1,9 +1,9 @@
 // Replaces ../src/lib/nativeBridge.ts (see metro.config.js).
 //
-// The web app reaches its Swift code through Capacitor plugins. This app has no
-// Capacitor, so shared code takes its non-plugin paths (isNativeIOS() is false)
-// until each feature is rebuilt as a native module here. The plugin shapes
-// below match the web bridge so shared code type-checks unchanged.
+// Backs the shared bridge's shapes with this app's Expo modules: the run
+// recorder, Apple Health and the barcode scanner. isNativeIOS() (the retired
+// Capacitor shell) stays false and NativeAuth is unavailable: sign-in uses
+// platform/nativeAuth.ts and the session platform/supabase.ts.
 
 import { HyperBarcode } from '../../modules/hyper-barcode';
 import { HyperHealth } from '../../modules/hyper-health';
@@ -11,8 +11,8 @@ import { runningBundleIdentifier } from '../../modules/hyper-keychain/bundle';
 import { HyperRun } from '../../modules/hyper-run';
 
 // The app's URL scheme (app.config.js "scheme"): `hyper-native` for the test
-// app that installs beside the Capacitor app, `app.hyper.mobile` for the
-// released app that takes over its bundle ID. Read from the bundle ID iOS
+// app that installs beside the released one, `app.hyper.mobile` for the
+// released app. Read from the bundle ID iOS
 // reports, so it cannot drift from the build. The shared OAuth callback parser
 // checks returns against NATIVE_AUTH_REDIRECT_URL.
 export const NATIVE_AUTH_CALLBACK_SCHEME = runningBundleIdentifier() === 'app.hyper.mobile' ? 'app.hyper.mobile' : 'hyper-native';

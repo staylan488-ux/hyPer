@@ -4,7 +4,6 @@
 # and upload to TestFlight. Runs against an ISOLATED build clone so it never
 # disturbs anyone's working copy. Secrets live in ~/.hyper-ship/config.env
 # (outside this PUBLIC repo). Invoked by the Discord ship bot or run directly.
-# The Capacitor app (ios/) is no longer shipped from here.
 set -euo pipefail
 
 CONFIG="$HOME/.hyper-ship/config.env"
@@ -57,8 +56,9 @@ npm run test
 npx eslint .
 (cd native && npx tsc --noEmit)
 
-# The production values the app is built with, from the same .env the web app
-# used; they go into this build's environment only.
+# The production values the app is built with, from the repository's .env (its
+# VITE_* names are kept from the retired web app); they go into this build's
+# environment only.
 read_env() {
   grep -E "^[[:space:]]*$1[[:space:]]*=" .env | tail -1 |
     sed -E 's/^[^=]*=[[:space:]]*//; s/^"//; s/"[[:space:]]*$//; s/^'"'"'//; s/'"'"'[[:space:]]*$//'

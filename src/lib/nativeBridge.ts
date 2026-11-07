@@ -1,14 +1,19 @@
-import {
-  Capacitor,
-  registerPlugin,
-  type PluginListenerHandle,
-} from '@capacitor/core';
+// The shapes shared code uses to reach the phone's own features: the run
+// recorder, Apple Health and the Keychain. The app uses
+// native/src/platform/nativeBridge.ts instead, which native/metro.config.js
+// swaps in for this file (it must stay so the swap can resolve) and which backs
+// them with its Expo modules. This default has no phone behind it, so shared
+// code takes its plain paths in tests and type-checks.
+
+type PluginListenerHandle = { remove: () => Promise<void> };
 
 export const NATIVE_AUTH_CALLBACK_SCHEME = 'app.hyper.mobile';
 export const NATIVE_AUTH_REDIRECT_URL = `${NATIVE_AUTH_CALLBACK_SCHEME}://auth/callback`;
 
+/** Always false: it meant the retired Capacitor shell. nativeSecureStorage's
+ *  default storage still takes it as its switch. */
 export function isNativeIOS(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+  return false;
 }
 
 interface NativeAuthPlugin {
@@ -123,20 +128,24 @@ interface NativeHealthPlugin {
   ): Promise<PluginListenerHandle>;
 }
 
-interface NativeBarcodePlugin {
-  getAvailability(): Promise<{ available: boolean }>;
-  scanBarcode(): Promise<{ rawValue: string; format: string }>;
+// Every call rejects: there is no phone behind this default.
+function unavailable<T extends object>(name: string): T {
+  return new Proxy({} as T, {
+    get: (_target, property) =>
+      property === 'then'
+        ? undefined
+        : () => Promise.reject(new Error(`${name} is available only in the iPhone app.`)),
+  });
 }
 
-export const NativeAuth = registerPlugin<NativeAuthPlugin>('HyperAuth');
-export const NativeRun = registerPlugin<NativeRunPlugin>('HyperRun');
-export const NativeHealth = registerPlugin<NativeHealthPlugin>('HyperHealth');
+export const NativeAuth = unavailable<NativeAuthPlugin>('HyperAuth');
+export const NativeRun = unavailable<NativeRunPlugin>('HyperRun');
+export const NativeHealth = unavailable<NativeHealthPlugin>('HyperHealth');
 /** Whether runs record through the native GPS recorder (NativeRun) instead of the browser's geolocation. */
 export function hasNativeRun(): boolean {
-  return isNativeIOS();
+  return false;
 }
-/** Whether Apple Health can be read here: the iPhone app only, never the browser. */
+/** Whether Apple Health can be read here: the iPhone app only. */
 export function hasNativeHealth(): boolean {
-  return isNativeIOS();
+  return false;
 }
-export const NativeBarcode = registerPlugin<NativeBarcodePlugin>('HyperBarcode');

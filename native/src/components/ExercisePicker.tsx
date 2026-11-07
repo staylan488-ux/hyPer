@@ -44,7 +44,7 @@ type PickerProps = {
 
 /**
  * The one exercise picker: search, muscle chips, everyday gym movements
- * first and bodyweight skills on request, as on the web.
+ * first and bodyweight skills on request.
  */
 export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action }: PickerProps) {
   const c = useBlanc();

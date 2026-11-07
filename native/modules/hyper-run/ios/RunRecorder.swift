@@ -5,7 +5,7 @@ import Foundation
 import UIKit
 
 // The recorder behind HyperRunModule, ported line for line from the Capacitor
-// app's HyperRunPlugin.swift (same UserDefaults keys and trace folder, so a run
+// app's HyperRun plugin (same UserDefaults keys and trace folder, so a run
 // recorded before cutover can still be recovered after it). Everything here
 // runs on the main queue: the location delegate is delivered there, and the
 // module hops there before every call, so `sequence`, `recording` and

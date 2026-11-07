@@ -186,7 +186,7 @@ export function loadMealDraft(userId: string, draftId = 'new'): MealDraft | null
   }
 }
 
-/** Returns false if the browser cannot persist the draft (e.g. storage is full). */
+/** Returns false if the draft cannot be persisted (e.g. storage is full). */
 export function saveMealDraft(userId: string, draft: MealDraft, draftId = 'new'): boolean {
   if (!userId) return false;
   const valid = parseMealDraft(draft);

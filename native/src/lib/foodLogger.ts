@@ -1,6 +1,6 @@
-// The Log food sheet's saving rules, on the shared helpers the web food
-// logger uses (src/lib/saveNutritionEntry, foodPersistence, manualFood,
-// photoReview, saveMealComposition).
+// The Log food sheet's saving rules, on the shared helpers
+// (src/lib/saveNutritionEntry, foodPersistence, manualFood, photoReview,
+// saveMealComposition).
 import { format, isToday, startOfDay } from 'date-fns';
 
 import { toLocalTimeInput } from '@/lib/foodLoggerUtils';
@@ -17,17 +17,16 @@ export type When = { date: Date; time: string; groupId: string | null };
 export const SAVE_FAILED = 'Could not save this entry. Your changes are still here. Please try again.';
 
 /**
- * The web logger's defaults: an edit keeps its day (read at noon) and its
- * time; a new entry on today takes the clock, and on a past day the day's
- * midnight, as the web Fuel page does for a day picked from the week strip.
+ * The logger's defaults: an edit keeps its day (read at noon) and its time;
+ * a new entry on today takes the clock, and on a past day the day's midnight.
  * Snap a meal supplies its validated press time, even across midnight.
  */
 export function initialWhen(entry: FoodLog | null, selectedKey: string, groups: NutritionGroup[], fallbackGroupId: string | null, pressedAt?: Date | null): When {
   const day = entry?.date ?? selectedKey;
   const parsed = new Date(`${day}T12:00:00`);
   const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-  // An edit without a saved time reads its day at noon, as the web does; a new
-  // entry on a past day starts at that day's midnight.
+  // An edit without a saved time reads its day at noon; a new entry on a past
+  // day starts at that day's midnight.
   const clockSource = !entry && pressedAt ? pressedAt : isToday(date) ? new Date() : entry ? date : startOfDay(date);
   const groupId = entry
     ? entry.group_id || groups.find((group) => group.label === entry.meal_type)?.id || null
@@ -68,8 +67,7 @@ export async function saveFoodEntry(input: {
     await persistNutritionEntry(payloadFor(group), input.editingId, writeId);
   } catch (failure) {
     // The meal was deleted on another device (its foreign key is gone): save
-    // the entry Unassigned, as the web's meal builder does, instead of failing
-    // on every retry.
+    // the entry Unassigned instead of failing on every retry.
     if (!group || (failure as { code?: string } | null)?.code !== '23503') throw failure;
     await persistNutritionEntry(payloadFor(null), input.editingId, writeId);
   }

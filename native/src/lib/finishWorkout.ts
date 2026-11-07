@@ -39,7 +39,7 @@ export function useFinishWorkout(session: SessionModel | null) {
 
     const closeWorkout = async (saveTemplate: boolean) => {
       if (!isCurrentWorkout()) return;
-      // Notes typed during the workout land before it closes, as on the web.
+      // Notes typed during the workout land before it closes.
       const notesSaved = await flushNotes();
       if (!isCurrentWorkout()) return;
       if (!notesSaved) {
@@ -96,7 +96,7 @@ export function useFinishWorkout(session: SessionModel | null) {
       }
     };
 
-    // As on the web: keeping it as a quick start replaces one with the same name.
+    // Keeping it as a quick start replaces one with the same name.
     const state = useAppStore.getState();
     const label = state.currentWorkoutDayPlan?.day_label.trim() ?? '';
     const replaces = current.flexible && label !== '' && state.flexTemplates.some((template) => template.label === label);

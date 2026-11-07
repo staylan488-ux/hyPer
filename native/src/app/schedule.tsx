@@ -36,8 +36,8 @@ const startDateFor = (choice: StartChoice, picked: Date) =>
 
 /**
  * When Day 1 is and how sessions follow: the same weekdays each week, or each
- * session after the last whatever the day. The web's schedule editor, saved
- * the same way (on this device at once, then to the account).
+ * session after the last whatever the day. Saved on this device at once,
+ * then to the account.
  */
 export default function ScheduleSheet() {
   const split = useAppStore((state) => state.activeSplit);
@@ -55,7 +55,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
   const bump = useScheduleRevision((state) => state.bump);
   const dayCount = split.days.length;
 
-  // An existing schedule opens as saved (as the web's Edit schedule does);
+  // An existing schedule opens as saved;
   // a new one starts today with a fixed weekly rhythm from Monday.
   const [choice, setChoice] = useState<StartChoice>(saved ? 'pick' : 'today');
   const [picked, setPicked] = useState(() => (saved ? parseISO(`${saved.startDate}T00:00:00`) : new Date()));

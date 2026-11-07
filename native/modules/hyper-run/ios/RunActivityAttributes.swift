@@ -6,7 +6,7 @@ import Foundation
 /// and ends the card), the app itself (for RunControlIntent) and the widget
 /// extension (which draws it); plugins/withHyperWidgets.js copies it. ActivityKit
 /// matches the copies by type name and fields, so it must stay one definition.
-/// The fields match the Capacitor app's card, so nothing changes at cutover.
+/// The fields match the Capacitor app's card, so nothing changed at cutover.
 struct RunActivityAttributes: ActivityAttributes {
   public struct ContentState: Codable, Hashable {
     /// "free" (a long run) or "intervals" (splits).

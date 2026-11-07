@@ -20,9 +20,8 @@ const REP_LIMIT = 100;
 
 /**
  * Sets and reps for one exercise of the program being edited. Each step
- * goes to the draft at once (the web commits each cell the same way); a
- * superset partner follows the set count, as on the web. A set range lets
- * a session run shorter or longer than the usual count.
+ * goes to the draft at once; a superset partner follows the set count. A set
+ * range lets a session run shorter or longer than the usual count.
  */
 export default function ProgramExerciseSheet() {
   const c = useBlanc();

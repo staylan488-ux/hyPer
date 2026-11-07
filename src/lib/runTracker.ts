@@ -20,7 +20,7 @@ export interface GpsSample {
   accuracyM: number;
   speedMps: number | null; // device-reported speed when available
   // Core Location's estimated uncertainty for speed, in metres per second.
-  // Browser geolocation does not expose this, so web samples omit it.
+  // Browser geolocation does not expose this, so its samples omit it.
   speedAccuracyMps?: number | null;
   // optional sustained-motion evidence from the phone accelerometer. This is
   // deliberately only a gate; route and distance still come from GPS/speed.
@@ -1263,7 +1263,7 @@ export function serializeTracker(
 export function serializeFinishedRun(finishedRun: FinishedRun, nowMs: number): string {
   // Preserve the unsaved run summary without risking a multi-megabyte
   // synchronous localStorage write. The full trace remains available in
-  // memory for export until the page is reloaded.
+  // memory for export until the app restarts.
   const snapshotRun: FinishedRun = { ...finishedRun, trace: undefined };
   const snapshot: FinishedRunSnapshot = { version: 2, savedAtMs: nowMs, finishedRun: snapshotRun };
   return JSON.stringify(snapshot);

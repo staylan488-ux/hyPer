@@ -1,8 +1,8 @@
 // The weekly weight rate as a summary shows it: one decimal ("+0.3 lb/wk").
-// The shared weeklyRateLabel keeps two for the web. Body weight's chart line
-// and You's card both read a range through weightRangeSummary, so they say
-// the same rate over the same days (the card's range starts at the latest run
-// of weigh-ins when that is shorter).
+// The shared weeklyRateLabel keeps two. Body weight's chart line and You's
+// card both read a range through weightRangeSummary, so they say the same rate
+// over the same days (the card's range starts at the latest run of weigh-ins
+// when that is shorter).
 import { kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import {
   weightChangeLabel,

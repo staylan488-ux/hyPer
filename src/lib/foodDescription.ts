@@ -1,5 +1,5 @@
 import { getPhotoWorkerSettings, type PhotoAnalysisProvider, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
-import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
+import { isPreviewActive } from '@/preview/flag';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 import { patientPost } from '@/lib/patientFetch';
 
@@ -75,7 +75,7 @@ export async function describeFoodWithAi(input: {
   if (description.length > 1500) throw new Error('Keep the description under 1,500 characters.');
 
   const settings = input.settings || getPhotoWorkerSettings();
-  if (isPreviewActive() && !isAppSandboxActive()) {
+  if (isPreviewActive()) {
     return { ...PREVIEW_RESULT, provider: settings.provider };
   }
   if (!settings.url) throw new Error('Set the food-analysis worker URL in Settings first.');

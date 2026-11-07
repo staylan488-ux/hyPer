@@ -123,7 +123,7 @@ export async function getLatestBodyWeight(userId: string): Promise<BodyWeightMea
   return data as BodyWeightMeasurement | null;
 }
 
-/** Record a weigh-in the user typed. Works on web as well as native. */
+/** Record a weigh-in the user typed. */
 export async function recordManualBodyWeight(
   userId: string,
   kilograms: number,

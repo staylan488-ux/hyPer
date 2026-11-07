@@ -19,7 +19,7 @@ import { haptics } from '~/lib/haptics';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
-// Same rules and words as the web sign-in form (src/components/auth/AuthForm.tsx).
+// The same rules and words the Capacitor app's sign-in form used.
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
 const MIN_PASSWORD_LENGTH = 6;
 const SHORT_PASSWORD_MESSAGE = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;

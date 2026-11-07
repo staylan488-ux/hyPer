@@ -1,6 +1,7 @@
 // History's data on native: the month on screen, its workouts and activities,
 // and every edit to a past workout, through the shared store actions and the
-// web's edit protocol (edit → reload → completion only after a clean save).
+// shared edit protocol in src/lib/workoutEdit (edit → reload → completion only
+// after a clean save).
 import { format, isSameMonth, startOfMonth } from 'date-fns';
 import { Alert } from 'react-native';
 import { create } from 'zustand';
@@ -469,7 +470,7 @@ async function removeActivity(activity: ActivitySession): Promise<boolean> {
 
 /**
  * Asks before deleting an activity, in the same words wherever it is
- * deleted (as on the web: one added by hand is gone for good).
+ * deleted (one added by hand is gone for good).
  */
 export function confirmDeleteActivity(activity: ActivitySession, hooks: DeleteHooks = {}): Promise<boolean> {
   return confirmDelete(
@@ -498,7 +499,7 @@ export async function mergeActivities(chosen: ActivitySession[]): Promise<boolea
   }
 }
 
-/** Runs a WHOOP sync and reloads the month. The words match the web's History toast. */
+/** Runs a WHOOP sync and reloads the month. The words come from the shared src/lib/whoopStatus. */
 export async function syncActivities(): Promise<string> {
   try {
     const result = await useAppStore.getState().syncWhoop();

@@ -160,7 +160,7 @@ describe('ingestion filters', () => {
     const samples = shift(
       raw.map((sample, index) => ({
         ...sample,
-        // Reproduce the apartment failure: the browser coordinate stops moving
+        // Reproduce the apartment failure: the reported coordinate stops moving
         // after roughly 6 m even though speed and phone motion continue.
         ...(index > 8 ? { lat: frozenFix.lat, lon: frozenFix.lon } : {}),
         motionDetected: sample.t >= 2000,
@@ -622,7 +622,7 @@ describe('persistence', () => {
     expect(restoreTracker(null, T0)).toBeNull();
   });
 
-  it('recovers an unsaved finished run after a page reload', () => {
+  it('recovers an unsaved finished run after an app restart', () => {
     const tracker = createTracker(defaultTrackerConfig('free'), T0, 'recover-me');
     const run = finishTracker(tracker, T0 + 60_000);
     const raw = serializeFinishedRun(run, T0 + 60_000);

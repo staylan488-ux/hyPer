@@ -18,8 +18,8 @@ const UNDO_SECONDS_SPOKEN = 15;
 /**
  * The program editor's own stack (the program, then a day), shown as a page
  * sheet. Unsaved edits hold the sheet: Cancel or a swipe down asks before
- * dropping them, as the web's close controls do. A copy stays on this device
- * while editing, as on the web.
+ * dropping them. A copy stays on this device while editing (the shared
+ * useSplitDraftAutosave).
  */
 export default function ProgramEditLayout() {
   const c = useBlanc();

@@ -1,4 +1,4 @@
-// The Fuel page's day summary, shared by the web page and the native app.
+// The Fuel screen's day summary.
 import { format } from 'date-fns';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import type { MacroTotals } from '@/lib/nutritionMacros';
@@ -29,7 +29,7 @@ export function overTargetWord(goal: NutritionGoal | null | undefined): 'extra' 
   return isGainingGoal(goal) ? 'extra' : 'over';
 }
 
-/** The day's targets; a missing or zero target falls back to the defaults, as on the web. */
+/** The day's targets; a missing or zero target falls back to the defaults. */
 export function fuelTargets(target: TargetLike) {
   return {
     calories: target?.calories || DEFAULT_MACRO_TARGET.calories,

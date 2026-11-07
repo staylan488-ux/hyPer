@@ -22,7 +22,7 @@ const spokenByField = { accessibilityElementsHidden: true, importantForAccessibi
 
 /**
  * Corrects one set of a past workout. Clearing weight or reps leaves the set
- * not logged, as on the web; a failed save keeps the numbers for a retry.
+ * not logged; a failed save keeps the numbers for a retry.
  */
 export default function PastSetSheet() {
   const c = useBlanc();

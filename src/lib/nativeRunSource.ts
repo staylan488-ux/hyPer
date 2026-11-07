@@ -200,7 +200,7 @@ export function createNativeRunSource(
             if (!stopped) onNativeReset?.({ sample: recoveryCursor, control: controlCursor });
           }
 
-          // Recover anything recorded while the WebView was suspended before
+          // Recover anything recorded while the app was suspended before
           // subscribing, then drain once more to close the subscription race.
           await drain();
           if (stopped) return;
@@ -229,7 +229,7 @@ export function createNativeRunSource(
       })();
     },
     resync: () => {
-      // WebView resumed (e.g. screen unlocked) — pull samples the recorder
+      // App resumed (e.g. screen unlocked) — pull samples the recorder
       // persisted while JS was suspended, which live listeners never received.
       if (stopped) return;
       void drain().catch(() => undefined);

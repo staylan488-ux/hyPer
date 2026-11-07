@@ -74,8 +74,8 @@ async function succeeds(work: () => Promise<void>): Promise<boolean> {
 }
 
 /**
- * The web's autofill rule: set 1 starts from last workout's set 1, later sets
- * from the latest set logged in this workout.
+ * The shared src/lib/setAutofill rule: set 1 starts from last workout's set 1,
+ * later sets from the latest set logged in this workout.
  */
 function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draft {
   const autofill = getSetAutofillValues({
@@ -262,7 +262,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       } else {
         haptics.success();
       }
-      // The web's order: a superset's partner for the same round, else more of
+      // What comes next: a superset's partner for the same round, else more of
       // this movement, else the next in turn. A superset rests after B only.
       const after = afterLoggedSet(session, logged, useAppStore.getState().currentWorkout?.sets ?? []);
       const chosen = useFocusStore.getState().exerciseId;
@@ -1223,7 +1223,7 @@ function StartPlanned() {
   const week = plan.schedule
     ? differenceInCalendarWeeks(parseISO(dayKey), parseISO(`${plan.schedule.startDate}T00:00:00`), TRAINING_WEEK) + 1
     : null;
-  // How finishing another day moves the plan, by the web's rule.
+  // How finishing another day moves the plan.
   const otherNote = !plan.schedule
     ? null
     : !plan.adaptiveSchedulingEnabled
@@ -1355,7 +1355,7 @@ function StartFlexible() {
               defaultValue={field.text}
               onChangeText={(text) => {
                 setName(text);
-                // Typing a different name leaves the quick start, as on the web.
+                // Typing a different name leaves the quick start.
                 if (template && text !== template) setTemplate(null);
               }}
               placeholder="Upper, push, arms…"

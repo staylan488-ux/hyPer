@@ -1,7 +1,7 @@
 /**
  * The new-program chooser's choices: five guided questions with their
- * defaults, and the blank program's day count. Shared by the web chooser and
- * the native app; both only fill the editor's draft.
+ * defaults, and the blank program's day count. The chooser only fills the
+ * editor's draft.
  */
 import { getExerciseLibrary } from '@/lib/exerciseLibrary';
 import {

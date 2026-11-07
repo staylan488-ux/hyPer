@@ -5,8 +5,9 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // Generated native projects and Babel helpers are not application source.
-  globalIgnores(['native/ios/**', 'native/android/**', 'native/.expo/**', 'native/babel/**']),
+  // Generated native projects, Babel helpers and local agent worktrees
+  // (.claude/worktrees) are not application source.
+  globalIgnores(['native/ios/**', 'native/android/**', 'native/.expo/**', 'native/babel/**', '.claude/**']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: {
   from: (table: string) => client.from(table),
   rpc: (name: string, params: Record<string, unknown>) => client.rpc(name, params),
 } }));
-vi.mock('@/preview/flag', () => ({ isPreviewActive: () => true, isAppSandboxActive: () => false }));
+vi.mock('@/preview/flag', () => ({ isPreviewActive: () => true }));
 
 import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';

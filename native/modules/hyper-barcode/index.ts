@@ -15,9 +15,8 @@ const native = (): HyperBarcodeNative =>
   (loaded ??= (require('expo') as ExpoModules).requireNativeModule<HyperBarcodeNative>('HyperBarcode'));
 
 /**
- * VisionKit's data scanner, the same one the Capacitor app uses
- * (ios/App/App/HyperBarcodePlugin.swift). A cancelled scan rejects with code
- * CANCELLED and a failed one with SCAN_FAILED, as there.
+ * VisionKit's data scanner, the same one the Capacitor app used. A cancelled
+ * scan rejects with code CANCELLED and a failed one with SCAN_FAILED.
  */
 export const HyperBarcode: HyperBarcodeNative = {
   getAvailability: () => native().getAvailability(),
