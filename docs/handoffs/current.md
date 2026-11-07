@@ -26,11 +26,12 @@ history keep them (this file at commit b3f61df has the long version).
   address is sent, though the app always sends `app.hyper.mobile://settings`.
   The Supabase dashboard's Auth site URL and redirect list may still name the
   web app. The `.env` names keep their `VITE_` prefix.
-- Merged since the last TestFlight upload recorded here: #181–#188, among
+- Merged since the last TestFlight upload recorded here: #181–#190, among
   them the full weigh-in history (#185), the design council's Blanc
   refinements with a custom camera (`expo-camera`, #186) and a quicker launch
-  intro (#188). #186 adds a native module, so a phone needs a full native
-  build, not an over-the-air update.
+  intro (#188) and the Analysis card's live steps (#190, shipped to
+  TestFlight on 2026-11-07). #186 adds a native module, so a phone needs a
+  full native build, not an over-the-air update.
 - TestFlight: the last upload recorded here is 2.0.3 build 68 (main at
   24ba2fe, through #180) on 2026-11-04 Pacific; the Team group gets every
   build. Check App Store Connect before assuming nothing newer exists.
@@ -42,9 +43,12 @@ history keep them (this file at commit b3f61df has the long version).
   native/scripts/build-phone.sh <device-id>`, when the owner asks (the phone
   must be on the Mac's Wi-Fi).
 - Food AI defaults to Gemini through `analyze-food-trial`. On Hypertrophy-App
-  that function (version 4) runs the live copy with only `serving.ts`
-  replaced; main's `model.ts` (parallel Tavily searches) is undeployed. A full
-  deploy of the function ships it, with the owner's approval. The private
+  that function is version 5 (2026-11-07, from PR #190, the same files as
+  main): the live steps for the Analysis card (`progress: true`), per-step
+  timings in `usage.stepMs`, low thinking for picking search results, and
+  main's parallel Tavily searches. Older app builds are unaffected. Planner
+  and finalizer stay on medium thinking until a side-by-side test on real
+  meals shows low keeps the estimates. The private
   photo worker (`deploy/photo-worker`) still runs on the VM with the
   2026-09-29 models and serves only a device set to the worker.
 
