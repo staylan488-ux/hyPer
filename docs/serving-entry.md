@@ -28,7 +28,7 @@ available in its current record. Open Food Facts household labels are used only
 when the selected nutrition basis is per serving, never a per-100 g fallback.
 
 To check it offline, run the app in preview mode (sample data, the default in
-development builds), open Fuel → Log food, and choose “Samosas (serving demo).”
+development builds), open Fuel → Log food, and choose the sample “Samosas.”
 The fixture accepts a number plus a known unit and explicitly identifies itself
 as offline; it does not call Gemini.
 

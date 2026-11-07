@@ -1,5 +1,6 @@
-// The shared web code reads Vite's build settings from import.meta.env.
-// babel/vite-env.js supplies them in this app; this tells TypeScript.
+// The shared code in ../src reads its build settings from import.meta.env (a
+// Vite convention kept from the retired web app). babel/vite-env.js supplies
+// them in this app; this tells TypeScript.
 // Same shape as Vite's own declaration.
 interface ImportMetaEnv {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

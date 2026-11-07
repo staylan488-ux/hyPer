@@ -47,8 +47,7 @@
   "scripts": {
     "start": "expo start",
     "ios": "expo run:ios",
-    "typecheck": "tsc --noEmit",
-    "lint": "expo lint"
+    "typecheck": "tsc --noEmit"
   },
   "private": true
 }

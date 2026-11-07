@@ -1,6 +1,7 @@
-// The shared web code (../src) reads build settings from Vite's
-// `import.meta.env`. Hermes has no `import.meta`, so this rewrites every
-// `import.meta.env` to a plain object built from Expo's public variables.
+// The shared code (../src) reads build settings from Vite's `import.meta.env`,
+// a convention kept from the retired web app. Hermes has no `import.meta`, so
+// this rewrites every `import.meta.env` to a plain object built from Expo's
+// public variables.
 // It runs before babel-preset-expo, so the `process.env.EXPO_PUBLIC_*`
 // reads it creates are inlined like any others.
 module.exports = function viteEnvPlugin({ types: t }) {
@@ -9,7 +10,8 @@ module.exports = function viteEnvPlugin({ types: t }) {
 
   const envObject = () =>
     t.objectExpression([
-      // DEV gates browser-only preview tools (URL flags, session storage).
+      // Always false in this app, so the shared code's dev-only paths (console
+      // logging, the local photo worker default) stay off.
       t.objectProperty(t.identifier('DEV'), t.booleanLiteral(false)),
       t.objectProperty(t.identifier('PROD'), t.booleanLiteral(true)),
       t.objectProperty(t.identifier('MODE'), t.stringLiteral('native')),

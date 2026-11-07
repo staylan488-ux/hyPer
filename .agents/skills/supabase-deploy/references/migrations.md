@@ -11,10 +11,10 @@ Establish which migrations the target has already applied before choosing the
 appropriate migration runner or reviewed SQL application method. Preserve that
 deployment history when applying SQL outside the migration runner.
 
-[prod-cutover-pr66.sql](../../../../scripts/prod-cutover-pr66.sql) is a historical
-transaction-wrapped cutover for particular changes. It demonstrates some
-re-runnable SQL patterns; it is not the current migration queue or a general
-instruction to apply production SQL through the dashboard.
+[supabase/schema.sql](../../../../supabase/schema.sql) is a reference snapshot for
+reading; it is never replayed. The one-time production cutover scripts that
+copied these migrations for the SQL Editor were removed (Git history keeps
+them); applying production SQL through the dashboard is not the default.
 
 Apply only to the verified authorized target. If an application fails or its
 result is uncertain, inspect the transaction and migration state before retrying.

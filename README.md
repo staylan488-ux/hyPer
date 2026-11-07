@@ -2,20 +2,25 @@
 
 hyPer is an iPhone app for training and eating to build muscle. It keeps
 workout logging, nutrition tracking and training volume in one place, with
-recommendations built on peer-reviewed research.
+recommendations built on peer-reviewed research. hyPer 2.0, a native React
+Native app, is in a private TestFlight beta.
 
 ## What it does
 
 - **Train:** run a program day or a flexible session set by set, with rest
-  timing, supersets, swaps and drag-to-reorder. The live workout (with its
-  rest timer) and runs show as Live Activities on the lock screen.
+  timing, supersets, swaps, skips and drag-to-reorder. The live workout (with
+  its rest timer) and runs show as Live Activities on the lock screen.
 - **Fuel:** log food by search, barcode, saved foods and meals, manual entry,
   or an AI estimate from a description or photo. Targets come from a
-  calculator and can adapt to your weight trend.
+  calculator and can adapt to your weight trend. An optional evening reminder
+  says when much of the day's target is still to go.
 - **Progress:** workout history with past-session edits, weekly volume per
-  muscle, body weight (with Apple Health sync) and WHOOP activities.
+  muscle, every weigh-in (with Apple Health sync) and WHOOP activities.
 - **Runs:** GPS long runs and split sessions.
-- **Widgets:** Fuel and Training on the home screen and lock screen.
+- **From anywhere:** home and lock screen widgets for Fuel and Training; Snap
+  a meal from Control Center, the Action button, Siri or a quick action.
+- **For everyone:** VoiceOver, every text size, Increase Contrast and Reduce
+  Motion.
 
 ## How it's built
 
@@ -42,6 +47,19 @@ deploy/          systemd units for the private photo worker
 docs/            current handoff and feature notes
 .agents/skills/  guides for coding agents (start with AGENTS.md)
 ```
+
+Notes in `docs/`:
+
+- [handoffs/current.md](docs/handoffs/current.md): where things stand, what
+  is still unchecked on a phone and the known open issues.
+- [serving-entry.md](docs/serving-entry.md): how Describe amount turns words
+  into servings.
+- [evidence-pipeline.md](docs/evidence-pipeline.md): where program templates
+  come from and how to refresh their research snapshot.
+- [fatsecret-premier-free-application.md](docs/fatsecret-premier-free-application.md):
+  the FatSecret Premier Free application and its go/no-go checks.
+- [agent-workflows.md](docs/agent-workflows.md): how the agent instructions
+  are kept.
 
 ## Getting started
 
