@@ -1,8 +1,8 @@
-// Movement notes on the live workout, with the web Train page's rules. The
-// shared autosaver (src/lib/noteAutosave) saves after a 1.2 s pause, at once
-// when the editor closes or the app goes to the background, keeps one write
-// queue per workout (so a swap lands after the notes typed before it), and
-// keeps a failed note to send again with the next edit or flush.
+// Movement notes on the live workout. The shared autosaver
+// (src/lib/noteAutosave) saves after a 1.2 s pause, at once when the editor
+// closes or the app goes to the background, keeps one write queue per workout
+// (so a swap lands after the notes typed before it), and keeps a failed note
+// to send again with the next edit or flush.
 import { AppState } from 'react-native';
 import { create } from 'zustand';
 
@@ -17,7 +17,7 @@ import {
 import { parseWorkoutNotes, serializeWorkoutNotes } from '@/lib/workoutNotes';
 import { useAppStore } from '@/stores/appStore';
 
-/** The web app's limit for one movement note. */
+/** The limit for one movement note, as src/lib/workoutNotes trims it. */
 export const NOTE_LIMIT = 200;
 const SAVE_PAUSE_MS = 1200;
 
@@ -66,7 +66,7 @@ const buildPayload = (workoutId: string) => () => {
 
 let current: { saver: NoteAutosaver; isCurrent: () => boolean } | null = null;
 
-/** One saver per signed-in account, like the web page's. */
+/** One saver per signed-in account. */
 function noteSaver(): NoteAutosaver {
   if (current?.isCurrent()) return current.saver;
   const isCurrent = captureAccountScope();
@@ -89,7 +89,7 @@ function noteSaver(): NoteAutosaver {
       return true;
     },
     // A flexible session also keeps each note on its plan item, which
-    // templates and History read (the web page does the same).
+    // templates and History read.
     prepareFlush: (workoutId, exerciseId) => {
       const store = useAppStore.getState();
       const nextNote = flexiblePlanNoteToWrite({

@@ -43,9 +43,9 @@ async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Mo
 /**
  * Picks an exercise to swap a movement for this workout only, to add to a
  * flexible session, or to pair with a movement as a superset. Leaves out
- * exercises already in the workout, as on the web; a swap opens on the
- * movement's muscle. With a past workout (`workout`), it adds a movement or
- * a superset to that workout instead, as History does.
+ * exercises already in the workout; a swap opens on the movement's muscle.
+ * With a past workout (`workout`), it adds a movement or a superset to that
+ * workout instead, as History does.
  */
 export default function PickExerciseSheet() {
   const params = useLocalSearchParams<{ id?: string; mode?: string; workout?: string; program?: string; day?: string; from?: string }>();
@@ -140,7 +140,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
 /**
  * The program editor's picker: add several exercises to a day at once, or
  * swap one, or pair one as a superset. Exercises typed in by hand are kept in
- * the draft and join the library when the program saves, as on the web.
+ * the draft and join the library when the program saves.
  */
 function ProgramPick({ mode, dayId, exerciseId }: { mode: ProgramPickMode; dayId: string; exerciseId?: string }) {
   // Read once: the day's exclusions must not change while picking.

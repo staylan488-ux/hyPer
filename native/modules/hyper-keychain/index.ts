@@ -12,7 +12,7 @@ interface HyperKeychainNative {
 let loaded: HyperKeychainNative | null = null;
 const native = (): HyperKeychainNative => (loaded ??= requireNativeModule<HyperKeychainNative>('HyperKeychain'));
 
-/** A failure shaped like the Capacitor plugin's rejection (`code`, `data.osStatus`). */
+/** A failure shaped as the shared src/lib/nativeSecureStorage reads it (`code`, `data.osStatus`). */
 class KeychainError extends Error {
   readonly code: string;
   readonly data: { osStatus?: number };

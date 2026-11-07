@@ -1,6 +1,6 @@
 // Pure: whether a logged set beat the same set last time, by the shared rule
-// in src/lib/workoutProgress (the one the web Train page used). No React, so
-// the web test suite covers it (tests/nativeBeatLastTime.test.ts).
+// in src/lib/workoutProgress. No React, so the root test suite covers it
+// (tests/nativeBeatLastTime.test.ts).
 import { previousSetTarget, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { collectSessionGains, describeSetGain } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';

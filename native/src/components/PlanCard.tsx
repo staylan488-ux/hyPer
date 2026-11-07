@@ -18,10 +18,10 @@ import { useFinishedToday, type FinishedToday } from '~/lib/today';
 import { useBlanc } from '~/theme/blanc';
 
 // Today's training in one card: a title, at most one quiet line, at most one
-// button. Same rule as the web (todayHero), fewer words. Shown on Today and
-// at the top of Train before a session starts. A finished day stays as its
-// record, in the live session's skeleton (SessionCard): the session's name
-// and length, its tally, "Done", opening the workout.
+// button. The shared todayHero rule (src/lib/todayModel), in few words. Shown
+// on Today and at the top of Train before a session starts. A finished day
+// stays as its record, in the live session's skeleton (SessionCard): the
+// session's name and length, its tally, "Done", opening the workout.
 const PLAN_CARD_HEIGHT = 78;
 // A finished day's record, as tall as the live card: padding 16 + the day's
 // line 20 + 14 + tally 24 + 16 + the title line 44 (an action's height) + 18.

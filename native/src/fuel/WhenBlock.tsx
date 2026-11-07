@@ -12,7 +12,7 @@ import { timeAsDate, usesDayGroups } from '~/lib/foodLogger';
 
 import { useLogger } from './context';
 
-/** Day, time and meal for the entry, as on the web logger's When row. */
+/** Day, time and meal for the entry. */
 export function WhenBlock({ disabled }: { disabled?: boolean }) {
   const { when, setWhen, selectedKey, groups, purpose } = useLogger();
   // The Day picker ends on today, moving on at midnight while the sheet is open.

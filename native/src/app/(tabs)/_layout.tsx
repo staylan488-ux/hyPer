@@ -41,7 +41,7 @@ export default function TabsLayout() {
   // The tabs and the workout bar follow only whether a workout is live, so a
   // logged set doesn't rebuild them.
   const live = session !== null;
-  // As on the web's Train page: a live workout never lets the screen lock mid-set.
+  // A live workout never lets the screen lock mid-set.
   const segments = useSegments() as string[];
   const onTrain = segments[0] === '(tabs)' ? segments[1] === 'train' : WORKOUT_SHEETS.has(segments[0] ?? '');
   useKeepAwakeWhile(live && onTrain);
@@ -73,8 +73,8 @@ export default function TabsLayout() {
   useFuelReminder();
   // Snap a meal, Log food or Train pressed outside the app, run once the app is up.
   useLaunchActionRunner();
-  // As in the web app's shell: WHOOP catches up when the app comes back, and
-  // Apple Health weights flow in once turned on in You.
+  // WHOOP catches up when the app comes back, and Apple Health weights flow in
+  // once turned on in You.
   const userId = useAuthStore((state) => state.user?.id);
   useWhoopForegroundSync(userId);
   // The released app turns Health sync back on once if the Capacitor app had it on.
@@ -111,7 +111,7 @@ export default function TabsLayout() {
       // On every tab. iOS only shrinks pages that scroll well past the screen
       // and sticks on pages just past that, so tab pages use TabScroll.
       minimizeBehavior="onScrollDown"
-      // iOS's tab bar has no tap feedback of its own; the web app's tabs did.
+      // iOS's tab bar has no tap feedback of its own, so a press gets one here.
       screenListeners={{ tabPress: () => haptics.tap() }}>
       {accessory ? (
         <NativeTabs.BottomAccessory>

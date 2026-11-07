@@ -1,9 +1,9 @@
 // The food log behind Fuel and Today, read and written through the shared
-// nutrition helpers (the same queries and writes as the web Fuel page).
+// nutrition helpers.
 //
-// Fuel shows one month at a time, like the web page: the selected day's
-// entries and meal groups come from the loaded month. Today's totals are kept
-// apart so Today stays right while Fuel looks at another month.
+// Fuel shows one month at a time: the selected day's entries and meal groups
+// come from the loaded month. Today's totals are kept apart so Today stays
+// right while Fuel looks at another month.
 import { endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
 import { create } from 'zustand';
 
@@ -269,7 +269,7 @@ export const useFuelStore = create<FuelState>((set, get) => {
       const removed = get().logs.find((log) => log.id === id);
       const deletion = deleteNutritionEntry(id).catch(() => false);
       deletedEntries.set(id, deletion);
-      // gone at once, back if the delete fails (no confirm, as on the web);
+      // gone at once, back if the delete fails (no confirm);
       // Today and the widgets follow at once too
       set({ logs: get().logs.filter((log) => log.id !== id) });
       syncTodayTotals();

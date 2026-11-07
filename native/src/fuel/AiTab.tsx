@@ -73,9 +73,9 @@ const LIMIT = 1500;
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
 /**
- * AI (Gemini, the web logger's hosted mode): describe the meal, add up to two
- * photos (a plate or a nutrition label), answer one follow-up question if
- * asked, then review each food and log it.
+ * AI (Gemini, the hosted mode): describe the meal, add up to two photos (a
+ * plate or a nutrition label), answer one follow-up question if asked, then
+ * review each food and log it.
  */
 export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0, focusRequest = 0 }: {
   draft: AiDraft;

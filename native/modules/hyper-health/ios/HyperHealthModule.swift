@@ -2,8 +2,8 @@ import ExpoModulesCore
 import Foundation
 import HealthKit
 
-// Apple Health body weight, ported from the Capacitor app's
-// HyperHealthPlugin.swift: read-only access to body mass, samples oldest first
+// Apple Health body weight, ported from the retired Capacitor app's
+// HyperHealth plugin: read-only access to body mass, samples oldest first
 // in pages, and an observer that reports new samples.
 public class HyperHealthModule: Module {
   private let healthStore = HKHealthStore()

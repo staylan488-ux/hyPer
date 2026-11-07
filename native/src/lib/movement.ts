@@ -1,8 +1,7 @@
 // Changes to the live workout's movements: set counts, a swap for this workout
 // only and switching it back, a skip, the order, and in a flexible session adding,
 // removing and pairing movements and naming the session. Writes go through the
-// shared store actions, the same ones the web Train page uses, after any notes
-// typed before them have saved.
+// shared store actions after any notes typed before them have saved.
 import { Alert } from 'react-native';
 
 import { useAppStore } from '@/stores/appStore';
@@ -30,8 +29,8 @@ export async function changeSetCount(workoutId: string, exerciseId: string, chan
       ? store.currentWorkoutDayPlan?.items.find((item) => item.exercise_id === exerciseId)
       : undefined;
     if (flexibleItem) {
-      // A flexible session keeps the count in its plan, as the web's Adjust sets
-      // does, so "save as quick start" keeps it; a superset pair changes together.
+      // A flexible session keeps the count in its plan, so "save as quick start"
+      // keeps it; a superset pair changes together.
       const target = change === 'add' ? before + 1 : before - 1;
       if (target < 1 || target > 12) return;
       await store.updateFlexibleExerciseMeta(exerciseId, { target_sets: target });
@@ -60,7 +59,7 @@ function handOverFocus(fromId: string, toId: string, wasCurrent: boolean) {
 
 /**
  * Swaps a movement for another exercise for this workout only; the program is
- * untouched. Notes typed before the swap are saved first, as on the web.
+ * untouched. Notes typed before the swap are saved first.
  */
 export async function swapMovement(workoutId: string, exerciseId: string, replacement: Exercise, wasCurrent: boolean) {
   await changeWorkout(workoutId, () => useAppStore.getState().substituteWorkoutExercise(exerciseId, replacement));

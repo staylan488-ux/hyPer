@@ -114,8 +114,8 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
  * quietest tone that still reads at 3:1 on the body; and red past the
  * recoverable ceiling. The pair fills about 70% of Progress's card across.
  * Front and Back are named just under their figures, with the key close under
- * them, on the card title's left edge. The shading is the web app's
- * (`src/lib/maquette.ts`); the drawing is the app's own (`lib/anatomy.ts`).
+ * them, on the card title's left edge. The shading is the shared
+ * `src/lib/maquette.ts`; the drawing is the app's own (`lib/anatomy.ts`).
  * Tap a muscle to choose it (a near miss counts; small ones like the side
  * delts reach a fingertip); the others quiet down. Tapping it again, or away
  * from every muscle, clears it. For VoiceOver the figure is one adjustable

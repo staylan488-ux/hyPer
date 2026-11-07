@@ -1,6 +1,6 @@
-// The live workout on the lock screen and in the Dynamic Island, as the web
-// Train page mirrors it: the movement that's up, the shared detail line and
-// the session clock. The rest timer layers its countdown onto the same card
+// The live workout on the lock screen and in the Dynamic Island: the movement
+// that's up, the shared detail line (src/lib/workoutActivitySync) and the
+// session clock. The rest timer layers its countdown onto the same card
 // (lib/rest.ts). The card comes down when the workout ends.
 import { useEffect, useEffectEvent, useRef } from 'react';
 

@@ -26,9 +26,9 @@ export const useScheduleRevision = create<{ revision: number; bump: () => void }
 }));
 
 /**
- * Today's training plan by the web app's rules (todayModel's todayHero): the
- * live session, the day planned by the program's schedule, a rest day, or a
- * session already done. Also the next session and this week's count.
+ * Today's training plan by the shared rules (src/lib/todayModel's todayHero):
+ * the live session, the day planned by the program's schedule, a rest day, or
+ * a session already done. Also the next session and this week's count.
  *
  * A cold start later the same day shows the plan this phone last decided
  * (launchCache's seed) while the reads it rests on land; `seeded` says so.
@@ -176,8 +176,8 @@ export function useTodayPlan() {
 
 /**
  * Whether a session was completed today; done is undefined until known. A
- * failed read counts as not done, as on the web. confirmed: the latest read
- * (for this refreshKey) succeeded.
+ * failed read counts as not done. confirmed: the latest read (for this
+ * refreshKey) succeeded.
  */
 function useTodayDone(userId: string | undefined, dayKey: string, refreshKey: string) {
   const [result, setResult] = useState<{ key: string; refreshKey: string; done: { title: string } | null; ok: boolean } | null>(null);

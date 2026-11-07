@@ -4,7 +4,7 @@ import Vision
 import VisionKit
 
 // Food barcode scanning with VisionKit's data scanner, ported from the
-// Capacitor app's HyperBarcodePlugin.swift: the same symbologies, digit-count
+// retired Capacitor app's HyperBarcode plugin: the same symbologies, digit-count
 // filter, formats and rejection codes (CANCELLED, SCAN_FAILED).
 public class HyperBarcodeModule: Module {
   private var activeSession: AnyObject?

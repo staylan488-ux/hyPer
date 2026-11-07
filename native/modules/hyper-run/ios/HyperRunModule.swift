@@ -3,7 +3,7 @@ import ExpoModulesCore
 import Foundation
 import UIKit
 
-// The run recorder, ported from the Capacitor app's HyperRunPlugin.swift with
+// The run recorder, ported from the retired Capacitor app's HyperRun plugin with
 // the same calls, events, storage and rules, so the shared JavaScript
 // (src/lib/nativeRunSource.ts, src/hooks/useRunTracker.ts) runs unchanged:
 // - every GPS sample is appended to ApplicationSupport/HyperRunRecorder/<runId>.jsonl
@@ -127,8 +127,8 @@ public final class HyperRunModule: Module {
       }
     }
 
-    // "lap", "sprintStart" or "sprintEnd": the web app's tones, played over any
-    // music, including with the screen locked.
+    // "lap", "sprintStart" or "sprintEnd": the tones of src/lib/runTrackerCues.ts,
+    // played over any music, including with the screen locked.
     AsyncFunction("playCue") { (kind: String) in
       DispatchQueue.main.async { RunCuePlayer.shared.play(kind) }
     }

@@ -21,8 +21,8 @@ type Interpretation = Awaited<ReturnType<typeof interpretFoodServing>>;
 const display = (value: number) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
 
 /**
- * "Describe amount" (the web ServingEntry): Gemini reads how much was eaten
- * against this food's own serving; the arithmetic stays here.
+ * "Describe amount": Gemini reads how much was eaten against this food's own
+ * serving; the arithmetic stays here.
  */
 export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   food: Food;

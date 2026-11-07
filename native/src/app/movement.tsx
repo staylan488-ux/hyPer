@@ -374,7 +374,7 @@ function MovementDetail({
   );
 }
 
-/** Corrects a logged set. Saving never starts rest, as on the web. */
+/** Corrects a logged set. Saving never starts rest. */
 function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; onClose: () => void }) {
   const logSet = useAppStore((state) => state.logSet);
   const [weight, setWeight] = useState(set.weight === null ? '' : String(set.weight));

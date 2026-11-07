@@ -1,5 +1,5 @@
 // The run recorder (ios/HyperRunModule.swift), with the same calls and events
-// as the Capacitor app's HyperRun plugin, so the shared src/lib/nativeRunSource
+// the Capacitor app's HyperRun plugin had, so the shared src/lib/nativeRunSource
 // and src/hooks/useRunTracker run unchanged. The native bridge
 // (src/platform/nativeBridge.ts) hands it to shared code as NativeRun.
 

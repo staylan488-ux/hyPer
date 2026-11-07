@@ -1,6 +1,6 @@
 // You: body weight, targets, saved meals, connections and appearance. The
-// rules come from ../src (the web You page uses the same ones); this file
-// holds what the native screens share between them.
+// rules come from ../src; this file holds what the native screens share
+// between them.
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
@@ -261,9 +261,9 @@ type TargetsState = {
 export const useTargetsStore = create<TargetsState>(() => ({ status: 'loading', staged: null, message: null }));
 
 /**
- * Reads the saved targets and nutrition profile together, as the web You page
- * does. A successful empty read clears them; a failed one keeps what is shown.
- * True once they are read for this account.
+ * Reads the saved targets and nutrition profile together. A successful empty
+ * read clears them; a failed one keeps what is shown. True once they are read
+ * for this account.
  */
 export async function loadTargets(): Promise<boolean> {
   const userId = currentUserId();
@@ -349,7 +349,7 @@ export async function loadYouMeals(): Promise<void> {
 
 export type AnalysisMode = 'gemini' | 'worker';
 
-/** Gemini (hosted) or the Mac worker, kept on this phone as on the web. */
+/** Gemini (hosted) or the Mac worker, kept on this phone. */
 export const useAnalysisModeStore = create<{ mode: AnalysisMode }>(() => ({ mode: getFoodAnalysisMode() }));
 
 export function chooseAnalysisMode(mode: AnalysisMode) {
@@ -367,9 +367,9 @@ export function editSavedMeal(meal: Food) {
 
 /**
  * The return address WHOOP's consent screen may send back to. The whoop-oauth
- * function accepts only the iPhone app's own address (or the web app), so this
- * app uses it too: iOS's sign-in sheet catches the return inside the sheet, so
- * it never reaches the other app. At cutover this app takes over that scheme.
+ * function accepts only one app address, the released app's, so the test app
+ * uses it too: iOS's sign-in sheet catches the return inside the sheet, so it
+ * never reaches the released app.
  */
 const WHOOP_RETURN = 'app.hyper.mobile://settings';
 
@@ -410,7 +410,7 @@ export async function connectWhoop(): Promise<{ ok: boolean; message: string } |
 
 export type AppearanceChoice = 'system' | 'light' | 'dark';
 
-// The web app's key, so the choice reads the same way on both.
+// The same key the web app used.
 const THEME_KEY = 'hyper-theme';
 
 function storedAppearance(): AppearanceChoice {

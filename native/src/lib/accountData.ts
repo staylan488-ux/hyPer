@@ -52,11 +52,11 @@ export const useWorkoutsRevision = create<{ revision: number; bump: () => void }
 }));
 
 /**
- * Loads the signed-in account into the shared stores the way the web Today
- * screen does: program, live workout, targets, weekly volume, workout mode,
- * nutrition profile and today's food. The shared useTodayRefresh runs it again
- * when the app returns on a new day or after its refresh interval, and at
- * local midnight while the app stays open. Mounted once, in the tab layout.
+ * Loads the signed-in account into the shared stores: program, live workout,
+ * targets, weekly volume, workout mode, nutrition profile and today's food.
+ * The shared useTodayRefresh runs it again when the app returns on a new day
+ * or after its refresh interval, and at local midnight while the app stays
+ * open. Mounted once, in the tab layout.
  */
 export function useAccountData() {
   const load = useCallback(async (day: string) => {

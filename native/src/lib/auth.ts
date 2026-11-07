@@ -4,15 +4,15 @@ import { authScreen, type AuthScreen } from '@/lib/authScreen';
 import { useAuthStore } from '@/stores/authStore';
 
 /**
- * "Sign in instead" on the offline screen. Kept for this launch only, as on
- * the web, and it never signs out, so the saved session stays.
+ * "Sign in instead" on the offline screen. Kept for this launch only, and it
+ * never signs out, so the saved session stays.
  */
 export const useSignInInstead = create<{ chosen: boolean; choose: () => void }>((set) => ({
   chosen: false,
   choose: () => set({ chosen: true }),
 }));
 
-/** Which top-level screen the auth state calls for (the web app's rule). */
+/** Which top-level screen the auth state calls for (the shared src/lib/authScreen rule). */
 export function useAuthScreen(): AuthScreen {
   const initialized = useAuthStore((state) => state.initialized);
   const user = useAuthStore((state) => state.user);

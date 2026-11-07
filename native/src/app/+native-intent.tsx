@@ -1,8 +1,8 @@
 // Links that open the app from outside (Expo Router's native intent).
 //
-// The email-confirmation link returns to <scheme>://auth/callback?code=…, as
-// the web shell's useNativeAuthCallback handles it: exchange the code for a
-// session (PKCE, verifier kept by sign-up on this phone) and land on the app.
+// The email-confirmation link returns to <scheme>://auth/callback?code=…,
+// handled here: exchange the code for a session (PKCE, verifier kept by
+// sign-up on this phone) and land on the app.
 // Google and Apple sign-in never get here; iOS's sign-in sheet catches them.
 //
 // A widget or card link that launches the app is remembered for index, which
@@ -30,7 +30,7 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
     }
     const { code } = parseNativeOAuthCallback(url);
     // The auth listener opens the app once the session lands; on failure the
-    // sign-in screen stays for a clean retry, as on the web.
+    // sign-in screen stays for a clean retry.
     void supabase.auth.exchangeCodeForSession(code).catch(() => {});
     return '/';
   } catch {
