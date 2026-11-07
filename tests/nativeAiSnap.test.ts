@@ -3,6 +3,7 @@ import { act, createElement, Fragment, useEffect, useState, type ComponentType, 
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as analysisProgress from '@/lib/analysisProgress';
 import * as foodTrialReview from '@/lib/foodTrialReview';
 import * as pendingEntry from '@/lib/pendingEntryId';
 import { loadNativeModule } from './helpers/loadNativeModule';
@@ -44,6 +45,8 @@ const analyze = vi.fn((request: AnalyzeRequest) => {
   return analysis.promise;
 });
 const announce = vi.fn();
+// The steps the progress card is showing, by their running words.
+let shownTrail: string[] | null = null;
 const openSettings = vi.fn();
 const logger = { purpose: 'log', editing: null, beginBusy: () => noop, beginSave: () => noop, when: {}, groups: [], reloadSavedMeals: noop, complete: noop, addIngredients: noop };
 
@@ -58,10 +61,12 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
       if (props.accessibilityLabel) pressables[props.accessibilityLabel] = props;
       return createElement('div', { 'data-label': props.accessibilityLabel }, props.children);
     },
+    Keyboard: { dismiss: noop },
     TextInput: Empty,
     View: Wrap,
   },
   'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
+  '@/lib/analysisProgress': analysisProgress,
   '@/lib/foodTrialReview': foodTrialReview,
   '@/lib/foodPersistence': {},
   '@/lib/foodTrial': {
@@ -100,6 +105,12 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
   '~/lib/motion': { figureLayout: {}, rowEnter: {}, rowExit: {}, rowLayout: {} },
   '~/platform/previewFlag': { isPreviewActive: () => false },
   '~/theme/blanc': { space: { gutter: 20, inset: 16 }, type: { fieldLines: {} }, useBlanc: () => ({}) },
+  './AnalysisProgress': {
+    AnalysisProgress: ({ trail }: { trail: { lines: { now: string }[] } }) => {
+      shownTrail = trail.lines.map((line) => line.now);
+      return createElement('section', { 'data-progress': 'yes' });
+    },
+  },
   './context': { useLogger: () => logger },
   './PhotoTab': {
     CAMERA_OFF,
@@ -132,6 +143,7 @@ const hasCapsule = (title: string) => host.querySelector(`button[data-title="${t
 
 beforeEach(() => {
   up = false;
+  shownTrail = null;
   sheet = undefined;
   sheetOptions = undefined;
   for (const key of Object.keys(pressables)) delete pressables[key];
@@ -161,7 +173,25 @@ describe('AI tab: Snap a meal', () => {
     expect(analyze.mock.calls[0][0].images).toHaveLength(1);
     expect(announce).toHaveBeenCalledWith('Analyzing meal');
     expect(current.photos).toEqual([shot]);
-    expect(capsules['Analyzing…'].busy).toBe(true);
+    // The steps take Analyze meal's place while it runs.
+    expect(hasCapsule('Analyze meal')).toBe(false);
+    expect(shownTrail).toEqual(['Sending your photo']);
+  });
+
+  it('shows each step the analysis reports, then the button again', async () => {
+    pick.mockResolvedValueOnce(shot);
+    await render(0);
+    await render(1);
+    await settle();
+    const { onProgress } = analyze.mock.calls[0][0] as AnalyzeRequest & { onProgress: (step: unknown) => void };
+    await act(async () => { onProgress({ step: 'look' }); });
+    await act(async () => { onProgress({ step: 'search', products: ['Fixture samosas'] }); });
+    expect(shownTrail).toEqual(['Sending your photo', 'Looking at your photo', 'Searching the web']);
+    await act(async () => { analysis.reject(new Error('Analysis did not finish successfully.')); });
+    await settle();
+    expect(host.querySelector('[data-progress]')).toBeNull();
+    expect(hasCapsule('Analyze meal')).toBe(true);
+    expect(alertText()).toBe('Analysis did not finish successfully.');
   });
 
   it('leaves the tab as it was when the camera is cancelled', async () => {

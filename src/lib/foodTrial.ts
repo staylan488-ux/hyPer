@@ -5,6 +5,9 @@ import { FOOD_TRIAL_MODEL, trialFoodTotals as itemTotals, validateTrialItems, ty
 export { trialFoodTotals } from '../../supabase/functions/analyze-food-trial/model';
 export type { FoodTrialResult, TrialFoodItem, TrialUsage } from '../../supabase/functions/analyze-food-trial/model';
 
+import { createSseReader, parseProgress, type AnalysisProgress } from '../../supabase/functions/analyze-food-trial/progress';
+export type { AnalysisProgress } from '../../supabase/functions/analyze-food-trial/progress';
+
 import { getServingOptions, normalizeServingInput, resolveServingInterpretation, resolveServingLocally, type ServingFood, type ServingInterpretation } from '../../supabase/functions/analyze-food-trial/serving';
 
 const MODE_KEY = 'hyper.food-analysis.mode';
@@ -22,17 +25,57 @@ const endpoint = () => {
   return `${url.replace(/\/+$/, '')}/functions/v1/analyze-food-trial`;
 };
 
-async function post(body: unknown, accessToken: string): Promise<Record<string, unknown>> {
+/** The stream of steps closed before the outcome arrived: the analysis may still be running. */
+class FollowInterrupted extends Error {}
+
+function outcome(status: number, payload: unknown): Record<string, unknown> {
+  const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
+  if (status < 200 || status > 299) throw new Error(typeof body?.error === 'string' && body.error ? body.error : `Food trial returned ${status}.`);
+  if (!body) throw new Error('Food trial returned an invalid response.');
+  return body;
+}
+
+/**
+ * Sends a request. With `onProgress`, the meal analysis is followed: the
+ * service answers with its steps as server-sent events and the outcome last.
+ * A service without steps (an older one, a replay or a refusal) answers with
+ * one JSON reply, read as before.
+ */
+async function post(body: object, accessToken: string, onProgress?: (step: AnalysisProgress) => void): Promise<Record<string, unknown>> {
   if (!accessToken) throw new Error('Sign in to use the food trial.');
   const response = await fetch(endpoint(), {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(110000),
+    body: JSON.stringify(onProgress ? { ...body, progress: true } : body), signal: AbortSignal.timeout(110000),
   });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.error || `Food trial returned ${response.status}.`);
-  if (!payload || typeof payload !== 'object') throw new Error('Food trial returned an invalid response.');
-  return payload;
+  if (!onProgress || !response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
+    return outcome(response.status, await response.json().catch(() => null));
+  }
+  let result: { status: number; body: unknown } | null = null;
+  const events = createSseReader(data => {
+    let event: Record<string, unknown>;
+    try { event = JSON.parse(data); } catch { return; }
+    if (event?.type === 'result' && Number.isInteger(event.status)) result = { status: event.status as number, body: event.body };
+    else if (event?.type === 'progress' && !result) {
+      const step = parseProgress(event);
+      // The screen only watches: a failure drawing a step never stops the analysis.
+      if (step) {
+        try { onProgress(step); } catch { /* display only */ }
+      }
+    }
+  });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    events.push(decoder.decode(value, { stream: true }));
+  }
+  events.push(decoder.decode());
+  events.end();
+  const settled = result as { status: number; body: unknown } | null;
+  if (!settled) throw new FollowInterrupted('The analysis stream ended early.');
+  return outcome(settled.status, settled.body);
 }
 
 export async function getFoodTrialStatus(accessToken: string): Promise<Record<string, unknown>> {
@@ -52,16 +95,36 @@ export const previewFoodTrialResult: FoodTrialResult = {
     priceDate: '', elapsedMs: 0, raw: {} },
 };
 
-export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hint: string; accessToken: string; clarificationUsed?: boolean }): Promise<FoodTrialResult> {
+/**
+ * Preview: the steps of a researched meal at about a live pace, so the
+ * progress display can be seen without a live service. Sample data, never
+ * real research. (The live service sends no thought headings yet, so neither
+ * does this.)
+ */
+const PREVIEW_STEPS: [AnalysisProgress, number][] = [
+  [{ step: 'look' }, 2500], [{ step: 'search', products: ['Example samosas'] }, 1200], [{ step: 'compare', pages: 6 }, 1800],
+  [{ step: 'read', sites: ['example.com'] }, 1500], [{ step: 'estimate' }, 2500],
+];
+async function previewSteps(onProgress: (step: AnalysisProgress) => void) {
+  for (const [step, wait] of PREVIEW_STEPS) {
+    onProgress(step);
+    await new Promise(resolve => setTimeout(resolve, wait));
+  }
+}
+
+export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hint: string; accessToken: string; clarificationUsed?: boolean; onProgress?: (step: AnalysisProgress) => void }): Promise<FoodTrialResult> {
   const hint = input.hint.trim();
   if (input.images.length > 2 || hint.length > 1500 || (!input.images.length && hint.length < 5)) {
     throw new Error('Add a meal description (5–1,500 characters), or one or two photos.');
   }
-  if (isPreviewActive()) return structuredClone(previewFoodTrialResult);
+  if (isPreviewActive()) {
+    if (input.onProgress) await previewSteps(input.onProgress);
+    return structuredClone(previewFoodTrialResult);
+  }
   try {
     // No patientPost retries. Server computes a durable content hash, so a user retry
     // of identical input can retrieve an outcome but cannot start a second paid call.
-    const payload = await post({ images: input.images, hint, ...(input.clarificationUsed ? { clarificationUsed: true } : {}) }, input.accessToken);
+    const payload = await post({ images: input.images, hint, ...(input.clarificationUsed ? { clarificationUsed: true } : {}) }, input.accessToken, input.onProgress);
     if (payload.provider !== 'gemini' || payload.model !== FOOD_TRIAL_MODEL) throw new Error('The trial returned an unexpected model. Nothing was saved.');
     if (payload.researchProvider !== 'tavily') throw new Error('The meal research service needs an update. Nothing was saved.');
     const items = validateTrialItems(payload.items);
@@ -87,7 +150,7 @@ export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hi
     });
     return { ...payload, items, sources, searchSuggestionsHtml: null } as unknown as FoodTrialResult;
   } catch (error) {
-    if (error instanceof TypeError || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) {
+    if (error instanceof TypeError || error instanceof FollowInterrupted || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) {
       throw new Error('Connection interrupted. Your analysis may still be running. Retry the same input on the same UTC date to check it without starting another paid analysis.');
     }
     throw error;

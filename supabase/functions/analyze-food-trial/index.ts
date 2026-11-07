@@ -32,7 +32,9 @@ Deno.serve(async (request: Request) => {
         const { data, error } = await authClient.auth.getUser(token);
         return error ? null : data.user?.id ?? null;
       },
-      analyze: input => analyzeMeal(input, apiKey, tavilyKey),
+      analyze: (input, onProgress) => analyzeMeal(input, apiKey, tavilyKey, onProgress),
+      // Supabase's runtime keeps the function alive for this work after the app disconnects.
+      waitUntil: work => (globalThis as { EdgeRuntime?: { waitUntil(promise: Promise<unknown>): void } }).EdgeRuntime?.waitUntil(work),
       interpretServing: input => interpretServing(input, apiKey),
       suggestTargets: input => suggestTargets(input, apiKey),
     });

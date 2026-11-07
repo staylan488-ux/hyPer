@@ -327,6 +327,14 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - Food AI: the owner logs with Gemini (the web logger's hosted mode), so the
   native app defaults to it (Photo and Describe, Manual's hand-off, Describe
   amount); a device set to the worker gets the worker's photo view under the same Photo button.
+  While a Gemini analysis runs, its buttons give way to the Analysis card
+  (`native/src/fuel/AnalysisProgress.tsx`, wording in `src/lib/analysisProgress.ts`;
+  the owner's ask, 2026-11-06): the step under way on top with a graphite
+  spinner and the time since the tap, finished steps ticked beneath, newest
+  first. The steps are the function's own (`progress: true` makes
+  `analyze-food-trial` answer with server-sent events, the saved outcome
+  last); never invent a step or a timed message. The input tip and an empty
+  Photos row step aside so the card stays in view.
 - Per-movement actions live in one sheet (`native/src/app/movement.tsx`), opened
   from ⋯ on the current card, a finished movement's row, or a hold (lifted and let go) on any
   row: logged sets to correct (never starts rest), the set count from 1 to 12

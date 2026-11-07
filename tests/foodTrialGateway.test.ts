@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ANALYSIS_VERSION, createTrialHandler, normalizeInput, validateConfig } from '../supabase/functions/analyze-food-trial/gateway';
 import type { MealInput, TrialConfig, TrialLedger } from '../supabase/functions/analyze-food-trial/gateway';
 import { createStorageLedger } from '../supabase/functions/analyze-food-trial/storageLedger';
+import type { ProgressListener } from '../supabase/functions/analyze-food-trial/progress';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 const FRIEND = '22222222-2222-4222-8222-222222222222';
@@ -22,16 +23,85 @@ function harness(overrides: Partial<TrialConfig> = {}) {
     }),
     read: vi.fn(async path => objects.get(path) ?? null),
   };
-  const analyze = vi.fn<(input: MealInput) => Promise<Record<string, unknown>>>(async () => ({ items: [{ name: 'Meal' }], usage: { inputTokens: 20, outputTokens: 10, thinkingTokens: 5 } }));
+  const analyze = vi.fn<(input: MealInput, onProgress?: ProgressListener) => Promise<Record<string, unknown>>>(async () => ({ items: [{ name: 'Meal' }], usage: { inputTokens: 20, outputTokens: 10, thinkingTokens: 5 } }));
   const interpretServing = vi.fn(async () => ({ provider: 'gemini', interpretation: { status: 'resolved', quantity: 6, optionId: 'defined', servings: 1.2, unit: 'piece', basisQuantity: 5 } }));
   const authenticate = vi.fn(async token => token === 'friend' ? FRIEND : token === 'valid' ? USER : token === 'other' ? '33333333-3333-4333-8333-333333333333' : null);
   let time = NOW;
-  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, interpretServing, authenticate, now: () => time });
+  // Followed analyses the runtime is asked to keep alive.
+  const work: Promise<unknown>[] = [];
+  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, interpretServing, authenticate, now: () => time, waitUntil: promise => { work.push(promise); } });
   const request = (body: unknown, token = 'valid', origin = 'capacitor://localhost') => handler(new Request('http://trial', {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', origin }, body: JSON.stringify(body),
   }));
-  return { objects, ledger, analyze, interpretServing, authenticate, handler, request, setTime: (value: number) => { time = value; } };
+  return { objects, ledger, analyze, interpretServing, authenticate, handler, request, work, setTime: (value: number) => { time = value; } };
 }
+
+/** The data of each server-sent event in a followed response. */
+async function streamed(response: Response): Promise<Record<string, unknown>[]> {
+  return (await response.text()).split('\n\n').filter(Boolean).map(block => JSON.parse(block.replace(/^data: /, '')));
+}
+
+describe('a followed meal analysis', () => {
+  it('streams each step, then the saved outcome, and replays it to plain and followed requests alike', async () => {
+    const h = harness();
+    h.analyze.mockImplementationOnce(async (_input, onProgress) => {
+      onProgress?.({ step: 'look' });
+      onProgress?.({ step: 'search', products: ['Fixture samosas'] });
+      return { items: [{ name: 'Samosas' }], usage: { thinkingTokens: 7 } };
+    });
+    const response = await h.request({ hint: 'six samosas', progress: true });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('access-control-allow-origin')).toBe('capacitor://localhost');
+    const events = await streamed(response);
+    expect(events.slice(0, 2)).toEqual([{ type: 'progress', step: 'look' }, { type: 'progress', step: 'search', products: ['Fixture samosas'] }]);
+    expect(events[2]).toMatchObject({ type: 'result', status: 200, body: { items: [{ name: 'Samosas' }], usage: { thinkingTokens: 7 }, analysisVersion: ANALYSIS_VERSION } });
+    expect(events).toHaveLength(3);
+    // The option is not part of the meal: one analysis, one result.
+    const plain = await h.request({ hint: 'six samosas' });
+    expect(plain.headers.get('content-type')).toBe('application/json');
+    expect(await plain.json()).toMatchObject({ replayed: true, requestId: (events[2].body as { requestId: string }).requestId });
+    expect(await (await h.request({ hint: 'six samosas', progress: true })).json()).toMatchObject({ replayed: true });
+    expect(h.analyze).toHaveBeenCalledOnce();
+    expect(h.analyze.mock.calls[0][0]).toEqual({ images: [], hint: 'six samosas', clarificationUsed: false });
+  });
+
+  it('runs to its saved result after the app goes away', async () => {
+    const h = harness();
+    let finish!: (value: Record<string, unknown>) => void;
+    h.analyze.mockImplementationOnce((_input, onProgress) => new Promise(done => { onProgress?.({ step: 'look' }); finish = done; }));
+    const response = await h.request({ hint: 'six samosas', progress: true });
+    await response.body!.cancel();
+    finish({ items: [{ name: 'Samosas' }], usage: {} });
+    expect(h.work).toHaveLength(1);
+    await Promise.all(h.work);
+    expect(await (await h.request({ hint: 'six samosas' })).json()).toMatchObject({ replayed: true, items: [{ name: 'Samosas' }] });
+    expect(h.analyze).toHaveBeenCalledOnce();
+  });
+
+  it('streams a failure as its saved outcome, without upstream text', async () => {
+    const h = harness();
+    h.analyze.mockRejectedValueOnce(Object.assign(new Error('secret upstream response'), { usage: { thinkingTokens: 3 } }));
+    const events = await streamed(await h.request({ hint: 'six samosas', progress: true }));
+    expect(events.at(-1)).toMatchObject({ type: 'result', status: 502, body: { code: 'analysis_failed', usage: { thinkingTokens: 3 } } });
+    expect(JSON.stringify(events)).not.toContain('secret');
+    expect((await h.request({ hint: 'six samosas' })).status).toBe(502);
+  });
+
+  it('answers refusals, the daily limit and the other actions with plain JSON', async () => {
+    const h = harness({ maxAttempts: 1 });
+    expect((await h.request({ hint: 'six samosas', progress: 'yes' })).status).toBe(400);
+    expect((await h.request({ hint: 'six samosas', progress: true }, 'bad')).status).toBe(401);
+    await (await h.request({ hint: 'first meal', progress: true })).text();
+    const limited = await h.request({ hint: 'second meal', progress: true });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('content-type')).toBe('application/json');
+    const serving = await h.request({ action: 'interpret-serving', progress: true, food: { name: 'Samosas', serving_size: 5, serving_unit: 'piece', calories: 300, protein: 10, carbs: 30, fat: 15 }, text: 'I ate 6 pieces' }, 'friend');
+    expect(serving.headers.get('content-type')).toBe('application/json');
+    expect(h.analyze).toHaveBeenCalledOnce();
+  });
+});
 
 describe('authenticated food analysis gateway', () => {
   it('fails closed on broad origins or excessive daily request limits', () => {

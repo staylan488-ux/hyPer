@@ -123,3 +123,52 @@ describe('serving interpretation transport', () => {
     await expect(interpretFoodServing(food, 'six-ish pieces', 'token')).rejects.toThrow('service update');
   });
 });
+
+describe('following a hosted analysis', () => {
+  /** A server-sent stream that arrives in small pieces, as a phone network delivers it. */
+  const sse = (events: unknown[], pieceSize = 7) => {
+    const text = events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('');
+    const bytes = new TextEncoder().encode(text);
+    return new Response(new ReadableStream({
+      start(controller) {
+        for (let at = 0; at < bytes.length; at += pieceSize) controller.enqueue(bytes.slice(at, at + pieceSize));
+        controller.close();
+      },
+    }), { headers: { 'content-type': 'text/event-stream; charset=utf-8' } });
+  };
+  it('asks to follow, hands over each valid step and returns the outcome', async () => {
+    const fetcher = vi.fn<FetchStub>(async () => sse([
+      { type: 'progress', step: 'look' },
+      { type: 'progress', step: 'search', products: ['Fixture samosas – “6 pack”'] },
+      { type: 'progress', step: 'warp-drive' },
+      { type: 'result', status: 200, body: previewFoodTrialResult },
+    ]));
+    vi.stubGlobal('fetch', fetcher);
+    const steps: unknown[] = [];
+    const result = await analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: step => steps.push(step) });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ images: [], hint: 'six samosas', progress: true });
+    expect(steps).toEqual([{ step: 'look' }, { step: 'search', products: ['Fixture samosas – “6 pack”'] }]);
+    expect(result.items[0].name).toBe(previewFoodTrialResult.items[0].name);
+  });
+  it('reads a plain reply from a service without steps (older, replayed or refused)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...previewFoodTrialResult, replayed: true }), { headers: { 'content-type': 'application/json' } })));
+    const steps: unknown[] = [];
+    expect((await analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: step => steps.push(step) })).items).toHaveLength(1);
+    expect(steps).toEqual([]);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Today’s limit has been reached.' }), { status: 429, headers: { 'content-type': 'application/json' } })));
+    await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: () => {} })).rejects.toThrow('Today’s limit');
+  });
+  it('shows a failed outcome’s own words, and a cut-off stream as an interrupted connection', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => sse([{ type: 'progress', step: 'look' }, { type: 'result', status: 502, body: { code: 'analysis_failed', error: 'Analysis did not finish successfully.' } }])));
+    await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: () => {} })).rejects.toThrow('Analysis did not finish successfully.');
+    const fetcher = vi.fn(async () => sse([{ type: 'progress', step: 'look' }]));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: () => {} })).rejects.toThrow('Your analysis may still be running');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it('keeps going when the screen fails to draw a step', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => sse([{ type: 'progress', step: 'look' }, { type: 'result', status: 200, body: previewFoodTrialResult }])));
+    const result = await analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: () => { throw new Error('unmounted'); } });
+    expect(result.items).toHaveLength(1);
+  });
+});
