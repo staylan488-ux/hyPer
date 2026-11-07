@@ -21,9 +21,9 @@ export async function findSavedFoodByBarcode(barcode: string): Promise<Food | nu
   const userId = await getSessionUserId();
   if (!userId) return null;
 
-  // Match any equivalent GTIN representation (a US product scans as 12-digit
-  // UPC-A on the web detector but 13-digit EAN-13 via the native scanner), so a
-  // food saved from one scanner still resolves when rescanned by the other.
+  // Match any equivalent GTIN representation (a US product scanned as 12-digit
+  // UPC-A on the retired web detector but 13-digit EAN-13 via the native
+  // scanner), so a food saved under either form still resolves.
   const candidates = barcodeLookupCandidates(barcode);
   const lookupValues = candidates.length > 0 ? candidates : [barcode];
 

@@ -1,4 +1,4 @@
-// Amounts and units on the food review, shared by the web logger and the native app.
+// Amounts and units on the food review.
 import { parseDecimal } from '@/lib/decimalText';
 import {
   computeAmountFromServings,

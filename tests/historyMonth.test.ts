@@ -11,7 +11,7 @@ import {
 } from '@/lib/historyMonth';
 import type { WorkoutDayPlan, WorkoutSet } from '@/types';
 
-// History's rules are shared by the web History page and the native History screens.
+// History's rules, used by the History screens.
 
 function set(exerciseId: string, setNumber: number, overrides: Partial<WorkoutSet> = {}): WorkoutSet {
   return {

@@ -1,5 +1,5 @@
-// DEV-ONLY WHOOP transport fixtures for the /preview sandbox. Each press of
-// History's "Sync" steps to the next batch so the whole import lifecycle can
+// WHOOP transport fixtures for preview mode. Each press of History's "Sync"
+// steps to the next batch so the whole import lifecycle can
 // be walked without WHOOP credentials:
 //   batch 1  first import  -> interval run (8 laps) + tennis + single long run
 //   batch 2  exact re-send -> zero changes (idempotence)
@@ -99,7 +99,7 @@ function fastRepRecords(): WhoopWorkoutRecord[] {
 }
 
 // spans "the last 40 minutes" at build time so it overlaps whatever run was
-// just tracked and saved in the sandbox; no distance on purpose — GPS owns it
+// just tracked and saved in preview mode; no distance on purpose — GPS owns it
 function enrichmentRecord(): WhoopWorkoutRecord {
   const end = new Date(Date.now() - 60 * 1000);
   const start = new Date(end.getTime() - 39 * 60 * 1000);

@@ -1,7 +1,7 @@
 // React wiring for the run tracker engine: position source lifecycle, 1s UI
-// tick, wake lock (RestTimerPill pattern), throttled crash-recovery snapshots,
-// and audio cues on engine events. The `PositionSource` port is injectable so
-// /preview replays scripted scenarios through identical code — including a
+// tick, wake lock, throttled crash-recovery snapshots, and audio cues on
+// engine events. The `PositionSource` port is injectable so preview mode
+// replays scripted scenarios through identical code — including a
 // simulated clock, so a 10× replay still reads as real pace and elapsed time.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -49,8 +49,8 @@ export interface PositionSource {
     onControl?: (control: NativeRunControl) => void,
   ) => void;
   stop: (discard?: boolean) => void;
-  // Native only: re-deliver samples the recorder persisted while the WebView
-  // was suspended (locked screen); dedup makes it idempotent.
+  // Native only: re-deliver samples the recorder persisted while the app was
+  // suspended (locked screen); dedup makes it idempotent.
   resync?: () => void;
   // Native only: release JS listeners but keep native recording alive (tab
   // switch mid-run), so background samples are preserved for a later resume.
@@ -511,12 +511,12 @@ export function useRunTracker(): UseRunTracker {
     return () => window.clearInterval(interval);
   }, [isRunning]);
 
-  // Native iOS: the Capacitor KeepAwake engine (navigator.wakeLock is
-  // unreliable in the WKWebView, so the web effect below does not cover runs).
+  // The app: expo-keep-awake (native/src/platform/keepAwake.ts). The wake
+  // lock effect below only runs outside the app, where `document` exists.
   useKeepAwakeWhile(isRunning);
 
-  // keep the screen awake while tracking (RestTimerPill pattern: re-acquire on
-  // visibility return; fails quietly under Low Power Mode)
+  // keep the screen awake while tracking (re-acquire on visibility return;
+  // fails quietly under Low Power Mode)
   useEffect(() => {
     if (!isRunning || typeof document === 'undefined' || !('wakeLock' in navigator)) return;
 

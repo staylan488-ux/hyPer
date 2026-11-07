@@ -1,30 +1,12 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
-import { createWorkoutActivitySync, type WorkoutActivityBridge, type WorkoutActivityState } from '@/lib/workoutActivitySync';
+import type { WorkoutActivityRest, WorkoutActivityState } from '@/lib/workoutActivitySync';
 
-export type { WorkoutActivityState } from '@/lib/workoutActivitySync';
+export type { WorkoutActivityRest, WorkoutActivityState } from '@/lib/workoutActivitySync';
 
-/** Bridge to the in-app plugin (ios/App/App/RestActivityPlugin.swift): one
- *  Live Activity per workout session, on the lock screen and Dynamic Island.
- *  The ordering rules live in src/lib/workoutActivitySync.ts, shared with the
- *  native app. */
-const workoutActivity = createWorkoutActivitySync(registerPlugin<WorkoutActivityBridge>('WorkoutActivity'));
-
-/** Called by the Workout page whenever exercise/set/stats change. */
-export function syncWorkoutActivity(next: WorkoutActivityState): void {
-  if (!Capacitor.isNativePlatform()) return;
-  workoutActivity.syncWorkoutActivity(next);
-}
-
-/** Called by the rest timer: a running rest window, or null when idle. */
-export function syncWorkoutActivityRest(
-  next: { startedAtIso: string; endsAtIso: string } | null,
-): void {
-  if (!Capacitor.isNativePlatform()) return;
-  workoutActivity.syncWorkoutActivityRest(next);
-}
-
-/** Workout finished or abandoned — take the card down. */
-export function endWorkoutActivity(): void {
-  if (!Capacitor.isNativePlatform()) return;
-  workoutActivity.endWorkoutActivity();
-}
+// The workout's Live Activity. The app keeps it through
+// native/src/platform/liveActivity.ts, which native/metro.config.js swaps in
+// for this file (it must stay so the swap can resolve); the ordering rules are
+// shared in src/lib/workoutActivitySync.ts. Outside the app there is no lock
+// screen, so these do nothing.
+export const syncWorkoutActivity: (next: WorkoutActivityState) => void = () => {};
+export const syncWorkoutActivityRest: (next: WorkoutActivityRest) => void = () => {};
+export const endWorkoutActivity: () => void = () => {};

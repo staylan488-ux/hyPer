@@ -1,4 +1,4 @@
-import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
+import { isPreviewActive } from '@/preview/flag';
 import type { PhotoAnalysisImage } from '@/lib/photoAnalysis';
 import type { Food } from '@/types';
 import { FOOD_TRIAL_MODEL, trialFoodTotals as itemTotals, validateTrialItems, type FoodTrialResult, type TrialFoodItem as TrialItem } from '../../supabase/functions/analyze-food-trial/model';
@@ -36,7 +36,7 @@ async function post(body: unknown, accessToken: string): Promise<Record<string, 
 }
 
 export async function getFoodTrialStatus(accessToken: string): Promise<Record<string, unknown>> {
-  if (isPreviewActive() && !isAppSandboxActive()) return { preview: true, maxAttempts: 24, attemptsUsed: 0, message: 'Preview fixture only; no API usage.' };
+  if (isPreviewActive()) return { preview: true, maxAttempts: 24, attemptsUsed: 0, message: 'Preview fixture only; no API usage.' };
   return post({ action: 'status' }, accessToken);
 }
 
@@ -57,7 +57,7 @@ export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hi
   if (input.images.length > 2 || hint.length > 1500 || (!input.images.length && hint.length < 5)) {
     throw new Error('Add a meal description (5–1,500 characters), or one or two photos.');
   }
-  if (isPreviewActive() && !isAppSandboxActive()) return structuredClone(previewFoodTrialResult);
+  if (isPreviewActive()) return structuredClone(previewFoodTrialResult);
   try {
     // No patientPost retries. Server computes a durable content hash, so a user retry
     // of identical input can retrieve an outcome but cannot start a second paid call.
@@ -100,7 +100,7 @@ export async function interpretFoodServing(food: ServingFood, text: string, acce
   // "272 ml", "1.5 cups", "8 oz": plain conversions need no Gemini call.
   const local = resolveServingLocally(input.food, input.text);
   if (local) return local;
-  if (isPreviewActive() && !isAppSandboxActive()) {
+  if (isPreviewActive()) {
     // Deliberately narrow offline fixture; never make a live provider call in preview.
     const match = input.text.match(/^(?:I ate )?(\d+(?:\.\d+)?)\s+([a-z]+)\.?$/i);
     const option = match && getServingOptions(food).find(option => option.unit.replace(/s$/, '') === match[2].toLowerCase().replace(/s$/, ''));

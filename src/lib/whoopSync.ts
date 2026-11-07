@@ -1,7 +1,7 @@
 // WHOOP sync orchestrator: pull raw workout records through an injected
 // transport, upsert them as activity segments, then reconcile calendar
 // sessions with the grouping engine. Ports are injected so the identical
-// pipeline runs against the fixture transport in /preview, a fake in unit
+// pipeline runs against the fixture transport in preview mode, a fake in unit
 // tests, and the whoop-sync Edge Function in production.
 import { groupSegments, normalizeWhoopWorkout, type WhoopWorkoutRecord } from '@/lib/whoopImport';
 import type {

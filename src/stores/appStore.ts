@@ -2324,7 +2324,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!userId) throw new Error('You are signed out. Sign in and try again.');
 
     if (isPreviewActive()) {
-      // sandbox: connecting just plants a mock metadata row
+      // preview mode: connecting just plants a mock metadata row
       const nowIso = new Date().toISOString();
       await supabase.from('whoop_connections').upsert(
         {

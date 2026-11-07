@@ -9,9 +9,9 @@ export const KEYCHAIN_TIMEOUT_MS = 3_000;
 // Supabase accepts asynchronous Storage-compatible methods. Only auth state is
 // placed here; application data continues through the normal database/RLS path.
 //
-// The Keychain is passed in: the Capacitor shell uses its HyperAuth plugin
-// (nativeAuthStorage below); the React Native app passes its own Keychain module
-// with the same items (native/src/platform/supabase.ts).
+// The Keychain is passed in: the app passes its Keychain module
+// (native/src/platform/supabase.ts). nativeAuthStorage below wires the shared
+// bridge instead, which has no Keychain outside the app; tests mock it.
 //
 // On native iOS the session lives in the Keychain, with two hardening rules:
 //  1. One-time migration — builds before the Keychain switch persisted the

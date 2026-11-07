@@ -1,4 +1,4 @@
-import { isAppSandboxActive, isPreviewActive } from '@/preview/flag';
+import { isPreviewActive } from '@/preview/flag';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 import { patientPost } from '@/lib/patientFetch';
 import { supabase } from '@/lib/supabase';
@@ -61,8 +61,8 @@ export function savePhotoWorkerSettings(settings: PhotoWorkerSettings): void {
   const normalizedUrl = settings.url.trim().replace(/\/+$/, '');
   globalThis.localStorage?.setItem(URL_KEY, normalizedUrl);
   globalThis.localStorage?.setItem(PROVIDER_KEY, settings.provider);
-  // mirror to auth user metadata so the choice survives WebView storage
-  // eviction and app reinstalls; fire-and-forget — localStorage stays the
+  // mirror to auth user metadata so the choice survives local storage loss
+  // and app reinstalls; fire-and-forget — localStorage stays the
   // synchronous source of truth
   void supabase.auth.updateUser({
     data: { photo_worker_settings: { url: normalizedUrl, provider: settings.provider } },
@@ -75,10 +75,10 @@ export function savePhotoWorkerSettings(settings: PhotoWorkerSettings): void {
 let hydratedFor: string | null = null;
 let hydratingFor: string | null = null;
 
-// restores saved worker settings after WebView storage was wiped (iOS can
-// evict localStorage under storage pressure). Local values always win — the
-// mirror only fills in when the local copy is gone, so a saved choice holds
-// until the user explicitly changes it.
+// restores saved worker settings after local storage was lost (e.g. a
+// reinstall). Local values always win — the mirror only fills in when the
+// local copy is gone, so a saved choice holds until the user explicitly
+// changes it.
 export async function hydratePhotoWorkerSettings(userId?: string): Promise<void> {
   const storage = globalThis.localStorage;
   if (!storage) return;
@@ -160,7 +160,7 @@ export async function analyzeFoodPhoto(input: {
   settings?: PhotoWorkerSettings;
 }): Promise<PhotoAnalysisResult> {
   const settings = input.settings || getPhotoWorkerSettings();
-  if (isPreviewActive() && !isAppSandboxActive()) return { ...PREVIEW_RESULT, provider: settings.provider };
+  if (isPreviewActive()) return { ...PREVIEW_RESULT, provider: settings.provider };
   if (!settings.url) throw new Error('Set the photo worker URL in Settings before analyzing a photo.');
   if (input.images.length < 1 || input.images.length > 2) {
     throw new Error('Add a top photo and, optionally, one side photo.');

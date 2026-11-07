@@ -14,8 +14,8 @@ const appConfig = JSON.parse(readFileSync(new URL('../native/app.json', import.m
   expo: { scheme: string };
 };
 
-describe('native app sign-in callback', () => {
-  it('uses the URL scheme the native app registers', () => {
+describe('test app sign-in callback', () => {
+  it('uses the URL scheme the test app registers', () => {
     expect(NATIVE_AUTH_CALLBACK_SCHEME).toBe(appConfig.expo.scheme);
   });
 
@@ -25,7 +25,7 @@ describe('native app sign-in callback', () => {
     });
   });
 
-  it("rejects the Capacitor app's callback while both apps are installed", () => {
+  it("rejects the released app's callback while both apps are installed", () => {
     expect(() => parseNativeOAuthCallback('app.hyper.mobile://auth/callback?code=pkce-code')).toThrow(
       'did not belong to hyPer',
     );
@@ -33,7 +33,7 @@ describe('native app sign-in callback', () => {
 });
 
 describe('released native app sign-in callback', () => {
-  it("takes over the Capacitor app's scheme when it runs as app.hyper.mobile", async () => {
+  it("uses the released app's scheme when it runs as app.hyper.mobile", async () => {
     vi.resetModules();
     vi.doMock('../native/modules/hyper-keychain/bundle', () => ({ runningBundleIdentifier: () => 'app.hyper.mobile' }));
     vi.doMock('@/lib/nativeBridge', () => import('../native/src/platform/nativeBridge'));

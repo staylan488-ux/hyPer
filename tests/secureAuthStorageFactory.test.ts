@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// The native app hands the shared session storage its own Keychain module
-// (native/src/platform/supabase.ts) instead of the Capacitor plugin.
+// The app hands the shared session storage its own Keychain module
+// (native/src/platform/supabase.ts).
 vi.mock('@/lib/nativeBridge', () => ({ isNativeIOS: () => false, NativeAuth: {} }));
 vi.mock('@/lib/authDiagnostics', () => ({ recordAuthDiagnostic: vi.fn() }));
 

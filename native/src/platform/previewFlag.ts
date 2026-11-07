@@ -9,5 +9,3 @@ const development = typeof __DEV__ === 'undefined' || __DEV__;
 const PREVIEW = development ? process.env.EXPO_PUBLIC_HYPER_PREVIEW !== '0' : process.env.EXPO_PUBLIC_HYPER_PREVIEW === '1';
 
 export const isPreviewActive = (): boolean => PREVIEW;
-
-export const isAppSandboxActive = (): boolean => false;

@@ -18,7 +18,7 @@
 /** Errors that mean "try again", as opposed to a real answer from the worker. */
 function isTransient(error: unknown): boolean {
   if (isAbort(error)) return true;
-  // fetch() network failures surface as TypeError with browser-specific text
+  // fetch() network failures surface as TypeError with runtime-specific text
   if (error instanceof TypeError) return true;
   return false;
 }

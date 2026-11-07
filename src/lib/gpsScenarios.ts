@@ -1,6 +1,6 @@
 // Deterministic GPS sample scripts. Placed in lib/ (not preview/) on purpose:
-// Vitest drives the tracker engine with the exact streams the /preview
-// simulator replays, so a green test means the sandbox demo works.
+// Vitest drives the tracker engine with the exact streams the run screen
+// replays in preview mode, so a green test means the preview demo works.
 import type { GpsSample } from '@/lib/runTracker';
 
 interface ScenarioPhase {

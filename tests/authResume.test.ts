@@ -4,13 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // restart the SDK's ticker, refresh a session that is about to expire, and
 // never let a stalled step hang or throw.
 const mocks = vi.hoisted(() => ({
-  isNativePlatform: vi.fn(() => false),
-  addListener: vi.fn(),
   record: vi.fn(),
 }));
 
-vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: mocks.isNativePlatform } }));
-vi.mock('@capacitor/app', () => ({ App: { addListener: mocks.addListener } }));
 vi.mock('@/lib/authDiagnostics', () => ({
   recordAuthDiagnostic: mocks.record,
   describeAuthError: (error: { name?: string }) => error?.name ?? 'unknown',
@@ -41,7 +37,6 @@ function outcomes(event: string) {
 }
 
 beforeEach(() => {
-  mocks.isNativePlatform.mockReturnValue(false);
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
 });
@@ -169,32 +164,5 @@ describe('installAuthResume', () => {
     doc.dispatchEvent(new Event('visibilitychange'));
     await vi.advanceTimersByTimeAsync(0);
     expect(auth.startAutoRefresh).toHaveBeenCalledTimes(1);
-    expect(mocks.addListener).not.toHaveBeenCalled();
-  });
-
-  it('also follows the native app state on iOS', async () => {
-    vi.stubGlobal('document', fakeDocument());
-    mocks.isNativePlatform.mockReturnValue(true);
-    const remove = vi.fn(async () => {});
-    let onAppState: ((state: { isActive: boolean }) => void) | undefined;
-    mocks.addListener.mockImplementation(async (_event: string, callback: typeof onAppState) => {
-      onAppState = callback;
-      return { remove };
-    });
-    const auth = fakeAuth(20);
-    const dispose = installAuthResume(auth);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.addListener).toHaveBeenCalledWith('appStateChange', expect.any(Function));
-
-    onAppState?.({ isActive: false });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(auth.stopAutoRefresh).toHaveBeenCalledTimes(1);
-    onAppState?.({ isActive: true });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(auth.startAutoRefresh).toHaveBeenCalledTimes(1);
-    expect(auth.refreshSession).toHaveBeenCalledTimes(1);
-
-    dispose();
-    expect(remove).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,7 +1,7 @@
 // Runs before any shared module (see index.ts).
 //
-// The shared stores keep small preferences and sync cursors in the browser's
-// localStorage. Expo SQLite provides the same synchronous API on device.
+// The shared stores keep small preferences and sync cursors in localStorage.
+// Expo SQLite provides that synchronous API on device.
 import 'expo-sqlite/localStorage/install';
 
 import { CryptoDigestAlgorithm, digest, getRandomValues, randomUUID } from 'expo-crypto';

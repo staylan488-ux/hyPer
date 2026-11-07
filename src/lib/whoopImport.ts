@@ -1,7 +1,7 @@
 // WHOOP import engine: normalizes raw WHOOP v2 workout records into activity
 // segments and groups segments into calendar sessions. Pure module — no
 // Supabase, no React — so the exact production pipeline runs against fixtures
-// in the /preview sandbox and in unit tests.
+// in preview mode and in unit tests.
 //
 // Grouping intent: WHOOP records one workout per hard effort, so an interval
 // session of 8 fast laps arrives as 8 separate records. Consecutive short
@@ -97,7 +97,7 @@ function parseOffsetMinutes(offset?: string | null): number {
 }
 
 // calendar date at the workout's OWN utc offset — a 23:30 run in -07:00 must
-// land on the runner's local date, not the browser's
+// land on the runner's local date, not the device's
 export function whoopLocalDateKey(startIso: string, timezoneOffset?: string | null): string {
   const startMs = Date.parse(startIso);
   if (Number.isNaN(startMs)) return '';

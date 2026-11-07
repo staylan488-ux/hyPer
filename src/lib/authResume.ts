@@ -1,5 +1,3 @@
-import { App } from '@capacitor/app';
-import { Capacitor } from '@capacitor/core';
 import { describeAuthError, recordAuthDiagnostic } from '@/lib/authDiagnostics';
 import { withTimeout } from '@/lib/withTimeout';
 
@@ -129,24 +127,7 @@ export function installAuthResume(auth: AuthControls): () => void {
   };
   document.addEventListener('visibilitychange', visibilityChanged);
 
-  let disposed = false;
-  let nativeListener: { remove: () => Promise<void> } | undefined;
-  if (Capacitor.isNativePlatform()) {
-    void App.addListener('appStateChange', ({ isActive }) => {
-      if (disposed) return;
-      if (isActive) void resumeAuth(auth, 'app-active');
-      else void pauseAuth(auth, 'app-inactive');
-    }).then((listener) => {
-      if (disposed) void listener.remove().catch(() => undefined);
-      else nativeListener = listener;
-    }).catch(() => {
-      // visibilitychange still covers resume in an older installed shell.
-    });
-  }
-
   return () => {
-    disposed = true;
     document.removeEventListener('visibilitychange', visibilityChanged);
-    void nativeListener?.remove().catch(() => undefined);
   };
 }

@@ -1,9 +1,8 @@
 // Replaces ../src/lib/nativeAuth.ts (see metro.config.js).
 //
 // Google and Apple sign-in open in iOS's web-authentication sheet
-// (ASWebAuthenticationSession, through expo-web-browser), as the Capacitor app
-// did with its HyperAuth plugin. The callback is checked by the shared parser,
-// then exchanged for a session with PKCE.
+// (ASWebAuthenticationSession, through expo-web-browser). The callback is
+// checked by the shared parser, then exchanged for a session with PKCE.
 import type { Provider } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 

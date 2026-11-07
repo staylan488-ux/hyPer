@@ -1,6 +1,6 @@
 import type { MuscleVolume } from '@/types';
 
-// Progress's per-muscle call, shared by the web Coaching page and native Progress.
+// Progress's per-muscle call.
 
 export type CoachingTone = 'amber' | 'sage' | 'berry' | 'stone';
 

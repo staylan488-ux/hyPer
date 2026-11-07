@@ -12,7 +12,20 @@ history keep them (this file at commit b3f61df has the long version).
   2026-10-30; `src/` holds only the shared code the app imports. The Vercel
   project `hy-per` that hosted the web app no longer builds (`vercel.json`
   turns its Git deployments off); its last web build stays online until the
-  project is deleted in Vercel.
+  project is deleted in Vercel. Delete `vercel.json` after that.
+- 2026-11-07 repo refresh (branch `claude/laughing-brown-2eg222`): the
+  Capacitor packages, shims and web-only code left in `src/` were removed and
+  the docs brought up to date, with no change to the app. The tracked
+  Supabase CLI cache (`supabase/.temp`) is gone: name the project with
+  `--project-ref`, or run `supabase link` again. An older checkout may still
+  hold an untracked `ios/` folder from the Capacitor app; it can be deleted.
+- Left on purpose (runtime config, change only as a planned deploy): the
+  `analyze-food-trial` gateway still accepts a `capacitor:` origin, which the
+  function's `FOOD_ANALYSIS_ALLOWED_ORIGINS` secret may name; `whoop-oauth`
+  still falls back to `APP_BASE_URL/settings` (the web app) when no return
+  address is sent, though the app always sends `app.hyper.mobile://settings`.
+  The Supabase dashboard's Auth site URL and redirect list may still name the
+  web app. The `.env` names keep their `VITE_` prefix.
 - Merged since the last TestFlight upload recorded here: #181–#188, among
   them the full weigh-in history (#185), the design council's Blanc
   refinements with a custom camera (`expo-camera`, #186) and a quicker launch

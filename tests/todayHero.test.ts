@@ -4,7 +4,7 @@ import { nextPlannedSession, todayHero, weekSessionTarget, type TodayHeroInput }
 import type { PlanSchedule } from '@/lib/planSchedule';
 import type { Split, Workout } from '@/types';
 
-// Today's hero rule is shared by the web and native Today screens.
+// Today's hero rule.
 
 const upper = { id: 'day-upper', split_id: 'split-1', day_name: 'Upper', day_order: 0, exercises: [] };
 const lower = { id: 'day-lower', split_id: 'split-1', day_name: 'Lower', day_order: 1, exercises: [] };

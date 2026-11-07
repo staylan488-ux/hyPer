@@ -1,6 +1,5 @@
 // The target calculator's draft: what the person typed, the limits it is held
-// to, and the profile and targets it produces. The web wizard (one step at a
-// time) and the native form (one page) both run on these rules.
+// to, and the profile and targets it produces.
 import {
   GOAL_RATE_PRESETS,
   GOAL_RATE_RANGES,

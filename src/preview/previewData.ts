@@ -1,4 +1,4 @@
-// DEV-ONLY preview sample data. Pure data (no store imports) so it can be shared
+// Preview mode's sample data. Pure data (no store imports) so it can be shared
 // by the mock Supabase client and the store seeder without import cycles.
 import { format } from 'date-fns';
 import type {

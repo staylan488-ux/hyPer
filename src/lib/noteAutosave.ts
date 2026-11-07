@@ -1,5 +1,6 @@
-// Debounced movement-note autosave shared by the Workout and History pages.
-// Pages supply their save functions and keep their own note state and UI.
+// Debounced movement-note autosave for the live workout's notes
+// (native/src/lib/notes.ts). Callers supply their save functions and keep
+// their own note state and UI.
 // Whole-workout writes share a queue across navigation, including plan patches.
 //
 // A save always goes to the workout id captured when it was scheduled, and its

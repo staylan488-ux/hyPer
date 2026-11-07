@@ -27,7 +27,7 @@ interface SignedInUserStore {
  * leave a "Rest over" notification or lock-screen countdown armed. Reacts
  * only when a known workout id goes away: the cold-start null → id restore is
  * left alone.
- * `onRestCleared` lets an app that holds the rest in memory (native) drop it too.
+ * `onRestCleared` lets the app, which holds the rest in memory, drop it too.
  */
 export function watchRestTimerWorkoutEnd(store: ActiveWorkoutStore, onRestCleared?: () => void): () => void {
   let activeId = liveWorkoutId(store.getState());
@@ -46,7 +46,7 @@ export function watchRestTimerWorkoutEnd(store: ActiveWorkoutStore, onRestCleare
       syncWorkoutActivityRest(null);
       onRestCleared?.();
     }
-    // No workout left: take the card down, as the Train page does on return.
+    // No workout left: take the card down.
     if (!nextId) endWorkoutActivity();
   });
 }

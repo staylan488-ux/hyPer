@@ -1,11 +1,11 @@
-// DEV-ONLY in-memory Supabase stand-in. Serves the canned previewTables rows
-// through a chainable query builder that honours the common filters (eq/in/
-// gte/lte/order/limit/single/count). Mutations PERSIST into previewTables for
-// the lifetime of the tab so preview flows (add -> navigate -> re-fetch) behave
-// like the real database; a full page reload re-seeds from scratch.
+// The in-memory Supabase stand-in behind preview mode. Serves the canned
+// previewTables rows through a chainable query builder that honours the common
+// filters (eq/in/gte/lte/order/limit/single/count). Mutations PERSIST into
+// previewTables until the app restarts, so preview flows (add -> navigate ->
+// re-fetch) behave like the real database; a relaunch re-seeds from scratch.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { previewTables, PREVIEW_USER_ID } from './previewData';
-import { buildYouFixtures, getYouPreviewState, youSavedMeals } from './youFixtures';
+import { buildYouFixtures } from './youFixtures';
 
 let youFixturesApplied = false;
 
@@ -25,7 +25,7 @@ export function getPreviewUser() {
     const raw = globalThis.localStorage?.getItem('hyper:preview:user-metadata');
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed as Record<string, unknown>;
-  } catch { /* Preview works even without browser storage. */ }
+  } catch { /* Preview works even without local storage. */ }
   return { ...PREVIEW_USER, user_metadata: { ...PREVIEW_USER.user_metadata, ...metadata } };
 }
 
@@ -364,12 +364,7 @@ function saveMockSplitSnapshot(params: Row): MockResult {
 export function createMockClient(options?: { setSaveFailures?: number }): SupabaseClient {
   if (!youFixturesApplied) {
     youFixturesApplied = true;
-    const state = getYouPreviewState();
-    if (state) {
-      Object.assign(previewTables, buildYouFixtures(state));
-      previewTables.foods = previewTables.foods.filter((food) => food.source !== 'custom' && food.source !== 'saved_meal');
-      if (state === 'populated') previewTables.foods.push(...youSavedMeals);
-    } else if (import.meta.env.MODE === 'native') {
+    if (import.meta.env.MODE === 'native') {
       // The native app's sample account also has a nutrition profile and
       // weigh-ins for You; WHOOP starts disconnected and saved meals stay as
       // Fuel knows them.
@@ -381,11 +376,7 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
       });
     }
   }
-  // DEV mock-only QA: enter /preview?previewSetSave=fail, then Save set.
-  // Both automatic attempts fail before any write; the next explicit Retry succeeds.
-  const requestedFailure = import.meta.env.DEV && typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).get('previewSetSave') === 'fail';
-  const scenario: MockScenario = { remainingSetFailures: options?.setSaveFailures ?? (requestedFailure ? 2 : 0), delayMs: requestedFailure ? 600 : 0 };
+  const scenario: MockScenario = { remainingSetFailures: options?.setSaveFailures ?? 0, delayMs: 0 };
   const auth = {
     getUser: async () => ({ data: { user: getPreviewUser() }, error: null }),
     getSession: async () => ({ data: { session: { user: getPreviewUser(), access_token: 'preview' } }, error: null }),

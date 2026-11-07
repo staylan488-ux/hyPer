@@ -17,8 +17,8 @@ import {
 } from '@/lib/runTracker';
 import { buildScenarioSamples } from '@/lib/gpsScenarios';
 
-// A scripted stand-in for the HyperRun plugin. By default the drains page
-// through an in-memory "durable store" the way HyperRunPlugin.swift does
+// A scripted stand-in for the hyper-run module. By default the drains page
+// through an in-memory "durable store" the way RunRecorder.swift does
 // (sequence > afterSequence, fixed page size). Tests can queue one-off
 // responses (including pending promises) to pin down races.
 type SampleBatch = { samples: NativeRunSample[]; lastSequence: number; hasMore: boolean };
@@ -668,7 +668,7 @@ describe('createNativeRunSource live cursor', () => {
     fake.state.samples = range(1, 4).map((seq) => nativeSample(seq));
     fake.emit('locationSample', nativeSample(1));
     fake.emit('locationSample', nativeSample(2));
-    // 3 was recorded while the WebView was not listening
+    // 3 was recorded while JS was not listening
     fake.emit('locationSample', nativeSample(4));
     source.resync();
     await settle();

@@ -209,7 +209,7 @@ describe('buildSessionModel with the session plan', () => {
     ...overrides,
   });
 
-  it('follows the session plan order, like the web Train page', () => {
+  it('follows the session plan order', () => {
     const plan = dayPlan([item(incline, 0), item(bench, 1), item(row, 2)]);
     const model = buildSessionModel(midSession(), { split, plan }, null);
     expect(model?.movements.map((movement) => movement.exerciseId)).toEqual(['incline', 'bench', 'row']);

@@ -1,5 +1,4 @@
-// Reviewing and logging a worker photo analysis, shared by the web food logger
-// and the native app.
+// Reviewing and logging a worker photo analysis.
 import { combineIntoOneMeal } from '@/lib/combineMeal';
 import type { PhotoAnalysisItem, PhotoAnalysisProvider } from '@/lib/photoAnalysis';
 import { searchUsdaFoodsSecure } from '@/lib/usdaClient';

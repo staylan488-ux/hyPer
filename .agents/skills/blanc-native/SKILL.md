@@ -19,15 +19,17 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   components live in `native/`, and only logic worth sharing or testing goes in
   `src/lib`, `src/stores` or `src/hooks`.
 - [Platform swaps](../../../native/src/platform/) replace the few shared modules that
-  cannot run in React Native: the Supabase client, native bridge, OAuth, preview
-  flag, haptics, keep-awake, rest notifications, the workout Live Activity,
-  focused-field commit, app visibility, run cues, plus Capacitor shims. The
+  need the phone: the Supabase client, native bridge, OAuth, preview flag,
+  haptics, keep-awake, rest notifications, the workout Live Activity,
+  focused-field commit, app visibility and run cues. The shared file stays as
+  a default for tests and type-checks (most do nothing) and must keep the
+  exports shared code imports; Metro resolves it before swapping it. The
   bridge's `NativeHealth` is `native/modules/hyper-health` (HealthKit body
-  weight) and `NativeRun` is `native/modules/hyper-run` (the GPS recorder),
-  both ports of the Capacitor plugins, so `hasNativeHealth()` and
-  `hasNativeRun()` are true here while `isNativeIOS()` (the Capacitor shell)
-  stays false. Add a swap rather than importing React Native
-  into `src`. TypeScript mirrors the swaps in `native/tsconfig.json` paths.
+  weight) and `NativeRun` is `native/modules/hyper-run` (the GPS recorder), so
+  `hasNativeHealth()` and `hasNativeRun()` are true here while `isNativeIOS()`
+  (the retired Capacitor shell) stays false. Add a swap rather than importing
+  React Native into `src`. TypeScript mirrors the swaps in
+  `native/tsconfig.json` paths.
 - Shared code that reacts to the app coming back or going away uses
   `@/lib/appVisibility`, never `document`; the native app backs it with AppState.
 - The native Supabase client keeps the web client's safety: `timedFetch`

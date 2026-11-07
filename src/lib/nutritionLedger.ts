@@ -1,4 +1,4 @@
-// How the day's food entries read, shared by the web ledger and the native app.
+// How the day's food entries read.
 import { roundestAmount } from '@/lib/foodUnits';
 import { getLogTimestamp } from '@/lib/nutritionLogUtils';
 

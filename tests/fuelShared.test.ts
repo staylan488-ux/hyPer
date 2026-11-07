@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Food, NutritionGroup } from '@/types';
 
-// Shared Fuel rules moved out of the web components so the native app uses the
-// same ones (FoodLogger, Nutrition, NutritionGroupLedger, BarcodeScanner).
+// The shared Fuel rules behind the food logger and the Fuel screen.
 
 const mocks = vi.hoisted(() => ({
   insertOneServingFood: vi.fn(),
@@ -344,7 +343,7 @@ describe('photo review', () => {
 });
 
 describe('day ledger and calendar', () => {
-  it('labels sources and servings as the web ledger does', () => {
+  it('labels sources and servings', () => {
     expect(sourceLabel('photo_anthropic')).toBe('Claude photo');
     expect(sourceLabel('barcode_saved')).toBe('Manual');
     expect(servingLabel({ servings: 1.5, food: { serving_size: 100, serving_unit: 'g' } })).toBe('150 g');

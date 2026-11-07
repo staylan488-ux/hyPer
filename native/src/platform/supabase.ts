@@ -1,5 +1,5 @@
-// Replaces ../src/lib/supabase.ts (see metro.config.js) with the same safety
-// settings as the web client: every database and auth request has a deadline
+// Replaces ../src/lib/supabase.ts (see metro.config.js) with the shared safety
+// settings: every database and auth request has a deadline
 // (timedFetch), token refreshes are timed into the on-device diagnostics, and
 // foreground and background handling is bounded (authResume).
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -26,8 +26,9 @@ export const supabase: SupabaseClient = preview
   ? createMockClient()
   : createClient(url as string, anonKey as string, {
       auth: {
-        // The session lives in the Keychain under the Capacitor app's item
-        // names, with the shared timeouts, cache and sign-out tombstone.
+        // The session lives in the Keychain under the item names the
+        // Capacitor app (hyPer 1.x) used, so the 2.0 update kept people signed
+        // in, with the shared timeouts, cache and sign-out tombstone.
         storage: createSecureAuthStorage(hyperKeychain, () => true),
         persistSession: true,
         autoRefreshToken: true,
@@ -38,9 +39,8 @@ export const supabase: SupabaseClient = preview
       global: { fetch: withRefreshDiagnostics(timedFetch) },
     });
 
-// The web app's iOS shell refreshed the session when the app became active and
-// paused the refresh timer when it resigned active (Capacitor's appStateChange).
-// React Native's AppState gives the same signals. Both steps are bounded and
+// Refresh the session when the app becomes active and pause the refresh timer
+// when it leaves, from React Native's AppState. Both steps are bounded and
 // never throw.
 if (!preview) {
   AppState.addEventListener('change', (state) => {

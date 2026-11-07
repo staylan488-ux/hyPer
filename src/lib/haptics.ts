@@ -1,141 +1,22 @@
-/**
- * Haptics — a light tactile tick for meaningful touches.
- *
- * iOS has no web Vibration API. Since iOS 18, Safari's native switch control
- * (<input type="checkbox" switch>) emits a real system haptic when toggled.
- * Crucially, the haptic fires on LABEL-driven activation: we create a
- * label-wrapped switch, click the label inside the user gesture, and remove
- * it. The pair never needs to render — document.head works.
- *
- * Android uses navigator.vibrate. Everything fails silently.
- *
- * Tiers (by convention at call sites — the tick itself is single-intensity):
- *  - selection: nav tabs, segmented controls, chips, wheel detents
- *  - action: logging a set, finish, steppers, timer controls
- * Never wire it to typing, scrolling, or passive touches.
- *
- * In the native app the Capacitor Haptics engine takes over (works on every
- * iOS version and gives calibrated intensities); the tricks below remain the
- * web fallback.
- */
+// The shared haptic calls. The app plays them through
+// native/src/platform/haptics.ts, which native/metro.config.js swaps in for
+// this file (it must stay so the swap can resolve). Outside the app there is
+// no haptic engine, so these do nothing.
 
-import { Capacitor } from '@capacitor/core';
-import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+/** A light tick for meaningful touches. */
+export function tapHaptic(): void {}
 
-const isIOS =
-  typeof navigator !== 'undefined' &&
-  (/iP(ad|hone|od)/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+/** A firmer "something finished": rest over, a run split or finish. */
+export function completionHaptic(): void {}
 
-/** Fire a light haptic tick. Call synchronously from inside a tap handler. */
-export function tapHaptic(): void {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      void Haptics.impact({ style: ImpactStyle.Light }).catch(() => {});
-      return;
-    }
-
-    if (isIOS) {
-      const label = document.createElement('label');
-      label.setAttribute('aria-hidden', 'true');
-      label.style.display = 'none';
-
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.setAttribute('switch', '');
-      label.appendChild(input);
-
-      document.head.appendChild(label);
-      label.click();
-      document.head.removeChild(label);
-      return;
-    }
-
-    if ('vibrate' in navigator) {
-      navigator.vibrate(10);
-    }
-  } catch {
-    // Unsupported or denied — haptics are garnish.
-  }
-}
-
-/** A firmer "something finished" pattern — rest timer done, workout complete. */
-export function completionHaptic(): void {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      void Haptics.notification({ type: NotificationType.Success }).catch(() => {});
-      return;
-    }
-
-    if ('vibrate' in navigator) {
-      navigator.vibrate([200, 100, 200]);
-    }
-  } catch {
-    // Unsupported or denied — haptics are garnish.
-  }
-}
-
-// ── Selection detents ────────────────────────────────────────────────────────
-// Scrubbing a chart ticks once per datum, like a picker wheel. Natively this
-// is UISelectionFeedbackGenerator (lighter than an impact, prepared for low
-// latency); on the web it falls back to the light tick where a gesture allows.
-
-let selectionActive = false;
-
-/** Begin a scrub gesture: prepares the selection generator. */
-export function selectionHapticStart(): void {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      selectionActive = true;
-      void Haptics.selectionStart().catch(() => {});
-    }
-  } catch {
-    // garnish
-  }
-}
+/** Begin a scrub gesture. */
+export function selectionHapticStart(): void {}
 
 /** One detent: the scrubbed datum changed. */
-export function selectionHaptic(): void {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      if (!selectionActive) {
-        selectionActive = true;
-        void Haptics.selectionStart().catch(() => {});
-      }
-      void Haptics.selectionChanged().catch(() => {});
-      return;
-    }
-    if (!isIOS && 'vibrate' in navigator) navigator.vibrate(4);
-  } catch {
-    // garnish
-  }
-}
+export function selectionHaptic(): void {}
 
-/** End the scrub gesture and release the generator. */
-export function selectionHapticEnd(): void {
-  try {
-    if (Capacitor.isNativePlatform() && selectionActive) {
-      selectionActive = false;
-      void Haptics.selectionEnd().catch(() => {});
-    }
-  } catch {
-    // garnish
-  }
-}
+/** End the scrub gesture. */
+export function selectionHapticEnd(): void {}
 
-/**
- * A celebratory success: a set that beat last workout, a target met. Native
- * success notification; a short double tick elsewhere. Unlike tapHaptic it
- * may fire after an await (no gesture needed natively).
- */
-export function celebrationHaptic(): void {
-  try {
-    if (Capacitor.isNativePlatform()) {
-      void Haptics.notification({ type: NotificationType.Success }).catch(() => {});
-      return;
-    }
-    if (!isIOS && 'vibrate' in navigator) navigator.vibrate([12, 60, 18]);
-  } catch {
-    // garnish
-  }
-}
+/** A celebratory success: a set that beat last workout, a target met. */
+export function celebrationHaptic(): void {}

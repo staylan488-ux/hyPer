@@ -1,6 +1,5 @@
-// Changes to one day of the food log (meal groups and entries), shared by the
-// web Fuel page and the native app. Each returns what changed, or a failure,
-// and leaves screen state to the caller.
+// Changes to one day of the food log (meal groups and entries). Each returns
+// what changed, or a failure, and leaves screen state to the caller.
 import { isLateNightEntry, planEntryDayMove, type EntryDayPatch } from '@/lib/entryDay';
 import {
   changedGroupOrders,
@@ -182,7 +181,7 @@ export async function moveEntryToPreviousDay(log: { id: string; date: string; lo
   return patch;
 }
 
-/** Deletes an entry (no confirm, as on the web). */
+/** Deletes an entry (no confirm). */
 export async function deleteNutritionEntry(logId: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('nutrition_logs').delete().eq('id', logId);

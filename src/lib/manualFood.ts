@@ -1,5 +1,4 @@
-// Which foods row a manual entry logs against, shared by the web food logger
-// and the native app.
+// Which foods row a manual entry logs against.
 import { normalizeFoodName } from '@/lib/foodLoggerUtils';
 import { insertOneServingFood, type OneServingFoodValues } from '@/lib/foodPersistence';
 import { foodValuesMatch } from '@/lib/savedMeals';
@@ -13,7 +12,7 @@ export type ManualFoodChoice =
   | { foodId: null; error: 'saved_meal' | 'entry' };
 
 /**
- * Picks the food row in the web logger's order:
+ * Picks the food row in this order:
  * 1. the picked saved meal, when its values are unchanged;
  * 2. with "Save as reusable" on, an existing saved meal with the same values;
  * 3. with it on, a new saved meal;

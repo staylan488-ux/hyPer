@@ -13,7 +13,7 @@ import {
 } from '@/lib/sessionPlan';
 import type { FlexiblePlanItem, SplitExercise, WorkoutSet } from '@/types';
 
-// The live session's plan rules, shared by the web Train page and the native app.
+// The live session's plan rules.
 
 const dayExercise = (exerciseId: string, order: number, notes: string | null = null): SplitExercise => ({
   id: `plan-${exerciseId}`,

@@ -52,7 +52,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: {
     });
   },
 } }));
-vi.mock('@/preview/flag', () => ({ isPreviewActive: () => true, isAppSandboxActive: () => false }));
+vi.mock('@/preview/flag', () => ({ isPreviewActive: () => true }));
 
 import { FOOD_ID_CHUNK_SIZE, fetchNutritionLogsWithFoods, type NutritionLogDateRange } from '@/lib/nutritionLogQueries';
 import { getDailyIntake } from '@/lib/nutritionIntake';

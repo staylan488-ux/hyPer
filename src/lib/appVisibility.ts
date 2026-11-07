@@ -1,7 +1,7 @@
-// Whether the app is in front of the user, and when that changes. The web app
-// reads the page's visibility; the native app swaps in iOS app state
-// (native/src/platform/appVisibility.ts), so shared hooks never touch
-// `document` directly.
+// Whether the app is in front of the user, and when that changes. The app
+// swaps in iOS app state (native/src/platform/appVisibility.ts); this default
+// reads the page's visibility (tests), so shared hooks never touch `document`
+// directly.
 
 /** True while the app is on screen. Outside a browser it counts as on screen. */
 export function isAppVisible(): boolean {

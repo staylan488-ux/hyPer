@@ -305,7 +305,7 @@ describe('set-save authentication after a native storage error', () => {
   });
 });
 
-describe('nativeAuthStorage on the web', () => {
+describe('nativeAuthStorage outside the app', () => {
   it('reads, writes and removes straight through localStorage without the Keychain', async () => {
     mocks.isNativeIOS.mockReturnValue(false);
     await nativeAuthStorage.setItem(KEY, SESSION);

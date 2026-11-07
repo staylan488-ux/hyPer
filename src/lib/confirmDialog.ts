@@ -1,8 +1,9 @@
 /**
  * In-app confirmation, in place of window.confirm. A caller awaits
- * `requestConfirm`; the mounted <ConfirmDialogHost> shows the question as a
- * sheet and settles it. Without a host the answer is "no", so nothing
- * destructive happens unseen.
+ * `requestConfirm`; a mounted host (registerConfirmHost) shows the question
+ * and settles it. Without a host the answer is "no", so nothing destructive
+ * happens unseen. The app mounts none; it asks with an iOS alert instead
+ * (confirmAlert in native/src/lib/program.ts).
  */
 export interface ConfirmOptions {
   title: string;

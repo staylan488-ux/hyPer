@@ -59,7 +59,7 @@ export const timedFetch: typeof fetch = async (input, init) => {
   let rejectAborted!: (reason: unknown) => void;
   const aborted = new Promise<never>((_, reject) => { rejectAborted = reject; });
   const abort = (reason: unknown) => {
-    // Reject independently: a suspended WebView transport or response stream
+    // Reject independently: a suspended transport or response stream
     // may never acknowledge abort. Only aborting it leaves auth-js's shared
     // refresh promise pending, so stop/startAutoRefresh cannot recover it.
     rejectAborted(reason);

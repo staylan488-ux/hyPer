@@ -57,7 +57,7 @@ const profile: NutritionProfile = {
   expenditure_updated_at: null,
 };
 
-describe('target rules shared by the web and native You', () => {
+describe('target rules on You', () => {
   it('falls back to the starting defaults, kept by hand, when nothing is saved', () => {
     expect(baseTargets(null)).toEqual({ calories: 2000, protein: 150, carbs: 200, fat: 65, source: 'manual' });
     expect(baseTargets({ calories: 2400, protein: 180, carbs: 250, fat: 70, source: 'adaptive' }).source).toBe('adaptive');

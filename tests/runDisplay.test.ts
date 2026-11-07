@@ -19,7 +19,7 @@ import {
 } from '@/lib/runDisplay';
 import { createTracker, defaultTrackerConfig, finishedRunToActivity, pauseTracker, type FinishedRun } from '@/lib/runTracker';
 
-// The run tracker's wording and choices, shared by the web page and the native run screen.
+// The run tracker's wording and choices.
 
 describe('run display', () => {
   it('formats pace, with slow live paces capped instead of hidden', () => {

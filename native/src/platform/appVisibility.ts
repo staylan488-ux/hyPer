@@ -1,9 +1,8 @@
 // Replaces ../src/lib/appVisibility.ts (see metro.config.js) with iOS app state.
 //
-// A web page is hidden only when another app or tab covers it. iOS also reports
-// "inactive" for the app switcher, Control Center and system prompts, while the
-// app is still on screen, so only "background" counts as hidden here. That keeps
-// the same moments as the web: back from another app, or leaving for one.
+// iOS reports "inactive" for the app switcher, Control Center and system
+// prompts while the app is still on screen, so only "background" counts as
+// hidden here: back from another app, or leaving for one.
 import { AppState } from 'react-native';
 
 export function isAppVisible(): boolean {

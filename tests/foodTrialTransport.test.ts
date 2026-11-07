@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-vi.mock('@/preview/flag', () => ({ isPreviewActive: () => false, isAppSandboxActive: () => false }));
+vi.mock('@/preview/flag', () => ({ isPreviewActive: () => false }));
 import { interpretFoodServing, analyzeFoodTrial, getFoodTrialStatus, getFoodAnalysisMode, saveFoodAnalysisMode, previewFoodTrialResult } from '@/lib/foodTrial';
 afterEach(() => vi.unstubAllGlobals());
 // Typed like fetch so tests can read the request URL and body they sent.
