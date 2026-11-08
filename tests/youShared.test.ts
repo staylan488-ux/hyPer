@@ -30,9 +30,12 @@ import {
 } from '@/lib/nutritionWizard';
 import {
   baseTargets,
+  carbShare,
   editTargetField,
   expenditureSummary,
+  followNote,
   macroTargetColumns,
+  rebalanceMacros,
   resumeAdaptiveMessage,
   signOutQuestion,
   targetDrift,
@@ -70,6 +73,68 @@ describe('target rules on You', () => {
     expect(targetsChanged(edited, base)).toBe(true);
     expect(targetsChanged(base, base)).toBe(false);
     expect(editTargetField(base, 'fat', '').fat).toBe(0);
+  });
+
+  it('moves carbs and fat with the calories, keeping protein and their split', () => {
+    const base = baseTargets({ calories: 2400, protein: 180, carbs: 250, fat: 71, source: 'calculated' });
+    const share = carbShare(base);
+    const raised = rebalanceMacros(editTargetField(base, 'calories', '2800'), share, {});
+    expect(raised).toMatchObject({ calories: 2800, protein: 180, carbs: 317, fat: 90, source: 'manual' });
+    expect(targetDrift(raised).driftPct).toBe(0);
+    expect(Math.abs(targetDrift(raised).kcalFromMacros - 2800)).toBeLessThanOrEqual(5);
+    // The split holds: carbs still carry about 61% of the carb and fat calories.
+    expect(carbShare(raised)).toBeCloseTo(share, 2);
+    const lowered = rebalanceMacros(editTargetField(base, 'calories', '2000'), share, {});
+    expect(lowered.protein).toBe(180);
+    expect(lowered.carbs).toBeLessThan(250);
+    expect(lowered.fat).toBeLessThan(71);
+    expect(targetDrift(lowered).driftPct).toBe(0);
+  });
+
+  it('ends where the whole number would when calories are typed digit by digit', () => {
+    const base = baseTargets({ calories: 2400, protein: 180, carbs: 250, fat: 71, source: 'calculated' });
+    const share = carbShare(base);
+    let draft = base;
+    for (const text of ['', '2', '28', '280', '2800']) {
+      draft = rebalanceMacros(editTargetField(draft, 'calories', text), share, {});
+      expect(draft.carbs).toBeGreaterThanOrEqual(0);
+      expect(draft.fat).toBeGreaterThanOrEqual(0);
+    }
+    expect(draft).toEqual(rebalanceMacros(editTargetField(base, 'calories', '2800'), share, {}));
+  });
+
+  it('leaves a macro typed by hand where it is', () => {
+    const base = baseTargets({ calories: 2400, protein: 180, carbs: 250, fat: 71, source: 'manual' });
+    const share = carbShare(base);
+    const carbsTyped = rebalanceMacros({ ...base, carbs: 300, calories: 2800 }, share, { carbs: true });
+    expect(carbsTyped).toMatchObject({ protein: 180, carbs: 300, fat: 98 });
+    const fatTyped = rebalanceMacros({ ...base, fat: 60, calories: 2800 }, share, { fat: true });
+    expect(fatTyped).toMatchObject({ protein: 180, fat: 60, carbs: 385 });
+    const bothTyped = { ...base, carbs: 300, fat: 60, calories: 2800 };
+    expect(rebalanceMacros(bothTyped, share, { carbs: true, fat: true })).toBe(bothTyped);
+  });
+
+  it('counts protein typed by hand before filling carbs and fat', () => {
+    const base = baseTargets({ calories: 2400, protein: 180, carbs: 250, fat: 71, source: 'manual' });
+    const next = rebalanceMacros({ ...base, protein: 220, calories: 2800 }, carbShare(base), {});
+    expect(next.protein).toBe(220);
+    expect(targetDrift(next).driftPct).toBe(0);
+  });
+
+  it('never goes below zero, and falls back to the default split', () => {
+    const base = baseTargets({ calories: 2400, protein: 180, carbs: 250, fat: 71, source: 'manual' });
+    expect(rebalanceMacros({ ...base, calories: 500 }, carbShare(base), {})).toMatchObject({ protein: 180, carbs: 0, fat: 0 });
+    expect(rebalanceMacros({ ...base, calories: 500, carbs: 0 }, carbShare(base), { carbs: true }).fat).toBe(0);
+    expect(carbShare({ carbs: 0, fat: 0 })).toBeCloseTo(800 / 1385, 5);
+    const fromNothing = rebalanceMacros({ calories: 2000, protein: 150, carbs: 0, fat: 0, source: 'manual' }, carbShare({ carbs: 0, fat: 0 }), {});
+    expect(fromNothing).toMatchObject({ carbs: 202, fat: 66 });
+  });
+
+  it('says which macros follow the calories', () => {
+    expect(followNote({})).toBe('Carbs and fat follow your calories; protein stays put.');
+    expect(followNote({ carbs: true })).toBe('Fat follows your calories; protein and carbs stay put.');
+    expect(followNote({ fat: true })).toBe('Carbs follow your calories; protein and fat stay put.');
+    expect(followNote({ carbs: true, fat: true })).toBeNull();
   });
 
   it('saves only the targets table’s columns, never a suggestion’s words', () => {

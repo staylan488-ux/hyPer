@@ -502,7 +502,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `settingsUx`, `bodyWeightSummary`, `nutritionWizard`, `healthWeights`,
   `whoopStatus` and `foodTrialUsage`. The
   calculator and coach hand their numbers to the edit sheet (`stageTargets`);
-  nothing is saved until Save there. Appearance (Automatic, Light, Dark) keeps
+  nothing is saved until Save there. In the edit sheet a new calorie figure
+  carries carbs and fat with it, in their split, so the macros still add up;
+  protein never moves, and carbs or fat typed there stay put
+  (`rebalanceMacros`; the owner's call, 2026-11-08). Appearance (Automatic, Light, Dark) keeps
   the web's `hyper-theme` key and applies through `Appearance.setColorScheme`
   before the first screen draws. WHOOP connects through iOS's sign-in sheet
   with the return address `app.hyper.mobile://settings` (the only one the
