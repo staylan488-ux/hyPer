@@ -7,6 +7,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
+import { parseNativeOAuthCallback } from '@/lib/nativeOAuthCallback';
+import * as authLink from '../native/src/lib/authLink';
 import * as launchLink from '../native/src/lib/launchLink';
 import { loadNativeModule } from './helpers/loadNativeModule';
 
@@ -16,7 +18,7 @@ import { loadNativeModule } from './helpers/loadNativeModule';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-type Screen = 'boot' | 'offline' | 'sign-in' | 'app';
+type Screen = 'boot' | 'offline' | 'sign-in' | 'new-password' | 'app';
 
 describe('launch link store', () => {
   beforeEach(() => launchLink.dropLaunchLink());
@@ -74,17 +76,50 @@ describe('launch link store', () => {
 
 describe('links that launch the app', () => {
   const exchangeCodeForSession = vi.fn();
+  const getSession = vi.fn();
   let redirectSystemPath: (input: { path: string; initial: boolean }) => string;
 
   beforeEach(() => {
     launchLink.dropLaunchLink();
+    authLink.useAuthLinkError.getState().clear();
     exchangeCodeForSession.mockReset().mockResolvedValue({ data: {}, error: null });
+    getSession.mockReset().mockResolvedValue({ data: { session: null }, error: null });
     ({ redirectSystemPath } = loadNativeModule<{ redirectSystemPath: typeof redirectSystemPath }>('app/+native-intent.tsx', {
       '@/lib/nativeBridge': { NATIVE_AUTH_REDIRECT_URL: 'app.hyper.mobile://auth/callback' },
-      '@/lib/nativeOAuthCallback': { parseNativeOAuthCallback: () => ({ code: 'pkce-code' }) },
-      '@/lib/supabase': { supabase: { auth: { exchangeCodeForSession } } },
+      '@/lib/nativeOAuthCallback': { parseNativeOAuthCallback },
+      '@/lib/supabase': { supabase: { auth: { exchangeCodeForSession, getSession } } },
+      '~/lib/authLink': authLink,
       '~/lib/launchLink': launchLink,
     }));
+  });
+
+  it('exchanges a password reset link like a confirmation, and the session says which', async () => {
+    expect(redirectSystemPath({ path: 'app.hyper.mobile://auth/callback?code=reset-code', initial: true })).toBe('/');
+    expect(exchangeCodeForSession).toHaveBeenCalledWith('reset-code');
+    await vi.waitFor(() => expect(exchangeCodeForSession).toHaveReturned());
+    expect(authLink.useAuthLinkError.getState().message).toBeNull();
+  });
+
+  it('says on sign-in when a link has expired or was used', async () => {
+    exchangeCodeForSession.mockResolvedValue({ data: { session: null }, error: { message: 'invalid flow state, no valid flow state found' } });
+    redirectSystemPath({ path: 'app.hyper.mobile://auth/callback?code=old-code', initial: false });
+    await vi.waitFor(() => expect(authLink.useAuthLinkError.getState().message).toBe(authLink.AUTH_LINK_FAILED));
+  });
+
+  it('says so too when the link came back with an error instead of a code', async () => {
+    const path = 'app.hyper.mobile://auth/callback?error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired';
+    expect(redirectSystemPath({ path, initial: true })).toBe('/');
+    expect(exchangeCodeForSession).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(authLink.useAuthLinkError.getState().message).toBe(authLink.AUTH_LINK_FAILED));
+  });
+
+  it('stays quiet about a failed link while someone is signed in', async () => {
+    exchangeCodeForSession.mockResolvedValue({ data: { session: null }, error: { message: 'invalid flow state' } });
+    getSession.mockResolvedValue({ data: { session: { user: { id: 'user-1' } } }, error: null });
+    redirectSystemPath({ path: 'app.hyper.mobile://auth/callback?code=old-code', initial: false });
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(authLink.useAuthLinkError.getState().message).toBeNull();
   });
 
   it('remembers the widget link that launched the app and routes it as before', () => {
@@ -183,6 +218,14 @@ describe('the way in after a launch link', () => {
 
   it('opens Today when nothing was linked', async () => {
     await mount();
+    await show('app');
+    expect(redirects.at(-1)).toBe('/today');
+  });
+
+  it('shows the new password screen first after a reset link', async () => {
+    await mount();
+    await show('new-password');
+    expect(redirects.at(-1)).toBe('/new-password');
     await show('app');
     expect(redirects.at(-1)).toBe('/today');
   });

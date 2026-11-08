@@ -1,12 +1,19 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState, type ComponentRef, type Ref } from 'react';
-import { Keyboard, Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Keyboard, StyleSheet, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/stores/authStore';
+import {
+  AuthField as Field,
+  MIN_PASSWORD_LENGTH,
+  SHORT_PASSWORD_MESSAGE,
+  TextLink,
+  type AuthInputRef as InputRef,
+} from '~/components/AuthForm';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, EMBLEM_MARK_SIZE } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
@@ -16,16 +23,16 @@ import { useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useIntroRise } from '~/lib/brand';
 import { clearFuelReminders } from '~/lib/fuelReminder';
 import { authErrorWords } from '~/lib/auth';
+import { useAuthLinkError } from '~/lib/authLink';
 import { haptics } from '~/lib/haptics';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
-import { space, type as typeScale, useBlanc } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 // The same rules and words the Capacitor app's sign-in form used.
 const SIGNUP_SUCCESS_MESSAGE = 'Account created. Check your email to verify before signing in.';
-const MIN_PASSWORD_LENGTH = 6;
-const SHORT_PASSWORD_MESSAGE = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
 
-type InputRef = ComponentRef<typeof TextInput>;
+const RESET_NEEDS_EMAIL = 'Enter your email above, then tap Forgot password.';
+
 type Provider = 'apple' | 'google';
 
 export default function SignIn() {
@@ -33,7 +40,9 @@ export default function SignIn() {
   const insets = useSafeAreaInsets();
   const large = useLargeText();
   const rise = useIntroRise();
-  const { signIn, signUp, resendSignupConfirmation, signInWithGoogle, signInWithApple, loading } = useAuthStore();
+  const { signIn, signUp, resendSignupConfirmation, requestPasswordReset, signInWithGoogle, signInWithApple, loading } = useAuthStore();
+  // A reset or confirmation link that couldn't sign in says so here.
+  const linkError = useAuthLinkError((state) => state.message);
 
   // Nobody is signed in: no account's fuel reminder stays on this phone, also
   // when a saved session could not be restored at launch.
@@ -52,6 +61,8 @@ export default function SignIn() {
   const [signupButtonLocked, setSignupButtonLocked] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [provider, setProvider] = useState<Provider | null>(null);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [resetSentTo, setResetSentTo] = useState<string | null>(null);
 
   const emailRef = useRef<InputRef>(null);
   const passwordRef = useRef<InputRef>(null);
@@ -59,9 +70,14 @@ export default function SignIn() {
   const trimmedEmail = email.trim();
   const canSubmit = trimmedEmail.length > 0 && password.length >= MIN_PASSWORD_LENGTH;
   const busy = loading || provider !== null;
+  const resetNote = resetSentTo
+    ? `If ${resetSentTo} has a hyPer account, a link to choose a new password is on its way. Open it on this iPhone.`
+    : null;
+  const shownError = error ?? linkError;
   // What a sighted person sees appear under the form, VoiceOver hears.
-  useAnnounce(error);
+  useAnnounce(shownError);
   useAnnounce(!isLogin && signupSuccess);
+  useAnnounce(isLogin && resetNote);
 
   const clearSignupSignals = () => {
     setSignupSuccess(null);
@@ -70,16 +86,22 @@ export default function SignIn() {
     setSignupButtonLocked(false);
   };
 
+  const clearMessages = () => {
+    setError(null);
+    setResetSentTo(null);
+    useAuthLinkError.getState().clear();
+  };
+
   const switchMode = (login: boolean) => {
     clearSignupSignals();
     setIsLogin(login);
-    setError(null);
+    clearMessages();
   };
 
   const submit = async () => {
     if (!canSubmit || busy) return;
     Keyboard.dismiss();
-    setError(null);
+    clearMessages();
 
     if (isLogin) {
       clearSignupSignals();
@@ -115,7 +137,7 @@ export default function SignIn() {
   const continueWith = async (which: Provider) => {
     if (busy) return;
     clearSignupSignals();
-    setError(null);
+    clearMessages();
     setProvider(which);
     const { error: providerError } = await (which === 'google' ? signInWithGoogle() : signInWithApple());
     setProvider(null);
@@ -140,6 +162,40 @@ export default function SignIn() {
       return;
     }
     void submit();
+  };
+
+  // Forgot password: a link to the email in the form. It opens the app on
+  // this phone (the reset's PKCE verifier is kept here), signed in, at a
+  // new password screen.
+  const sendReset = async (target: string) => {
+    setSendingReset(true);
+    try {
+      const { error: resetError } = await requestPasswordReset(target);
+      if (resetError) {
+        haptics.error();
+        setError(authErrorWords(resetError.message));
+        return;
+      }
+      haptics.success();
+      setResetSentTo(target);
+    } finally {
+      setSendingReset(false);
+    }
+  };
+
+  const forgotPassword = () => {
+    if (busy || sendingReset) return;
+    clearMessages();
+    if (!/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
+      setError(RESET_NEEDS_EMAIL);
+      emailRef.current?.focus();
+      return;
+    }
+    Keyboard.dismiss();
+    Alert.alert('Reset your password?', `We’ll email ${trimmedEmail} a link to choose a new password. Open it on this iPhone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Send link', isPreferred: true, onPress: () => void sendReset(trimmedEmail) },
+    ]);
   };
 
   const resendVerification = async () => {
@@ -208,7 +264,10 @@ export default function SignIn() {
           <Field
             ref={emailRef}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(next) => {
+              if (error === RESET_NEEDS_EMAIL) setError(null);
+              setEmail(next);
+            }}
             placeholder="Email"
             accessibilityLabel="Email"
             keyboardType="email-address"
@@ -258,12 +317,23 @@ export default function SignIn() {
               ) : null}
             </>
           ) : null}
-          {error ? (
+          {isLogin && resetNote ? <BlancText variant="secondary">{resetNote}</BlancText> : null}
+          {shownError ? (
             <BlancText variant="secondary" tone="live" accessibilityRole="alert">
-              {error}
+              {shownError}
             </BlancText>
           ) : null}
           {!isLogin && showSignInPrompt ? <TextLink title="Go to sign in" onPress={() => switchMode(true)} /> : null}
+          {isLogin ? (
+            <View style={{ flexDirection: 'row', marginLeft: -6 }}>
+              <TextLink
+                title={sendingReset ? 'Sending link…' : 'Forgot password?'}
+                accessibilityHint="Emails a link to choose a new password"
+                disabled={sendingReset || busy}
+                onPress={forgotPassword}
+              />
+            </View>
+          ) : null}
         </View>
 
         <View style={{ marginHorizontal: space.inset, marginTop: 18, gap: 12 }}>
@@ -321,37 +391,5 @@ export default function SignIn() {
         </View>
       </Animated.View>
     </KeyboardAwareScrollView>
-  );
-}
-
-function Field({ ref, style, ...props }: TextInputProps & { ref?: Ref<InputRef> }) {
-  const c = useBlanc();
-  return (
-    <TextInput
-      ref={ref}
-      placeholderTextColor={c.graphite}
-      selectionColor={c.ink}
-      lineBreakModeIOS="tail"
-      style={[typeScale.field, { minHeight: 50, paddingHorizontal: 18, color: c.ink }, style]}
-      {...props}
-    />
-  );
-}
-
-function TextLink({ title, onPress, disabled }: { title: string; onPress: () => void; disabled?: boolean }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={disabled}
-      hitSlop={10}
-      onPress={() => {
-        haptics.tap();
-        onPress();
-      }}
-      style={({ pressed }) => ({ paddingHorizontal: 6, paddingVertical: 4, opacity: pressed || disabled ? 0.5 : 1 })}>
-      <BlancText variant="secondary" weight="600">
-        {title}
-      </BlancText>
-    </Pressable>
   );
 }
