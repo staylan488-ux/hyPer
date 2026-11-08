@@ -6,6 +6,7 @@ const database = vi.hoisted(() => {
     results: {} as Record<string, Result>,
     rows: null as Record<string, Record<string, unknown>[]> | null,
     cap: 1000,
+    between: null as ((table: string) => void) | null,
     calls: [] as Array<{ table: string; chain: Array<[string, ...unknown[]]> }>,
   };
 
@@ -24,7 +25,7 @@ const database = vi.hoisted(() => {
     in(...args: unknown[]) { return this.record('in', ...args); }
     order(...args: unknown[]) { return this.record('order', ...args); }
     limit(...args: unknown[]) { return this.record('limit', ...args); }
-    range(...args: unknown[]) { return this.record('range', ...args); }
+    gt(...args: unknown[]) { return this.record('gt', ...args); }
     then<TResult1 = Result, TResult2 = never>(
       onfulfilled?: ((value: Result) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -36,6 +37,7 @@ const database = vi.hoisted(() => {
         if (method === 'eq') rows = rows.filter((row) => row[key] === value);
         if (method === 'neq') rows = rows.filter((row) => row[key] !== value);
         if (method === 'in') rows = rows.filter((row) => (value as unknown[]).includes(row[key]));
+        if (method === 'gt') rows = rows.filter((row) => row[key] != null && String(row[key]) > String(value));
         if (method === 'lt') rows = rows.filter((row) => row[key] != null && String(row[key]) < String(value));
         if (method === 'lte') rows = rows.filter((row) => row[key] != null && String(row[key]) <= String(value));
       }
@@ -49,11 +51,12 @@ const database = vi.hoisted(() => {
       });
       const limit = this.chain.find(([method]) => method === 'limit')?.[1];
       if (typeof limit === 'number') rows = rows.slice(0, limit);
-      const range = this.chain.find(([method]) => method === 'range');
-      if (range) rows = rows.slice(Number(range[1]), Number(range[2]) + 1);
       // The API's own cap: one reply holds at most this many rows.
       rows = rows.slice(0, state.cap);
-      return Promise.resolve({ data: rows, error: null }).then(onfulfilled, onrejected);
+      const answer = Promise.resolve({ data: rows, error: null });
+      // As a write between two requests would.
+      state.between?.(this.table);
+      return answer.then(onfulfilled, onrejected);
     }
   }
 
@@ -216,6 +219,7 @@ describe('fetchPreviousSetTargets', () => {
     database.state.results = {};
     database.state.rows = null;
     database.state.cap = 1000;
+    database.state.between = null;
     database.state.calls = [];
   });
 
@@ -294,14 +298,11 @@ describe('fetchPreviousSetTargets', () => {
       {
         table: 'sets',
         chain: [
-          ['select', 'workout_id, exercise_id, set_number, weight, reps, rpe, completed'],
+          ['select', 'id, workout_id, exercise_id, set_number, weight, reps, rpe, completed'],
           ['in', 'workout_id', ['w2', 'w1']],
           ['in', 'exercise_id', ['bench', 'row']],
-          ['order', 'workout_id', { ascending: true }],
-          ['order', 'exercise_id', { ascending: true }],
-          ['order', 'set_number', { ascending: true }],
           ['order', 'id', { ascending: true }],
-          ['range', 0, 999],
+          ['limit', 1000],
         ],
       },
     ]);
@@ -323,6 +324,30 @@ describe('fetchPreviousSetTargets', () => {
     expect(targets?.bench[1].weight).toBe(129);
     expect(targets?.bench[40].weight).toBe(129);
     expect(database.state.calls.filter((call) => call.table === 'sets')).toHaveLength(2);
+  });
+
+  it('skips no set when an earlier one is deleted between pages', async () => {
+    // 25 older workouts fill the first page exactly; the newest one's sets come next.
+    const workout = (id: string, day: number) => ({ id, user_id: 'user-1', date: `2026-08-${String(day).padStart(2, '0')}`, created_at: `2026-08-${String(day).padStart(2, '0')}T18:00:00.000Z` });
+    const older = Array.from({ length: 25 }, (_, index) => workout(`a${String(index).padStart(2, '0')}`, index + 1));
+    const newest = workout('b00', 30);
+    const setsOf = (id: string, weight: (set: number) => number) => Array.from({ length: 40 }, (_, set) => ({
+      ...row({ workout_id: id, set_number: set + 1, weight: weight(set) }), id: `${id}-${String(set).padStart(2, '0')}`, completed: true,
+    }));
+    database.state.rows = {
+      workouts: [...older, newest],
+      sets: [...older.flatMap((entry) => setsOf(entry.id, () => 150)), ...setsOf('b00', (set) => 200 + set)],
+    };
+    // An old workout's set is deleted once the first page has been read.
+    let pages = 0;
+    database.state.between = (table) => {
+      if (table !== 'sets' || ++pages !== 1) return;
+      database.state.rows!.sets = database.state.rows!.sets.filter((set) => set.id !== 'a00-00');
+    };
+    const targets = await fetchPreviousSetTargets(params);
+    expect(targets?.bench[1].weight).toBe(200);
+    expect(targets?.bench[2].weight).toBe(201);
+    expect(pages).toBe(2);
   });
 
   it('skips the sets query when there are no earlier workouts', async () => {

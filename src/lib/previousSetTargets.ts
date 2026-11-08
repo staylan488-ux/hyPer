@@ -103,27 +103,31 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeC
 
   if (workoutIds.length === 0) return {};
 
-  // A page at a time in a fixed order: one request returns at most
-  // PREVIOUS_SETS_PAGE_SIZE rows, and a cut-off reply could drop last time's sets.
+  // A page at a time, because one request returns at most
+  // PREVIOUS_SETS_PAGE_SIZE rows and a cut-off reply could drop last time's
+  // sets. Each page starts after the last set read (by its id), not at a row
+  // count, so a set added or deleted mid-read never shifts another past a page.
   const previousSets: PreviousSetSummary[] = [];
-  for (let offset = 0; ; offset += PREVIOUS_SETS_PAGE_SIZE) {
-    const { data, error: previousSetsError } = await supabase
+  let after: string | null = null;
+  for (;;) {
+    let query = supabase
       .from('sets')
-      .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
+      .select('id, workout_id, exercise_id, set_number, weight, reps, rpe, completed')
       .in('workout_id', workoutIds)
-      .in('exercise_id', exerciseIds)
-      .order('workout_id', { ascending: true })
-      .order('exercise_id', { ascending: true })
-      .order('set_number', { ascending: true })
+      .in('exercise_id', exerciseIds);
+    if (after !== null) query = query.gt('id', after);
+    const { data, error: previousSetsError } = await query
       .order('id', { ascending: true })
-      .range(offset, offset + PREVIOUS_SETS_PAGE_SIZE - 1);
+      .limit(PREVIOUS_SETS_PAGE_SIZE);
 
     if (previousSetsError) {
       console.error('Error loading previous sets for target-to-beat:', previousSetsError);
       return null;
     }
-    previousSets.push(...((data || []) as PreviousSetSummary[]));
-    if (!data || data.length < PREVIOUS_SETS_PAGE_SIZE) break;
+    const page = (data || []) as Array<PreviousSetSummary & { id: string }>;
+    previousSets.push(...page);
+    if (page.length < PREVIOUS_SETS_PAGE_SIZE) break;
+    after = page[page.length - 1].id;
   }
 
   return buildPreviousSetTargets(workoutIds, previousSets);
