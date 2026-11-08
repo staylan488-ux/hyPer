@@ -52,6 +52,7 @@ const AppState = {
 let nativeQueue: unknown[] = [];
 let moduleListener: (() => void) | undefined;
 const takePendingAction = vi.fn(() => nativeQueue.shift() ?? {});
+const selectFuelDay = vi.fn();
 const addLaunchActionListener = vi.fn((callback: () => void) => {
   moduleListener = callback;
   return { remove };
@@ -65,6 +66,7 @@ const launch = loadNativeModule<Launch>('lib/launch.ts', {
   '../../modules/hyper-launch': { takePendingAction, addLaunchActionListener },
   './haptics': { haptics: { error } },
   './launchActions': launchActions,
+  './fuel': { today: () => '2026-11-08', useFuelStore: { getState: () => ({ select: selectFuelDay }) } },
 });
 
 const stack = (...names: string[]) => ({ routes: [{ name: '__root', state: { index: names.length - 1, routes: names.map((name) => ({ name })) } }] });
@@ -229,6 +231,15 @@ describe('useLaunchActionRunner', () => {
     expect(navigate).toHaveBeenCalledWith('/train');
     expect(error).not.toHaveBeenCalled();
   });
+
+  it('opens Fuel on today for a reminder that names close-the-gap picks', async () => {
+    selectFuelDay.mockClear();
+    await render();
+    await act(async () => { launchActions.postLaunchPress('fuel'); });
+    expect(selectFuelDay).toHaveBeenCalledWith('2026-11-08');
+    expect(navigate).toHaveBeenCalledWith('/fuel');
+    expect(error).not.toHaveBeenCalled();
+  });
 });
 
 describe('useLaunchActions', () => {
@@ -311,6 +322,8 @@ describe('a Fuel reminder tap', () => {
       './fuel': { useFuelStore: fakeStore({}) },
       './fuelReminderPlan': reminderPlan,
       './launchActions': launchActions,
+      './closeGap': { gapPlanFor: () => null },
+      '~/fuel/recent': { loadRecentCache: async () => {}, readHidden: () => ({}), readRecentCache: () => null, subscribeRecentCache: () => () => {} },
     });
     launch.takeNativeLaunch();
     reminder.followReminderTaps();

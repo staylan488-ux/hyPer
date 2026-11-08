@@ -6,6 +6,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { create } from 'zustand';
 
 import * as plan from '../native/src/lib/fuelReminderPlan';
+import * as closeGap from '../native/src/lib/closeGap';
+import { recentFoodKey, type RecentLog } from '@/lib/recentFoods';
+import type { Food } from '@/types';
 import * as entry from '@/lib/saveNutritionEntry';
 import * as pending from '@/lib/pendingEntryId';
 import { loadNativeModule } from './helpers/loadNativeModule';
@@ -98,6 +101,34 @@ const fuel = create(() => ({
   todayLoadedKey: DAY as string | null,
 }));
 const postLaunchPress = vi.fn((action: string) => Boolean(action));
+
+// Recent's kept logs (fuel/recent.ts), which the close-the-gap picks read.
+const kept = { logs: null as RecentLog[] | null, hidden: {} as Record<string, number>, listeners: new Set<() => void>() };
+const recent = {
+  loadRecentCache: vi.fn(async () => {}),
+  readHidden: () => kept.hidden,
+  readRecentCache: (userId: string) => (kept.logs ? { userId, logs: kept.logs, at: 0 } : null),
+  subscribeRecentCache: (listener: () => void) => {
+    kept.listeners.add(listener);
+    return () => { kept.listeners.delete(listener); };
+  },
+};
+const keepRecent = (logs: RecentLog[] | null) => {
+  kept.logs = logs;
+  for (const listener of kept.listeners) listener();
+};
+const usual = (id: string, name: string, calories: number, protein: number): Food => ({
+  id, user_id: 'user-1', name, calories, protein, carbs: 0, fat: 0, serving_size: 1, serving_unit: 'serving', source: 'custom', fdc_id: null,
+});
+const shake = usual('shake', 'Protein shake', 400, 40);
+const toast = usual('toast', 'Peanut butter toast', 350, 12);
+const yogurt = usual('yogurt', 'Greek yogurt', 150, 15);
+const ate = (food: Food, date: string): RecentLog => ({ food_id: food.id, servings: 1, source: 'manual', date, logged_at: `${date}T19:00:00Z`, food });
+const usualWeek = [
+  ate(shake, '2026-11-01'), ate(shake, '2026-11-02'), ate(shake, '2026-11-03'),
+  ate(toast, '2026-11-02'), ate(toast, '2026-11-03'),
+  ate(yogurt, '2026-11-01'), ate(yogurt, '2026-11-03'),
+];
 let visible: (() => void) | null = null;
 
 type Mod = {
@@ -152,6 +183,8 @@ function loadReminder(fuelStore: unknown = fuel): Mod {
     './fuel': { useFuelStore: fuelStore },
     './fuelReminderPlan': plan,
     './launchActions': { postLaunchPress },
+    './closeGap': closeGap,
+    '~/fuel/recent': recent,
   });
 }
 
@@ -177,6 +210,10 @@ beforeEach(() => {
   fuel.setState({ todayKey: DAY, todayTotals: totals(1950, 120), todayLoadedForUserId: 'user-1', todayLoadedKey: DAY });
   postLaunchPress.mockClear();
   notifications.setNotificationCategoryAsync.mockClear();
+  kept.logs = null;
+  kept.hidden = {};
+  kept.listeners.clear();
+  recent.loadRecentCache.mockClear();
   visible = null;
   mod = loadReminder();
   host = document.createElement('div');
@@ -666,5 +703,54 @@ describe('confirmed food writes with a failed refresh', () => {
     await settle();
     expect(ios.pending.get(id(DAY))!.content.title).toContain('700');
     expect(ios.pending.get(id(DAY))!.content.title).not.toContain('850');
+  });
+});
+
+describe('close-the-gap picks in the reminder', () => {
+  it('names the usual foods that cover today’s gap, and its tap opens Fuel', async () => {
+    keepRecent(usualWeek);
+    await render();
+    await settle();
+    expect(ios.pending.get(id(DAY))?.content).toMatchObject({
+      title: '850 kcal and 40 g protein to go',
+      body: 'Protein shake, Peanut butter toast and Greek yogurt would cover it.',
+      data: { open: 'fuel' },
+    });
+    // Another day's food is not known yet: its reminder asks for a log, and opens Log food.
+    expect(ios.pending.get(id('2026-11-05'))?.content).not.toHaveProperty('data');
+
+    await act(async () => { mod.followReminderTaps(); });
+    const opened = { ...response(id(DAY), 1), notification: { date: 1, request: { identifier: id(DAY), content: { data: { open: 'fuel' } } } } };
+    await act(async () => { ios.responder?.(opened); });
+    expect(postLaunchPress).toHaveBeenCalledWith('fuel');
+  });
+
+  it('hands today’s over again once Recent’s logs land', async () => {
+    await render();
+    await settle();
+    expect(ios.pending.get(id(DAY))?.content.body).toBe('Still time for a good meal.');
+    expect(recent.loadRecentCache).toHaveBeenCalledWith('user-1', 600_000);
+    keepRecent(usualWeek);
+    await settle();
+    expect(ios.pending.get(id(DAY))?.content.body).toBe('Protein shake, Peanut butter toast and Greek yogurt would cover it.');
+  });
+
+  it('leaves out foods hidden from Recent, and one-offs', async () => {
+    kept.hidden = { [recentFoodKey(shake)]: Date.now() };
+    keepRecent([...usualWeek, ate(usual('pizza', 'Pizza', 850, 35), '2026-11-03')]);
+    await render();
+    await settle();
+    expect(ios.pending.get(id(DAY))?.content.body).toBe('Peanut butter toast and Greek yogurt would get you closer.');
+  });
+
+  it('reads no logs while the reminder is off', async () => {
+    seedSettings({ enabled: false, minutes: 1200 });
+    mod = loadReminder();
+    await render();
+    await settle();
+    expect(recent.loadRecentCache).not.toHaveBeenCalled();
+    await act(async () => { mod.setFuelReminderEnabled(true); });
+    await settle();
+    expect(recent.loadRecentCache).toHaveBeenCalledWith('user-1', 600_000);
   });
 });

@@ -244,7 +244,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   another; add a row only when it changes what the person does next.
 - Fuel follows the web logger through shared `src/lib` rules (foodPersistence
   `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
-  nutritionDay, savedMeals, recentFoods, repeatEntries, savedMealFromLog); never copy them into
+  nutritionDay, savedMeals, recentFoods, gapPicks, repeatEntries, savedMealFromLog); never copy them into
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
   `native/src/fuel`) with a Search foods field above its Recent and Saved
   segments (typing takes the sheet over; Cancel returns to what was showing;
@@ -464,13 +464,31 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   day (a per-account record). Logging enough cancels it and dismisses a shown
   one; switching off, sign-out and the sign-in screen clear everything. In the
   app it goes quietly to Notification Center (the one handler is in
-  `platform/restNotifications.ts`). A tap posts a Log food press and its Snap
+  `platform/restNotifications.ts`). A tap posts a Log food press (a Fuel
+  press when today's reminder names close-the-gap picks, below) and its Snap
   a meal button (category `fuelReminder`) a Snap a meal press, so both run like
   the quick actions below. The root layout reads taps from launch
   (`followReminderTaps` beside `takeNativeLaunch`), never the tabs, so a tap
   made on the offline or sign-in screen keeps the press rules and never opens
   on a later visit. The trigger has no time zone, so after travel it follows
   the new zone from the next return to the front.
+- Close the gap (the owner's pick, 2026-11-08): on today, from 6:00 PM (or
+  the Fuel reminder's time when it is on and earlier), when today is well
+  short by the reminder's own rule (`fuelShortfall`), Fuel shows a Close the
+  gap section under the day's card ([GapPicks](../../../native/src/fuel/GapPicks.tsx)):
+  the set of one to three usual foods (eaten on two days or more of Recent's
+  four weeks, never hidden ones) that best covers what's left at the amounts
+  usually logged (rules in `src/lib/gapPicks.ts`, phone glue in
+  `native/src/lib/closeGap.ts`). While gaining it aims at the calories (a
+  little past is free) with the protein as a bonus; otherwise at the protein,
+  within the calories left. Nothing shows with nothing logged or no saved
+  target. + logs a pick now at its usual amount into the meal that fits the
+  time, its tick takes it out, a tap reviews it in Log food (`review=1`,
+  handed over by `offerReview`), and a swipe or hold hides it here and in
+  Recent. Once touched the card holds still until Fuel is left. Today's
+  reminder names the same picks ("… would cover it.") from Recent's kept logs
+  (`fuel/recent.ts`, read at most every ten minutes while the reminder is on),
+  and its tap then opens Fuel on today (the JavaScript-only `fuel` press).
 - The Live Activity is SwiftUI in a widget extension, added on prebuild by
   [plugins/withHyperWidgets.js](../../../native/plugins/withHyperWidgets.js)
   from [targets/widgets](../../../native/targets/widgets/). The card's data,

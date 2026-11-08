@@ -102,6 +102,9 @@ sample data. None has been seen on a phone.
   the app in front; logging enough before the time cancels it; a time zone
   and a DST change; sign-out and an expired session leave nothing pending.
   The calorie wording needs the owner's goal saved as Bulk or Lean bulk.
+- Close the gap (Fuel's evening picks and the reminder naming them): the
+  picks on the real account's foods, + and the tick, the review from a tap,
+  the reminder's wording and its tap opening Fuel, VoiceOver and AX5.
 - Accessibility (#174): every screen at AX5 and with VoiceOver, the run
   screen's live view, SwiftUI pickers' spoken names, and announcements made as
   a sheet closes. Magic Tap is wired but React Native 0.88 drops it (see the

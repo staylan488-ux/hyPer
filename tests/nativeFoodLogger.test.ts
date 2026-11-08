@@ -126,6 +126,9 @@ afterEach(async () => {
 });
 
 /** Real sheet, Manual, Scan, Photo and meal-review components; only view/device/data boundaries are mocked. */
+/** What Fuel's close-the-gap card hands Log food to review (context.ts offerReview). */
+let reviewHandoff: { food: Food; servings: number } | null = null;
+
 function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent, dayGroups = [], fuelDay = '2026-11-03', sameDay = true, large = false, rowActions = false }: {
   editing?: boolean;
   entry?: typeof loggedMilk;
@@ -393,7 +396,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/lib/you': { loadYouMeals: loadYou, useYouMealsStore },
     '~/lib/motion': {},
     '~/platform/previewFlag': { isPreviewActive: () => true },
-    '~/fuel/context': { LoggerContext: ContextProvider },
+    '~/fuel/context': { LoggerContext: ContextProvider, takeReview: () => { const taken = reviewHandoff; reviewHandoff = null; return taken; } },
     './context': { useLogger },
     './WhenBlock': { WhenBlock: Empty },
     './FoodLists': { spokenMacros: () => '' },
@@ -791,6 +794,20 @@ describe('native food logger transitions', () => {
     expect(h.captured.context!.editing).toEqual(loggedMilk);
     expect(h.push).not.toHaveBeenCalled();
     expect(h.replaceSimple).not.toHaveBeenCalled();
+  });
+
+  it('opens on a close-the-gap pick from Fuel: its review at the usual amount, or a built meal’s builder', async () => {
+    reviewHandoff = { food: milk, servings: 2 };
+    const h = loggerHarness({ params: { day: '2026-11-03', review: '1' } });
+    await h.render();
+    expect(h.captured.foodReview).toMatchObject({ food: milk, servings: 2 });
+    expect(reviewHandoff).toBeNull();
+
+    reviewHandoff = { food: recipe, servings: 1 };
+    const built = loggerHarness({ params: { day: '2026-11-03', review: '1' } });
+    await built.render();
+    expect(built.captured.review).toBeDefined();
+    expect(composition.loadMealDraft('user-a', 'new')?.name).toBe(recipe.name);
   });
 
   it('still uses the logged-entry target when choosing a recipe to replace that entry', async () => {

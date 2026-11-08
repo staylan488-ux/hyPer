@@ -143,6 +143,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
     zustand: { create: zustandCreate },
     '~/components/Track': { Track: ({ progress }: { progress: number }) => createElement('i', { 'data-track': String(progress) }) },
+    '~/fuel/GapPicks': { GapPicks: () => null },
     '~/fuel/DayMark': { DayMark: (props: MarkProps) => { marks.push(props); return null; } },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': fuelModule ?? {
