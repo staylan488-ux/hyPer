@@ -140,6 +140,15 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="warm-up"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
               name="schedule"
               options={{
                 presentation: 'formSheet',
