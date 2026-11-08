@@ -50,12 +50,22 @@ interface AuthState {
    * the refresh token is intact, so wait for the connection instead of
    * presenting sign-in. Ends on SIGNED_OUT or any event with a session. */
   reconnecting: boolean;
+  /** Signed in by a password reset link: the app asks for a new password
+   * before anything else. Ends when one is saved, the person skips it, or
+   * they sign out. */
+  passwordRecovery: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, displayName?: string) => Promise<SignUpResult>;
   resendSignupConfirmation: (email: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signInWithApple: () => Promise<{ error: Error | null }>;
   updateDisplayName: (displayName: string) => Promise<{ error: Error | null }>;
+  /** Emails a link that signs in on this device and asks for a new password. */
+  requestPasswordReset: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (password: string) => Promise<{ error: Error | null }>;
+  endPasswordRecovery: () => void;
+  /** Deletes the account and all its data on the server, then signs out here. */
+  deleteAccount: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   fetchProfile: () => Promise<void>;
   initialize: () => Promise<void>;
@@ -68,6 +78,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   initialized: false,
   reconnecting: false,
+  passwordRecovery: false,
 
   initialize: async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -95,8 +106,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // compare user ids, never event names: TOKEN_REFRESHED and the SIGNED_IN
       // on every foreground resume keep the same id and the active workout
       const prevId = get().user?.id;
+      const nextId = session?.user?.id ?? null;
       set({ session, user: session?.user ?? null });
-      if (prevId && prevId !== (session?.user?.id ?? null)) resetAppData();
+      if (prevId && prevId !== nextId) resetAppData();
+      // A reset link's code was exchanged for a session: ask for the new
+      // password. Any other account change ends a recovery in progress.
+      if (event === 'PASSWORD_RECOVERY' && nextId) set({ passwordRecovery: true });
+      else if (prevId !== nextId) set({ passwordRecovery: false });
 
       if (session?.user) {
         const userId = session.user.id;
@@ -232,10 +248,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     return { error: null };
   },
 
+  requestPasswordReset: async (email: string) => {
+    const redirectTo = getAuthRedirectTo();
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      ...(redirectTo ? { redirectTo } : {}),
+    });
+    return { error: error ? new Error(error.message) : null };
+  },
+
+  updatePassword: async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return { error: new Error(error.message) };
+    set({ passwordRecovery: false });
+    return { error: null };
+  },
+
+  endPasswordRecovery: () => set({ passwordRecovery: false }),
+
+  deleteAccount: async () => {
+    if (!get().user) return { error: new Error('User not authenticated') };
+    const { data, error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
+    if (error || !(data as { ok?: boolean } | null)?.ok) {
+      return { error: new Error(error?.message ?? 'Could not delete the account.') };
+    }
+    // The account is gone on the server, so only this device's session is
+    // left to clear; a global sign-out would be refused.
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+    invalidateExerciseLibrary();
+    resetAppData();
+    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false });
+    return { error: null };
+  },
+
   signOut: async () => {
     await supabase.auth.signOut();
     invalidateExerciseLibrary();
     resetAppData();
-    set({ user: null, session: null, profile: null, reconnecting: false });
+    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false });
   },
 }));

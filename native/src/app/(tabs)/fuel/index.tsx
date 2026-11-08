@@ -34,6 +34,7 @@ import { tabBarCover, TabScroll } from '~/components/TabScroll';
 import { UndoBar } from '~/components/UndoBar';
 import { Track } from '~/components/Track';
 import { DayMark } from '~/fuel/DayMark';
+import { GapPicks } from '~/fuel/GapPicks';
 import { announce, screenReaderRunning, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
@@ -391,6 +392,11 @@ export default function FuelScreen() {
             )}
           </Label>
         )}
+
+        {/* Today in the evening, well short: the usual foods that close the gap, one tap each. */}
+        {live && loaded && !empty && userId ? (
+          <GapPicks userId={userId} day={todayKey} totals={totals} target={target} goal={goal} dayLogs={logs} />
+        ) : null}
 
         {/* One day's list: rows and meals fold away and close up when removed.
             Moving to another day swaps the whole list without that motion. */}

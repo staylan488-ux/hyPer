@@ -82,6 +82,50 @@ export function editTargetField(
   return { ...draft, [field]: parseInt(raw, 10) || 0, source: 'manual' };
 }
 
+/** Carbs and fat; protein never moves when the calories do. */
+export type FlexMacro = 'carbs' | 'fat';
+
+/**
+ * Carbs' share of the calories carbs and fat hold together, the split a
+ * calorie change keeps. With neither set, the starting defaults' split.
+ */
+export function carbShare(target: Pick<TargetNumbers, 'carbs' | 'fat'>): number {
+  const carbKcal = Math.max(0, target.carbs) * 4;
+  const fatKcal = Math.max(0, target.fat) * 9;
+  if (carbKcal + fatKcal > 0) return carbKcal / (carbKcal + fatKcal);
+  return (DEFAULT_MACRO_TARGET.carbs * 4) / (DEFAULT_MACRO_TARGET.carbs * 4 + DEFAULT_MACRO_TARGET.fat * 9);
+}
+
+/**
+ * After the calories change, carbs and fat fill what is left once protein is
+ * counted, so the macros add up to the new calories. Protein stays put, and so
+ * does a macro typed by hand (`typed`): with one typed the other takes the
+ * whole change, with both typed nothing moves. Untyped, the two keep their
+ * split (`share`, from `carbShare`), taken once so a calorie field typed digit
+ * by digit (2, 28, 280, 2800) ends where 2800 typed at once would.
+ */
+export function rebalanceMacros(
+  draft: TargetDraft,
+  share: number,
+  typed: Partial<Record<FlexMacro, boolean>>,
+): TargetDraft {
+  if (typed.carbs && typed.fat) return draft;
+  const fixedKcal = draft.protein * 4 + (typed.carbs ? draft.carbs * 4 : 0) + (typed.fat ? draft.fat * 9 : 0);
+  const left = Math.max(0, draft.calories - fixedKcal);
+  if (typed.carbs) return { ...draft, fat: Math.round(left / 9) };
+  if (typed.fat) return { ...draft, carbs: Math.round(left / 4) };
+  const carbs = Math.round((left * share) / 4);
+  return { ...draft, carbs, fat: Math.max(0, Math.round((left - carbs * 4) / 9)) };
+}
+
+/** What follows the calories in the edit sheet, or null when both are typed. */
+export function followNote(typed: Partial<Record<FlexMacro, boolean>>): string | null {
+  if (typed.carbs && typed.fat) return null;
+  if (typed.carbs) return 'Fat follows your calories; protein and carbs stay put.';
+  if (typed.fat) return 'Carbs follow your calories; protein and fat stay put.';
+  return 'Carbs and fat follow your calories; protein stays put.';
+}
+
 /**
  * The calories the macros add up to, and how far the calorie target is from
  * them in percent. Over 5% the editor asks for a second look.

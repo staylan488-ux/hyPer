@@ -4,6 +4,7 @@
 import { addDays, format, startOfDay } from 'date-fns';
 
 import { fuelDaySummary, isGainingGoal } from '@/lib/fuelSummary';
+import { gapPicksLine, type GapPlan } from '@/lib/gapPicks';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import type { MacroTotals } from '@/lib/nutritionMacros';
 
@@ -53,24 +54,31 @@ export function fuelShortfall(totals: MacroTotals, target: ReminderTarget, goal:
   return kcal === null && protein === null ? null : { kcal, protein };
 }
 
-/** The words: what's left, or, with nothing logged, a plain prompt (it is usually eaten, not missing). */
-export function reminderCopy(totals: MacroTotals, short: Shortfall): { title: string; body: string } {
+/**
+ * The words: what's left, or, with nothing logged, a plain prompt (it is
+ * usually eaten, not missing). With close-the-gap picks the second line names
+ * them, and a tap opens Fuel, where they log with one tap each (`picks`).
+ */
+export function reminderCopy(totals: MacroTotals, short: Shortfall, plan: GapPlan | null = null): { title: string; body: string; picks: boolean } {
   if (!(totals.calories > 0) && !(totals.protein > 0)) {
-    return { title: 'Nothing logged today', body: 'Log what you’ve eaten to see what’s left.' };
+    return { title: 'Nothing logged today', body: 'Log what you’ve eaten to see what’s left.', picks: false };
   }
   const parts = [
     short.kcal !== null ? `${formatWhole(short.kcal)} kcal` : null,
     short.protein !== null ? `${formatWhole(short.protein)} g protein` : null,
   ].filter(Boolean);
+  const picks = plan !== null && plan.picks.length > 0;
   return {
     title: `${parts.join(' and ')} to go`,
-    body: short.kcal !== null ? 'Still time for a good meal.' : 'Still time for some protein.',
+    body: picks ? gapPicksLine(plan) : short.kcal !== null ? 'Still time for a good meal.' : 'Still time for some protein.',
+    picks,
   };
 }
 
 /** Wall-clock parts for iOS's calendar trigger; month counts from 1, as iOS does. */
 export type ReminderAt = { year: number; month: number; day: number; hour: number; minute: number };
-export type ReminderRequest = { id: string; day: string; at: ReminderAt; atMs: number; title: string; body: string };
+/** `opensFuel`: the words name close-the-gap picks, so a tap opens Fuel, where they are. */
+export type ReminderRequest = { id: string; day: string; at: ReminderAt; atMs: number; title: string; body: string; opensFuel: boolean };
 export type ReminderPlanInput = {
   now: Date;
   settings: FuelReminderSettings;
@@ -82,6 +90,8 @@ export type ReminderPlanInput = {
   history: ReminderHistory;
   /** Reminder ids iOS still holds. */
   pendingIds: ReadonlySet<string>;
+  /** Today's close-the-gap picks (lib/closeGap), named in today's reminder only. */
+  picks?: GapPlan | null;
 };
 
 /** A day's reminder already went out: handed to iOS, due, and no longer waiting there. */
@@ -91,7 +101,7 @@ export function reminderSent(history: ReminderHistory, day: string, now: Date, p
 }
 
 /** [] when off or without a saved target; null when `day` is not today here (a new day still loading: keep what iOS holds). */
-export function planFuelReminders({ now, settings, day, totals, target, goal, history, pendingIds }: ReminderPlanInput): ReminderRequest[] | null {
+export function planFuelReminders({ now, settings, day, totals, target, goal, history, pendingIds, picks = null }: ReminderPlanInput): ReminderRequest[] | null {
   if (!settings.enabled || !hasReminderTarget(target)) return [];
   if (day !== dayKey(now)) return null;
   const hour = Math.floor(settings.minutes / 60);
@@ -108,8 +118,17 @@ export function planFuelReminders({ now, settings, day, totals, target, goal, hi
     const short = fuelShortfall(eaten, target, goal);
     if (!short) continue;
     const at = { year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), hour, minute };
-    const { title, body } = reminderCopy(eaten, short);
-    requests.push({ id: fuelReminderId(key), day: key, at, atMs: new Date(at.year, at.month - 1, at.day, hour, minute).getTime(), title, body });
+    // Picks are worked out from today's food; another day's are not known yet.
+    const copy = reminderCopy(eaten, short, offset === 0 ? picks : null);
+    requests.push({
+      id: fuelReminderId(key),
+      day: key,
+      at,
+      atMs: new Date(at.year, at.month - 1, at.day, hour, minute).getTime(),
+      title: copy.title,
+      body: copy.body,
+      opensFuel: copy.picks,
+    });
   }
   return requests;
 }

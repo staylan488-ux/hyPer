@@ -1,10 +1,12 @@
 import { format, startOfWeek } from 'date-fns';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { loadPlanSchedule } from '@/lib/planSchedule';
 import { supabase } from '@/lib/supabase';
+import { weekSessionTarget } from '@/lib/todayModel';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
@@ -44,11 +46,24 @@ function useWeekCount(): number | null {
   return count;
 }
 
+/** Sessions planned this week, as Today counts them: the schedule's training days when it has them. */
+function usePlannedThisWeek(): number | null {
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const activeSplit = useAppStore((state) => state.activeSplit);
+  const workoutMode = useAppStore((state) => state.workoutMode);
+  // The device copy: Today and Train read the schedule before any session.
+  const schedule = useMemo(
+    () => (userId && activeSplit ? loadPlanSchedule(userId, activeSplit.id) : null),
+    [userId, activeSplit],
+  );
+  return weekSessionTarget(workoutMode, schedule, activeSplit);
+}
+
 export default function SessionDone() {
   const c = useBlanc();
   const large = useLargeText();
   const summary = useFinishedStore((state) => state.summary);
-  const planned = useAppStore((state) => state.activeSplit?.days_per_week ?? null);
+  const planned = usePlannedThisWeek();
   const weekCount = useWeekCount();
 
   const insets = useSafeAreaInsets();

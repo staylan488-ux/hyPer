@@ -14,3 +14,8 @@ verify_jwt = true
 # This supports current Supabase signing keys; no unauthenticated analysis is allowed.
 [functions.analyze-food-trial]
 verify_jwt = false
+
+# Deletes the caller's own account. The JWT is checked in-code with getUser, as
+# in analyze-food-trial, so current Supabase signing keys work.
+[functions.delete-account]
+verify_jwt = false

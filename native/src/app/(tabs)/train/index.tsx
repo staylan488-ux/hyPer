@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { heldMovement, moveMovementBlock, movementBlocks } from '@/lib/movementOrder';
 import { getSetAutofillValues, previousSetTarget, type PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import { isBarbellMovement, offersWarmup } from '@/lib/warmupPlates';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
@@ -41,6 +42,7 @@ import { liveSessionModel, useFocusStore, usePreviousNotes, usePreviousTargets, 
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
+import { useBarWeight } from '~/lib/warmup';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -183,6 +185,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   }, [undo]);
   const weightField = useRef<TextField>(null);
   const repsField = useRef<TextField>(null);
+  // The movement's equipment, and the bar it is loaded on, for warm-ups and plates.
+  const exercise = current ? (current.movement.sets.find((set) => set.exercise)?.exercise ?? current.set.exercise ?? null) : null;
+  const bar = useBarWeight(current?.movement.exerciseId ?? null, exercise);
 
   // A new set starts from its suggested numbers; the same set keeps any edits,
   // including after a failed save.
@@ -222,6 +227,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const lastReps = lastRepCount !== null && draft && differsFromLast(draft.reps, lastRepCount) ? lastRepCount : null;
   // Ending a movement early with one set to go only skips that set: the quiet action says so.
   const lastSetLeft = current ? current.movement.sets.length - current.movement.done === 1 : false;
+  // Beside Add RPE: the warm-up sets before a movement's first set, else the
+  // plates for a barbell weight above the bar. Either opens the one sheet.
+  const warmup = current ? offersWarmup({ setNumber: current.setNumber, done: current.movement.done, working: weight, exercise, bar }) : false;
+  const plates = isBarbellMovement(exercise) && weight !== null && weight > bar;
+  const helper = warmup ? 'Warm-up' : plates ? 'Plates' : null;
+  const openHelper = () => {
+    if (!current || !draft) return;
+    haptics.tap();
+    Keyboard.dismiss();
+    router.push({ pathname: '/warm-up', params: { id: current.movement.exerciseId, weight: draft.weight } });
+  };
   // "Set 2 of 4 · 8–10 reps" under the movement's name.
   const cardLine = current
     ? [
@@ -787,12 +803,23 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   ? { alignItems: 'flex-start', gap: 6, marginTop: 12 }
                   : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }
               }>
-              <Chip
-                label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
-                accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
-                haptic={false}
-                onPress={pickRpe}
-              />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <Chip
+                  label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
+                  accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
+                  haptic={false}
+                  onPress={pickRpe}
+                />
+                {helper ? (
+                  <Chip
+                    label={helper}
+                    accessibilityLabel={helper === 'Warm-up' ? 'Warm-up sets' : `Plates for ${weight} pounds`}
+                    accessibilityHint={helper === 'Warm-up' ? 'Lists warm-ups to tick off, and the plates to load' : 'Shows the plates to load on each side'}
+                    haptic={false}
+                    onPress={openHelper}
+                  />
+                ) : null}
+              </View>
               {/* For this workout only; the program keeps it. With a set logged it ends the movement early, keeping those
                   sets; with one set left, that set is all it drops, so it says so. */}
               <Pressable

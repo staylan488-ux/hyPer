@@ -114,6 +114,15 @@ describe('planLaunch', () => {
     expect(launch.planLaunch('train', ['(tabs)', 'log-food'])).toEqual({ kind: 'refused' });
   });
 
+  it('opens Fuel for a reminder that names close-the-gap picks, only when nothing covers the tabs', () => {
+    expect(launch.planLaunch('fuel', ['(tabs)'])).toEqual({ kind: 'fuel' });
+    expect(launch.planLaunch('fuel', ['(tabs)', 'log-food'])).toEqual({ kind: 'refused' });
+    expect(launch.planLaunch('fuel', ['sign-in'])).toEqual({ kind: 'wait' });
+    // Posted by JavaScript only: not one of iOS's actions, but a press like them.
+    expect(launch.LAUNCH_ACTIONS).not.toContain('fuel');
+    expect(launch.parseLaunchPress({ action: 'fuel', atMs: 1 })).toEqual({ action: 'fuel', atMs: 1 });
+  });
+
   it.each(launch.LAUNCH_ACTIONS.flatMap((action) => [[], ['index'], ['sign-in'], ['offline']].map((stack) => [action, stack] as const)))(
     'waits with %s over %o',
     (action, stack) => {

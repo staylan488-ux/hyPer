@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuthScreen } from '~/lib/auth';
 import { dropLaunchLink, pendingLaunchLink } from '~/lib/launchLink';
 
-/** The way in: the app when signed in, otherwise sign-in or the offline wait. */
+/** The way in: the app when signed in (after a new password, from a reset link), otherwise sign-in or the offline wait. */
 export default function Index() {
   const screen = useAuthScreen();
   // A widget or card that launched the app opens its screen instead of Today,
@@ -21,5 +21,7 @@ export default function Index() {
   }, [screen, openRun]);
   // The splash screen stays up until the saved session has been read.
   if (screen === 'boot' || openRun) return null;
-  return <Redirect href={screen === 'app' ? (launch ?? '/today') : screen === 'offline' ? '/offline' : '/sign-in'} />;
+  const href =
+    screen === 'app' ? (launch ?? '/today') : screen === 'new-password' ? '/new-password' : screen === 'offline' ? '/offline' : '/sign-in';
+  return <Redirect href={href} />;
 }

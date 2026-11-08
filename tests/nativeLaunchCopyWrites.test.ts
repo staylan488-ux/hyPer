@@ -176,7 +176,7 @@ describe('the schedule editor’s default day', () => {
       'expo-router': { router: { back: vi.fn() } },
       'expo-symbols': { SymbolView: none },
       'react-native': { Pressable: box, ScrollView: box, View: box },
-      '@/lib/planSchedule': { buildFixedWeekdays: () => [1, 3, 5], buildPlanSchedule, defaultWeekdays: () => [1, 3, 5], savePlanSchedule },
+      '@/lib/planSchedule': { buildFixedWeekdays: () => [1, 3, 5], buildPlanSchedule, orderTrainingWeekdays: (days: number[]) => days, savePlanSchedule },
       '@/stores/appStore': { useAppStore: create(() => ({ activeSplit: ppl })) },
       '@/stores/authStore': { useAuthStore: auth },
       '~/components/BlancText': { BlancText: text },

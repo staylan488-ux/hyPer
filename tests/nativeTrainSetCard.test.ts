@@ -7,6 +7,7 @@ import { create } from 'zustand';
 
 import * as movementOrder from '@/lib/movementOrder';
 import * as setAutofill from '@/lib/setAutofill';
+import * as warmupPlates from '@/lib/warmupPlates';
 import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
@@ -62,15 +63,21 @@ let session: Record<string, unknown>;
 let total: number;
 /** What makes the movement more than a plain one: a superset or a swap. */
 let pairing: Record<string, unknown>;
+/** The movement's first set is up, with nothing of it logged yet. */
+let fresh: boolean;
+const push = vi.fn();
 
 /** Barbell Row, set 3 of 3 (or of `total`): two logged at 80 × 8, the third filled in from them. */
 function liveSession(total = 3) {
-  const sets = [set('s1', 1, true, 80, 8), set('s2', 2, true, 80, 8), ...Array.from({ length: total - 2 }, (_, index) => set(`s${index + 3}`, index + 3, false))];
+  const sets = fresh
+    ? Array.from({ length: total }, (_, index) => set(`s${index + 1}`, index + 1, false))
+    : [set('s1', 1, true, 80, 8), set('s2', 2, true, 80, 8), ...Array.from({ length: total - 2 }, (_, index) => set(`s${index + 3}`, index + 3, false))];
+  const done = fresh ? 0 : 2;
   const movement = {
     exerciseId: 'row',
     name: 'Barbell Row',
     sets,
-    done: 2,
+    done,
     plan: { target_reps_min: 8, target_reps_max: 10 },
     superset: null,
     substitutesFor: null,
@@ -85,9 +92,9 @@ function liveSession(total = 3) {
     flexible: false,
     startedAt: new Date('2026-11-06T00:23:00'),
     sets,
-    doneCount: 2,
+    doneCount: done,
     movements: [movement],
-    current: { movement, set: sets[2], setNumber: 3, index: 2, blocked: null },
+    current: { movement, set: sets[done], setNumber: done + 1, index: done, blocked: null },
   };
 }
 
@@ -117,7 +124,7 @@ async function open() {
   const { default: TrainScreen } = loadNativeModule<{ default: () => ReactNode }>(
     'app/(tabs)/train/index.tsx',
     {
-      'expo-router': { router: { push: vi.fn() }, Stack: { Screen: Empty } },
+      'expo-router': { router: { push }, Stack: { Screen: Empty } },
       'expo-symbols': { SymbolView: Empty },
       'date-fns': dates,
       'react-native': {
@@ -142,11 +149,15 @@ async function open() {
       'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }) },
       '@/lib/movementOrder': movementOrder,
       '@/lib/setAutofill': setAutofill,
+      '@/lib/warmupPlates': warmupPlates,
       '@/lib/workoutSessions': { TRAINING_WEEK: { weekStartsOn: 1 } },
       '@/stores/appStore': { useAppStore: create(() => ({ logSet: vi.fn(), currentWorkout: null })) },
       '~/components/BlancText': { BlancText: Text },
       '~/components/Capsule': { Capsule: ({ title }: Props) => createElement('button', null, title as string) },
-      '~/components/Chip': { Chip: ({ label }: Props) => createElement('button', null, label as string) },
+      '~/components/Chip': {
+        Chip: ({ label, accessibilityLabel, onPress }: Props) =>
+          createElement('button', { 'aria-label': accessibilityLabel as string | undefined, onClick: onPress as () => void }, label as string),
+      },
       '~/components/DragList': { DragList: ({ items }: Props) => createElement(Box, null, ...(items as { node: ReactNode }[]).map((item) => item.node)) },
       '~/components/FigureInput': { FigureInput },
       '~/components/Form': { FormNote: Box },
@@ -187,6 +198,7 @@ async function open() {
       '~/lib/sessionModel': { afterLoggedSet: () => ({ nextExerciseId: null, rest: false }) },
       '~/lib/setEntry': setEntry,
       '~/lib/today': { useFinishedToday: () => undefined, useTodayPlan: () => ({}) },
+      '~/lib/warmup': { useBarWeight: () => 45 },
       '~/platform/devLaunch': { devScrollTrace: { enabled: false } },
       '~/theme/blanc': { space: { gutter: 16, inset: 16, section: 26 }, type: { field: {} }, useBlanc: () => ({}) },
     },
@@ -211,6 +223,8 @@ const textNamed = (words: string) => [...host.querySelectorAll<HTMLElement>('spa
 
 beforeEach(() => {
   total = 3;
+  fresh = false;
+  push.mockClear();
   pairing = {};
   note = null;
   notes = {};
@@ -328,5 +342,37 @@ describe('the Movements row up now', () => {
     expect({ text: title.textContent, variant: title.dataset.variant, tone: title.dataset.tone }).toEqual({ text: 'Barbell Row', variant: 'bodyStrong', tone: 'ink' });
     expect({ text: detail.textContent, variant: detail.dataset.variant, tone: detail.dataset.tone }).toEqual({ text: 'Now', variant: 'secondary', tone: 'graphite' });
     expect(more).toEqual([]);
+  });
+});
+
+describe('the set card\'s warm-up and plates', () => {
+  const chips = () => [...host.querySelectorAll<HTMLButtonElement>('button')].map((button) => button.textContent);
+  const chip = (label: string) => [...host.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === label)!;
+
+  it('offers warm-ups before a barbell movement\'s first set, opening them at the weight typed', async () => {
+    fresh = true;
+    await open();
+    expect(chips()).toEqual(['Add RPE', 'Warm-up', 'Log set']);
+    expect(chip('Warm-up').getAttribute('aria-label')).toBe('Warm-up sets');
+    await act(async () => chip('Warm-up').click());
+    expect(push).toHaveBeenCalledWith({ pathname: '/warm-up', params: { id: 'row', weight: '80' } });
+  });
+
+  it('offers the plates on later sets, and nothing at or under the bar', async () => {
+    await open();
+    expect(chips()).toEqual(['Add RPE', 'Plates', 'Log set']);
+    expect(chip('Plates').getAttribute('aria-label')).toBe('Plates for 80 pounds');
+    await type('Weight in pounds', '45');
+    expect(chips()).toEqual(['Add RPE', 'Log set']);
+    await type('Weight in pounds', '');
+    expect(chips()).toEqual(['Add RPE', 'Log set']);
+  });
+
+  it('keeps warm-ups off a first set too light to ramp up to', async () => {
+    fresh = true;
+    await open();
+    await type('Weight in pounds', '50');
+    // Only 5 lb over the bar: no warm-up, but the plates still help.
+    expect(chips()).toEqual(['Add RPE', 'Plates', 'Log set']);
   });
 });

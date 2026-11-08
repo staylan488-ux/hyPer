@@ -8,6 +8,8 @@ import { create } from 'zustand';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import * as format from '../native/src/lib/format';
+import { weekSessionTarget } from '../src/lib/todayModel';
+import type { PlanSchedule } from '../src/lib/planSchedule';
 import { savedLine, type FinishedSummary } from '../native/src/lib/finished';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,6 +44,19 @@ const Tally = ({ accessibilityLabel }: Props) => createElement('div', { 'data-ta
 const Capsule = ({ title }: Props) => createElement('button', { 'data-accessible': 'true' }, title as string);
 
 let summary: FinishedSummary;
+// Signed out by default: the week's count never loads, so the footer only says where it went.
+let user: { id: string } | null = null;
+let schedule: PlanSchedule | null = null;
+let weekSessions = 0;
+/** The week's completed sessions, as the workouts read answers. */
+const weekRead = {
+  from: () => weekRead,
+  select: () => weekRead,
+  eq: () => weekRead,
+  gte: () => weekRead,
+  then: (resolve: (result: { data: { id: string }[]; error: null }) => void) =>
+    resolve({ data: Array.from({ length: weekSessions }, (_, index) => ({ id: `w${index}` })), error: null }),
+};
 
 /** Upper A on Friday, November 6 at 1:17 AM: nine sets planned. */
 function finished(sets: number, beat: number): FinishedSummary {
@@ -70,10 +85,11 @@ async function open() {
       'expo-router': { router: { dismiss: vi.fn(), navigate: vi.fn() } },
       'react-native': { ScrollView: View, View },
       'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }) },
-      '@/lib/supabase': { supabase: {} },
-      '@/stores/appStore': { useAppStore: create(() => ({ activeSplit: { days_per_week: 4 } })) },
-      // Signed out: the week's count never loads, so the footer only says where it went.
-      '@/stores/authStore': { useAuthStore: create(() => ({ user: null })) },
+      '@/lib/planSchedule': { loadPlanSchedule: () => schedule },
+      '@/lib/supabase': { supabase: weekRead },
+      '@/lib/todayModel': { weekSessionTarget },
+      '@/stores/appStore': { useAppStore: create(() => ({ activeSplit: { id: 'split-1', days_per_week: 4 }, workoutMode: 'split' })) },
+      '@/stores/authStore': { useAuthStore: create(() => ({ user })) },
       '~/components/BlancText': { BlancText: Text },
       '~/components/Capsule': { Capsule },
       '~/components/Label': { Label: View },
@@ -214,5 +230,31 @@ describe('Session complete\'s records', () => {
     summary = finished(9, 0);
     await open();
     expect(host.textContent).not.toContain('record');
+  });
+});
+
+describe('Session complete\'s week count', () => {
+  afterEach(() => {
+    user = null;
+    schedule = null;
+    weekSessions = 0;
+  });
+
+  it('counts the week against the training days picked, as Today does', async () => {
+    user = { id: 'user-1' };
+    weekSessions = 2;
+    // A four-day program trained Monday to Friday.
+    schedule = { splitId: 'split-1', startDate: '2026-11-02', mode: 'fixed', weekdays: [1, 2, 3, 4, 5], anchorDay: 1 };
+    summary = finished(9, 0);
+    await open();
+    expect(spanNamed('Saved to History · session 2 of 5 this week')).toBeTruthy();
+  });
+
+  it('counts against the program’s days when there are no weekdays to go by', async () => {
+    user = { id: 'user-1' };
+    weekSessions = 2;
+    summary = finished(9, 0);
+    await open();
+    expect(spanNamed('Saved to History · session 2 of 4 this week')).toBeTruthy();
   });
 });

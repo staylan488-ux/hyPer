@@ -140,6 +140,15 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="warm-up"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
               name="schedule"
               options={{
                 presentation: 'formSheet',
@@ -243,6 +252,10 @@ export default function RootLayout() {
           </Stack.Protected>
           <Stack.Protected guard={screen === 'sign-in'}>
             <Stack.Screen name="sign-in" options={{ contentStyle: { backgroundColor: p.ground } }} />
+          </Stack.Protected>
+          {/* A password reset link signed in: the new password comes first. */}
+          <Stack.Protected guard={screen === 'new-password'}>
+            <Stack.Screen name="new-password" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>
           <Stack.Protected guard={screen === 'offline'}>
             <Stack.Screen name="offline" options={{ contentStyle: { backgroundColor: p.ground } }} />
