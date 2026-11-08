@@ -123,7 +123,7 @@ const relationships: Record<string, Record<string, [string, string, boolean]>> =
   split_days: { split_exercises: ['id', 'split_day_id', true] },
   split_exercises: { exercises: ['exercise_id', 'id', false] },
   workouts: { sets: ['id', 'workout_id', true], split_days: ['split_day_id', 'id', false] },
-  sets: { exercises: ['exercise_id', 'id', false] },
+  sets: { exercises: ['exercise_id', 'id', false], workouts: ['workout_id', 'id', false] },
   nutrition_logs: { foods: ['food_id', 'id', false] },
 };
 

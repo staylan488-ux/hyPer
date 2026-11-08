@@ -49,7 +49,7 @@ export function useWeeklyNutrition(lastDay?: string) {
   return data;
 }
 
-async function fetchWeeklyNutrition(lastDay?: string) {
+export async function fetchWeeklyNutrition(lastDay?: string) {
   try {
     const userId = await getSessionUserId();
     if (!userId) return;

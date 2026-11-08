@@ -199,6 +199,17 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   "N sets beat last time" in ink, Volume, Time and Best set. A card that opens a screen shows a chevron (on a figure card,
   on the figure's line) and uses the `pressed` fill. A segmented control's
   `Host` matches its contents vertically only, with an explicit width.
+- Monday check-in (the owner's pick, 2026-11-08): on Mondays Today ends with
+  Last week, one card of lines (weight change and where it sits against the
+  goal's pace, calories and protein a day against target, sets and muscles in
+  range, new records), each left out when the week holds none. It opens
+  `today/week` (the same in sections, sets per muscle and each record with
+  what it beat); a hold hides it until next Monday on this phone. Rules and
+  reads are `src/lib/weekCheckIn.ts` (weekly averages of daily medians for
+  weight; records from finished workouts only, a movement's first week
+  breaking none), the store and words `native/src/lib/weekCheckIn.ts`. Past a
+  target is never red there, on any goal. `-hyperAction weekCheckIn` shows
+  the card on any day in a debug build.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
   layouts or signature details (the owner ruled out copying Maison Margiela's
   stitches and numbered label on 2026-10-26).

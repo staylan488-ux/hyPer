@@ -21,8 +21,9 @@ import { Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { scrolledFromRest, TabScroll } from '~/components/TabScroll';
 import { Track } from '~/components/Track';
+import { WeekCheckInCard } from '~/components/WeekCheckInCard';
 import { speak, useLargeText } from '~/lib/accessibility';
-import { useAccountRefresh } from '~/lib/accountData';
+import { useAccountRefresh, useCurrentDayKey, useWorkoutsRevision } from '~/lib/accountData';
 import { markAtRest, useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatSet, formatWhole } from '~/lib/format';
@@ -33,6 +34,8 @@ import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 import { openTrain } from '~/lib/openTrain';
+import { loadWeekCheckIn, useWeekCheckIn } from '~/lib/weekCheckIn';
+import { isCheckInToday } from '~/lib/weekCheckInDay';
 
 /**
  * The Fuel card's height at the standard text size, held while the saved
@@ -59,6 +62,14 @@ export default function TodayScreen() {
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const over = overTargetWord(goal);
   const rise = useIntroRise();
+  // Mondays look back at the week before; past midnight into Monday it reads then.
+  const todayKey = useCurrentDayKey();
+  const monday = isCheckInToday(todayKey);
+  const workoutsRevision = useWorkoutsRevision((state) => state.revision);
+  const lastWeek = useWeekCheckIn(todayKey);
+  useEffect(() => {
+    if (monday && userId) void loadWeekCheckIn(todayKey);
+  }, [monday, todayKey, userId, workoutsRevision]);
   const { refreshing, refresh } = useAccountRefresh();
   const large = useLargeText();
   const c = useBlanc();
@@ -170,6 +181,8 @@ export default function TodayScreen() {
               </Label>
             ) : null}
           </Section>
+
+          {monday && lastWeek.checkIn && !lastWeek.hidden ? <WeekCheckInCard checkIn={lastWeek.checkIn} todayKey={todayKey} /> : null}
         </Animated.View>
       </TabScroll>
     </>

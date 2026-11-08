@@ -30,6 +30,7 @@ import {
 } from '~/lib/session';
 import { useWidgetSnapshot } from '~/lib/widgets';
 import { useWorkoutActivity } from '~/lib/workoutActivity';
+import { resetWeekCheckIn } from '~/lib/weekCheckIn';
 import { loadWeights, resetYou, useHealthStore } from '~/lib/you';
 import { dynamicInk } from '~/theme/blanc';
 
@@ -96,6 +97,7 @@ export default function TabsLayout() {
       resetHistory();
       resetYou();
       resetFuel();
+      resetWeekCheckIn();
       useFinishedStore.setState({ summary: null });
       useAccountDay.setState({ loading: true });
       usePreviousNotesStore.setState({ workoutId: null, notes: {} });
