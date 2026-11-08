@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import * as dateFns from 'date-fns';
 
 import { captureAccountScope } from '@/lib/accountScope';
+import { createSaveGate } from '@/lib/requestGate';
 import * as bodyWeightSummary from '@/lib/bodyWeightSummary';
 import * as nutritionCalculator from '@/lib/nutritionCalculator';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
@@ -32,6 +33,7 @@ type YouModule = {
   useHealthStore: { getState: () => { enabled: boolean; message: { text: string; alert?: boolean } | null } };
   useTargetsLoaded: (what: 'targets' | 'profile') => { loaded: boolean; failed: boolean; retry: () => void };
   stageTargets: (draft: settingsUx.TargetDraft) => void;
+  loadTargets: () => Promise<boolean>;
 };
 
 function deferred<T>() {
@@ -79,6 +81,7 @@ function youHarness() {
     fetchWhoopConnection: vi.fn(async () => null),
     syncWhoop: vi.fn(async () => null),
   }));
+  const saves = { target: createSaveGate(), profile: createSaveGate() };
   const useAuthStore = create(() => ({ user: { id: 'user-1' } as { id: string } | null }));
   const openAuthSessionAsync = vi.fn<(url: string, returnTo: string, options: unknown) => Promise<{ type: string; url?: string }>>(
     async () => ({ type: 'success', url: 'app.hyper.mobile://settings?whoop=connected' }),
@@ -112,12 +115,12 @@ function youHarness() {
     '@/lib/whoopStatus': {
       whoopCallbackStatus: (url: string) => (url.includes('whoop=connected') ? 'connected' : 'error'),
     },
-    '@/stores/appStore': { useAppStore },
+    '@/stores/appStore': { useAppStore, macroTargetSaves: saves.target, nutritionProfileSaves: saves.profile },
     '@/stores/authStore': { useAuthStore },
     '~/platform/previewFlag': { isPreviewActive: () => preview.active },
   };
   const you = loadNativeModule<YouModule>('lib/you.ts', imports);
-  return { you, reads, health, preview, useAppStore, useAuthStore, openAuthSessionAsync, imports, getNutritionProfile, getBodyWeightHistorySince, getAllBodyWeights, deleteManualBodyWeight };
+  return { you, reads, saves, health, preview, useAppStore, useAuthStore, openAuthSessionAsync, imports, getNutritionProfile, getBodyWeightHistorySince, getAllBodyWeights, deleteManualBodyWeight };
 }
 
 let root: Root | null = null;
@@ -179,6 +182,34 @@ describe('You waits for the saved targets before starting from them', () => {
     }
     await mount(createElement(Probe));
     expect(reads).toHaveLength(0);
+  });
+});
+
+describe('Targets saved while an older read runs', () => {
+  it('keep the saved numbers when that read lands after the save', async () => {
+    const { you, reads, saves, useAppStore, getNutritionProfile } = youHarness();
+    const profile = { user_id: 'user-1', goal: 'maintain' } as NutritionProfile;
+    getNutritionProfile.mockResolvedValue(profile);
+    // Two reads at once (the launch's and the edit sheet's); the second makes the sheet ready.
+    const first = you.loadTargets();
+    const second = you.loadTargets();
+    await act(async () => { reads[1].resolve({ data: saved, error: null }); await second; });
+    expect(useAppStore.getState().macroTarget).toEqual(saved);
+
+    // 2,400 → 2,200 lands, as the store's save sets it.
+    const changed = { ...saved, calories: 2200 };
+    const newer = { ...profile, goal: 'cut' } as NutritionProfile;
+    saves.target.saved();
+    saves.profile.saved();
+    useAppStore.setState({ macroTarget: changed, nutritionProfile: newer as never });
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); await first; });
+    expect(useAppStore.getState().macroTarget).toEqual(changed);
+    expect(useAppStore.getState().nutritionProfile).toBe(newer);
+
+    // A read begun after the save shows what it reads.
+    const later = you.loadTargets();
+    await act(async () => { reads[2].resolve({ data: changed, error: null }); await later; });
+    expect(useAppStore.getState()).toMatchObject({ macroTarget: changed, macroTargetLoadedForUserId: 'user-1' });
   });
 });
 

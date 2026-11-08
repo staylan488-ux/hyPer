@@ -85,7 +85,8 @@ type FuelState = {
   moveEntryToYesterday: (id: string) => Promise<boolean>;
   /** Logs a past day's entries again today, in the matching meal, then shows today. */
   copyToToday: (entries: FoodLog[], group: NutritionGroup | null) => Promise<boolean>;
-  addGroup: (kind: 'meal' | 'snack') => Promise<boolean>;
+  /** Makes a meal or snack on the day shown: the group made, or null when it was not. */
+  addGroup: (kind: 'meal' | 'snack') => Promise<NutritionGroup | null>;
   reorderGroup: (groupId: string, direction: -1 | 1) => Promise<boolean>;
   deleteGroup: (group: NutritionGroup) => Promise<boolean>;
 };
@@ -364,14 +365,14 @@ export const useFuelStore = create<FuelState>((set, get) => {
 
     addGroup: editsCopy(async (kind: 'meal' | 'snack') => {
       const userId = await getSessionUserId();
-      if (!userId) return false;
+      if (!userId) return null;
       const result = await createNutritionGroup(userId, get().selected, kind, dayGroups());
       if (!result.ok) {
         if (result.inserted) await get().refresh();
-        return false;
+        return null;
       }
       set({ groups: mergeGroups(get().groups, result.groups) });
-      return true;
+      return result.created;
     }),
 
     reorderGroup: editsCopy(async (groupId: string, direction: -1 | 1) => {
@@ -386,7 +387,13 @@ export const useFuelStore = create<FuelState>((set, get) => {
     }),
 
     deleteGroup: editsCopy(async (group: NutritionGroup) => {
-      if (!(await deleteNutritionGroup(group).catch(() => false))) return false;
+      if (!(await deleteNutritionGroup(group).catch(() => false))) {
+        // As a failed entry delete: either step may have landed before its
+        // answer was lost, so older reads are dropped and the shown month and
+        // today's totals read again, and the server decides the grouping.
+        void get().refreshAfterWrite();
+        return false;
+      }
       set({
         groups: get().groups.filter((candidate) => candidate.id !== group.id),
         logs: get().logs.map((log) => (log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log)),

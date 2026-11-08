@@ -20,12 +20,12 @@ import { Section } from '~/components/Section';
 import { Stepper } from '~/components/Stepper';
 import { announce, speak, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { gainOnLastTime } from '~/lib/beatLastTime';
-import { formatRepRange } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { changeSetCount, confirmRemoveMovement, errorMessage, setSkipped, switchBack, unlinkSuperset } from '~/lib/movement';
 import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes';
 import { usePreviousNotesStore, usePreviousTargets, useSessionModel, type Movement } from '~/lib/session';
+import { movementLine } from '~/lib/sessionModel';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -89,16 +89,6 @@ export default function MovementSheet() {
       )}
     </KeyboardAwareScrollView>
   );
-}
-
-/** "Instead of Bench Press" for a swap, the superset, else the rep target. */
-function movementLine(movement: Movement): string {
-  if (movement.endedEarly) return `Ended early · ${movement.done} of ${movement.sets.length} sets`;
-  if (movement.skipped) return 'Skipped for this workout';
-  if (movement.substitutesFor) return `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`;
-  if (movement.superset) return `Superset ${movement.superset.role} with ${movement.superset.partnerName}`;
-  const sets = movement.sets.length;
-  return formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max) ?? `${sets} ${sets === 1 ? 'set' : 'sets'}`;
 }
 
 /** "Plan: 3 sets" or "Plan: 3–4 sets", for reference; the count can still change. */

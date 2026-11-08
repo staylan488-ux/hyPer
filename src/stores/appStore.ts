@@ -8,6 +8,7 @@ import { fetchWhoopFixtureBatch } from '@/preview/whoopFixtures';
 import { runWhoopSync, whoopFetchStart, type WhoopSyncResult } from '@/lib/whoopSync';
 import { beginWhoopReconciliation, completeWhoopReconciliation, readWhoopReconciliation } from '@/lib/whoopReconciliation';
 import { createKeyedSingleFlight, createReadFlight } from '@/lib/singleFlight';
+import { createSaveGate } from '@/lib/requestGate';
 import { disconnectWhoopRemote, fetchWhoopBatchRemote, startWhoopConnect } from '@/lib/whoopClient';
 import { findAbsorbableWhoopSession } from '@/lib/whoopImport';
 import { planActivityMerge } from '@/lib/mergeActivities';
@@ -551,6 +552,10 @@ let workoutModeSave: Promise<void> = Promise.resolve();
 // Moves with every mode switch; a save queued before the latest switch is dropped.
 let workoutModeSwitches = 0;
 const flexTemplatesFlight = createReadFlight();
+// Reads of the targets and the nutrition profile (here and You's loadTargets)
+// show nothing from before a save that landed while they ran.
+export const macroTargetSaves = createSaveGate();
+export const nutritionProfileSaves = createSaveGate();
 const currentWorkoutFlight = createKeyedSingleFlight<void>();
 const workoutDayPlanFlight = createKeyedSingleFlight<void>();
 // A double tap must join the pending add, before either caller can allocate
@@ -2054,11 +2059,36 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deleteWorkout: writesWorkout(async (workoutId: string) => {
     const isAccountCurrent = captureAccountScope();
+    // Attaching WHOOP stats hid their activity. It comes back to its day
+    // before the workout goes, as when the stats are removed: a failure or a
+    // lost answer after that shows it beside the workout until a retry,
+    // instead of leaving it hidden with nothing holding its stats.
+    const { data: linked, error: linkError } = await supabase
+      .from('workouts')
+      .select('whoop_session_id, user_id')
+      .eq('id', workoutId)
+      .maybeSingle();
+    if (linkError) {
+      console.error('Error reading the workout before deleting it:', linkError);
+      throw linkError;
+    }
+    const link = linked as { whoop_session_id: string | null; user_id: string } | null;
+    if (link?.whoop_session_id) {
+      const { error: restoreError } = await supabase
+        .from('activity_sessions')
+        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
+        .eq('id', link.whoop_session_id)
+        .eq('user_id', link.user_id);
+      if (restoreError) {
+        console.error('Error restoring the WHOOP session:', restoreError);
+        throw restoreError;
+      }
+    }
+
     // One statement: sets and the day plan go with it via ON DELETE CASCADE,
     // so a failure part-way can no longer leave a workout with its sets wiped.
-    // The deleted row says whether WHOOP stats were attached.
-    const removeWorkout = () => supabase.from('workouts').delete().eq('id', workoutId).select('whoop_session_id, user_id');
-    let { data: deleted, error } = await removeWorkout();
+    const removeWorkout = () => supabase.from('workouts').delete().eq('id', workoutId);
+    let { error } = await removeWorkout();
 
     // Foreign-key violation means a database without the cascade. Nothing was
     // deleted, so fall back to removing the sets first, stopping if that fails.
@@ -2068,7 +2098,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         console.error('Error deleting workout sets:', setsError);
         throw setsError;
       }
-      ({ data: deleted, error } = await removeWorkout());
+      ({ error } = await removeWorkout());
     }
 
     if (error) {
@@ -2079,18 +2109,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A deleted in-progress workout must not stay on the Workout tab.
     if (isAccountCurrent() && get().currentWorkout?.id === workoutId) {
       set({ currentWorkout: null, currentWorkoutDayPlan: null });
-    }
-
-    // Attaching WHOOP stats hid their activity; it returns to its day, as when
-    // the stats are removed. The workout is gone either way, so this only logs.
-    const row = (deleted ?? [])[0] as { whoop_session_id: string | null; user_id: string } | undefined;
-    if (row?.whoop_session_id) {
-      const { error: restoreError } = await supabase
-        .from('activity_sessions')
-        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
-        .eq('id', row.whoop_session_id)
-        .eq('user_id', row.user_id);
-      if (restoreError) console.error('Error restoring the WHOOP session:', restoreError);
     }
   }),
 
@@ -2631,11 +2649,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       currentWorkout: state.currentWorkout?.id === row.id ? row : state.currentWorkout,
     }));
     showLive(updated);
-    // Not hidden, the activity would show beside the stats it gave the
-    // workout. The stats come off again where possible, so the workout offers
-    // Add once more; either way a retry finishes the job.
+    // Unanswered, the hide may still have landed. The activity is shown again
+    // first, and only then do the stats come off the workout, so the workout
+    // offers Add once more; if it cannot be shown, the workout keeps the stats
+    // (and offers Remove, which brings it back). Never hidden with no workout
+    // holding its stats; either way a retry finishes the job.
     if (dismissError) {
       console.error('Error tombstoning the absorbed WHOOP session:', dismissError);
+      const { error: unhideError } = await supabase
+        .from('activity_sessions')
+        .update({ dismissed_at: null, updated_at: new Date().toISOString() })
+        .eq('id', session.id)
+        .eq('user_id', userId);
+      if (unhideError) {
+        console.error('Error showing the WHOOP session again:', unhideError);
+        throw new Error('Could not finish attaching the WHOOP stats. Try again.');
+      }
       const { data: cleared, error: clearError } = await supabase
         .from('workouts')
         .update(CLEARED_WHOOP_STATS)
@@ -3555,6 +3584,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   fetchMacroTarget: async () => {
     const isAccountCurrent = captureAccountScope();
+    const beforeSaves = macroTargetSaves.begin();
     const userId = await getSessionUserId();
     if (!userId || !isAccountCurrent()) return;
 
@@ -3569,7 +3599,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A successful read with no row clears a target left over from a previous
     // account. A failed read keeps what is shown, so a flaky connection never
     // blanks the targets.
-    if (!error && isAccountCurrent()) {
+    if (!error && isAccountCurrent() && beforeSaves()) {
       const macroTarget = data ?? null;
       set(sameData(get().macroTarget, macroTarget)
         ? { macroTargetLoadedForUserId: userId }
@@ -3603,6 +3633,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     if (data && isAccountCurrent()) {
+      macroTargetSaves.saved();
       set({ macroTarget: data, macroTargetLoadedForUserId: userId });
     }
   },
@@ -3612,9 +3643,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const userId = await getSessionUserId();
     if (!userId || !isAccountCurrent()) return;
 
+    const beforeSaves = nutritionProfileSaves.begin();
     try {
       const profile = await getNutritionProfile(userId);
-      if (isAccountCurrent()) set({ nutritionProfile: profile, nutritionProfileLoadedForUserId: userId });
+      if (isAccountCurrent() && beforeSaves()) set({ nutritionProfile: profile, nutritionProfileLoadedForUserId: userId });
     } catch {
       // A missing table on an un-migrated client should not break the app.
     }
@@ -3634,7 +3666,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       : input;
 
     const profile = await saveNutritionProfile(userId, payload);
-    if (isAccountCurrent()) set({ nutritionProfile: profile, nutritionProfileLoadedForUserId: userId });
+    if (isAccountCurrent()) {
+      nutritionProfileSaves.saved();
+      set({ nutritionProfile: profile, nutritionProfileLoadedForUserId: userId });
+    }
   },
 
   refreshAdaptiveTargets: (options) => {
@@ -3714,6 +3749,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           // A target the user saved while the write was in flight already won
           // in the database; keep showing theirs instead of this stale echo.
           if (!isAccountCurrent()) return 'skipped';
+          if (savedTarget) macroTargetSaves.saved();
           if (savedTarget && sameMacroTarget(get().macroTarget, targetAtStart)) {
             set({ macroTarget: savedTarget });
           }
@@ -3731,7 +3767,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           expenditure_updated_at: now.toISOString(),
         });
         // A profile edit that landed during the write already set its own row.
-        if (isAccountCurrent() && sameAdaptiveInputs(get().nutritionProfile, profile)) set({ nutritionProfile: saved });
+        if (!isAccountCurrent()) return retargeted ? 'updated' : 'unchanged';
+        nutritionProfileSaves.saved();
+        if (sameAdaptiveInputs(get().nutritionProfile, profile)) set({ nutritionProfile: saved });
 
         return retargeted ? 'updated' : 'unchanged';
       } catch (error) {

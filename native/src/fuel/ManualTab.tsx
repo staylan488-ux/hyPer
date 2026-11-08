@@ -200,7 +200,8 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
   };
 
   const updateSavedMeal = async () => {
-    if (!draft.selectedSavedMealId || updatingMeal || builtMeal) return;
+    const updating = draft.selectedSavedMealId;
+    if (!updating || updatingMeal || builtMeal) return;
     if (!values.name) {
       haptics.error();
       setMealMessage({ text: 'Meal name is required to update.', alert: true });
@@ -215,7 +216,7 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
         setMealMessage({ text: 'Please sign in again to update saved meals.', alert: true });
         return;
       }
-      const { id, retireFailed } = await replaceSavedMeal(userId, draft.selectedSavedMealId, values);
+      const { id, retireFailed } = await replaceSavedMeal(userId, updating, values);
       if (!id) {
         haptics.error();
         setMealMessage({ text: 'Could not update saved meal. Please try again.', alert: true });
@@ -223,7 +224,9 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
       }
       if (retireFailed) haptics.error();
       else haptics.success();
-      setDraft((current) => ({ ...current, selectedSavedMealId: id, saveAsReusable: false }));
+      // The meal takes its new identity only while it is still the one picked:
+      // another meal picked meanwhile stays picked, with its own numbers.
+      setDraft((current) => (current.selectedSavedMealId === updating ? { ...current, selectedSavedMealId: id, saveAsReusable: false } : current));
       setMealMessage(
         retireFailed
           ? { text: 'Your edited meal was saved, but the original is still in saved meals. Remove the original when your connection is restored. Past logs are unchanged.', alert: true }

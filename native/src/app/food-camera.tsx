@@ -37,7 +37,16 @@ export default function FoodCamera() {
   const camera = useRef<CameraView>(null);
   // What the tab hears once this screen has gone: closing is no photo.
   const outcome = useRef<CameraOutcome>({ photo: null });
-  useEffect(() => () => settleFoodCamera(outcome.current), []);
+  // Gone, or going: a library photo that arrives after Close goes nowhere,
+  // rather than going back a second time from under Log food.
+  const left = useRef(false);
+  useEffect(
+    () => () => {
+      left.current = true;
+      settleFoodCamera(outcome.current);
+    },
+    [],
+  );
 
   const state = !Device.isDevice || mountFailed
     ? 'unavailable'
@@ -55,6 +64,8 @@ export default function FoodCamera() {
   useEffect(() => onAppVisible(() => void getPermission()), [getPermission]);
 
   const leave = (next: CameraOutcome) => {
+    if (left.current) return;
+    left.current = true;
     outcome.current = next;
     router.back();
   };

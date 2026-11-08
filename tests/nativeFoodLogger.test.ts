@@ -85,7 +85,7 @@ type SwipeAction = { label: string; destructive?: boolean; onPress: () => void }
 type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
 type AlertButton = { text: string; onPress?: () => void };
 type Input = { accessibilityLabel?: string; value?: string; editable?: boolean; onChangeText?: (text: string) => void; onFocus?: () => void };
-type Context = { beginBusy: () => () => void; beginRead: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null } };
+type Context = { beginBusy: () => () => void; beginRead: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null }; setWhen: (next: { date: Date; time: string; groupId: string | null }) => void };
 type ReviewProps = {
   draft: composition.MealDraft;
   savedTarget?: Food;
@@ -277,9 +277,10 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   const openSettings = vi.fn();
   const dismissKeyboard = vi.fn();
   // Fuel's addGroup: a new unlabelled meal or snack on the day Fuel shows, or a failure.
-  const addGroup = vi.fn(async (kind: 'meal' | 'snack') => {
-    fuel.groups = [...fuel.groups, { id: `new-${kind}`, user_id: 'user-a', date: fuel.selected, kind, label: null, sort_order: fuel.groups.length }];
-    return true;
+  const addGroup = vi.fn(async (kind: 'meal' | 'snack'): Promise<NutritionGroup | null> => {
+    const group: NutritionGroup = { id: `new-${kind}`, user_id: 'user-a', date: fuel.selected, kind, label: null, sort_order: fuel.groups.length };
+    fuel.groups = [...fuel.groups, group];
+    return group;
   });
   const fuel = { selected: fuelDay, loadedMonth: fuelDay.slice(0, 7), logs: [entry], groups: dayGroups, refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, deleteEntry: vi.fn<(id: string) => Promise<boolean>>(async () => true), addGroup, ...fuelActions };
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
@@ -1214,7 +1215,7 @@ describe('Log food: where the food goes', () => {
 
   it('says so when the new meal was not made, and keeps the destination', async () => {
     const h = loggerHarness({ dayGroups: [lunch] });
-    h.addGroup.mockResolvedValueOnce(false);
+    h.addGroup.mockResolvedValueOnce(null);
     await h.render();
     await h.press('Adds to today. Change');
     await act(async () => { await h.captured.choices!.callback(2); });
@@ -1223,6 +1224,57 @@ describe('Log food: where the food goes', () => {
     expect(h.alert).toHaveBeenCalledWith('Not added', 'Check your connection and try again.');
     expect(h.captured.context!.when.groupId).toBeNull();
     expect(h.text()).toContain('Adds to today');
+  });
+
+  it('goes to the meal it made, even when the day’s meals arrive while it is made', async () => {
+    const h = loggerHarness({ dayGroups: [lunch] });
+    const made = deferred<NutritionGroup | null>();
+    h.addGroup.mockImplementationOnce(() => made.promise);
+    await h.render();
+    await h.press('Adds to today. Change');
+    await act(async () => { await h.captured.choices!.callback(2); });
+    // Breakfast is made for the day (the sheet's default meals) before the new meal's answer.
+    const breakfast: NutritionGroup = { id: 'breakfast', user_id: 'user-a', date: '2026-11-03', kind: 'meal', label: 'breakfast', sort_order: 0 };
+    const meal: NutritionGroup = { id: 'meal-2', user_id: 'user-a', date: '2026-11-03', kind: 'meal', label: null, sort_order: 2 };
+    const fuel = (h.imports['./fuel'] as { useFuelStore: { getState: () => { groups: NutritionGroup[] } } }).useFuelStore.getState();
+    fuel.groups = [breakfast, ...fuel.groups, meal];
+    await act(async () => { made.resolve(meal); });
+    await h.flush();
+    expect(h.captured.context!.when.groupId).toBe('meal-2');
+  });
+
+  it('keeps a meal or day chosen while New meal runs', async () => {
+    const meal2: NutritionGroup = { id: 'meal-2', user_id: 'user-a', date: '2026-11-03', kind: 'meal', label: null, sort_order: 2 };
+    // Fuel's store holds the new meal once it is made, as its addGroup does.
+    const land = (harness: ReturnType<typeof loggerHarness>, answer: ReturnType<typeof deferred<NutritionGroup | null>>) => act(async () => {
+      const fuel = (harness.imports['./fuel'] as { useFuelStore: { getState: () => { groups: NutritionGroup[] } } }).useFuelStore.getState();
+      fuel.groups = [...fuel.groups, meal2];
+      answer.resolve(meal2);
+    });
+    const h = loggerHarness({ dayGroups: [lunch] });
+    const made = deferred<NutritionGroup | null>();
+    h.addGroup.mockImplementationOnce(() => made.promise);
+    await h.render();
+    await h.press('Adds to today. Change');
+    await act(async () => { await h.captured.choices!.callback(2); });
+    // Lunch is chosen instead before the new meal's answer.
+    await h.press('Adds to today. Change');
+    await act(async () => { await h.captured.choices!.callback(1); });
+    await land(h, made);
+    await h.flush();
+    expect(h.captured.context!.when.groupId).toBe('lunch');
+
+    // Moved to yesterday meanwhile: today's new meal never attaches to it.
+    const moved = loggerHarness({ dayGroups: [lunch] });
+    const late = deferred<NutritionGroup | null>();
+    moved.addGroup.mockImplementationOnce(() => late.promise);
+    await moved.render();
+    await moved.press('Adds to today. Change');
+    await act(async () => { await moved.captured.choices!.callback(2); });
+    await act(async () => { moved.captured.context!.setWhen({ date: new Date('2026-11-02T10:00:00'), time: '10:00', groupId: null }); });
+    await land(moved, late);
+    await moved.flush();
+    expect(moved.captured.context!.when.groupId).toBeNull();
   });
 
   it('says only where food goes, with no running total, on a line 44 points tall to touch', async () => {
@@ -1594,6 +1646,26 @@ describe('native food logger: Snap a meal', () => {
     expect(h.captured.pressables['Add photo']).toBeUndefined();
   });
 
+  it('goes back once when Close is pressed while a library photo is still arriving', async () => {
+    const h = loggerHarness({ realAi: true });
+    await h.render();
+    await h.appear();
+    await h.tab('photo');
+    await h.press('Add photo');
+    expect(h.cameraUp()).toBe(true);
+    // The picker has gone; the photo it chose is still being read.
+    const picked = deferred<PickerResult>();
+    h.library.mockReturnValueOnce(picked.promise);
+    await h.press('Photo library');
+    await h.press('Close');
+    expect(h.cameraUp()).toBe(false);
+    await act(async () => { picked.resolve({ canceled: false, assets: [{ uri: 'late', width: 12, height: 9, type: 'image' }] }); });
+    await h.flush();
+    // Back from the camera only, never from Log food under it.
+    expect(h.cameraBack).toHaveBeenCalledOnce();
+    expect(h.captured.ai!.draft.photos).toEqual([]);
+  });
+
   it('switches the flash for the shot', async () => {
     const h = loggerHarness({ worker: true, params: { start: 'camera' } });
     await h.render();
@@ -1789,6 +1861,31 @@ describe('native food logger amounts and replacements', () => {
     await h.click('Update saved meal');
     expect(h.replaceSimple).toHaveBeenLastCalledWith('user-a', savedMilk.id, expect.objectContaining({ calories: 130 }));
     expect(h.captured.manual!.draft.selectedSavedMealId).toBe(`replacement-${savedMilk.id}`);
+  });
+
+  it('keeps a meal picked while Update saved meal runs, so a later update cannot write that meal over the first', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.tab('manual');
+    const pick = async (meal: Food, calories: string) => {
+      await act(async () => {
+        h.captured.manual!.setDraft((draft) => ({
+          ...draft,
+          fields: { name: meal.name, calories, protein: '8', carbs: '12', fat: '5' },
+          selectedSavedMealId: meal.id,
+        }));
+      });
+    };
+    await pick(savedMilk, '130');
+    const reply = deferred<{ id: string | null; retireFailed: boolean }>();
+    h.replaceSimple.mockImplementationOnce(() => reply.promise);
+    await h.click('Update saved meal');
+    // Another saved meal is picked before the answer arrives.
+    await pick(recipe, '200');
+    await act(async () => { reply.resolve({ id: `replacement-${savedMilk.id}`, retireFailed: false }); });
+    await h.flush();
+    expect(h.captured.manual!.draft.selectedSavedMealId).toBe(recipe.id);
+    expect(h.captured.manual!.draft.fields.calories).toBe('200');
   });
 
   it('refuses to put several photo foods into one edited entry, unless they log as one meal', async () => {

@@ -17,7 +17,7 @@ const supabaseMock = vi.hoisted(() => ({ from: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ supabase: { from: supabaseMock.from } }));
 vi.mock('@/lib/nativeBridge', () => ({ hasNativeHealth: () => false, NativeHealth: {} }));
 
-import { getAllBodyWeights } from '@/lib/healthWeights';
+import { getAllBodyWeights, getBodyWeightHistorySince } from '@/lib/healthWeights';
 
 /** A weigh-in at 8 AM local on `day` (yyyy-MM-dd). */
 function weighIn(id: string, day: string, kilograms: number, hour = 8) {
@@ -240,34 +240,61 @@ describe("Body weight's trend over every weigh-in", () => {
 
 describe('reading every weigh-in', () => {
   type Stored = { id: string; measured_at: string };
-  /** The table, newest first; `between` runs after each page, as a write mid-read would. */
-  function table(stored: Stored[], between?: (page: number) => void) {
+  /**
+   * The table, newest first; `between` runs after each page, as a write
+   * mid-read would. Like the API, it answers at most `cap` rows, however many
+   * a request asks for.
+   */
+  function table(stored: Stored[], between?: (page: number) => void, cap = Number.POSITIVE_INFINITY) {
     const pages: Array<string | null> = [];
     supabaseMock.from.mockImplementation(() => {
       let from: string | null = null;
-      let keep: (row: Stored) => boolean = () => true;
+      const keep: Array<(row: Stored) => boolean> = [];
+      let count = cap;
+      const answer = () => {
+        pages.push(from);
+        const data = stored.filter((row) => keep.every((test) => test(row))).slice(0, Math.min(count, cap));
+        between?.(pages.length);
+        return { data, error: null };
+      };
       const query = {
         select: () => query,
-        eq: () => query,
+        eq: (column: string, value: string) => {
+          if (column === 'measured_at') {
+            from = `= ${value}`;
+            keep.push((row) => row.measured_at === value);
+          }
+          return query;
+        },
+        gt: (column: string, value: string) => {
+          expect(column).toBe('id');
+          from = `${from} > ${value}`;
+          keep.push((row) => row.id > value);
+          return query;
+        },
+        gte: (column: string, value: string) => {
+          expect(column).toBe('measured_at');
+          keep.push((row) => Date.parse(row.measured_at) >= Date.parse(value));
+          return query;
+        },
         lte: (column: string, value: string) => {
           expect(column).toBe('measured_at');
           from = `<= ${value}`;
-          keep = (row) => row.measured_at <= value;
+          keep.push((row) => row.measured_at <= value);
           return query;
         },
         lt: (column: string, value: string) => {
           expect(column).toBe('measured_at');
           from = `< ${value}`;
-          keep = (row) => row.measured_at < value;
+          keep.push((row) => row.measured_at < value);
           return query;
         },
         order: () => query,
-        limit: async (count: number) => {
-          pages.push(from);
-          const data = stored.filter(keep).slice(0, count);
-          between?.(pages.length);
-          return { data, error: null };
+        limit: async (asked: number) => {
+          count = asked;
+          return answer();
         },
+        then: (resolve: (value: ReturnType<typeof answer>) => unknown) => resolve(answer()),
       };
       return query;
     });
@@ -315,7 +342,27 @@ describe('reading every weigh-in', () => {
     const pages = table(stored);
     const read = await getAllBodyWeights('user-1', 2);
     expect(read.map((row) => row.id)).toEqual(['a', 'b', 'c', 'd']);
-    expect(pages).toEqual([null, `<= ${at(1)}`, `< ${at(1)}`]);
+    // Past it once the rest of that time, after the last id read, is read.
+    expect(pages).toEqual([null, `<= ${at(1)}`, `= ${at(1)} > c`, `< ${at(1)}`]);
+  });
+
+  it('reads every weigh-in of a time shared by more than a page', async () => {
+    const stored = [
+      ...['t0', 't1', 't2', 't3', 't4'].map((id) => ({ id, measured_at: at(0) })),
+      { id: 'z', measured_at: at(1) },
+    ];
+    const pages = table(stored, undefined, 2);
+    const read = await getAllBodyWeights('user-1', 2);
+    expect(read.map((row) => row.id)).toEqual(['t0', 't1', 't2', 't3', 't4', 'z']);
+    expect(pages).toEqual([null, `<= ${at(0)}`, `= ${at(0)} > t1`, `= ${at(0)} > t3`, `< ${at(0)}`]);
+  });
+
+  it('reads every weigh-in in the recent window, past the API\'s row cap, and none before it', async () => {
+    table(rows(7), undefined, 2);
+    // The window starts between w4 (08:55) and w5 (08:54).
+    const now = new Date('2026-11-05T09:00:00Z');
+    const read = await getBodyWeightHistorySince('user-1', 5.5 / 1440, now, 2);
+    expect(read.map((row) => row.id)).toEqual(['w0', 'w1', 'w2', 'w3', 'w4']);
   });
 
   it('fails as a whole when a page fails', async () => {

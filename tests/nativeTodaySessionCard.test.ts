@@ -38,6 +38,7 @@ const Pressable = ({ children, accessible, accessibilityLabel, accessibilityHint
 const Tally = ({ accessibilityLabel }: { accessibilityLabel: string }) => createElement('i', { 'data-tally': accessibilityLabel });
 const Capsule = ({ title, onPress }: { title: string; onPress: () => void }) => createElement('button', { onClick: onPress }, title);
 // The live clock in the footnote it draws.
+const markAtRest = { value: 1 };
 const LiveClock = () => createElement('span', { 'data-variant': 'footnote', 'data-clock': '' }, '10:00');
 
 // Today's finished workout, as History gives it to the record.
@@ -45,6 +46,7 @@ const finished = { id: 'w9', title: 'Pull', splitDayId: 'pull', marks: [true, tr
 
 const plan = loadNativeModule<Record<string, (props: never) => ReactNode>>('components/PlanCard.tsx', {
   'expo-router': { router: { navigate, push } },
+  'date-fns': dates,
   // The finished card's chevron: a mark only, hidden from VoiceOver.
   'expo-symbols': { SymbolView: (props: { name: string }) => createElement('u', { 'data-symbol': props.name }) },
   'react-native': { Pressable, View },
@@ -57,6 +59,7 @@ const plan = loadNativeModule<Record<string, (props: never) => ReactNode>>('comp
   '~/lib/accessibility': silentAccessibility,
   '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min` },
   '~/lib/haptics': { haptics: { tap: noop } },
+  '~/lib/history': { selectHistoryDay: noop },
   '~/lib/openTrain': { openTrain },
   '~/lib/session': { useStartSession: () => ({ starting: null, start: async () => false }) },
   '~/lib/today': { useFinishedToday: (done: boolean) => (done ? finished : null) },
@@ -96,7 +99,7 @@ async function open() {
     '~/components/TabScroll': { TabScroll: Wrap },
     '~/components/Track': { Track: Empty },
     '~/lib/accountData': { useAccountRefresh: () => ({ refreshing: false, refresh: noop }) },
-    '~/lib/brand': { useIntroRise: () => ({}) },
+    '~/lib/brand': { markAtRest, useIntroRise: () => ({}) },
     '~/lib/finishWorkout': { useFinishWorkout: () => ({ finish, closing: false }) },
     '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min`, formatSet: (weight: number | null, reps: number | null) => (weight !== null && reps !== null ? `${weight} lb × ${reps}` : ''), formatWhole: String },
     '~/lib/accessibility': silentAccessibility,

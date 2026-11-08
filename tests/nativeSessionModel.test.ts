@@ -4,7 +4,7 @@ import { planExerciseSubstitution } from '@/lib/exerciseSubstitution';
 import type { Exercise, FlexiblePlanItem, Split, SplitExercise, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
 import { mealForTime } from '../native/src/lib/meals';
-import { afterLoggedSet, buildSessionModel, isLiveWorkout, sessionModelCache, skippedLine } from '../native/src/lib/sessionModel';
+import { afterLoggedSet, buildSessionModel, isLiveWorkout, movementLine, sessionModelCache, skippedLine, type Movement } from '../native/src/lib/sessionModel';
 
 // The native app's live-workout model decides which set "Log set" saves to.
 
@@ -542,5 +542,26 @@ describe('mealForTime', () => {
     expect(mealForTime(at(15, 0))).toBe('dinner');
     expect(mealForTime(at(20, 59))).toBe('dinner');
     expect(mealForTime(at(21, 0))).toBe('snack');
+  });
+});
+
+describe('the movement sheet line', () => {
+  const movement = (extra: Partial<Movement> = {}) => ({
+    exerciseId: 'row', name: 'Barbell Row', sets: [{}, {}, {}], done: 0,
+    plan: { target_reps_min: 8, target_reps_max: 10 }, substitutesFor: null, superset: null,
+    skipped: false, endedEarly: false, ...extra,
+  }) as unknown as Movement;
+
+  it('keeps the rep target beside a superset or a swap', () => {
+    expect(movementLine(movement())).toBe('8–10 reps');
+    expect(movementLine(movement({ superset: { groupId: 'g1', role: 'A', partnerId: 'curl', partnerName: 'Hammer Curl' } }))).toBe('Superset A with Hammer Curl · 8–10 reps');
+    expect(movementLine(movement({ substitutesFor: { exercise_id: 'bench', exercise_name: 'Bench Press', notes: null } }))).toBe('Instead of Bench Press · 8–10 reps');
+  });
+
+  it('counts the sets when there is no target, and says how a skip ended', () => {
+    expect(movementLine(movement({ plan: null }))).toBe('3 sets');
+    expect(movementLine(movement({ plan: null, superset: { groupId: 'g1', role: 'B', partnerId: 'curl', partnerName: 'Hammer Curl' } }))).toBe('Superset B with Hammer Curl');
+    expect(movementLine(movement({ skipped: true }))).toBe('Skipped for this workout');
+    expect(movementLine(movement({ skipped: true, endedEarly: true, done: 1 }))).toBe('Ended early · 1 of 3 sets');
   });
 });

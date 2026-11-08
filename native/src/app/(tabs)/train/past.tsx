@@ -52,6 +52,8 @@ export default function PastWorkoutScreen() {
   const workout = stored ?? leaving;
   const plan = useHistoryStore((state) => (id ? state.plans[id] : undefined));
   const activities = useHistoryStore((state) => state.activities);
+  // Opened from Today's record while History moves to its month: nothing is said until that month is read.
+  const monthLoading = useHistoryStore((state) => state.loading);
 
   useEffect(() => {
     if (id) void loadPlan(id);
@@ -84,9 +86,11 @@ export default function PastWorkoutScreen() {
         <Stack.Screen options={{ title: '' }} />
         {/* In the screen's scroll view, so it sits below the header as the workout would. */}
         <TabScroll>
-          <BlancText variant="secondary" tone="graphite" style={{ margin: space.gutter }}>
-            This workout is no longer here.
-          </BlancText>
+          {monthLoading ? null : (
+            <BlancText variant="secondary" tone="graphite" style={{ margin: space.gutter }}>
+              This workout is no longer here.
+            </BlancText>
+          )}
         </TabScroll>
       </>
     );

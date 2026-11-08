@@ -2,6 +2,7 @@
 import { act, createElement, Fragment, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as dateFns from 'date-fns';
 import { create } from 'zustand';
 
 import { todayHero, type HeroState } from '@/lib/todayModel';
@@ -26,6 +27,7 @@ type Finished = {
   marks: boolean[];
   sets: number;
   minutes: number | null;
+  day: string;
 };
 type Props = { hero: HeroState; next: string | null; place: 'today' | 'train'; seeded?: boolean };
 
@@ -35,12 +37,14 @@ const noop = () => {};
 const history = create<{ finished: Finished | null | undefined }>(() => ({ finished: undefined }));
 const programs = create<{ splits: Split[] }>(() => ({ splits: [] }));
 const push = vi.fn();
+const selectHistoryDay = vi.fn();
 const newProgram = vi.fn();
 const openTrain = vi.fn();
 
 const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>(
   'components/PlanCard.tsx',
   {
+    'date-fns': dateFns,
     'expo-router': { router: { navigate: noop, push, dismissTo: noop } },
     // The finished card's chevron: a mark only, hidden from VoiceOver.
     'expo-symbols': { SymbolView: (props: { name: string }) => createElement('u', { 'data-symbol': props.name }) },
@@ -67,6 +71,7 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
     '~/lib/accessibility': silentAccessibility,
     '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min` },
     '~/lib/haptics': { haptics: { tap: noop } },
+    '~/lib/history': { selectHistoryDay },
     '~/lib/openTrain': { openTrain: openTrain },
     '~/lib/program': { newProgram },
     '~/lib/session': { useStartSession: () => ({ starting: null, start: async () => false }) },
@@ -76,7 +81,7 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
   { compile: true },
 );
 
-const record: Finished = { id: 'w1', title: 'Push', splitDayId: 'push', marks: [true, true, false], sets: 2, minutes: 52 };
+const record: Finished = { id: 'w1', title: 'Push', splitDayId: 'push', marks: [true, true, false], sets: 2, minutes: 52, day: '2026-11-07' };
 const done: HeroState = { kind: 'done', title: 'Session complete' };
 
 let root: Root;
@@ -92,6 +97,7 @@ beforeEach(() => {
   history.setState({ finished: undefined });
   programs.setState({ splits: [] });
   push.mockClear();
+  selectHistoryDay.mockClear();
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -212,5 +218,23 @@ describe('Plan card for a day already trained', () => {
 
     expect(host.textContent).toContain('Trained today');
     expect(host.textContent).toContain('Next: Tomorrow · Legs');
+  });
+
+  it('moves History to the record\'s day before opening the workout, so the workout screen finds it', async () => {
+    history.setState({ finished: record });
+    await show({ hero: done, next: null, place: 'today' });
+    const order: string[] = [];
+    selectHistoryDay.mockImplementation(() => order.push('select'));
+    push.mockImplementation(() => order.push('push'));
+
+    await act(async () => host.querySelector<HTMLElement>('[data-card="pressable"]')!.click());
+
+    expect(selectHistoryDay).toHaveBeenCalledOnce();
+    const chosen = selectHistoryDay.mock.calls[0][0] as Date;
+    expect([chosen.getFullYear(), chosen.getMonth(), chosen.getDate()]).toEqual([2026, 10, 7]);
+    expect(push).toHaveBeenCalledWith({ pathname: '/train/past', params: { id: 'w1' } });
+    expect(order).toEqual(['select', 'push']);
+    push.mockReset();
+    selectHistoryDay.mockReset();
   });
 });

@@ -536,24 +536,31 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const fuelDay = useFuelStore((state) => state.selected);
   const canAddGroup = sameDay && selectedKey === fuelDay;
   const addingGroup = useRef(false);
-  // A new meal or snack, made as Fuel makes one, becomes the destination.
+  // Read when a new meal lands, so a destination chosen while it was made stands.
+  const whenNow = useRef(when);
+  useLayoutEffect(() => {
+    whenNow.current = when;
+  });
+  // A new meal or snack, made as Fuel makes one, becomes the destination,
+  // unless another meal or day was chosen while it was made.
   const addDestination = async (kind: 'meal' | 'snack') => {
     if (addingGroup.current) return;
     addingGroup.current = true;
-    const before = new Set(groupsForDay(selectedKey).map((group) => group.id));
-    const ok = await useFuelStore.getState().addGroup(kind).catch(() => false);
+    // Chosen by the person: the day's meals arriving meanwhile pick nothing.
+    groupTouched.current = true;
+    const before = whenNow.current;
+    const created = await useFuelStore.getState().addGroup(kind).catch(() => null);
     addingGroup.current = false;
-    if (!ok) {
+    if (!created) {
       haptics.error();
       Alert.alert('Not added', CHECK_CONNECTION);
       return;
     }
     haptics.success();
     const list = groupsForDay(selectedKey);
-    const created = list.find((group) => !before.has(group.id) && group.kind === kind);
-    if (!created) return;
     setGroups(list);
-    groupTouched.current = true;
+    const now = whenNow.current;
+    if (created.date !== selectedKey || now.groupId !== before.groupId || format(now.date, 'yyyy-MM-dd') !== format(before.date, 'yyyy-MM-dd')) return;
     setWhenState((value) => ({ ...value, groupId: created.id }));
     // The line changes under VoiceOver's focus without a word: say where food now goes.
     announce(`${editing ? 'In' : 'Adds to'} ${nutritionGroupTitle(created, list)}`);

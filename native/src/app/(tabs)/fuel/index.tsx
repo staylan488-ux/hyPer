@@ -574,7 +574,7 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
       actions.push({
         label: `Delete ${title}`,
         destructive: true,
-        run: () => report(store.deleteGroup(group), 'Not deleted'),
+        run: () => report(store.deleteGroup(group), DELETE_UNCONFIRMED, DELETE_UNCONFIRMED_MESSAGE),
       });
     }
     const options = [...actions.map((action) => action.label), 'Cancel'];

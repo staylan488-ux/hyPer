@@ -172,6 +172,16 @@ describe('following a hosted analysis', () => {
     await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: () => {} })).rejects.toThrow('Your analysis may still be running');
     expect(fetcher).toHaveBeenCalledOnce();
   });
+  it('asks for the one reply, without steps, where the runtime has no TextDecoder to read them', async () => {
+    const fetcher = vi.fn<FetchStub>(async () => new Response(JSON.stringify(previewFoodTrialResult), { headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    vi.stubGlobal('TextDecoder', undefined);
+    const steps: unknown[] = [];
+    const result = await analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: step => steps.push(step) });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ images: [], hint: 'six samosas' });
+    expect(result.items).toHaveLength(1);
+    expect(steps).toEqual([]);
+  });
   it('keeps going when the screen fails to draw a step', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => sse([{ type: 'progress', step: 'look' }, { type: 'result', status: 200, body: previewFoodTrialResult }])));
     const result = await analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token', onProgress: () => { throw new Error('unmounted'); } });

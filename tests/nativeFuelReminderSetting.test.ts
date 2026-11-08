@@ -37,6 +37,8 @@ const reminder = create(() => ({
 const setFuelReminderEnabled = vi.fn();
 const setFuelReminderTime = vi.fn();
 const openSettings = vi.fn(async () => {});
+// The app coming back to the front.
+let backToFront: (() => void) | null = null;
 
 let root: Root;
 let host: HTMLDivElement;
@@ -63,6 +65,7 @@ beforeEach(() => {
   ({ FuelReminderSetting } = loadNativeModule<{ FuelReminderSetting: () => ReactNode }>('components/FuelReminderSetting.tsx', {
     'react-native': { Linking: { openSettings } },
     'react-native-reanimated': { default: { View: Wrap } },
+    '@/lib/appVisibility': { onAppVisible: (listener: () => void) => { backToFront = listener; return () => { backToFront = null; }; } },
     '@/stores/appStore': { useAppStore: app },
     '@/stores/authStore': { useAuthStore: auth },
     '~/lib/fuelReminder': { setFuelReminderEnabled, setFuelReminderTime, useFuelReminderStore: reminder },
@@ -137,6 +140,26 @@ describe('the Fuel reminder card', () => {
     await change(() => reminder.setState({ settings: { enabled: false, minutes: 1290 } }));
     expect(toggle?.value).toBe(false);
     expect(timeRow()).toBeNull();
+  });
+
+  it('keeps the time and the evening window local after a move to another time zone', async () => {
+    const savedTz = process.env.TZ;
+    try {
+      process.env.TZ = 'America/Los_Angeles';
+      reminder.setState({ settings: { enabled: true, minutes: 1200 } });
+      await render();
+      expect(plan.minutesOf(picker!.value)).toBe(20 * 60);
+
+      // Landed in New York; the app comes back to the front.
+      process.env.TZ = 'America/New_York';
+      await change(() => backToFront?.());
+      expect(plan.minutesOf(picker!.value)).toBe(20 * 60);
+      expect(plan.minutesOf(picker!.min!)).toBe(17 * 60);
+      expect(plan.minutesOf(picker!.max!)).toBe(23 * 60);
+    } finally {
+      if (savedTz === undefined) delete process.env.TZ;
+      else process.env.TZ = savedTz;
+    }
   });
 
   it('turns the note red with Open Settings when on and refused, and back once allowed', async () => {

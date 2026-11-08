@@ -1,8 +1,8 @@
-import { format } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 
-import { historyDayKey, historyWorkoutTitle, orderHistoryMovements } from '@/lib/historyMonth';
+import { fetchHistoryMonth, historyDayKey, historyWorkoutTitle, orderHistoryMovements, type HistoryWorkout } from '@/lib/historyMonth';
 import { nextPlannedDay, todayHero, weekSessionTarget } from '@/lib/todayModel';
 import { useAdaptiveSplitScheduling } from '@/hooks/useAdaptiveSplitScheduling';
 import { usePlanSchedule } from '@/hooks/usePlanSchedule';
@@ -222,16 +222,40 @@ export type FinishedToday = {
   /** Logged sets. */
   sets: number;
   minutes: number | null;
+  /** Its day, yyyy-MM-dd: History shows it there when the record opens it. */
+  day: string;
 };
 
-// One History read per account, day and refresh, however many cards ask.
+// One read per account, day and refresh, however many cards ask. A key can
+// come back (History to this month and back again), so each read also has
+// its own number: only the latest read's answer is kept.
 let finishedRead: { key: string; settled: Promise<void> } | null = null;
+let finishedReads = 0;
 
 /**
- * The workout finished today, from History's month (where the past workout
- * screen opens it), read again on each refresh while today is done. Undefined
- * while that read runs with nothing to show yet; null when there is none, or
- * History is on another month.
+ * Today's month as the record reads it while History shows another month
+ * (History is never moved for the card), by the read's key.
+ */
+const useTodayMonth = create<{ key: string | null; workouts: HistoryWorkout[] }>(() => ({ key: null, workouts: [] }));
+
+async function readTodayMonth(key: string, dayKey: string, read: number): Promise<void> {
+  try {
+    const { workouts } = await fetchHistoryMonth(startOfMonth(parseISO(dayKey)));
+    // A read overtaken by a later one, even with the same key, would replace its newer answer.
+    if (read !== finishedReads) return;
+    useTodayMonth.setState({ key, workouts });
+  } catch (error) {
+    // No record: the card says "Trained today", as when History's own read fails.
+    console.error("Could not read today's workout:", error);
+  }
+}
+
+/**
+ * The workout finished today, read again on each refresh while today is
+ * done: from History's month while History shows this month (its edits show
+ * at once), else from a read of this month of its own, so browsing an older
+ * month never takes the record away. Undefined while the read runs with
+ * nothing to show yet; null when there is none.
  */
 export function useFinishedToday(done: boolean): FinishedToday | null | undefined {
   const userId = useAuthStore((state) => state.user?.id);
@@ -244,12 +268,16 @@ export function useFinishedToday(done: boolean): FinishedToday | null | undefine
   // Only this month's History holds today; never move History off the month it shows.
   const thisMonth = format(month, 'yyyy-MM') === dayKey.slice(0, 7);
   // As useTodayPlan: a refresh, or starting or finishing a session, reads again.
-  const key = `${userId}:${dayKey}:${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}`;
+  const key = `${userId}:${dayKey}:${refreshedAt}:${currentWorkout?.id ?? ''}:${currentWorkout?.completed ?? ''}:${thisMonth ? 'history' : 'own'}`;
+  const ownRead = useTodayMonth((state) => (state.key === key ? state.workouts : null));
   const [settled, setSettled] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!done || !userId || !thisMonth) return;
-    if (finishedRead?.key !== key) finishedRead = { key, settled: loadHistoryMonth() };
+    if (!done || !userId) return;
+    if (finishedRead?.key !== key) {
+      const read = ++finishedReads;
+      finishedRead = { key, settled: thisMonth ? loadHistoryMonth() : readTodayMonth(key, dayKey, read) };
+    }
     let cancelled = false;
     void finishedRead.settled.then(() => {
       if (!cancelled) setSettled(key);
@@ -257,10 +285,11 @@ export function useFinishedToday(done: boolean): FinishedToday | null | undefine
     return () => {
       cancelled = true;
     };
-  }, [done, userId, thisMonth, key]);
+  }, [done, userId, thisMonth, key, dayKey]);
 
   // The latest one: History lists a day's workouts newest first.
-  const workout = done && thisMonth ? workouts.find((entry) => entry.completed && historyDayKey(entry) === dayKey) ?? null : null;
+  const shown = thisMonth ? workouts : ownRead ?? [];
+  const workout = done ? shown.find((entry) => entry.completed && historyDayKey(entry) === dayKey) ?? null : null;
   const plan = workout ? plans[workout.id] : undefined;
   const finished = useMemo((): FinishedToday | null => {
     if (!workout) return null;
@@ -273,10 +302,11 @@ export function useFinishedToday(done: boolean): FinishedToday | null | undefine
       marks: sets.map((set) => set.completed),
       sets: sets.filter((set) => set.completed).length,
       minutes: duration ? Math.max(1, Math.round(duration / 60_000)) : null,
+      day: dayKey,
     };
-  }, [workout, plan]);
+  }, [workout, plan, dayKey]);
 
   if (!done) return null;
   if (finished) return finished;
-  return thisMonth && userId && settled !== key ? undefined : null;
+  return userId && settled !== key ? undefined : null;
 }

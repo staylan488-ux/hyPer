@@ -46,52 +46,56 @@ export function bodyWeightWindowStart(days: number, now: Date = new Date()): str
 }
 
 /**
- * Weigh-ins from the last `days` calendar days. getBodyWeightHistory limits by
- * ROWS, so several weigh-ins in one day eat its window — the trend estimator
- * needs a date range instead.
+ * Weigh-ins from the last `days` calendar days, newest first, every one of
+ * them (read in pages, as getAllBodyWeights does). getBodyWeightHistory limits
+ * by ROWS, so several weigh-ins in one day eat its window — the trend
+ * estimator needs a date range instead.
  */
 export async function getBodyWeightHistorySince(
   userId: string,
   days: number,
   now: Date = new Date(),
+  pageSize = BODY_WEIGHT_PAGE_SIZE,
 ): Promise<BodyWeightMeasurement[]> {
-  const since = bodyWeightWindowStart(days, now);
-  const { data, error } = await supabase
-    .from('body_weight_measurements')
-    .select('*')
-    .eq('user_id', userId)
-    .gte('measured_at', since)
-    .order('measured_at', { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data || []) as BodyWeightMeasurement[];
+  return readBodyWeights(userId, bodyWeightWindowStart(days, now), pageSize);
 }
 
-/** Rows per request when reading every weigh-in: the API's own cap. */
+/** Rows per request when reading weigh-ins: the API's own cap. */
 export const BODY_WEIGHT_PAGE_SIZE = 1_000;
 // Years of several-a-day Apple Health readings still fit; a runaway loop doesn't.
 const BODY_WEIGHT_MAX_PAGES = 100;
 
-/**
- * Every weigh-in, newest first, read a page at a time because one request
- * returns at most BODY_WEIGHT_PAGE_SIZE rows. Each page after the first
- * starts at the last time read (not at a row count), so a weigh-in deleted
- * or added mid-read can't shift an untouched one past the next page. That
- * time's rows are read again and kept once; a page holding nothing but that
- * time steps past it (only more weigh-ins in one instant than a page holds
- * could lose one).
- */
+/** Every weigh-in, newest first, read a page at a time (see readBodyWeights). */
 export async function getAllBodyWeights(userId: string, pageSize = BODY_WEIGHT_PAGE_SIZE): Promise<BodyWeightMeasurement[]> {
+  return readBodyWeights(userId, null, pageSize);
+}
+
+/**
+ * The weigh-ins measured at or after `since` (an ISO time; null: all of
+ * them), newest first, read a page at a time because one request returns at
+ * most BODY_WEIGHT_PAGE_SIZE rows. Each page after the first starts at the
+ * last time read (not at a row count), so a weigh-in deleted or added mid-read
+ * can't shift an untouched one past the next page. That time's rows are read
+ * again and kept once. A page holding nothing but that time goes on through
+ * the rest of it by id (the order within a time), then steps past it.
+ */
+async function readBodyWeights(userId: string, since: string | null, pageSize: number): Promise<BodyWeightMeasurement[]> {
   const rows: BodyWeightMeasurement[] = [];
   const seen = new Set<string>();
-  // Where the next page starts: at this time, or just before it.
+  // Where the next page starts: at this time, after this id within it, or just before it.
   let fromTime: string | null = null;
+  let afterId: string | null = null;
   let pastTime = false;
   for (let page = 0; page < BODY_WEIGHT_MAX_PAGES; page++) {
     let query = supabase
       .from('body_weight_measurements')
       .select('*')
       .eq('user_id', userId);
-    if (fromTime !== null) query = pastTime ? query.lt('measured_at', fromTime) : query.lte('measured_at', fromTime);
+    if (since !== null) query = query.gte('measured_at', since);
+    if (fromTime !== null) {
+      if (afterId !== null) query = query.eq('measured_at', fromTime).gt('id', afterId);
+      else query = pastTime ? query.lt('measured_at', fromTime) : query.lte('measured_at', fromTime);
+    }
     const { data, error } = await query
       .order('measured_at', { ascending: false })
       .order('id', { ascending: true })
@@ -103,10 +107,21 @@ export async function getAllBodyWeights(userId: string, pageSize = BODY_WEIGHT_P
       seen.add(row.id);
       rows.push(row);
     }
+    if (afterId !== null) {
+      // The rest of that time: on by id while pages fill, then past it.
+      if (read.length < pageSize) {
+        afterId = null;
+        pastTime = true;
+      } else {
+        afterId = read[read.length - 1].id;
+      }
+      continue;
+    }
     if (read.length < pageSize) break;
-    const last = read[read.length - 1].measured_at;
-    pastTime = last === fromTime;
-    fromTime = last;
+    const last = read[read.length - 1];
+    if (last.measured_at === fromTime && !pastTime) afterId = last.id;
+    else pastTime = false;
+    fromTime = last.measured_at;
   }
   return rows;
 }

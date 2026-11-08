@@ -18,10 +18,15 @@ import { Label } from './Label';
 import { Hairline, Row } from './Row';
 import { SwipeRow } from './SwipeRow';
 
-/** "Today, 8:00 AM", "Oct 4, 8:00 AM", with the app it came from when it wasn't typed here. */
+/**
+ * "Today, 8:00 AM", "Oct 4, 8:00 AM", "Nov 6, 2025, 8:00 AM" before this year,
+ * with the app it came from when it wasn't typed here.
+ */
 export function measuredLabel(entry: BodyWeightMeasurement, todayKey: string): string {
   const date = new Date(entry.measured_at);
-  const when = `${dayKey(date) === todayKey ? 'Today' : format(date, 'MMM d')}, ${format(date, 'h:mm a')}`;
+  const key = dayKey(date);
+  const day = key === todayKey ? 'Today' : format(date, key.slice(0, 4) === todayKey.slice(0, 4) ? 'MMM d' : 'MMM d, yyyy');
+  const when = `${day}, ${format(date, 'h:mm a')}`;
   return entry.source === 'manual' ? when : `${when} · ${entry.source_name}`;
 }
 

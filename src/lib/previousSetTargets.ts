@@ -103,19 +103,38 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeC
 
   if (workoutIds.length === 0) return {};
 
-  const { data: previousSets, error: previousSetsError } = await supabase
-    .from('sets')
-    .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
-    .in('workout_id', workoutIds)
-    .in('exercise_id', exerciseIds);
+  // A page at a time, because one request returns at most
+  // PREVIOUS_SETS_PAGE_SIZE rows and a cut-off reply could drop last time's
+  // sets. Each page starts after the last set read (by its id), not at a row
+  // count, so a set added or deleted mid-read never shifts another past a page.
+  const previousSets: PreviousSetSummary[] = [];
+  let after: string | null = null;
+  for (;;) {
+    let query = supabase
+      .from('sets')
+      .select('id, workout_id, exercise_id, set_number, weight, reps, rpe, completed')
+      .in('workout_id', workoutIds)
+      .in('exercise_id', exerciseIds);
+    if (after !== null) query = query.gt('id', after);
+    const { data, error: previousSetsError } = await query
+      .order('id', { ascending: true })
+      .limit(PREVIOUS_SETS_PAGE_SIZE);
 
-  if (previousSetsError) {
-    console.error('Error loading previous sets for target-to-beat:', previousSetsError);
-    return null;
+    if (previousSetsError) {
+      console.error('Error loading previous sets for target-to-beat:', previousSetsError);
+      return null;
+    }
+    const page = (data || []) as Array<PreviousSetSummary & { id: string }>;
+    previousSets.push(...page);
+    if (page.length < PREVIOUS_SETS_PAGE_SIZE) break;
+    after = page[page.length - 1].id;
   }
 
-  return buildPreviousSetTargets(workoutIds, (previousSets || []) as PreviousSetSummary[]);
+  return buildPreviousSetTargets(workoutIds, previousSets);
 }
+
+/** Rows per request for last time's sets: the API's own cap. */
+const PREVIOUS_SETS_PAGE_SIZE = 1_000;
 
 export type PreviousMovementNotes = Record<string, { note: string; date: string }>;
 

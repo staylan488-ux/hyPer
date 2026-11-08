@@ -68,12 +68,14 @@ export function useFinishWorkout(session: SessionModel | null) {
         // Saving the quick start can outlast an account or workout change.
         // completeWorkout reads the current store, so never hand it a new one.
         if (!isCurrentWorkout()) return;
+        // Skipped movements' unlogged sets leave before the workout closes, so
+        // History counts what was done; their logged sets stay. A failure keeps
+        // the workout open, so Finish can be tried again.
+        if (skipped.length) await store.removeUnloggedSets(finished.workoutId, skipped);
+        if (!isCurrentWorkout()) return;
         await store.completeWorkout();
         if (!isCurrentAccount() || useAppStore.getState().currentWorkout) return;
         if (saveTemplate) void useAppStore.getState().fetchFlexTemplates({ force: true });
-        // Skipped movements leave the finished workout, so History counts what
-        // was done. Their logged sets stay; if this fails they show as unlogged.
-        if (skipped.length) void useAppStore.getState().removeUnloggedSets(finished.workoutId, skipped).catch(() => {});
         useFinishedStore.getState().set(summary);
         stopRest();
         haptics.success();

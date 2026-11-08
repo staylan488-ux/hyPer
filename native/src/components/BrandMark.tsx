@@ -32,13 +32,15 @@ type BrandMarkProps = {
   size: number;
   /** The launch intro lands here; hidden until it hands over. */
   anchor?: boolean;
+  /** Today's corner mark: steps back as Today scrolls (markAtRest). The sign-in and offline emblems never do. */
+  fadesWithScroll?: boolean;
   /** Lay out by the ink, not the text box: no room above the cap, below the baseline or before the stem. */
   tight?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
 /** hyPer's mark: the red italic P. */
-export function BrandMark({ size, anchor = false, tight = false, style }: BrandMarkProps) {
+export function BrandMark({ size, anchor = false, fadesWithScroll = false, tight = false, style }: BrandMarkProps) {
   const c = useBlanc();
   const ref = useRef<ComponentRef<typeof View>>(null);
   const box = markBox(size);
@@ -52,7 +54,7 @@ export function BrandMark({ size, anchor = false, tight = false, style }: BrandM
     });
   }, [anchor, size]);
 
-  const shown = useAnimatedStyle(() => ({ opacity: anchor ? markShown.value * markAtRest.value : 1 }));
+  const shown = useAnimatedStyle(() => ({ opacity: (anchor ? markShown.value : 1) * (fadesWithScroll ? markAtRest.value : 1) }));
 
   // The outer view is the caller's to lay out; the inner one is the P's text
   // box, which the intro measures and lands on.

@@ -359,8 +359,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   stays in the list as Skipped (a tap brings it back as the one up now; Undo
   at the foot does the same for 5 s), its unlogged sets leave the counts and
   never come up next, and a superset partner carries on alone. Finish names
-  what was skipped and, once the workout is saved, deletes those unlogged
-  sets (`removeUnloggedSets`) so History shows what was done. Logged sets
+  what was skipped and deletes those unlogged sets (`removeUnloggedSets`)
+  before it closes the workout, so History shows what was done; if that
+  fails, the workout stays open to finish again. Logged sets
   stay, so beat last time and next time's "Last time" read only logged sets.
   Quick starts and a movement chosen again never keep a skip
   (`withoutSessionMarks`).
@@ -583,7 +584,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   (an Undo a newer delete replaced just says it failed). A delete that
   answered with a failure keeps its Undo, since the answer may have been lost
   after the row went; its alert says the delete couldn't be confirmed (never
-  "Not deleted"), and the store reads the day again to show what is saved. The bar never runs out behind any of Fuel's alerts
+  "Not deleted"), and the store reads the day again to show what is saved.
+  Deleting a meal of your own (its foods move to no meal) fails the same
+  way: the same alert, and the day's meals and foods read again. The bar never runs out behind any of Fuel's alerts
   (`holdingUndoAlert`: failures and Copy again's question): dismissed,
   whatever it offers then gets its full time again. A quick-add's
   tick takes the food back out on a second tap; its hold menu and VoiceOver

@@ -1,3 +1,4 @@
+import { parseISO } from 'date-fns';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
@@ -13,6 +14,7 @@ import { Tally } from '~/components/Tally';
 import { speak, useLargeText } from '~/lib/accessibility';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
+import { selectHistoryDay } from '~/lib/history';
 import { newProgram } from '~/lib/program';
 import { useStartSession } from '~/lib/session';
 import { useFinishedToday, type FinishedToday } from '~/lib/today';
@@ -220,7 +222,11 @@ function FinishedCard({ record, next }: { record: FinishedToday; next: string | 
         // VoiceOver reads the record as one stop, its length in words ("1 h 5 min" as "1 hour 5 minutes").
         spoken={[record.title, length, 'Done', counted, line].filter(Boolean).join(', ')}
         hint="Opens the workout"
-        onPress={() => router.push({ pathname: '/train/past', params: { id: record.id } })}
+        onPress={() => {
+          // The workout screen reads History's month: History moves to the record's day first.
+          selectHistoryDay(parseISO(record.day));
+          router.push({ pathname: '/train/past', params: { id: record.id } });
+        }}
       />
     </Animated.View>
   );

@@ -150,8 +150,14 @@ export function parseReminderHistory(raw: string | null | undefined): ReminderHi
   }
 }
 
-/** A Date showing the time in the picker (mid-January: no DST change falls on it). */
-export const reminderTimeDate = (minutes: number) => new Date(2026, 0, 15, Math.floor(minutes / 60), minutes % 60);
+/**
+ * The picker's day at local midnight, as a time (mid-January: no DST change
+ * falls on it). Read again after a move to another time zone: the same time
+ * is then another moment.
+ */
+export const reminderPickerDay = () => new Date(2026, 0, 15).getTime();
+/** A Date showing the time in the picker, on its day. */
+export const reminderTimeDate = (minutes: number, day = reminderPickerDay()) => new Date(day + minutes * 60_000);
 export const minutesOf = (date: Date) => date.getHours() * 60 + date.getMinutes();
 
 export function fuelReminderNote(goal: Goal, hasTarget: boolean): string {
