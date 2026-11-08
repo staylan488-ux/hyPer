@@ -132,6 +132,30 @@ describe("Today's record while History shows another month", () => {
     expect(fetchHistoryMonth).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps the newer record when History goes to this month and back, and the first read answers last', async () => {
+    type Month = { workouts: Workout[]; activities: [] };
+    const first = deferred<Month>();
+    const second = deferred<Month>();
+    fetchHistoryMonth.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const oneSet = { ...pushDay, sets: [{ completed: true }] };
+    const twoSets = { ...pushDay, sets: [{ completed: true }, { completed: true }] };
+
+    historyStore.setState({ month: october, workouts: [] });
+    await show();
+    expect(host.textContent).toBe('reading');
+    // History goes to this month, where the second set has been logged, then back to October.
+    await act(async () => historyStore.setState({ month: november, workouts: [twoSets] }));
+    expect(host.textContent).toBe('Push · 2 sets · 2026-11-07');
+    await act(async () => historyStore.setState({ month: october, workouts: [] }));
+    expect(fetchHistoryMonth).toHaveBeenCalledTimes(2);
+
+    await act(async () => second.resolve({ workouts: [twoSets], activities: [] }));
+    expect(host.textContent).toBe('Push · 2 sets · 2026-11-07');
+    // The first read, begun before the second set was logged, answers last.
+    await act(async () => first.resolve({ workouts: [oneSet], activities: [] }));
+    expect(host.textContent).toBe('Push · 2 sets · 2026-11-07');
+  });
+
   it("uses History's own month while it shows this month", async () => {
     historyStore.setState({ month: november, workouts: [pushDay] });
 

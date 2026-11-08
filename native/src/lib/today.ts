@@ -226,8 +226,11 @@ export type FinishedToday = {
   day: string;
 };
 
-// One read per account, day and refresh, however many cards ask.
+// One read per account, day and refresh, however many cards ask. A key can
+// come back (History to this month and back again), so each read also has
+// its own number: only the latest read's answer is kept.
 let finishedRead: { key: string; settled: Promise<void> } | null = null;
+let finishedReads = 0;
 
 /**
  * Today's month as the record reads it while History shows another month
@@ -235,11 +238,11 @@ let finishedRead: { key: string; settled: Promise<void> } | null = null;
  */
 const useTodayMonth = create<{ key: string | null; workouts: HistoryWorkout[] }>(() => ({ key: null, workouts: [] }));
 
-async function readTodayMonth(key: string, dayKey: string): Promise<void> {
+async function readTodayMonth(key: string, dayKey: string, read: number): Promise<void> {
   try {
     const { workouts } = await fetchHistoryMonth(startOfMonth(parseISO(dayKey)));
-    // Only the latest read keeps its answer: one a refresh overtook would replace the newer one.
-    if (finishedRead?.key !== key) return;
+    // A read overtaken by a later one, even with the same key, would replace its newer answer.
+    if (read !== finishedReads) return;
     useTodayMonth.setState({ key, workouts });
   } catch (error) {
     // No record: the card says "Trained today", as when History's own read fails.
@@ -271,7 +274,10 @@ export function useFinishedToday(done: boolean): FinishedToday | null | undefine
 
   useEffect(() => {
     if (!done || !userId) return;
-    if (finishedRead?.key !== key) finishedRead = { key, settled: thisMonth ? loadHistoryMonth() : readTodayMonth(key, dayKey) };
+    if (finishedRead?.key !== key) {
+      const read = ++finishedReads;
+      finishedRead = { key, settled: thisMonth ? loadHistoryMonth() : readTodayMonth(key, dayKey, read) };
+    }
     let cancelled = false;
     void finishedRead.settled.then(() => {
       if (!cancelled) setSettled(key);
