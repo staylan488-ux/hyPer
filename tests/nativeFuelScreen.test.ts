@@ -34,6 +34,7 @@ type CapsuleProps = { title: string; variant?: 'primary' | 'quiet'; onPress: () 
 type HeaderItem = { label: string; onPress: () => void };
 type RowProps = { title: string; detail?: string | readonly string[]; value?: string; accessibilityLabel?: string; onPress?: () => void; menu?: { title: string; run?: () => void }[] };
 type UndoBarProps = { label: string | null; busy?: boolean; onUndo: () => void };
+type AlertButton = { text: string; style?: string; onPress?: () => void };
 type MarkProps = { logged: boolean; kcal?: number; target?: number | null };
 type Target = { calories: number; protein: number; carbs: number; fat: number };
 
@@ -305,11 +306,52 @@ describe("Fuel's Undo after a delete", () => {
     expect(restoreEntry).toHaveBeenCalledOnce();
 
     await act(async () => { answer(false); });
-    expect(alert).toHaveBeenCalledWith('Not put back', 'Check your connection and try again.');
+    expect(alert).toHaveBeenCalledWith('Not put back', 'Check your connection and try again.', expect.any(Array), expect.anything());
     expect(undoBar.props).toMatchObject({ label: 'Oats deleted', busy: false });
 
     await act(async () => { undoBar.props!.onUndo(); });
     expect(restoreEntry).toHaveBeenCalledTimes(2);
     expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('keeps a failed Undo past its time while the failure shows, until Try again puts the entry back', async () => {
+    // The bar's countdown runs on these timers (only Date is faked for the rest of the file).
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
+    restoreEntry.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await renderFuel();
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(alert).toHaveBeenCalledOnce();
+    // The alert stays up well past the bar's time (VoiceOver's 20 seconds too).
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(undoBar.props?.label).toBe('Oats deleted');
+
+    const [title, message, buttons] = alert.mock.calls[0] as [string, string, AlertButton[]];
+    expect([title, message]).toEqual(['Not put back', 'Check your connection and try again.']);
+
+    await act(async () => { buttons.find((button) => button.text === 'Try again')!.onPress!(); });
+    expect(restoreEntry).toHaveBeenCalledTimes(2);
+    expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('gives the bar its full time again once a failure is dismissed', async () => {
+    // The bar's countdown runs on these timers (only Date is faked for the rest of the file).
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
+    restoreEntry.mockResolvedValueOnce(false);
+    await renderFuel();
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    await act(async () => { undoBar.props!.onUndo(); });
+    const buttons = alert.mock.calls[0][2] as AlertButton[];
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    await act(async () => { buttons.find((button) => button.text === 'Cancel')!.onPress!(); });
+    await act(async () => { vi.advanceTimersByTime(4_000); });
+    expect(undoBar.props?.label).toBe('Oats deleted');
+    await act(async () => { vi.advanceTimersByTime(1_500); });
+    expect(undoBar.props?.label).toBeNull();
+    expect(restoreEntry).toHaveBeenCalledOnce();
   });
 });

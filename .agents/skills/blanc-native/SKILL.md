@@ -579,7 +579,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   Undo and second chances: deleting a Fuel entry shows an Undo bar over the
   tab bar (5 s, 20 s with VoiceOver; `restoreEntry` writes the row back,
   then reads the month and today's totals again). Undo stays, busy, until the
-  write is confirmed, and stays to try again after a failure. A quick-add's
+  write is confirmed. A failure's alert offers Try again, and the bar never
+  runs out behind it: dismissed, it stays its full time again. A quick-add's
   tick takes the food back out on a second tap; its hold menu and VoiceOver
   say Log only before the add and Take it out after, and nothing logs that
   food and meal again while its removal runs. Edit entry closes
