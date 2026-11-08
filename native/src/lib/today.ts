@@ -238,6 +238,8 @@ const useTodayMonth = create<{ key: string | null; workouts: HistoryWorkout[] }>
 async function readTodayMonth(key: string, dayKey: string): Promise<void> {
   try {
     const { workouts } = await fetchHistoryMonth(startOfMonth(parseISO(dayKey)));
+    // Only the latest read keeps its answer: one a refresh overtook would replace the newer one.
+    if (finishedRead?.key !== key) return;
     useTodayMonth.setState({ key, workouts });
   } catch (error) {
     // No record: the card says "Trained today", as when History's own read fails.

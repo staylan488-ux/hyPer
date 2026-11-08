@@ -23,6 +23,13 @@ const november = new Date(2026, 10, 1);
 const fetchHistoryMonth = vi.fn<(month: Date) => Promise<{ workouts: Workout[]; activities: [] }>>();
 const loadHistoryMonth = vi.fn<() => Promise<void>>();
 const historyStore = create(() => ({ month: november, workouts: [] as Workout[], plans: {} as Record<string, unknown> }));
+const accountDay = create(() => ({ dayKey: '2026-11-07', refreshedAt: 1 }));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((yes) => { resolve = yes; });
+  return { promise, resolve };
+}
 
 let useFinishedToday: (done: boolean) => Finished;
 let root: Root;
@@ -38,6 +45,7 @@ beforeEach(() => {
   fetchHistoryMonth.mockReset();
   loadHistoryMonth.mockReset().mockResolvedValue();
   historyStore.setState({ month: november, workouts: [], plans: {} });
+  accountDay.setState({ dayKey: '2026-11-07', refreshedAt: 1 });
   ({ useFinishedToday } = loadNativeModule<{ useFinishedToday: typeof useFinishedToday }>('lib/today.ts', {
     'date-fns': dateFns,
     zustand: { create },
@@ -51,7 +59,7 @@ beforeEach(() => {
     './history': { loadHistoryMonth, useHistoryStore: historyStore },
     '@/stores/appStore': { useAppStore: create(() => ({ currentWorkout: null })) },
     '@/stores/authStore': { useAuthStore: create(() => ({ user: { id: 'user-1' } })) },
-    './accountData': { useAccountDay: create(() => ({ dayKey: '2026-11-07', refreshedAt: 1 })), useWorkoutsRevision: create(() => ({ revision: 0 })) },
+    './accountData': { useAccountDay: accountDay, useWorkoutsRevision: create(() => ({ revision: 0 })) },
     // useTodayPlan's imports; useFinishedToday reads none of them.
     '@/lib/todayModel': {},
     '@/hooks/useAdaptiveSplitScheduling': {},
@@ -102,6 +110,26 @@ describe("Today's record while History shows another month", () => {
 
     expect(host.textContent).toBe('Trained today');
     expect(logged).toHaveBeenCalledWith("Could not read today's workout:", expect.any(Error));
+  });
+
+  it('keeps the record when a refresh overtakes a slow read and the older reply lands last', async () => {
+    historyStore.setState({ month: october, workouts: [] });
+    type Month = { workouts: Workout[]; activities: [] };
+    const older = deferred<Month>();
+    const newer = deferred<Month>();
+    fetchHistoryMonth.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+
+    await show();
+    expect(host.textContent).toBe('reading');
+    // A pull to refresh while the first read runs.
+    await act(async () => accountDay.setState({ refreshedAt: 2 }));
+    expect(fetchHistoryMonth).toHaveBeenCalledTimes(2);
+
+    await act(async () => newer.resolve({ workouts: [pushDay], activities: [] }));
+    expect(host.textContent).toBe('Push · 1 sets · 2026-11-07');
+    await act(async () => older.resolve({ workouts: [pushDay], activities: [] }));
+    expect(host.textContent).toBe('Push · 1 sets · 2026-11-07');
+    expect(fetchHistoryMonth).toHaveBeenCalledTimes(2);
   });
 
   it("uses History's own month while it shows this month", async () => {
