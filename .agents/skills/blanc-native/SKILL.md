@@ -38,7 +38,11 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   Capacitor app's items (service `<bundle ID>.auth`), so the 2.0 update kept
   people signed in.
 - Auth uses the shared `authStore` and `authScreen` rule; the root layout guards
-  the app, sign-in and offline screens with `Stack.Protected`. After sign-in the
+  the app, sign-in, new password and offline screens with `Stack.Protected`. A
+  password reset link signs in with `PASSWORD_RECOVERY`, which shows New
+  password before the app. A link that fails says so on sign-in
+  (`native/src/lib/authLink.ts`). Delete account (You › Account) calls the
+  `delete-account` Edge Function, then signs out locally. After sign-in the
   tab layout loads the account (`native/src/lib/accountData.ts`).
 - The launch copy ([launchCache](../../../native/src/lib/launchCache.ts), rules in
   [launchSnapshot](../../../native/src/lib/launchSnapshot.ts)) keeps the last
@@ -101,7 +105,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   follows the bundle ID iOS reports (`modules/hyper-keychain/bundle.ts`,
   `WidgetSnapshotStore.appScheme`), never a hard-coded value. Links from
   outside go through [+native-intent](../../../native/src/app/+native-intent.tsx): the email
-  confirmation's `auth/callback` exchanges its code there.
+  confirmation's and password reset's `auth/callback` exchanges its code there.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
   the live workout (it leads with the movement and set and the live clock, and

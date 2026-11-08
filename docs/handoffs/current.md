@@ -52,6 +52,23 @@ history keep them (this file at commit b3f61df has the long version).
   photo worker (`deploy/photo-worker`) still runs on the VM with the
   2026-09-29 models and serves only a device set to the worker.
 
+## Account deletion and forgot password (branch `claude/project-thread-a2w5po`)
+
+- You › Account has Delete account (one confirm), backed by the new
+  `delete-account` Edge Function: it tells WHOOP, removes the account's food
+  analysis ledger files, then deletes the auth user, and every table's rows go
+  with it (they all cascade from `auth.users` through `profiles`). Sign-in has
+  Forgot password?: the reset link returns to `<scheme>://auth/callback`
+  (the URL email confirmation already uses), signs in on this phone and shows
+  the New password screen (`native/src/app/new-password.tsx`) before the app.
+- Not deployed. Deletion needs `supabase functions deploy delete-account
+  --project-ref <ref>` (it reads the existing `SUPABASE_SERVICE_ROLE_KEY` and
+  `FOOD_ANALYSIS_BUCKET` secrets); until then Delete account says it couldn't
+  delete. No migration. Check that the Auth redirect list still names
+  `app.hyper.mobile://auth/callback` (sign-up confirmation needs it too).
+- Not done: revoking the Sign in with Apple token on deletion (needs the
+  Apple key and the provider refresh token, which Supabase doesn't keep).
+
 ## Not yet checked on a phone
 
 Each of these passed tests and, where noted in its PR, the simulator with
@@ -124,7 +141,6 @@ sample data. None has been seen on a phone.
 - Minor: merging 3+ activities in one step, the Target sets field in History,
   RPE below 6, Train's week strip, Progress's training-time detail, You's
   About build number.
-- An account deletion row: an App Store review need, with backend work.
 - Left as is on purpose (interaction audit, 2026-10-28): logged sets in a live
   workout are corrected, not deleted (History deletes them); the Appearance
   row's whole-row menu (needs a SwiftUI row); a long press on Fuel's meal
