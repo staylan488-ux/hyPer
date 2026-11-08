@@ -62,6 +62,7 @@ let snapshot: { userId: string; logs: RecentLog[]; at: number } | null = null;
 // Fuel's focus: the card's cleanup runs as Fuel is left.
 const focus: { effect?: () => void | (() => void); cleanup?: void | (() => void) } = {};
 const leaveFuel = () => act(async () => { focus.cleanup?.(); focus.cleanup = undefined; });
+const returnToFuel = () => act(async () => { focus.cleanup = focus.effect?.(); });
 
 const GapPicks = loadNativeModule<{ GapPicks: ComponentType<Record<string, unknown>> }>('fuel/GapPicks.tsx', {
   'date-fns': dates,
@@ -260,6 +261,58 @@ describe('logging a pick', () => {
     await leaveFuel();
     await show({ totals: totals(2700, 160) });
     expect(shown()).toEqual([]);
+  });
+
+  it('reuses an unconfirmed write after leaving Fuel, even when a fresh read closes the gap', async () => {
+    const ids: string[] = [];
+    const persisted = new Set<string>();
+    saveQuickAdd.mockImplementation(async (_food, entry) => {
+      const id = entry.pending.take();
+      ids.push(id);
+      persisted.add(id); // The server commits both attempts; the first response is lost.
+      return ids.length > 1;
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(rows['Protein shake'].state).toBe('error');
+
+    await leaveFuel();
+    vi.setSystemTime(new Date(`${TODAY}T20:00:00`));
+    await show({ totals: totals(2700, 160) });
+    await returnToFuel();
+    expect(rows['Protein shake']?.state).toBe('error');
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    expect(persisted.size).toBe(1);
+    expect(saveQuickAdd.mock.calls[1][1]).toEqual(saveQuickAdd.mock.calls[0][1]);
+    expect(rows['Protein shake'].state).toBe('done');
+    await leaveFuel();
+    await returnToFuel();
+    expect(shown()).toEqual([]);
+  });
+
+  it('keeps the retry id when a save fails after Fuel was left', async () => {
+    let finish!: (saved: boolean) => void;
+    const ids: string[] = [];
+    saveQuickAdd.mockImplementation((_food, entry) => {
+      ids.push(entry.pending.take());
+      return new Promise<boolean>((resolve) => { finish = resolve; });
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(rows['Protein shake'].state).toBe('saving');
+    await leaveFuel();
+    await act(async () => { finish(false); });
+    await returnToFuel();
+    await leaveFuel();
+    await returnToFuel();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    await act(async () => { finish(true); });
+    expect(rows['Protein shake'].state).toBe('done');
   });
 });
 

@@ -91,7 +91,7 @@ export function GapPicks({ userId, day, totals, target, goal, dayLogs }: {
     [evening, kept, day, totals, target, goal, hidden, eatenToday],
   );
 
-  // The card as first touched, and each pick's add; kept until Fuel is left.
+  // Keep unconfirmed adds (and their original card) across visits for a safe retry.
   const [held, setHeld] = useState<{ day: string; plan: GapPlan } | null>(null);
   const [states, setStates] = useState<Record<string, QuickAddState>>({});
   const pendingAdds = useRef(new Map<string, PendingAdd>());
@@ -104,8 +104,8 @@ export function GapPicks({ userId, day, totals, target, goal, dayLogs }: {
     useCallback(() => {
       setHidden(readHidden(userId));
       return () => {
-        // Left with a save running: keep it all, so its answer still lands on the row.
-        for (const add of pendingAdds.current.values()) if (add.inFlight) return;
+        // A failed response may still have committed. Keep its id as well as a running save's.
+        if (pendingAdds.current.size > 0) return;
         for (const added of addedEntries.current.values()) if (added.removing) return;
         pendingAdds.current.clear();
         addedEntries.current.clear();
