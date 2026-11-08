@@ -399,6 +399,19 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   finish label adds a "Beat last time" row when any did. The tab layout runs
   the one "last time" lookup (`usePreviousTargetsLookup`), so Finish from
   Today counts too. Corrections never celebrate.
+- Warm-up and plates (the owner's pick, 2026-11-08): beside Add RPE the set
+  card offers Warm-up before a movement's first set (nothing of it logged, a
+  barbell or compound movement, a weight with a ramp to it) and otherwise
+  Plates on a barbell weight above the bar. Both open one sheet
+  (`native/src/app/warm-up.tsx`) at the weight typed: warm-up rows to tick
+  off (kept for the launch only, never logged, so they stay out of volume
+  and last time), then the working set's plates drawn on a bar
+  ([PlateBar](../../../native/src/components/PlateBar.tsx)) with the Bar
+  menu (45, 35, 25 or 15 lb, kept per movement on this phone per account).
+  The ramp, plates and bar rules are `src/lib/warmupPlates.ts`: plates 45,
+  25, 10, 5 and 2.5 lb heaviest first; a barbell ramps from the empty bar
+  through about 40, 60 and 80% for 5, 3 and 2, each step moved up to 10 lb
+  to need fewer plates; other equipment gets about 50% for 8 and 75% for 4.
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the
