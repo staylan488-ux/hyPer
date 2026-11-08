@@ -259,7 +259,19 @@ describe('reading every weigh-in', () => {
       };
       const query = {
         select: () => query,
-        eq: () => query,
+        eq: (column: string, value: string) => {
+          if (column === 'measured_at') {
+            from = `= ${value}`;
+            keep.push((row) => row.measured_at === value);
+          }
+          return query;
+        },
+        gt: (column: string, value: string) => {
+          expect(column).toBe('id');
+          from = `${from} > ${value}`;
+          keep.push((row) => row.id > value);
+          return query;
+        },
         gte: (column: string, value: string) => {
           expect(column).toBe('measured_at');
           keep.push((row) => Date.parse(row.measured_at) >= Date.parse(value));
@@ -330,7 +342,19 @@ describe('reading every weigh-in', () => {
     const pages = table(stored);
     const read = await getAllBodyWeights('user-1', 2);
     expect(read.map((row) => row.id)).toEqual(['a', 'b', 'c', 'd']);
-    expect(pages).toEqual([null, `<= ${at(1)}`, `< ${at(1)}`]);
+    // Past it once the rest of that time, after the last id read, is read.
+    expect(pages).toEqual([null, `<= ${at(1)}`, `= ${at(1)} > c`, `< ${at(1)}`]);
+  });
+
+  it('reads every weigh-in of a time shared by more than a page', async () => {
+    const stored = [
+      ...['t0', 't1', 't2', 't3', 't4'].map((id) => ({ id, measured_at: at(0) })),
+      { id: 'z', measured_at: at(1) },
+    ];
+    const pages = table(stored, undefined, 2);
+    const read = await getAllBodyWeights('user-1', 2);
+    expect(read.map((row) => row.id)).toEqual(['t0', 't1', 't2', 't3', 't4', 'z']);
+    expect(pages).toEqual([null, `<= ${at(0)}`, `= ${at(0)} > t1`, `= ${at(0)} > t3`, `< ${at(0)}`]);
   });
 
   it('reads every weigh-in in the recent window, past the API\'s row cap, and none before it', async () => {
