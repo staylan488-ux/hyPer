@@ -11,7 +11,7 @@ import { TabScroll } from '~/components/TabScroll';
 import { TrendChart } from '~/components/TrendChart';
 import { speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
-import { selectHistoryDay } from '~/lib/history';
+import { showWorkoutInHistory } from '~/lib/history';
 import { latestFigure, recordRows, sessionDate, setsLine, trendPointLabel, trendSummary } from '~/lib/movementLines';
 import { useMovementHistory } from '~/lib/records';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
@@ -38,8 +38,8 @@ export default function MovementHistoryScreen() {
   useAnnounce(refreshFailed);
 
   const openSession = (workoutId: string, day: string) => {
-    // The workout screen reads History's month: History moves to the session's day first.
-    selectHistoryDay(parseISO(day));
+    // The workout screen reads History's month, so History holds the session's day first.
+    showWorkoutInHistory(workoutId, parseISO(day));
     router.push({ pathname: '/train/past', params: { id: workoutId } });
   };
 
@@ -81,8 +81,9 @@ export default function MovementHistoryScreen() {
                     {figure.unit}
                   </BlancText>
                 </View>
+                {/* At the largest text sizes the line breaks only between its parts, never inside the date. */}
                 <BlancText variant="secondary" tone="graphite">
-                  {`${figure.what} · ${sessionDate(latest.day, todayKey)}`}
+                  {`${figure.what}\u00a0· ${sessionDate(latest.day, todayKey).replace(/ /g, '\u00a0')}`}
                 </BlancText>
               </View>
             ) : null}

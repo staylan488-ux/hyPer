@@ -161,6 +161,19 @@ export function selectHistoryDay(date: Date) {
 }
 
 /**
+ * Puts a workout's day on screen so its page can open (train/past reads
+ * History's month): moves to its month, or reads the month on screen when it
+ * doesn't hold the workout yet (History not opened this launch), since
+ * choosing a day within that month reads nothing.
+ */
+export function showWorkoutInHistory(workoutId: string, date: Date) {
+  const state = useHistoryStore.getState();
+  const unread = isSameMonth(date, state.month) && !state.workouts.some((workout) => workout.id === workoutId);
+  selectHistoryDay(date);
+  if (unread) void loadHistoryMonth(startOfMonth(date));
+}
+
+/**
  * When History still shows a today that has passed (it was left open past
  * midnight), moves it to the new today and reads that month again. Returns
  * true when it did.

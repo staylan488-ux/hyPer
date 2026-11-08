@@ -190,7 +190,8 @@ export function TrendChart({
               pointerEvents="none"
               accessibilityElementsHidden
               importantForAccessibility="no-hide-descendants"
-              style={{ position: 'absolute', right: 0, width: SCALE_COLUMN, top: tick.y - 8, height: 16, justifyContent: 'center' }}>
+              // Tall enough for the label's line at its largest (1.3×), so it only ever shrinks to fit the column's width.
+              style={{ position: 'absolute', right: 0, width: SCALE_COLUMN, top: tick.y - 12, height: 24, justifyContent: 'center' }}>
               <BlancText
                 variant="footnote"
                 tone="graphite"
@@ -198,7 +199,7 @@ export function TrendChart({
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 maxFontSizeMultiplier={AXIS_MAX_SCALE}
-                style={{ textAlign: 'right', fontVariant: ['tabular-nums'] }}>
+                style={{ textAlign: 'right', lineHeight: 14, fontVariant: ['tabular-nums'] }}>
                 {tick.label}
               </BlancText>
             </View>
