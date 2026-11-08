@@ -387,7 +387,13 @@ export const useFuelStore = create<FuelState>((set, get) => {
     }),
 
     deleteGroup: editsCopy(async (group: NutritionGroup) => {
-      if (!(await deleteNutritionGroup(group).catch(() => false))) return false;
+      if (!(await deleteNutritionGroup(group).catch(() => false))) {
+        // As a failed entry delete: either step may have landed before its
+        // answer was lost, so older reads are dropped and the shown month and
+        // today's totals read again, and the server decides the grouping.
+        void get().refreshAfterWrite();
+        return false;
+      }
       set({
         groups: get().groups.filter((candidate) => candidate.id !== group.id),
         logs: get().logs.map((log) => (log.group_id === group.id ? { ...log, group_id: null, meal_type: null } : log)),

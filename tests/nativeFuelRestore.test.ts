@@ -211,6 +211,51 @@ describe('deleting while the loaded month refreshes', () => {
     expect(useFuelStore.getState().todayTotals.calories).toBe(500);
   });
 
+  describe('a meal deleted while its answer is lost', () => {
+    const snack = group('t-snack', DAY, null, 2);
+    const withSnack = () => [...copyMonth().logs, log('s', DAY, 150, 't-snack')];
+    // The server moved the snack's food to no meal and deleted the meal.
+    const deleted = () => {
+      reads.monthGroups = { data: [], error: null };
+      reads.food.mockResolvedValue({ data: withSnack().map((entry) => (entry.id === 's' ? { ...entry, group_id: null } : entry)), error: null });
+    };
+    beforeEach(async () => {
+      reads.monthGroups = { data: [snack], error: null };
+      reads.food.mockResolvedValue({ data: withSnack(), error: null });
+      await useFuelStore.getState().refresh();
+      expect(useFuelStore.getState().groups.map((entry) => entry.id)).toContain('t-snack');
+    });
+
+    it('reads the day again, so the meal shows gone and its food in no meal', async () => {
+      reads.deleteGroup.mockResolvedValueOnce(false);
+      deleted();
+      expect(await useFuelStore.getState().deleteGroup(snack)).toBe(false);
+      await vi.waitFor(() => expect(useFuelStore.getState().groups.map((entry) => entry.id)).not.toContain('t-snack'));
+      await vi.waitFor(() => expect(useFuelStore.getState().totalsNeedRefresh).toBe(false));
+      expect(useFuelStore.getState().logs.find((entry) => entry.id === 's')?.group_id).toBeNull();
+      // Its food stays on the day.
+      expect(useFuelStore.getState().todayTotals.calories).toBe(950);
+    });
+
+    it('lets no read from before it decide the grouping', async () => {
+      const stale = deferred<{ data: FoodLog[]; error: null }>();
+      const deletion = deferred<boolean>();
+      reads.food.mockReturnValueOnce(stale.promise);
+      reads.deleteGroup.mockReturnValueOnce(deletion.promise);
+      const refresh = useFuelStore.getState().refresh();
+      const removing = useFuelStore.getState().deleteGroup(snack);
+      deleted();
+      deletion.resolve(false);
+      expect(await removing).toBe(false);
+      // It read the month before the delete reached the server.
+      stale.resolve({ data: withSnack(), error: null });
+      await refresh;
+      await vi.waitFor(() => expect(useFuelStore.getState().totalsNeedRefresh).toBe(false));
+      expect(useFuelStore.getState().groups.map((entry) => entry.id)).not.toContain('t-snack');
+      expect(useFuelStore.getState().logs.find((entry) => entry.id === 's')?.group_id).toBeNull();
+    });
+  });
+
   it('does not restore a failed deletion into another month', async () => {
     const deletion = deferred<boolean>();
     reads.deleteEntry.mockReturnValueOnce(deletion.promise);

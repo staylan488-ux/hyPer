@@ -61,11 +61,14 @@ const undoBar: { props?: UndoBarProps } = {};
 const alert = vi.fn();
 const deleteEntry = vi.fn<(id: string) => Promise<boolean>>();
 const restoreEntry = vi.fn<(log: object) => Promise<boolean>>();
+const deleteGroup = vi.fn<(group: object) => Promise<boolean>>();
+// iOS's action sheet: what it offered last, and its answer.
+const actionSheet = vi.fn<(options: { options: string[] }, answer: (index: number) => void) => void>();
 const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } = {};
 let root: Root | undefined;
 let host: HTMLDivElement;
 
-async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, copyAgain = false, fuelModule }: {
+async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, copyAgain = false, meal = false, fuelModule }: {
   day?: string;
   logged?: boolean;
   source?: string;
@@ -76,12 +79,16 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   milk?: boolean;
   /** Today's matching meal already has what Copy to today would copy. */
   copyAgain?: boolean;
+  /** The Oats in a meal of the person's own (no named meal), with its options. */
+  meal?: boolean;
   /** The real Fuel store (native/src/lib/fuel.ts) in place of the stand-in. */
   fuelModule?: object;
 } = {}) {
-  const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null, sort_order: 0, source }] : [];
+  const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null as string | null, sort_order: 0, source }] : [];
   if (logged && milk) logs.push({ id: 'log-milk', date: day, food: milkFood, servings: 1, logged_at: `${day}T09:00:00Z`, group_id: null, sort_order: 1, source });
-  const fuel = { selected: day, logs, groups: [], deleteEntry, restoreEntry, copyToToday: vi.fn(async () => true) };
+  const ownMeal = { id: 'g-own', user_id: 'user-a', date: day, kind: 'meal', label: null, sort_order: 0 };
+  if (meal) for (const entry of logs) entry.group_id = ownMeal.id;
+  const fuel = { selected: day, logs, groups: meal ? [ownMeal] : [], deleteEntry, restoreEntry, deleteGroup, copyToToday: vi.fn(async () => true) };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
     'date-fns': dates,
     'expo-router': {
@@ -90,7 +97,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     },
     'expo-symbols': { SymbolView: Empty },
     'react-native': {
-      ActionSheetIOS: {},
+      ActionSheetIOS: { showActionSheetWithOptions: actionSheet },
       Alert: { alert },
       Pressable: (props: Press) => {
         if (props.accessibilityLabel) pressables[props.accessibilityLabel] = props;
@@ -127,7 +134,9 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/components/HoldMenu': { showActionSheet: noop },
     '~/components/RollingText': { RollingText: Wrap },
     '~/components/Row': { Row: (props: RowProps) => { rows[props.title] = props; return null; }, Hairline: Empty },
-    '~/components/Section': { Section: Wrap },
+    '~/components/Section': {
+      Section: ({ children, accessory }: PropsWithChildren<{ accessory?: ReactNode }>) => createElement('div', null, accessory, children),
+    },
     '~/components/SwipeRow': { SwipeRow: Wrap },
     '~/components/TabScroll': { TabScroll: Wrap, tabBarCover: () => 0 },
     '~/components/UndoBar': { UndoBar: (props: UndoBarProps) => { undoBar.props = props; return null; } },
@@ -164,6 +173,8 @@ beforeEach(() => {
   alert.mockClear();
   deleteEntry.mockReset().mockResolvedValue(true);
   restoreEntry.mockReset().mockResolvedValue(true);
+  deleteGroup.mockReset().mockResolvedValue(true);
+  actionSheet.mockReset();
   screen.options = undefined;
 });
 afterEach(async () => {
@@ -621,5 +632,30 @@ describe("Fuel's Undo against the real store and a simulated server", () => {
     expect(server.rows.has(row.id)).toBe(true);
     await vi.waitFor(() => expect(fuel.useFuelStore.getState().todayLoadedForUserId).toBe('user-a'));
     await vi.waitFor(() => expect(fuel.useFuelStore.getState().logs.filter((log) => log.id === row.id)).toHaveLength(1));
+  });
+});
+
+describe('deleting a meal of your own', () => {
+  async function deleteOwnMeal() {
+    await renderFuel({ meal: true });
+    const options = Object.keys(pressables).find((label) => label.endsWith(' options'))!;
+    await act(async () => { pressables[options].onPress!(); });
+    const [{ options: offered }, answer] = actionSheet.mock.calls[0];
+    await act(async () => { answer(offered.findIndex((option) => option.startsWith('Delete '))); });
+    await act(async () => { for (let tick = 0; tick < 10; tick += 1) await Promise.resolve(); });
+  }
+
+  it("says it couldn't confirm a delete whose answer failed, never \"Not deleted\"", async () => {
+    deleteGroup.mockResolvedValueOnce(false);
+    await deleteOwnMeal();
+    expect(deleteGroup).toHaveBeenCalledOnce();
+    expect(alert.mock.calls.map(([title]) => title)).toEqual(["Couldn't confirm the delete"]);
+    expect(alert.mock.calls[0][1]).toContain('It may have gone through');
+  });
+
+  it('says nothing more once the delete is confirmed', async () => {
+    await deleteOwnMeal();
+    expect(deleteGroup).toHaveBeenCalledOnce();
+    expect(alert).not.toHaveBeenCalled();
   });
 });
