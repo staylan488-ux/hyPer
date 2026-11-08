@@ -1,4 +1,4 @@
-import { Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,9 +12,9 @@ import { BlancText } from './BlancText';
  * A quiet bar at the foot of the screen that takes back the latest removal.
  * `bottom` lifts it over bars the screen sits under (a tab page's tab bar).
  * VoiceOver announces what was removed when the bar appears; the Undo
- * button names it too.
+ * button names it too. `busy` holds Undo while it puts the removal back.
  */
-export function UndoBar({ label, onUndo, bottom }: { label: string | null; onUndo: () => void; bottom?: number }) {
+export function UndoBar({ label, onUndo, bottom, busy = false }: { label: string | null; onUndo: () => void; bottom?: number; busy?: boolean }) {
   const c = useBlanc();
   const insets = useSafeAreaInsets();
   const large = useLargeText();
@@ -45,15 +45,21 @@ export function UndoBar({ label, onUndo, bottom }: { label: string | null; onUnd
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Undo. ${label}`}
+          accessibilityState={{ disabled: busy, busy }}
+          disabled={busy}
           hitSlop={6}
           onPress={() => {
             haptics.tap();
             onUndo();
           }}
           style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}>
-          <BlancText variant="secondary" weight="600" tone="onCapsule">
-            Undo
-          </BlancText>
+          {busy ? (
+            <ActivityIndicator size="small" color={c.onCapsule} />
+          ) : (
+            <BlancText variant="secondary" weight="600" tone="onCapsule">
+              Undo
+            </BlancText>
+          )}
         </Pressable>
       </View>
     </Animated.View>

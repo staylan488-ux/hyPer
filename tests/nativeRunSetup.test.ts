@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import { startOfMonth } from 'date-fns';
+import { parseISO, startOfMonth } from 'date-fns';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as activitySessions from '@/lib/activitySessions';
 import * as runDisplay from '@/lib/runDisplay';
 import * as runTracker from '@/lib/runTracker';
 import { loadNativeModule } from './helpers/loadNativeModule';
@@ -37,7 +38,7 @@ const tracker = {
 const requestPermissions = vi.fn<() => Promise<Permission>>();
 const openSettings = vi.fn();
 const router = { dismiss: vi.fn(), navigate: vi.fn() };
-const saveTrackedRun = vi.fn<(run: runTracker.FinishedRun) => Promise<{ id: string } | null>>();
+const saveTrackedRun = vi.fn<(run: runTracker.FinishedRun) => Promise<{ id: string; date?: string; started_at?: string } | null>>();
 const loadHistoryMonth = vi.fn<(month?: Date) => Promise<void>>();
 const selectHistoryDay = vi.fn<(day: Date) => void>();
 
@@ -48,7 +49,7 @@ async function renderRunScreen() {
   const { default: RunScreen } = loadNativeModule<{ default: () => ReactNode }>('app/run.tsx', {
     '@expo/ui/swift-ui': { Host: box, Picker: box, Text: box },
     '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null, tint: () => null },
-    'date-fns': { format: () => '', startOfMonth },
+    'date-fns': { format: () => '', parseISO, startOfMonth },
     'expo-router': { router },
     'react-native': {
       ActionSheetIOS: { showActionSheetWithOptions: vi.fn() },
@@ -69,6 +70,7 @@ async function renderRunScreen() {
     },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) },
     '@/hooks/useRunTracker': { createSimulatedSource: vi.fn(), useRunTracker: () => tracker },
+    '@/lib/activitySessions': activitySessions,
     '@/lib/gpsScenarios': { gpsScenarios: [] },
     '@/lib/nativeBridge': { NativeRun: { requestPermissions, syncLiveActivity: vi.fn(async () => undefined) } },
     '@/lib/runDisplay': runDisplay,
@@ -182,6 +184,16 @@ describe('saving a finished run', () => {
     expect(selectHistoryDay).toHaveBeenCalledWith(new Date(run.startedAtMs));
     expect(loadHistoryMonth).toHaveBeenCalledTimes(1);
     expect(loadHistoryMonth.mock.calls[0][0]?.getMonth()).toBe(new Date(run.startedAtMs).getMonth());
+    expect(router.navigate).toHaveBeenCalledWith('/train/history');
+  });
+
+  it('opens History on the day the saved record is filed under, when a retry reused one dated elsewhere', async () => {
+    // The first try made the record in another time zone, on the 5th there; it failed before linking the splits.
+    saveTrackedRun.mockResolvedValue({ id: 'activity-1', date: '2026-11-05', started_at: new Date(run.startedAtMs).toISOString() });
+    await act(async () => { button('Save run')!.click(); });
+
+    expect(selectHistoryDay).toHaveBeenCalledWith(new Date(2026, 10, 5));
+    expect(loadHistoryMonth.mock.calls[0][0]).toEqual(new Date(2026, 10, 1));
     expect(router.navigate).toHaveBeenCalledWith('/train/history');
   });
 

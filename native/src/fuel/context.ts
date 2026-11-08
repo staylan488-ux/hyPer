@@ -18,6 +18,9 @@ export type QuickAddState = 'saving' | 'done' | 'error';
  */
 export type PendingQuickAdd = { pending: PendingEntryId; when: When; groups: NutritionGroup[]; inFlight: boolean };
 
+/** A confirmed quick add: the entry it wrote, for its tick to take back out, and whether that removal is running. */
+export type AddedQuickAdd = { id: string; name: string; removing: boolean };
+
 export type LoggerContextValue = {
   /** Logging entries, or adding ingredients to a meal being built. */
   purpose: 'log' | 'ingredients';
@@ -53,6 +56,8 @@ export type LoggerContextValue = {
   quickAddStates: Record<string, QuickAddState>;
   setQuickAddStates: Dispatch<SetStateAction<Record<string, QuickAddState>>>;
   pendingQuickAdds: Map<string, PendingQuickAdd>;
+  /** Confirmed quick adds by the same key, until their tick takes them back out. */
+  addedQuickAdds: Map<string, AddedQuickAdd>;
 };
 
 export const LoggerContext = createContext<LoggerContextValue | null>(null);

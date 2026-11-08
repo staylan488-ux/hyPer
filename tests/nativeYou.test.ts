@@ -509,6 +509,27 @@ describe('Logging a missed weigh-in', () => {
     expect(getAllBodyWeights).toHaveBeenCalledTimes(1);
     expect(getBodyWeightHistorySince).not.toHaveBeenCalled();
   });
+
+  it('reads every weigh-in again when You’s first full read is still on its way', async () => {
+    const { you, getAllBodyWeights } = youHarness();
+    const weighIns = you as unknown as WeighIns & {
+      loadWeights: (options?: { all?: boolean }) => Promise<void>;
+      useWeightStore: { getState: () => { all: { id: string }[] | null } };
+    };
+    const july = new Date(2026, 6, 15, 18, 45);
+    const logged = { id: 'w-july', kilograms: 76.2, measured_at: july.toISOString(), source: 'manual' };
+    let answerFirst!: (list: unknown[]) => void;
+    getAllBodyWeights.mockReturnValueOnce(new Promise((resolve) => { answerFirst = resolve; }));
+    getAllBodyWeights.mockResolvedValueOnce([logged]);
+    const first = weighIns.loadWeights({ all: true });
+
+    await expect(weighIns.logWeighIn(76.2, july)).resolves.toBeNull();
+    expect(getAllBodyWeights).toHaveBeenCalledTimes(2);
+    // The first read left before the weigh-in and answers without it, last.
+    answerFirst([]);
+    await first;
+    expect(weighIns.useWeightStore.getState().all?.map((entry) => entry.id)).toEqual(['w-july']);
+  });
 });
 
 describe('Connecting WHOOP', () => {
@@ -959,15 +980,17 @@ describe('Reading every weigh-in', () => {
     const slow = deferred<unknown[]>();
     harness.getAllBodyWeights.mockReturnValueOnce(slow.promise);
     const full = you.loadWeights({ all: true });
-    // A weigh-in is logged while the full read is out; its own read lands first.
+    // A weigh-in is logged while the full read is out; its own read (of every
+    // weigh-in, as one is on its way) lands first.
     harness.getBodyWeightHistorySince.mockResolvedValue([weighIn('new', 82, new Date().toISOString())]);
+    harness.getAllBodyWeights.mockResolvedValueOnce([weighIn('new', 82, new Date().toISOString()), weighIn('old', 79, '2026-01-01T15:00:00Z')]);
     expect(await you.logWeighIn(82)).toBeNull();
     slow.resolve([weighIn('old', 79, '2026-01-01T15:00:00Z')]);
     await full;
 
     const state = you.useWeightStore.getState();
     expect(state.history.map((entry) => entry.id)).toEqual(['new']);
-    expect(state.all?.map((entry) => entry.id)).toEqual(['old']);
+    expect(state.all?.map((entry) => entry.id)).toEqual(['new', 'old']);
     expect(state.loading).toBe(false);
   });
 

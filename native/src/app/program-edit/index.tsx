@@ -57,11 +57,15 @@ export default function ProgramEditScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   // Opened on one day (a tap on its exercises in the program view): that day
   // goes on top, with the program under it to go back to and save from.
+  // Unsaved edits kept on this device are offered first, on the program: the
+  // day would edit the saved program, and its first change would drop that
+  // offer and overwrite the kept edits.
   const openedDay = useRef(false);
   useEffect(() => {
     if (openedDay.current || !day) return;
     openedDay.current = true;
-    if (useSplitEditStore.getState().draft?.days.some((entry) => entry.id === day)) {
+    const { draft, restorable } = useSplitEditStore.getState();
+    if (!restorable && draft?.days.some((entry) => entry.id === day)) {
       router.push({ pathname: '/program-edit/day', params: { id: day } });
     }
   }, [day]);

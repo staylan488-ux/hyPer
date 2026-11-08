@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import * as activityMetrics from '@/lib/activityMetrics';
 import * as activitySessions from '@/lib/activitySessions';
 import * as historyMonth from '@/lib/historyMonth';
+import * as todayRefresh from '@/lib/todayRefresh';
 import * as workoutSessions from '@/lib/workoutSessions';
 import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
@@ -71,6 +72,15 @@ const session = {
   current: { index: 5 },
 };
 
+// The account's day, which its load moves on at midnight (native/src/lib/accountData.ts).
+const accountData = loadNativeModule<{ useAccountDay: { setState: (state: { dayKey: string }) => void }; useCurrentDayKey: () => string }>('lib/accountData.ts', {
+  zustand: { create },
+  '@/hooks/useTodayRefresh': { useTodayRefresh: vi.fn() },
+  '@/lib/todayRefresh': todayRefresh,
+  '@/stores/appStore': { useAppStore: { getState: () => ({}) } },
+  './fuel': { useFuelStore: { getState: () => ({}) } },
+});
+
 let large = false;
 let root: Root;
 let host: HTMLDivElement;
@@ -96,6 +106,7 @@ async function open() {
     '~/components/TabScroll': { TabScroll: Box },
     '~/components/Tally': { Tally },
     '~/lib/accessibility': { ...silentAccessibility, useLargeText: () => large },
+    '~/lib/accountData': accountData,
     '~/lib/format': format,
     '~/lib/haptics': { haptics: { error: vi.fn(), select: vi.fn(), success: vi.fn(), tap: vi.fn() } },
     '~/lib/history': {
@@ -216,5 +227,15 @@ describe("History's month grid", () => {
   it('stops at the current month: no page of days to come to swipe to', async () => {
     await today('2026-11-07T12:00:00');
     expect(grids()).toHaveLength(2);
+  });
+
+  it('opens the new month at midnight, left on screen with nothing else changing', async () => {
+    await today('2026-11-30T23:59:00');
+    accountData.useAccountDay.setState({ dayKey: '2026-11-30' });
+    expect(grids()).toHaveLength(2);
+    vi.setSystemTime(new Date('2026-12-01T00:01:00'));
+    // the account's midnight refresh moves its day on
+    await act(async () => { accountData.useAccountDay.setState({ dayKey: '2026-12-01' }); });
+    expect(grids()).toHaveLength(3);
   });
 });

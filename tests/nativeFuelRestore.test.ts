@@ -223,9 +223,72 @@ describe('deleting while the loaded month refreshes', () => {
   it('leaves the entry gone when Undo cannot write it back', async () => {
     const entry = useFuelStore.getState().logs.find((candidate) => candidate.id === 'b')!;
     await useFuelStore.getState().deleteEntry('b');
+    // The server no longer has it, and the write back fails.
+    reads.food.mockResolvedValue({ data: copyMonth().logs.filter((candidate) => candidate.id !== 'b'), error: null });
     reads.restoreEntry.mockResolvedValueOnce(false);
     expect(await useFuelStore.getState().restoreEntry(entry)).toBe(false);
     expect(useFuelStore.getState().logs.map((candidate) => candidate.id)).not.toContain('b');
+    // The month read again after the failure agrees.
+    await vi.waitFor(() => expect(reads.food).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(useFuelStore.getState().totalsNeedRefresh).toBe(false));
+    expect(useFuelStore.getState().logs.map((candidate) => candidate.id)).not.toContain('b');
+    expect(useFuelStore.getState().todayTotals.calories).toBe(500);
+  });
+
+  it('shows an entry Undo put back when only its answer was lost, once the month is read again', async () => {
+    const entry = useFuelStore.getState().logs.find((candidate) => candidate.id === 'b')!;
+    await useFuelStore.getState().deleteEntry('b');
+    // The server wrote it back, but the answer never arrived.
+    reads.restoreEntry.mockResolvedValueOnce(false);
+    expect(await useFuelStore.getState().restoreEntry(entry)).toBe(false);
+    await useFuelStore.getState().refresh();
+    expect(useFuelStore.getState().logs.filter((candidate) => candidate.id === 'b')).toHaveLength(1);
+    expect(useFuelStore.getState().todayTotals.calories).toBe(800);
+  });
+
+  it('lets Undo try again after a failure, and shares one write between two taps', async () => {
+    const entry = useFuelStore.getState().logs.find((candidate) => candidate.id === 'b')!;
+    await useFuelStore.getState().deleteEntry('b');
+    reads.restoreEntry.mockRejectedValueOnce(new Error('offline'));
+    expect(await useFuelStore.getState().restoreEntry(entry)).toBe(false);
+    reads.restoreEntry.mockClear();
+    const [first, second] = await Promise.all([useFuelStore.getState().restoreEntry(entry), useFuelStore.getState().restoreEntry(entry)]);
+    expect([first, second]).toEqual([true, true]);
+    expect(reads.restoreEntry).toHaveBeenCalledOnce();
+    expect(useFuelStore.getState().logs.filter((candidate) => candidate.id === 'b')).toHaveLength(1);
+  });
+
+  it('keeps an entry Undo put back when a read that left before it answers late', async () => {
+    const entry = useFuelStore.getState().logs.find((candidate) => candidate.id === 'b')!;
+    await useFuelStore.getState().deleteEntry('b');
+    const stale = deferred<{ data: FoodLog[]; error: null }>();
+    reads.food.mockReturnValueOnce(stale.promise);
+    const refresh = useFuelStore.getState().refresh();
+    await vi.waitFor(() => expect(reads.food).toHaveBeenCalledTimes(2));
+    expect(await useFuelStore.getState().restoreEntry(entry)).toBe(true);
+    // It read the month between the delete and the Undo.
+    stale.resolve({ data: copyMonth().logs.filter((candidate) => candidate.id !== 'b'), error: null });
+    await refresh;
+    await vi.waitFor(() => expect(reads.food).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(useFuelStore.getState().todayLoadedForUserId).toBe(USER));
+    expect(useFuelStore.getState().logs.filter((candidate) => candidate.id === 'b')).toHaveLength(1);
+    expect(useFuelStore.getState().todayTotals.calories).toBe(800);
+  });
+
+  it('puts today’s totals right after Undo while Fuel shows another month', async () => {
+    const entry = useFuelStore.getState().logs.find((candidate) => candidate.id === 'b')!;
+    await useFuelStore.getState().deleteEntry('b');
+    expect(useFuelStore.getState().todayTotals.calories).toBe(500);
+    reads.food.mockImplementation(async (_user: string, range: { from: string; to: string }) => ({
+      data: copyMonth().logs.filter((candidate) => candidate.date >= range.from && candidate.date <= range.to),
+      error: null,
+    }));
+    useFuelStore.getState().select('2026-10-01');
+    await vi.waitFor(() => expect(useFuelStore.getState().loadedMonth).toBe('2026-10'));
+    expect(await useFuelStore.getState().restoreEntry(entry)).toBe(true);
+    await vi.waitFor(() => expect(useFuelStore.getState().todayTotals.calories).toBe(800));
+    expect(todayTotalsShown(useFuelStore.getState()).calories).toBe(800);
+    expect(useFuelStore.getState().totalsNeedRefresh).toBe(false);
   });
 
   it('keeps a stale day-only total from counting a deleted entry', async () => {

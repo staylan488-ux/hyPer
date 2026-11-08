@@ -2124,6 +2124,73 @@ describe('quick add: each food to the meal it went to', () => {
     expect(h.persistEntry).toHaveBeenCalledTimes(1);
   });
 
+  /** The food row's VoiceOver actions (its hold menu's and swipe's), and a way to run one. */
+  const rowActions = (h: Harness, food: string) => {
+    const [, row] = savedRow(h, food);
+    const actions = row.accessibilityActions ?? [];
+    return {
+      labels: actions.map((action) => action.label),
+      run: (label: string) => {
+        const action = actions.find((candidate) => candidate.label === label)!;
+        return act(async () => { row.onAccessibilityAction!({ nativeEvent: { actionName: action.name } }); });
+      },
+    };
+  };
+  const deleteEntryOf = (h: Harness) =>
+    (h.imports['~/lib/fuel'] as { useFuelStore: { getState: () => { deleteEntry: ReturnType<typeof vi.fn> } } }).useFuelStore.getState().deleteEntry;
+
+  it.each([['recent', 'Log 240 ml now'], ['saved', 'Log one serving now']])('offers %s’s Log only until the food is added, then Take it out, and Log never removes it', async (tab, log) => {
+    const h = loggerHarness({ realLists: true, rowActions: true });
+    await h.render();
+    if (tab === 'saved') await h.tab(tab);
+    const before = rowActions(h, 'Milk');
+    expect(before.labels).toContain(log);
+    expect(before.labels).not.toContain('Take it out');
+    await before.run(log);
+    expect(h.persistEntry).toHaveBeenCalledOnce();
+    const written = h.persistEntry.mock.calls[0][2];
+
+    const added = rowActions(h, 'Milk');
+    expect(added.labels).not.toContain(log);
+    expect(added.labels).toContain('Take it out');
+    // A Log from a menu drawn before the add (still open) logs nothing and removes nothing.
+    await before.run(log);
+    expect(deleteEntryOf(h)).not.toHaveBeenCalled();
+    expect(h.persistEntry).toHaveBeenCalledOnce();
+    expect(h.text()).toContain('Added');
+
+    await added.run('Take it out');
+    expect(deleteEntryOf(h)).toHaveBeenCalledWith(written);
+    expect(rowActions(h, 'Milk').labels).toContain(log);
+    expect(h.captured.pressables['Add Milk']).toBeDefined();
+  });
+
+  it('logs nothing while a removal is on its way, so its answer can’t clear a new entry’s tick', async () => {
+    const h = loggerHarness({ realLists: true, rowActions: true });
+    await h.render();
+    const removal = deferred<boolean>();
+    deleteEntryOf(h).mockImplementationOnce(() => removal.promise);
+    const log = rowActions(h, 'Milk');
+    await h.press('Add Milk');
+    await act(async () => { h.captured.pressables['Milk added. Take it out'].onPress!(); });
+    expect(deleteEntryOf(h)).toHaveBeenCalledOnce();
+
+    // A Log from an older menu writes nothing meanwhile, and the menu offers neither Log nor Take it out.
+    await log.run('Log 240 ml now');
+    expect(h.persistEntry).toHaveBeenCalledOnce();
+    const removing = rowActions(h, 'Milk');
+    expect(removing.labels).not.toContain('Log 240 ml now');
+    expect(removing.labels).not.toContain('Take it out');
+
+    await act(async () => { removal.resolve(true); });
+    expect(h.captured.pressables['Add Milk']).toBeDefined();
+    expect(h.text()).not.toContain('Added');
+    // Logged again afterwards, it is a new entry of its own.
+    await h.press('Add Milk');
+    expect(h.persistEntry).toHaveBeenCalledTimes(2);
+    expect(h.persistEntry.mock.calls[1][2]).not.toBe(h.persistEntry.mock.calls[0][2]);
+  });
+
   it('takes one write for a second tap that lands before the row redraws', async () => {
     const h = loggerHarness({ realLists: true });
     const response = deferred<void>();

@@ -32,7 +32,8 @@ const noop = () => {};
 type Press = { accessibilityRole?: string; accessibilityLabel?: string; accessibilityHint?: string; onPress?: () => void; children?: ReactNode };
 type CapsuleProps = { title: string; variant?: 'primary' | 'quiet'; onPress: () => void };
 type HeaderItem = { label: string; onPress: () => void };
-type RowProps = { title: string; detail?: string | readonly string[]; value?: string; accessibilityLabel?: string; onPress?: () => void };
+type RowProps = { title: string; detail?: string | readonly string[]; value?: string; accessibilityLabel?: string; onPress?: () => void; menu?: { title: string; run?: () => void }[] };
+type UndoBarProps = { label: string | null; busy?: boolean; onUndo: () => void };
 type MarkProps = { logged: boolean; kcal?: number; target?: number | null };
 type Target = { calories: number; protein: number; carbs: number; fat: number };
 
@@ -48,6 +49,10 @@ const pressables: Record<string, Press> = {};
 const capsules: Record<string, CapsuleProps> = {};
 const rows: Record<string, RowProps> = {};
 const marks: MarkProps[] = [];
+const undoBar: { props?: UndoBarProps } = {};
+const alert = vi.fn();
+const deleteEntry = vi.fn<(id: string) => Promise<boolean>>();
+const restoreEntry = vi.fn<(log: object) => Promise<boolean>>();
 const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } = {};
 let root: Root | undefined;
 let host: HTMLDivElement;
@@ -61,7 +66,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   fontScale?: number;
 } = {}) {
   const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null, sort_order: 0, source }] : [];
-  const fuel = { selected: day, logs, groups: [] };
+  const fuel = { selected: day, logs, groups: [], deleteEntry, restoreEntry };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
     'date-fns': dates,
     'expo-router': {
@@ -71,7 +76,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     'expo-symbols': { SymbolView: Empty },
     'react-native': {
       ActionSheetIOS: {},
-      Alert: {},
+      Alert: { alert },
       Pressable: (props: Press) => {
         if (props.accessibilityLabel) pressables[props.accessibilityLabel] = props;
         return createElement('div', { 'data-press': props.accessibilityLabel, 'data-hint': props.accessibilityHint }, props.children);
@@ -110,7 +115,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/components/Section': { Section: Wrap },
     '~/components/SwipeRow': { SwipeRow: Wrap },
     '~/components/TabScroll': { TabScroll: Wrap, tabBarCover: () => 0 },
-    '~/components/UndoBar': { UndoBar: () => null },
+    '~/components/UndoBar': { UndoBar: (props: UndoBarProps) => { undoBar.props = props; return null; } },
     '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
     zustand: { create: zustandCreate },
     '~/components/Track': { Track: ({ progress }: { progress: number }) => createElement('i', { 'data-track': String(progress) }) },
@@ -140,6 +145,10 @@ beforeEach(() => {
   push.mockClear();
   for (const record of [pressables, capsules, rows]) for (const key of Object.keys(record)) delete record[key];
   marks.length = 0;
+  undoBar.props = undefined;
+  alert.mockClear();
+  deleteEntry.mockReset().mockResolvedValue(true);
+  restoreEntry.mockReset().mockResolvedValue(true);
   screen.options = undefined;
 });
 afterEach(async () => {
@@ -276,5 +285,31 @@ describe("Fuel's day card", () => {
     await renderFuel({ target, logged: false });
     expect(host.querySelector('section [data-hint="Edits your calorie target"]')).toBeNull();
     expect(host.querySelectorAll('[data-track]')).toHaveLength(0);
+  });
+});
+
+describe("Fuel's Undo after a delete", () => {
+  it('stays, busy, until the entry is back, and is there to try again after a failure', async () => {
+    let answer!: (ok: boolean) => void;
+    restoreEntry.mockReturnValueOnce(new Promise<boolean>((resolve) => { answer = resolve; }));
+    await renderFuel();
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    expect(deleteEntry).toHaveBeenCalledWith('log-oats');
+    expect(undoBar.props?.label).toBe('Oats deleted');
+
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(restoreEntry).toHaveBeenCalledWith(expect.objectContaining({ id: 'log-oats' }));
+    expect(undoBar.props).toMatchObject({ label: 'Oats deleted', busy: true });
+    // A second tap meanwhile writes nothing more.
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(restoreEntry).toHaveBeenCalledOnce();
+
+    await act(async () => { answer(false); });
+    expect(alert).toHaveBeenCalledWith('Not put back', 'Check your connection and try again.');
+    expect(undoBar.props).toMatchObject({ label: 'Oats deleted', busy: false });
+
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(restoreEntry).toHaveBeenCalledTimes(2);
+    expect(undoBar.props?.label).toBeNull();
   });
 });

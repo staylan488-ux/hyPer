@@ -478,8 +478,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `editPastWorkout` in [lib/history.ts](../../../native/src/lib/history.ts),
   which runs the web's edit protocol one edit at a time per workout (the set
   editor's weight goes Next to reps). History's month pages stop at the
-  current month, as Fuel's do. Program view's rows open that day in the
-  editor (`editProgramDay`). Delete a
+  current month, as Fuel's do, and follow midnight (`useCurrentDayKey`).
+  Program view's rows open that day in the editor (`editProgramDay`), or the
+  program alone while unsaved edits kept on the device wait for Restore or
+  Discard. Delete a
   workout only after `confirmDeleteWorkout` asks. The muscle figure draws the
   shared maquette shapes with react-native-svg.
 - You (milestone 7) is the You tab's stack (`you/weight`, `weigh-ins`,
@@ -575,8 +577,12 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   stacked over History). Done on Session complete opens the tab bar out
   (`useTabBarExpand`), since iOS keeps it shrunk from the workout page.
   Undo and second chances: deleting a Fuel entry shows an Undo bar over the
-  tab bar (5 s, 20 s with VoiceOver; `restoreEntry` writes the row back); a
-  quick-add's tick takes the food back out on a second tap. Edit entry closes
+  tab bar (5 s, 20 s with VoiceOver; `restoreEntry` writes the row back,
+  then reads the month and today's totals again). Undo stays, busy, until the
+  write is confirmed, and stays to try again after a failure. A quick-add's
+  tick takes the food back out on a second tap; its hold menu and VoiceOver
+  say Log only before the add and Take it out after, and nothing logs that
+  food and meal again while its removal runs. Edit entry closes
   with ✕ and changes the food from its Change food row. Saved meals' + builds
   a new saved meal without logging it. Rest alerts say what they are for
   before iOS's notification prompt (`explainRestAlerts`). Log weight's Day

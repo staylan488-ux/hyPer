@@ -1,6 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { format, startOfMonth } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -9,6 +9,7 @@ import Animated, { Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withT
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createSimulatedSource, useRunTracker, type PositionSource } from '@/hooks/useRunTracker';
+import { getActivitySessionDateKey } from '@/lib/activitySessions';
 import { gpsScenarios } from '@/lib/gpsScenarios';
 import { NativeRun } from '@/lib/nativeBridge';
 import {
@@ -717,9 +718,12 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
       announce('Run saved');
       discard();
       // History opens on the run's day, so the run just saved is what shows
-      // (a run kept for later can be from another day). History already open in
+      // (a run kept for later can be from another day). That is the day its
+      // record is filed under, as History lists it: a retry reuses the record
+      // its first try made, dated where that try was. History already open in
       // Train shows again without reading, so read that month here.
-      const runDay = new Date(run.startedAtMs);
+      const savedDay = getActivitySessionDateKey(saved);
+      const runDay = savedDay ? parseISO(savedDay) : new Date(run.startedAtMs);
       selectHistoryDay(runDay);
       void loadHistoryMonth(startOfMonth(runDay));
       router.dismiss();

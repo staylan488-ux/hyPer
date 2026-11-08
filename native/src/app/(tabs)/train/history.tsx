@@ -20,6 +20,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
 import { Tally } from '~/components/Tally';
 import { announce, speak, useAnnounce, useLargeText, useReduceMotion } from '~/lib/accessibility';
+import { useCurrentDayKey } from '~/lib/accountData';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import {
@@ -212,21 +213,14 @@ export default function HistoryScreen() {
  * swipe wins over iOS's swipe-back the way Apple's own pagers do, and it
  * recentres on this month after every page turn.
  */
-/**
- * Today's key, read from the clock on every render. A hook by name, so the
- * React Compiler runs it each time and the bold day follows midnight.
- */
-function useTodayKey(): string {
-  return format(new Date(), 'yyyy-MM-dd');
-}
-
 function Calendar({ month, day, workouts, activities }: { month: Date; day: string; workouts: HistoryWorkout[]; activities: ActivitySession[] }) {
   const scroller = useRef<ComponentRef<typeof ScrollView>>(null);
   const reduceMotion = useReduceMotion();
   // An arrow ticks as it is pressed, so the page turn it starts stays quiet.
   const arrowTurn = useRef(false);
   const [width, setWidth] = useState(0);
-  const todayKey = useTodayKey();
+  // Drawn again at midnight, so the bold day and the month pages follow the new today.
+  const todayKey = useCurrentDayKey();
   // Each day's workouts (how many) and activities (their names, for VoiceOver).
   const marks = useMemo(() => {
     const lifts = new Map<string, number>();

@@ -181,7 +181,6 @@ export async function moveEntryToPreviousDay(log: { id: string; date: string; lo
   return patch;
 }
 
-/** Deletes an entry (no confirm). */
 /**
  * Puts a deleted entry back exactly as it was (Undo after a delete): the same
  * row id, food, amount, time, meal and source. False when it could not be
@@ -216,6 +215,7 @@ export async function restoreNutritionEntry(log: NutritionLog & { created_at?: s
   }
 }
 
+/** Deletes an entry (no confirm). */
 export async function deleteNutritionEntry(logId: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('nutrition_logs').delete().eq('id', logId);

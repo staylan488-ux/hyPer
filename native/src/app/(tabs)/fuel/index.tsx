@@ -57,29 +57,40 @@ const CHECK_CONNECTION = 'Check your connection and try again.';
 const UNDO_MS = 5000;
 const UNDO_MS_SCREEN_READER = 20000;
 
-/** The entry just deleted, to take back from the bar at the foot for a few seconds. */
-const useDeletedEntry = create<{ entry: FoodLog | null; key: number }>(() => ({ entry: null, key: 0 }));
+/**
+ * The entry just deleted, to take back from the bar at the foot for a few
+ * seconds (`key` starts that time again), and whether Undo is putting it back.
+ */
+const useDeletedEntry = create<{ entry: FoodLog | null; key: number; restoring: boolean }>(() => ({ entry: null, key: 0, restoring: false }));
 
 /** Deletes an entry at once and offers Undo at the foot, which puts it back as it was. */
 function deleteWithUndo(log: FoodLog) {
-  useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1 }));
+  useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1, restoring: false }));
   report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
 }
 
+/**
+ * Undo: the bar stays, busy, until the entry is confirmed back. A failure
+ * leaves it there to try again, for its full time again.
+ */
 function undoDelete() {
-  const { entry } = useDeletedEntry.getState();
-  if (!entry) return;
-  useDeletedEntry.setState({ entry: null });
+  const { entry, restoring } = useDeletedEntry.getState();
+  if (!entry || restoring) return;
+  useDeletedEntry.setState({ restoring: true });
   void useFuelStore
     .getState()
     .restoreEntry(entry)
     .catch(() => false)
     .then((ok) => {
+      // Not when a newer delete has the bar now, or Fuel was left.
+      const shown = useDeletedEntry.getState().entry === entry;
       if (ok) {
+        if (shown) useDeletedEntry.setState({ entry: null, restoring: false });
         haptics.success();
         announce(`${entry.food?.name ?? 'Food'} back`);
         return;
       }
+      if (shown) useDeletedEntry.setState((state) => ({ restoring: false, key: state.key + 1 }));
       haptics.error();
       Alert.alert('Not put back', CHECK_CONNECTION);
     });
@@ -173,15 +184,17 @@ export default function FuelScreen() {
   // The latest delete's Undo, for a few seconds; leaving Fuel lets it go.
   const deleted = useDeletedEntry((state) => state.entry);
   const deletedKey = useDeletedEntry((state) => state.key);
+  const restoring = useDeletedEntry((state) => state.restoring);
   const workoutBar = useWorkoutBarShown((state) => state.shown);
   useEffect(() => {
     if (!deleted) return;
     const timer = setTimeout(() => {
-      if (useDeletedEntry.getState().key === deletedKey) useDeletedEntry.setState({ entry: null });
+      const state = useDeletedEntry.getState();
+      if (state.key === deletedKey && !state.restoring) useDeletedEntry.setState({ entry: null });
     }, screenReaderRunning() ? UNDO_MS_SCREEN_READER : UNDO_MS);
     return () => clearTimeout(timer);
   }, [deleted, deletedKey]);
-  useEffect(() => () => useDeletedEntry.setState({ entry: null }), []);
+  useEffect(() => () => useDeletedEntry.setState({ entry: null, restoring: false }), []);
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
   // Read on every render and handed down, so the rows' "today" changes at
@@ -369,7 +382,7 @@ export default function FuelScreen() {
         ) : null}
       </TabScroll>
 
-      <UndoBar label={deleted ? `${deleted.food?.name ?? 'Food'} deleted` : null} bottom={tabBarCover(workoutBar) + 8} onUndo={undoDelete} />
+      <UndoBar label={deleted ? `${deleted.food?.name ?? 'Food'} deleted` : null} bottom={tabBarCover(workoutBar) + 8} busy={restoring} onUndo={undoDelete} />
     </>
   );
 }

@@ -44,7 +44,7 @@ import { refusePress } from '~/lib/launch';
 import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
-import { LoggerContext, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
+import { LoggerContext, type AddedQuickAdd, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchField, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { EntryMethods, type EntryMethod } from '~/fuel/EntryMethods';
@@ -283,6 +283,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const saving = saveClaims > 0;
   const [quickAddStates, setQuickAddStates] = useState<Record<string, QuickAddState>>({});
   const [pendingQuickAdds] = useState(() => new Map<string, PendingQuickAdd>());
+  const [addedQuickAdds] = useState(() => new Map<string, AddedQuickAdd>());
   const quickAddFailed = Object.values(quickAddStates).some((state) => state === 'error');
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
@@ -485,8 +486,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       quickAddStates,
       setQuickAddStates,
       pendingQuickAdds,
+      addedQuickAdds,
     }),
-    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave, saving, quickAddStates, pendingQuickAdds],
+    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave, saving, quickAddStates, pendingQuickAdds, addedQuickAdds],
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
