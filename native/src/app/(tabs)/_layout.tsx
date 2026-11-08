@@ -18,6 +18,7 @@ import { useHealthCarryOver } from '~/lib/healthCarryOver';
 import { resetHistory } from '~/lib/history';
 import { useLaunchActionRunner } from '~/lib/launch';
 import { useNotesStore } from '~/lib/notes';
+import { usePriorRecordsLookup, usePriorRecordsStore } from '~/lib/records';
 import { useRestFinish, useRestLifecycle, useRestPreferences, useRestStore } from '~/lib/rest';
 import {
   useFocusStore,
@@ -65,6 +66,8 @@ export default function TabsLayout() {
   useWorkoutDayPlan();
   // Last time's numbers, for Train, the movement sheet and Finish wherever it is tapped.
   usePreviousTargetsLookup(session);
+  // Each movement's records before this workout, so Session complete can name new ones.
+  usePriorRecordsLookup(session);
   useWorkoutActivity(session);
   useAccountData();
   // The home-screen widgets' Fuel and Training figures.
@@ -100,6 +103,7 @@ export default function TabsLayout() {
       useAccountDay.setState({ loading: true });
       usePreviousNotesStore.setState({ workoutId: null, notes: {} });
       usePreviousTargetsStore.setState({ workoutId: null, targets: {} });
+      usePriorRecordsStore.setState({ workoutId: null, records: {} });
     },
     [],
   );

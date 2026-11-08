@@ -26,6 +26,7 @@ type History = {
   resetHistory: () => void;
   loadHistoryMonth: (month?: Date) => Promise<void>;
   selectHistoryDay: (date: Date) => void;
+  showWorkoutInHistory: (workoutId: string, date: Date) => void;
   followToday: (now?: Date) => boolean;
   loadPlan: (workoutId: string) => Promise<void>;
   editPastWorkout: (workoutId: string, mutate: () => Promise<void>) => Promise<boolean>;
@@ -422,5 +423,31 @@ describe('moving a past movement', () => {
     await show(workout('w1', [set('s1', 'a'), set('s2', 'b')]));
     await history.editPastWorkout('w1', () => history.movePastMovement('w1', 'a', -1));
     expect(store.reorderWorkoutExercises).not.toHaveBeenCalled();
+  });
+});
+
+describe('opening a workout from a movement\'s history', () => {
+  it('reads the month on screen when it does not hold the workout yet', async () => {
+    const today = new Date();
+    const day = new Date(today.getFullYear(), today.getMonth(), 1);
+    monthRead.mockResolvedValueOnce({ workouts: [workout('w1', [set('s1', 'a')])], activities: [] });
+    history.showWorkoutInHistory('w1', day);
+    await vi.waitFor(() => expect(shown('w1')).toBeDefined());
+    expect(monthRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads nothing again when the month on screen already holds it', async () => {
+    await show(workout('w1', [set('s1', 'a')]));
+    const today = new Date();
+    history.showWorkoutInHistory('w1', new Date(today.getFullYear(), today.getMonth(), 1));
+    expect(monthRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves to another month once, as choosing its day does', async () => {
+    const today = new Date();
+    monthRead.mockResolvedValueOnce({ workouts: [], activities: [] });
+    history.showWorkoutInHistory('old', new Date(today.getFullYear() - 1, 0, 15));
+    expect(monthRead).toHaveBeenCalledTimes(1);
+    expect(history.useHistoryStore.getState().month.getFullYear()).toBe(today.getFullYear() - 1);
   });
 });

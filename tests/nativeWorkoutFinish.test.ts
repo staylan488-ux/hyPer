@@ -73,6 +73,7 @@ describe('Finish keeps the confirmed workout and account', () => {
       './notes': { flushNotes },
       './rest': { stopRest: vi.fn() },
       './session': { liveSessionModel: () => currentSession, previousTargetsFor: () => ({}) },
+      './records': { priorRecordsFor: () => ({}) },
       './sessionModel': { skippedLine: () => '' },
     }));
     host = document.createElement('div');

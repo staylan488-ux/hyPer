@@ -297,6 +297,8 @@ function MovementBlock({
 
   const menu = () => {
     const actions: { label: string; run: () => void }[] = [
+      // Every session of this movement, its records and its trend.
+      { label: 'History', run: () => router.push({ pathname: '/train/exercise', params: { id: movement.exerciseId, name: movement.name } }) },
       { label: 'Add set', run: () => addSet() },
       { label: note ? 'Edit note' : 'Add note', run: editNote },
     ];

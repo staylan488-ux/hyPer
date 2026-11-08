@@ -200,7 +200,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   figure, bar and macros are one Label. Session complete is top-anchored:
   the day as the large title, one quiet line ("Session complete · day ·
   time", or "5 of 9 sets · …" when short, never "complete"), then the tally,
-  "N sets beat last time" in ink, Volume, Time and Best set. A card that opens a screen shows a chevron (on a figure card,
+  "N sets beat last time" in ink, any new records ("New record" in ink, then
+  each movement with the record's kind and its set, "Heaviest · 102.5 lb
+  × 6"; the owner's call, 2026-11-08), Volume, Time and Best set (left out when it is
+  one of the records). A card that opens a screen shows a chevron (on a figure card,
   on the figure's line) and uses the `pressed` fill. A segmented control's
   `Host` matches its contents vertically only, with an explicit width.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
@@ -407,6 +410,18 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   finish label adds a "Beat last time" row when any did. The tab layout runs
   the one "last time" lookup (`usePreviousTargetsLookup`), so Finish from
   Today counts too. Corrections never celebrate.
+- Movement history (the owner's pick, 2026-11-08): `train/exercise` (params
+  `id`, `name`) shows one movement over time: the latest session's estimated
+  max (or most reps for bodyweight work) as the figure, a
+  [TrendChart](../../../native/src/components/TrendChart.tsx) through every
+  session (read like Body weight's), Records (Est. max, Heaviest, Most reps)
+  and every finished session, which opens it in History. It opens from the
+  movement sheet's History row (the sheet closes first) and from History's
+  movement ⋯ menu. Rules are shared in `src/lib/movementHistory.ts`: a single
+  is its own max, 0 × 0 sets count for nothing, only finished workouts count,
+  and a movement's first session breaks no record. The tab layout reads each
+  live movement's records before the workout (`usePriorRecordsLookup`), and
+  Finish names at most one new record per movement; none before that read lands.
 - Warm-up and plates (the owner's pick, 2026-11-08): beside Add RPE the set
   card offers Warm-up before a movement's first set (nothing of it logged, a
   barbell or compound movement, a weight with a ramp to it) and otherwise
