@@ -201,7 +201,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   the day as the large title, one quiet line ("Session complete · day ·
   time", or "5 of 9 sets · …" when short, never "complete"), then the tally,
   "N sets beat last time" in ink, any new records ("New record" in ink, then
-  each movement and its set), Volume, Time and Best set (left out when it is
+  each movement with the record's kind and its set, "Heaviest · 102.5 lb
+  × 6"; the owner's call, 2026-11-08), Volume, Time and Best set (left out when it is
   one of the records). A card that opens a screen shows a chevron (on a figure card,
   on the figure's line) and uses the `pressed` fill. A segmented control's
   `Host` matches its contents vertically only, with an explicit width.

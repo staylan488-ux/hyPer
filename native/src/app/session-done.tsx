@@ -5,6 +5,7 @@ import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { loadPlanSchedule } from '@/lib/planSchedule';
+import type { NewRecord } from '@/lib/movementHistory';
 import { supabase } from '@/lib/supabase';
 import { weekSessionTarget } from '@/lib/todayModel';
 import { useAppStore } from '@/stores/appStore';
@@ -25,6 +26,9 @@ import { space, useBlanc } from '~/theme/blanc';
  * row), the title's 41 pt line 3 pt into that row.
  */
 const TITLE_TOP = 57;
+
+/** A record's kind, named as the movement page's Records name it. */
+const RECORD_KIND: Record<NewRecord['kind'], string> = { max: 'Est. max', heaviest: 'Heaviest', reps: 'Most reps' };
 
 /** Sessions completed this Monday–Sunday training week. */
 function useWeekCount(): number | null {
@@ -170,13 +174,15 @@ export default function SessionDone() {
                   {records.length === 1 ? 'New record' : `${records.length} new records`}
                 </BlancText>
                 {records.map((record) => {
-                  const value = formatSet(record.set.weight, record.set.reps);
+                  const set = formatSet(record.set.weight, record.set.reps);
+                  // Which record, in the words the movement's Records use: "Heaviest · 102.5 lb × 6".
+                  const value = `${RECORD_KIND[record.kind]} · ${set}`;
                   return (
-                    // One fact for VoiceOver: "New record, Bench Press, 225 pounds × 5".
+                    // One fact for VoiceOver: "New record, Bench Press, heaviest, 102.5 pounds × 6".
                     <View
                       key={record.exerciseId}
                       accessible
-                      accessibilityLabel={speak(`New record, ${record.name}, ${value}`)}
+                      accessibilityLabel={speak(`New record, ${record.name}, ${RECORD_KIND[record.kind].toLowerCase()}, ${set}`)}
                       style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 6, ...(large ? { flexWrap: 'wrap', columnGap: 12 } : { gap: 12 }) }}>
                       <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? undefined : { flexShrink: 1 }}>
                         {record.name}

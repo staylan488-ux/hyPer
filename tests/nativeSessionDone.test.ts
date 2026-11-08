@@ -211,8 +211,8 @@ describe('Session complete\'s records', () => {
       'Upper A. Session complete, Friday, November 6, 1:17 AM',
       '9 of 9 sets logged',
       '4 sets beat last time',
-      'New record, Bench Press, 185 pounds × 6',
-      'New record, Pull-up, 14 reps',
+      'New record, Bench Press, est. max, 185 pounds × 6',
+      'New record, Pull-up, most reps, 14 reps',
       'Volume, 12,400 pounds',
       'Time, 52 minutes',
       'Saved to History',
@@ -224,6 +224,8 @@ describe('Session complete\'s records', () => {
     summary = { ...finished(9, 0), records: [{ exerciseId: 'row', name: 'Barbell Row', kind: 'heaviest', set: { weight: 155, reps: 8 } }] };
     await open();
     expect(spanNamed('New record')).toBeDefined();
+    // It says which record: the heaviest load here, beside a best set with more volume.
+    expect(spanNamed('Heaviest · 155 lb × 8')).toBeDefined();
     expect(spanNamed('Best set')).toBeDefined();
     act(() => root.unmount());
     root = createRoot(host);
