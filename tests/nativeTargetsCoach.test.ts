@@ -60,7 +60,14 @@ let host: HTMLDivElement;
 
 beforeEach(() => {
   announce.mockClear();
-  globalThis.localStorage.setItem('coach-goals', 'Keep my weight while getting stronger');
+  // Own storage, as the other suites do: from Node 25, Node's built-in
+  // localStorage (undefined without --localstorage-file) hides happy-dom's.
+  const data = new Map<string, string>([['coach-goals', 'Keep my weight while getting stronger']]);
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => { data.set(key, value); },
+    removeItem: (key: string) => { data.delete(key); },
+  });
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -69,7 +76,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
-  globalThis.localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 describe('Suggest targets after a failed request', () => {
