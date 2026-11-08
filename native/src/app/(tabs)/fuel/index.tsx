@@ -2,7 +2,7 @@ import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View, type AlertButton } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { create } from 'zustand';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
@@ -60,25 +60,58 @@ const UNDO_MS_SCREEN_READER = 20000;
 /**
  * The entry just deleted, to take back from the bar at the foot for a few
  * seconds (`key` starts that time again), whether Undo is putting it back,
- * and whether its failure is on screen (the bar waits for it meanwhile).
+ * and how many of Fuel's alerts are up: the bar's time stands still behind them.
  */
-const useDeletedEntry = create<{ entry: FoodLog | null; key: number; restoring: boolean; failed: boolean }>(() => ({ entry: null, key: 0, restoring: false, failed: false }));
+const useDeletedEntry = create<{ entry: FoodLog | null; key: number; restoring: boolean; alerts: number }>(() => ({ entry: null, key: 0, restoring: false, alerts: 0 }));
+
+/**
+ * One of Fuel's failure alerts. While it is up, the Undo bar keeps whatever
+ * it offers then (the alert covers it); once dismissed, by any button, that
+ * offer gets its full time again.
+ */
+function holdingUndoAlert(title: string, message: string, buttons: AlertButton[] = [{ text: 'OK' }]) {
+  useDeletedEntry.setState((state) => ({ alerts: state.alerts + 1 }));
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    useDeletedEntry.setState((state) => ({ alerts: Math.max(0, state.alerts - 1), key: state.key + 1 }));
+  };
+  Alert.alert(
+    title,
+    message,
+    buttons.map((button) => ({
+      ...button,
+      onPress: (value?: string) => {
+        release();
+        button.onPress?.(value);
+      },
+    })),
+    { cancelable: true, onDismiss: release },
+  );
+}
 
 /** Deletes an entry at once and offers Undo at the foot, which puts it back as it was. */
 function deleteWithUndo(log: FoodLog) {
-  useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1, restoring: false, failed: false }));
-  report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
+  useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1, restoring: false }));
+  const deletion = useFuelStore.getState().deleteEntry(log.id).catch(() => false);
+  // A delete that failed leaves the entry in place: there is nothing to undo.
+  void deletion.then((ok) => {
+    if (!ok && useDeletedEntry.getState().entry === log) useDeletedEntry.setState({ entry: null, restoring: false });
+  });
+  report(deletion, 'Not deleted');
 }
 
 /**
- * Undo: the bar stays, busy, until the entry is confirmed back. A failure
- * holds it, with Try again in its alert, until the entry is back or the alert
- * is dismissed; dismissed, the bar stays its full time again.
+ * Undo: the bar stays, busy, until the entry is confirmed back. Its failure
+ * offers Try again for that entry alone; one a newer delete has taken the
+ * bar from only says so. Either alert holds the bar while it is up.
  */
 function undoDelete() {
   const { entry, restoring } = useDeletedEntry.getState();
   if (!entry || restoring) return;
-  useDeletedEntry.setState({ restoring: true, failed: false });
+  useDeletedEntry.setState({ restoring: true });
+  const name = entry.food?.name ?? 'Food';
   void useFuelStore
     .getState()
     .restoreEntry(entry)
@@ -89,26 +122,24 @@ function undoDelete() {
       if (ok) {
         if (shown) useDeletedEntry.setState({ entry: null, restoring: false });
         haptics.success();
-        announce(`${entry.food?.name ?? 'Food'} back`);
+        announce(`${name} back`);
         return;
       }
       haptics.error();
       if (!shown) {
-        Alert.alert('Not put back', CHECK_CONNECTION);
+        holdingUndoAlert('Not put back', `${name} couldn't be put back. Check your connection.`);
         return;
       }
-      useDeletedEntry.setState({ restoring: false, failed: true });
-      const resume = () =>
-        useDeletedEntry.setState((state) => (state.entry === entry && state.failed ? { failed: false, key: state.key + 1 } : {}));
-      Alert.alert(
-        'Not put back',
-        CHECK_CONNECTION,
-        [
-          { text: 'Cancel', style: 'cancel', onPress: resume },
-          { text: 'Try again', onPress: undoDelete },
-        ],
-        { cancelable: true, onDismiss: resume },
-      );
+      useDeletedEntry.setState({ restoring: false });
+      holdingUndoAlert('Not put back', CHECK_CONNECTION, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Try again',
+          onPress: () => {
+            if (useDeletedEntry.getState().entry === entry) undoDelete();
+          },
+        },
+      ]);
     });
 }
 
@@ -131,7 +162,7 @@ function report(write: Promise<boolean>, failure: string) {
         return;
       }
       haptics.error();
-      Alert.alert(failure, CHECK_CONNECTION);
+      holdingUndoAlert(failure, CHECK_CONNECTION);
     });
 }
 
@@ -206,11 +237,11 @@ export default function FuelScreen() {
     if (!deleted) return;
     const timer = setTimeout(() => {
       const state = useDeletedEntry.getState();
-      if (state.key === deletedKey && !state.restoring && !state.failed) useDeletedEntry.setState({ entry: null });
+      if (state.key === deletedKey && !state.restoring && state.alerts === 0) useDeletedEntry.setState({ entry: null });
     }, screenReaderRunning() ? UNDO_MS_SCREEN_READER : UNDO_MS);
     return () => clearTimeout(timer);
   }, [deleted, deletedKey]);
-  useEffect(() => () => useDeletedEntry.setState({ entry: null, restoring: false, failed: false }), []);
+  useEffect(() => () => useDeletedEntry.setState({ entry: null, restoring: false }), []);
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
   // Read on every render and handed down, so the rows' "today" changes at

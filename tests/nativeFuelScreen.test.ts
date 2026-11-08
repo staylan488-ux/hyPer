@@ -42,6 +42,10 @@ const oats: Food = {
   id: 'oats', user_id: null, name: 'Oats', calories: 150, protein: 5, carbs: 27, fat: 3,
   serving_size: 40, serving_unit: 'g', source: 'usda', fdc_id: '1',
 };
+const milkFood: Food = {
+  id: 'milk', user_id: null, name: 'Milk', calories: 120, protein: 8, carbs: 12, fat: 5,
+  serving_size: 240, serving_unit: 'ml', source: 'usda', fdc_id: '2',
+};
 const TODAY = '2026-11-05';
 const noSavedFoods: Food[] = [];
 
@@ -58,15 +62,18 @@ const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } =
 let root: Root | undefined;
 let host: HTMLDivElement;
 
-async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1 }: {
+async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false }: {
   day?: string;
   logged?: boolean;
   source?: string;
   target?: Target | null;
   loaded?: boolean;
   fontScale?: number;
+  /** A second entry, Milk, after the Oats. */
+  milk?: boolean;
 } = {}) {
   const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null, sort_order: 0, source }] : [];
+  if (logged && milk) logs.push({ id: 'log-milk', date: day, food: milkFood, servings: 1, logged_at: `${day}T09:00:00Z`, group_id: null, sort_order: 1, source });
   const fuel = { selected: day, logs, groups: [], deleteEntry, restoreEntry };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
     'date-fns': dates,
@@ -353,5 +360,113 @@ describe("Fuel's Undo after a delete", () => {
     await act(async () => { vi.advanceTimersByTime(1_500); });
     expect(undoBar.props?.label).toBeNull();
     expect(restoreEntry).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Fuel's Undo with deletes and Undos overlapping", () => {
+  // The bar's countdown runs on these timers (only Date is faked for the rest of the file).
+  const fakeTimers = () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
+  };
+  const remove = (name: string) => act(async () => { rows[name].menu!.find((item) => item.title === 'Delete')!.run!(); });
+  const undo = () => act(async () => { undoBar.props!.onUndo(); });
+  const wait = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); });
+  const buttons = (call: number) => alert.mock.calls[call][2] as AlertButton[];
+  function later<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+
+  it('holds a newer delete’s Undo behind an older Undo’s failure, then gives it its full time', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    restoreEntry.mockReturnValueOnce(oats.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await undo();
+    await remove('Milk');
+    expect(undoBar.props).toMatchObject({ label: 'Milk deleted', busy: false });
+
+    await act(async () => { oats.resolve(false); });
+    expect(alert).toHaveBeenCalledOnce();
+    await wait(30_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(['Not put back', "Oats couldn't be put back. Check your connection."]);
+    // The old failure can't retry anything: its Undo is gone, and Milk's is not its own.
+    expect(buttons(0).map((button) => button.text)).toEqual(['OK']);
+
+    await act(async () => { buttons(0)[0].onPress!(); });
+    await wait(4_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await wait(1_500);
+    expect(undoBar.props?.label).toBeNull();
+    expect(restoreEntry).toHaveBeenCalledOnce();
+  });
+
+  it('leaves a newer delete’s Undo to its own time when an older Undo succeeds meanwhile', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    restoreEntry.mockReturnValueOnce(oats.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await undo();
+    await remove('Milk');
+    await wait(3_000);
+    await act(async () => { oats.resolve(true); });
+    expect(alert).not.toHaveBeenCalled();
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await wait(2_100);
+    expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('keeps a newer Undo running while an older Undo fails, and puts back only what each was for', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    const milk = later<boolean>();
+    restoreEntry.mockReturnValueOnce(oats.promise).mockReturnValueOnce(milk.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await undo();
+    await remove('Milk');
+    await undo();
+    expect(undoBar.props).toMatchObject({ label: 'Milk deleted', busy: true });
+
+    await act(async () => { oats.resolve(false); });
+    expect(buttons(0).map((button) => button.text)).toEqual(['OK']);
+    expect(undoBar.props).toMatchObject({ label: 'Milk deleted', busy: true });
+    await act(async () => { buttons(0)[0].onPress!(); });
+    await act(async () => { milk.resolve(true); });
+    expect(undoBar.props?.label).toBeNull();
+    expect(restoreEntry.mock.calls.map(([log]) => (log as { id: string }).id)).toEqual(['log-oats', 'log-milk']);
+  });
+
+  it('drops the Undo of a delete that failed, since the entry never left', async () => {
+    fakeTimers();
+    deleteEntry.mockResolvedValueOnce(false);
+    await renderFuel();
+    await remove('Oats');
+    expect(undoBar.props?.label).toBeNull();
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(['Not deleted', 'Check your connection and try again.']);
+  });
+
+  it('holds a newer delete’s Undo behind an older delete’s failure, then gives it its full time', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    deleteEntry.mockReturnValueOnce(oats.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await remove('Milk');
+    await act(async () => { oats.resolve(false); });
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(['Not deleted', 'Check your connection and try again.']);
+    await wait(30_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await act(async () => { buttons(0)[0].onPress!(); });
+    await wait(4_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await wait(1_500);
+    expect(undoBar.props?.label).toBeNull();
   });
 });
