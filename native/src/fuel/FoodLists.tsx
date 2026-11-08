@@ -75,7 +75,7 @@ async function usdaWithPortion(food: Food): Promise<Food> {
  * The try lives out here because the React Compiler can't compile a hook that
  * throws inside one.
  */
-async function saveQuickAdd(food: Food, entry: Omit<Parameters<typeof saveFoodEntry>[0], 'foodId'>): Promise<boolean> {
+export async function saveQuickAdd(food: Food, entry: Omit<Parameters<typeof saveFoodEntry>[0], 'foodId'>): Promise<boolean> {
   try {
     // Exactly what the row shows (one serving of its basis, or the amount it
     // names), never a portion it did not show.

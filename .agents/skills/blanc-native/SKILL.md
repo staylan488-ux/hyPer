@@ -38,7 +38,11 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   Capacitor app's items (service `<bundle ID>.auth`), so the 2.0 update kept
   people signed in.
 - Auth uses the shared `authStore` and `authScreen` rule; the root layout guards
-  the app, sign-in and offline screens with `Stack.Protected`. After sign-in the
+  the app, sign-in, new password and offline screens with `Stack.Protected`. A
+  password reset link signs in with `PASSWORD_RECOVERY`, which shows New
+  password before the app. A link that fails says so on sign-in
+  (`native/src/lib/authLink.ts`). Delete account (You › Account) calls the
+  `delete-account` Edge Function, then signs out locally. After sign-in the
   tab layout loads the account (`native/src/lib/accountData.ts`).
 - The launch copy ([launchCache](../../../native/src/lib/launchCache.ts), rules in
   [launchSnapshot](../../../native/src/lib/launchSnapshot.ts)) keeps the last
@@ -101,7 +105,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   follows the bundle ID iOS reports (`modules/hyper-keychain/bundle.ts`,
   `WidgetSnapshotStore.appScheme`), never a hard-coded value. Links from
   outside go through [+native-intent](../../../native/src/app/+native-intent.tsx): the email
-  confirmation's `auth/callback` exchanges its code there.
+  confirmation's and password reset's `auth/callback` exchanges its code there.
 - Use Apple's components before drawing your own: native stack (large titles,
   swipe-back, `formSheet` with detents), NativeTabs with the BottomAccessory for
   the live workout (it leads with the movement and set and the live clock, and
@@ -196,7 +200,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   figure, bar and macros are one Label. Session complete is top-anchored:
   the day as the large title, one quiet line ("Session complete · day ·
   time", or "5 of 9 sets · …" when short, never "complete"), then the tally,
-  "N sets beat last time" in ink, Volume, Time and Best set. A card that opens a screen shows a chevron (on a figure card,
+  "N sets beat last time" in ink, any new records ("New record" in ink, then
+  each movement with the record's kind and its set, "Heaviest · 102.5 lb
+  × 6"; the owner's call, 2026-11-08), Volume, Time and Best set (left out when it is
+  one of the records). A card that opens a screen shows a chevron (on a figure card,
   on the figure's line) and uses the `pressed` fill. A segmented control's
   `Host` matches its contents vertically only, with an explicit width.
 - Monday check-in (the owner's pick, 2026-11-08): on Mondays Today ends with
@@ -251,7 +258,7 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   another; add a row only when it changes what the person does next.
 - Fuel follows the web logger through shared `src/lib` rules (foodPersistence
   `ensureFoodRow`, saveNutritionEntry, manualFood, barcodeLookup, photoReview,
-  nutritionDay, savedMeals, recentFoods, repeatEntries, savedMealFromLog); never copy them into
+  nutritionDay, savedMeals, recentFoods, gapPicks, repeatEntries, savedMealFromLog); never copy them into
   `native/`. Log food is one sheet (`native/src/app/log-food.tsx`, parts in
   `native/src/fuel`) with a Search foods field above its Recent and Saved
   segments (typing takes the sheet over; Cancel returns to what was showing;
@@ -378,9 +385,13 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   (`withoutSessionMarks`).
 - Before a session, Train shows today's [PlanCard](../../../native/src/components/PlanCard.tsx)
   (shared with Today), then every other day to start. Its header menu holds the
-  schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm
-  choices, saved through the shared `buildPlanSchedule`; saving bumps
-  `useScheduleRevision` so open screens re-read it) and Program, which
+  schedule sheet (`native/src/app/schedule.tsx`: Day 1, then either the exact
+  training weekdays, a tap per day switching training and rest, or In order;
+  saved through the shared `buildPlanSchedule`, which keeps the days picked
+  and orders them Monday first, a saved first weekday kept; saving bumps
+  `useScheduleRevision` so open screens re-read it; Today's and Session
+  complete's week count goes by the days picked, `weekSessionTarget`) and
+  Program, which
   holds the training mode and, in Program days with a program, Adaptive
   scheduling. Flexible mode names the session or starts a quick
   start; the session grows with Add movement, the pencil renames it, and
@@ -410,6 +421,31 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   finish label adds a "Beat last time" row when any did. The tab layout runs
   the one "last time" lookup (`usePreviousTargetsLookup`), so Finish from
   Today counts too. Corrections never celebrate.
+- Movement history (the owner's pick, 2026-11-08): `train/exercise` (params
+  `id`, `name`) shows one movement over time: the latest session's estimated
+  max (or most reps for bodyweight work) as the figure, a
+  [TrendChart](../../../native/src/components/TrendChart.tsx) through every
+  session (read like Body weight's), Records (Est. max, Heaviest, Most reps)
+  and every finished session, which opens it in History. It opens from the
+  movement sheet's History row (the sheet closes first) and from History's
+  movement ⋯ menu. Rules are shared in `src/lib/movementHistory.ts`: a single
+  is its own max, 0 × 0 sets count for nothing, only finished workouts count,
+  and a movement's first session breaks no record. The tab layout reads each
+  live movement's records before the workout (`usePriorRecordsLookup`), and
+  Finish names at most one new record per movement; none before that read lands.
+- Warm-up and plates (the owner's pick, 2026-11-08): beside Add RPE the set
+  card offers Warm-up before a movement's first set (nothing of it logged, a
+  barbell or compound movement, a weight with a ramp to it) and otherwise
+  Plates on a barbell weight above the bar. Both open one sheet
+  (`native/src/app/warm-up.tsx`) at the weight typed: warm-up rows to tick
+  off (kept for the launch only, never logged, so they stay out of volume
+  and last time), then the working set's plates drawn on a bar
+  ([PlateBar](../../../native/src/components/PlateBar.tsx)) with the Bar
+  menu (45, 35, 25 or 15 lb, kept per movement on this phone per account).
+  The ramp, plates and bar rules are `src/lib/warmupPlates.ts`: plates 45,
+  25, 10, 5 and 2.5 lb heaviest first; a barbell ramps from the empty bar
+  through about 40, 60 and 80% for 5, 3 and 2, each step moved up to 10 lb
+  to need fewer plates; other equipment gets about 50% for 8 and 75% for 4.
 - Rest: the timer button in Train's header, or the workout bar tapped during
   a rest, opens the rest sheet to start a rest
   without logging a set, pause or resume it, add 30 seconds, change the
@@ -454,13 +490,31 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   day (a per-account record). Logging enough cancels it and dismisses a shown
   one; switching off, sign-out and the sign-in screen clear everything. In the
   app it goes quietly to Notification Center (the one handler is in
-  `platform/restNotifications.ts`). A tap posts a Log food press and its Snap
+  `platform/restNotifications.ts`). A tap posts a Log food press (a Fuel
+  press when today's reminder names close-the-gap picks, below) and its Snap
   a meal button (category `fuelReminder`) a Snap a meal press, so both run like
   the quick actions below. The root layout reads taps from launch
   (`followReminderTaps` beside `takeNativeLaunch`), never the tabs, so a tap
   made on the offline or sign-in screen keeps the press rules and never opens
   on a later visit. The trigger has no time zone, so after travel it follows
   the new zone from the next return to the front.
+- Close the gap (the owner's pick, 2026-11-08): on today, from 6:00 PM (or
+  the Fuel reminder's time when it is on and earlier), when today is well
+  short by the reminder's own rule (`fuelShortfall`), Fuel shows a Close the
+  gap section under the day's card ([GapPicks](../../../native/src/fuel/GapPicks.tsx)):
+  the set of one to three usual foods (eaten on two days or more of Recent's
+  four weeks, never hidden ones) that best covers what's left at the amounts
+  usually logged (rules in `src/lib/gapPicks.ts`, phone glue in
+  `native/src/lib/closeGap.ts`). While gaining it aims at the calories (a
+  little past is free) with the protein as a bonus; otherwise at the protein,
+  within the calories left. Nothing shows with nothing logged or no saved
+  target. + logs a pick now at its usual amount into the meal that fits the
+  time, its tick takes it out, a tap reviews it in Log food (`review=1`,
+  handed over by `offerReview`), and a swipe or hold hides it here and in
+  Recent. Once touched the card holds still until Fuel is left. Today's
+  reminder names the same picks ("… would cover it.") from Recent's kept logs
+  (`fuel/recent.ts`, read at most every ten minutes while the reminder is on),
+  and its tap then opens Fuel on today (the JavaScript-only `fuel` press).
 - The Live Activity is SwiftUI in a widget extension, added on prebuild by
   [plugins/withHyperWidgets.js](../../../native/plugins/withHyperWidgets.js)
   from [targets/widgets](../../../native/targets/widgets/). The card's data,
@@ -513,7 +567,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `settingsUx`, `bodyWeightSummary`, `nutritionWizard`, `healthWeights`,
   `whoopStatus` and `foodTrialUsage`. The
   calculator and coach hand their numbers to the edit sheet (`stageTargets`);
-  nothing is saved until Save there. Appearance (Automatic, Light, Dark) keeps
+  nothing is saved until Save there. In the edit sheet a new calorie figure
+  carries carbs and fat with it, in their split, so the macros still add up;
+  protein never moves, and carbs or fat typed there stay put
+  (`rebalanceMacros`; the owner's call, 2026-11-08). Appearance (Automatic, Light, Dark) keeps
   the web's `hyper-theme` key and applies through `Appearance.setColorScheme`
   before the first screen draws. WHOOP connects through iOS's sign-in sheet
   with the return address `app.hyper.mobile://settings` (the only one the

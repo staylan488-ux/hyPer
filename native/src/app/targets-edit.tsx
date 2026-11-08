@@ -6,10 +6,14 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import {
   TARGET_DRIFT_WARNING_PCT,
   baseTargets,
+  carbShare,
   editTargetField,
+  followNote,
   macroTargetColumns,
+  rebalanceMacros,
   targetDrift,
   targetsChanged,
+  type FlexMacro,
   type TargetDraft,
   type TargetNumbers,
 } from '@/lib/settingsUx';
@@ -37,7 +41,9 @@ const FIELDS: { key: keyof TargetNumbers; label: string; unit: string }[] = [
 /**
  * Edit targets: the four numbers, filled with the saved targets or with what
  * the calculator or coach suggested. Typing makes them targets set by hand;
- * nothing is saved until Save. Opened from one of the numbers (`focus`), that
+ * nothing is saved until Save. A new calorie figure carries carbs and fat with
+ * it so the macros still add up; protein, and carbs or fat once typed here,
+ * stay put (`rebalanceMacros`). Opened from one of the numbers (`focus`), that
  * field is ready to type; Next walks the four, Done on the last puts the
  * keyboard away. Opened before the saved targets are read, the fields and
  * Save wait for them.
@@ -62,6 +68,14 @@ export default function TargetsEditSheet() {
   // waits for a number in it.
   const [empty, setEmpty] = useState<Partial<Record<keyof TargetNumbers, boolean>>>({});
   const anyEmpty = FIELDS.some((field) => empty[field.key]);
+  // Carbs or fat typed in this sheet are the person's; a calorie change leaves
+  // them alone. The untyped pair keeps the split it had when calories first
+  // changed.
+  const [typed, setTyped] = useState<Partial<Record<FlexMacro, boolean>>>({});
+  const split = useRef<number | null>(null);
+  // Set once calories moved carbs or fat; the note then says which follow.
+  const [followed, setFollowed] = useState(false);
+  const follows = followed ? followNote(typed) : null;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -152,7 +166,16 @@ export default function TargetsEditSheet() {
               onChangeText={(text) => {
                 setError(null);
                 setEmpty((current) => ({ ...current, [field.key]: text.trim() === '' }));
-                setEdited((current) => editTargetField(current ?? base, field.key, text));
+                const key = field.key;
+                if ((key === 'carbs' || key === 'fat') && !typed[key]) setTyped((current) => ({ ...current, [key]: true }));
+                const rebalance = field.key === 'calories' && followNote(typed) !== null;
+                setEdited((current) => {
+                  const next = editTargetField(current ?? base, field.key, text);
+                  if (!rebalance) return next;
+                  split.current ??= carbShare(next);
+                  return rebalanceMacros(next, split.current, typed);
+                });
+                if (rebalance) setFollowed(true);
               }}
             />
           </View>
@@ -164,6 +187,7 @@ export default function TargetsEditSheet() {
         </FormNote>
       ) : (
         <FormNote>
+          {follows ? `${follows} ` : ''}
           {draft.source === 'manual'
             ? 'Set by hand: fixed until you resume adaptive targets.'
             : 'Calculated: these adapt while adaptive targets are on.'}

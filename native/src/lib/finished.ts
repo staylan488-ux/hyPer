@@ -2,6 +2,7 @@
 // the workout is completed (completing clears the live workout).
 import { create } from 'zustand';
 
+import { findNewRecords, type MovementRecords, type NewRecord } from '@/lib/movementHistory';
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
 import { getWorkoutDurationMs } from '@/lib/workoutSessions';
 
@@ -20,6 +21,8 @@ export type FinishedSummary = {
   volume: number;
   minutes: number;
   best: { name: string; weight: number; reps: number } | null;
+  /** Movements that set a record (one each), against their history before this workout. */
+  records: NewRecord[];
 };
 
 function beats(a: { weight: number; reps: number }, b: { weight: number; reps: number }): boolean {
@@ -28,8 +31,16 @@ function beats(a: { weight: number; reps: number }, b: { weight: number; reps: n
   return a.reps > b.reps;
 }
 
-/** `previous` is last time's numbers for the session (see usePreviousTargetsStore). */
-export function summarize(session: SessionModel, previous: PreviousWorkoutSetMap = {}, finishedAt = new Date()): FinishedSummary {
+/**
+ * `previous` is last time's numbers for the session (see usePreviousTargetsStore);
+ * `prior` each movement's records before it (see usePriorRecordsStore).
+ */
+export function summarize(
+  session: SessionModel,
+  previous: PreviousWorkoutSetMap = {},
+  finishedAt = new Date(),
+  prior: Readonly<Record<string, MovementRecords | undefined>> = {},
+): FinishedSummary {
   const done = session.sets.filter((set) => set.completed);
   // Start to the last logged set, as the workout is saved, so the receipt agrees with the record and History.
   const lastLogged = Math.max(...done.map((set) => (set.completed_at ? Date.parse(set.completed_at) : NaN)).filter(Number.isFinite));
@@ -59,6 +70,7 @@ export function summarize(session: SessionModel, previous: PreviousWorkoutSetMap
     volume,
     minutes: Math.max(1, Math.round((duration ?? 0) / 60_000)),
     best,
+    records: findNewRecords(done, prior),
   };
 }
 

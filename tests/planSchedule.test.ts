@@ -33,6 +33,7 @@ import {
   savePlanSchedule,
   defaultStartDate,
   defaultWeekdays,
+  orderTrainingWeekdays,
   type PlanSchedule,
 } from '../src/lib/planSchedule';
 import type { SplitDay } from '@/types';
@@ -798,21 +799,30 @@ describe('planSchedule', () => {
 });
 
 describe('buildPlanSchedule', () => {
-  const split = { id: 'split-1', days_per_week: 3, days: [{}, {}, {}] };
+  const split = { id: 'split-1', days: [{}, {}, {}] };
 
-  it('turns a fixed weekly choice into its weekdays', () => {
-    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'fixed', anchorDay: 2, flexDayIndex: 1 })).toEqual({
+  it('saves the training days picked, Monday first, the first carrying the program’s first day', () => {
+    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'fixed', weekdays: [5, 1, 3], flexDayIndex: 1 })).toEqual({
       splitId: 'split-1',
       startDate: '2026-10-27',
       mode: 'fixed',
-      weekdays: [2, 4, 6],
-      anchorDay: 2,
+      weekdays: [1, 3, 5],
+      anchorDay: 1,
       flexAnchorIndex: undefined,
     });
   });
 
+  it('keeps a saved first weekday while it is still a training day', () => {
+    // Saved as Wed, Fri, Sun (the old "start the week there" choice); Monday added.
+    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'fixed', weekdays: [1, 3, 5, 0], firstWeekday: 3, flexDayIndex: 0 }))
+      .toMatchObject({ weekdays: [3, 5, 0, 1], anchorDay: 3 });
+    // Wednesday dropped: Monday-first again.
+    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'fixed', weekdays: [5, 0, 1], firstWeekday: 3, flexDayIndex: 0 }))
+      .toMatchObject({ weekdays: [1, 5, 0], anchorDay: 1 });
+  });
+
   it('keeps the next split day for a flexible order, wrapped into range', () => {
-    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'flex', anchorDay: 2, flexDayIndex: 4 })).toEqual({
+    expect(buildPlanSchedule(split, { startDate: '2026-10-27', mode: 'flex', weekdays: [1, 3, 5], flexDayIndex: 4 })).toEqual({
       splitId: 'split-1',
       startDate: '2026-10-27',
       mode: 'flex',
@@ -820,5 +830,43 @@ describe('buildPlanSchedule', () => {
       anchorDay: 0,
       flexAnchorIndex: 1,
     });
+  });
+});
+
+describe('orderTrainingWeekdays', () => {
+  it('orders any days Monday first, without repeats, with Sunday last', () => {
+    expect(orderTrainingWeekdays([0, 6, 2, 2, 9])).toEqual([2, 6, 0]);
+    expect(orderTrainingWeekdays([])).toEqual([]);
+  });
+
+  it('starts from the first day asked for when it is one of them', () => {
+    expect(orderTrainingWeekdays([1, 3, 5], 5)).toEqual([5, 1, 3]);
+    expect(orderTrainingWeekdays([1, 3, 5], 2)).toEqual([1, 3, 5]);
+  });
+});
+
+describe('exact weekdays plan the days picked and rest the others', () => {
+  const days = ['Push', 'Pull', 'Legs'].map((name, index) => ({
+    id: `d${index}`, split_id: 'split-1', day_name: name, day_order: index, exercises: [],
+  })) as SplitDay[];
+  // Monday 2026-11-02 to Sunday 2026-11-08.
+  const week = (schedule: PlanSchedule, program = days) => Array.from({ length: 14 }, (_, offset) =>
+    plannedDayForDate(new Date(2026, 10, 2 + offset), program, schedule, 0, [], false)?.day_name ?? 'rest');
+
+  it('trains Tuesday, Thursday and Saturday in program order each week', () => {
+    const schedule = buildPlanSchedule({ id: 'split-1', days }, { startDate: '2026-11-02', mode: 'fixed', weekdays: [6, 2, 4], flexDayIndex: 0 });
+    expect(week(schedule)).toEqual([
+      'rest', 'Push', 'rest', 'Pull', 'rest', 'Legs', 'rest',
+      'rest', 'Push', 'rest', 'Pull', 'rest', 'Legs', 'rest',
+    ]);
+  });
+
+  it('rotates four program days through three training days, each week picking up where the last left off', () => {
+    const four = [...days, { ...days[0], id: 'd3', day_name: 'Arms', day_order: 3 }];
+    const schedule = buildPlanSchedule({ id: 'split-1', days: four }, { startDate: '2026-11-02', mode: 'fixed', weekdays: [1, 3, 5], flexDayIndex: 0 });
+    expect(week(schedule, four)).toEqual([
+      'Push', 'rest', 'Pull', 'rest', 'Legs', 'rest', 'rest',
+      'Arms', 'rest', 'Push', 'rest', 'Pull', 'rest', 'rest',
+    ]);
   });
 });

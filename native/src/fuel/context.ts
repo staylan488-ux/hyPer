@@ -67,3 +67,17 @@ export function useLogger(): LoggerContextValue {
   if (!value) throw new Error('useLogger outside the Log food sheet');
   return value;
 }
+
+/**
+ * A food to review as Log food opens (`review=1`): Fuel's close-the-gap picks
+ * hand it over here, since a food does not fit in a route's params. Taken once.
+ */
+let reviewHandoff: { food: Food; servings: number } | null = null;
+export function offerReview(food: Food, servings: number): void {
+  reviewHandoff = { food, servings };
+}
+export function takeReview(): { food: Food; servings: number } | null {
+  const taken = reviewHandoff;
+  reviewHandoff = null;
+  return taken;
+}

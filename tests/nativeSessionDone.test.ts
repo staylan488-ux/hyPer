@@ -8,6 +8,8 @@ import { create } from 'zustand';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import * as format from '../native/src/lib/format';
+import { weekSessionTarget } from '../src/lib/todayModel';
+import type { PlanSchedule } from '../src/lib/planSchedule';
 import { savedLine, type FinishedSummary } from '../native/src/lib/finished';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,6 +44,19 @@ const Tally = ({ accessibilityLabel }: Props) => createElement('div', { 'data-ta
 const Capsule = ({ title }: Props) => createElement('button', { 'data-accessible': 'true' }, title as string);
 
 let summary: FinishedSummary;
+// Signed out by default: the week's count never loads, so the footer only says where it went.
+let user: { id: string } | null = null;
+let schedule: PlanSchedule | null = null;
+let weekSessions = 0;
+/** The week's completed sessions, as the workouts read answers. */
+const weekRead = {
+  from: () => weekRead,
+  select: () => weekRead,
+  eq: () => weekRead,
+  gte: () => weekRead,
+  then: (resolve: (result: { data: { id: string }[]; error: null }) => void) =>
+    resolve({ data: Array.from({ length: weekSessions }, (_, index) => ({ id: `w${index}` })), error: null }),
+};
 
 /** Upper A on Friday, November 6 at 1:17 AM: nine sets planned. */
 function finished(sets: number, beat: number): FinishedSummary {
@@ -55,6 +70,7 @@ function finished(sets: number, beat: number): FinishedSummary {
     volume: 12400,
     minutes: 52,
     best: { name: 'Bench Press', weight: 185, reps: 6 },
+    records: [],
   };
 }
 
@@ -69,10 +85,11 @@ async function open() {
       'expo-router': { router: { dismiss: vi.fn(), navigate: vi.fn() } },
       'react-native': { ScrollView: View, View },
       'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }) },
-      '@/lib/supabase': { supabase: {} },
-      '@/stores/appStore': { useAppStore: create(() => ({ activeSplit: { days_per_week: 4 } })) },
-      // Signed out: the week's count never loads, so the footer only says where it went.
-      '@/stores/authStore': { useAuthStore: create(() => ({ user: null })) },
+      '@/lib/planSchedule': { loadPlanSchedule: () => schedule },
+      '@/lib/supabase': { supabase: weekRead },
+      '@/lib/todayModel': { weekSessionTarget },
+      '@/stores/appStore': { useAppStore: create(() => ({ activeSplit: { id: 'split-1', days_per_week: 4 }, workoutMode: 'split' })) },
+      '@/stores/authStore': { useAuthStore: create(() => ({ user })) },
       '~/components/BlancText': { BlancText: Text },
       '~/components/Capsule': { Capsule },
       '~/components/Label': { Label: View },
@@ -175,5 +192,71 @@ describe('Session complete\'s card', () => {
     expect(rows).toEqual(['5 of 9 sets · Friday, November 6 · 1:17 AM', 'Volume', 'Time', 'Best set']);
     expect(spanNamed('Sets')).toBeUndefined();
     expect(spanNamed('Beat last time')).toBeUndefined();
+  });
+});
+
+describe('Session complete\'s records', () => {
+  it('names each record after the beats, one stop each, and says a best set that is a record once', async () => {
+    summary = {
+      ...finished(9, 4),
+      records: [
+        { exerciseId: 'bench', name: 'Bench Press', kind: 'max', set: { weight: 185, reps: 6 } },
+        { exerciseId: 'pullup', name: 'Pull-up', kind: 'reps', set: { weight: 0, reps: 14 } },
+      ],
+    };
+    await open();
+    const heading = spanNamed('2 new records')!;
+    expect({ variant: heading.dataset.variant, tone: heading.dataset.tone }).toEqual({ variant: 'body', tone: 'ink' });
+    expect(voiceOver()).toEqual([
+      'Upper A. Session complete, Friday, November 6, 1:17 AM',
+      '9 of 9 sets logged',
+      '4 sets beat last time',
+      'New record, Bench Press, est. max, 185 pounds × 6',
+      'New record, Pull-up, most reps, 14 reps',
+      'Volume, 12,400 pounds',
+      'Time, 52 minutes',
+      'Saved to History',
+      'Done',
+    ]);
+  });
+
+  it('says one record in the singular, keeps a best set that is not a record, and says nothing without one', async () => {
+    summary = { ...finished(9, 0), records: [{ exerciseId: 'row', name: 'Barbell Row', kind: 'heaviest', set: { weight: 155, reps: 8 } }] };
+    await open();
+    expect(spanNamed('New record')).toBeDefined();
+    // It says which record: the heaviest load here, beside a best set with more volume.
+    expect(spanNamed('Heaviest · 155 lb × 8')).toBeDefined();
+    expect(spanNamed('Best set')).toBeDefined();
+    act(() => root.unmount());
+    root = createRoot(host);
+    summary = finished(9, 0);
+    await open();
+    expect(host.textContent).not.toContain('record');
+  });
+});
+
+describe('Session complete\'s week count', () => {
+  afterEach(() => {
+    user = null;
+    schedule = null;
+    weekSessions = 0;
+  });
+
+  it('counts the week against the training days picked, as Today does', async () => {
+    user = { id: 'user-1' };
+    weekSessions = 2;
+    // A four-day program trained Monday to Friday.
+    schedule = { splitId: 'split-1', startDate: '2026-11-02', mode: 'fixed', weekdays: [1, 2, 3, 4, 5], anchorDay: 1 };
+    summary = finished(9, 0);
+    await open();
+    expect(spanNamed('Saved to History · session 2 of 5 this week')).toBeTruthy();
+  });
+
+  it('counts against the program’s days when there are no weekdays to go by', async () => {
+    user = { id: 'user-1' };
+    weekSessions = 2;
+    summary = finished(9, 0);
+    await open();
+    expect(spanNamed('Saved to History · session 2 of 4 this week')).toBeTruthy();
   });
 });

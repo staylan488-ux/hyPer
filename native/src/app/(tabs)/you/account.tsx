@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 import { useState } from 'react';
-import { ActionSheetIOS, Keyboard, View } from 'react-native';
+import { ActionSheetIOS, Alert, Keyboard, View } from 'react-native';
 
 import { signOutQuestion } from '@/lib/settingsUx';
 import { useAuthStore } from '@/stores/authStore';
@@ -9,13 +9,13 @@ import { FieldRow, FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
-import { useAnnounce } from '~/lib/accessibility';
+import { announce, useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space } from '~/theme/blanc';
 
-/** Account: the name the app greets you by, and signing out. */
+/** Account: the name the app greets you by, signing out and deleting the account. */
 export default function AccountScreen() {
   const user = useAuthStore((state) => state.user);
   const profile = useAuthStore((state) => state.profile);
@@ -23,6 +23,8 @@ export default function AccountScreen() {
   const [name, setName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; alert?: boolean } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteFailed, setDeleteFailed] = useState(false);
   const draft = name ?? saved;
   const changed = draft.trim() !== saved;
   // Save name goes away once the name saves, and VoiceOver's focus with it;
@@ -62,6 +64,35 @@ export default function AccountScreen() {
     );
   };
 
+  // Apple asks for this in the app. One clear confirm, then the server
+  // deletes the account and all its data, and the app returns to sign-in.
+  const deleteAccount = async () => {
+    setDeleting(true);
+    setDeleteFailed(false);
+    const { error } = await useAuthStore.getState().deleteAccount();
+    if (error) {
+      setDeleting(false);
+      setDeleteFailed(true);
+      haptics.error();
+      return;
+    }
+    haptics.success();
+    announce('Account deleted');
+  };
+
+  const confirmDelete = () => {
+    if (deleting) return;
+    Keyboard.dismiss();
+    Alert.alert(
+      'Delete your account?',
+      `Your workouts, food log, programs, targets and weigh-ins${user?.email ? ` for ${user.email}` : ''} are deleted for good. This can’t be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete account', style: 'destructive', onPress: () => void deleteAccount() },
+      ],
+    );
+  };
+
   return (
     <>
       <Stack.Screen options={{ title: 'Account' }} />
@@ -98,6 +129,20 @@ export default function AccountScreen() {
               <Row title="Sign out" destructive accessibilityLabel="Sign out" onPress={signOut} />
             </Label>
             {user?.email ? <FormNote>Signed in as {user.email}</FormNote> : null}
+            <Label style={{ marginTop: space.section }}>
+              <Row
+                title={deleting ? 'Deleting account…' : 'Delete account'}
+                destructive
+                disabled={deleting}
+                accessibilityLabel="Delete account"
+                onPress={confirmDelete}
+              />
+            </Label>
+            {deleteFailed ? (
+              <FormNote alert>Couldn’t delete your account. Check your connection and try again.</FormNote>
+            ) : (
+              <FormNote>Deletes your account and everything in it. This can’t be undone.</FormNote>
+            )}
           </>
         )}
       </TabScroll>

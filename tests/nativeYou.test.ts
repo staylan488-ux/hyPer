@@ -302,6 +302,37 @@ describe('Edit targets opened before the targets are read', () => {
     expect(useAppStore.getState().updateMacroTarget).toHaveBeenCalledWith(expect.objectContaining({ fat: 0 }));
   });
 
+  it('moves carbs and fat with a new calorie figure, protein staying put', async () => {
+    const { Sheet, reads, fields, buttons, useAppStore } = sheetHarness('calories');
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+
+    // Typed digit by digit, as the keyboard sends it.
+    for (const text of ['2', '28', '280', '2800']) {
+      await act(async () => { fields.Calories.onChangeText(text); });
+    }
+    expect([fields.Protein.value, fields.Carbs.value, fields.Fat.value]).toEqual(['180', '319', '89']);
+    await act(async () => { buttons['Save targets'].onPress(); });
+    expect(useAppStore.getState().updateMacroTarget).toHaveBeenCalledWith(
+      expect.objectContaining({ calories: 2800, protein: 180, carbs: 319, fat: 89, source: 'manual' }),
+    );
+  });
+
+  it('keeps carbs or fat typed by hand when the calories change', async () => {
+    const { Sheet, reads, fields } = sheetHarness();
+    await mount(createElement(Sheet));
+    await act(async () => { reads[0].resolve({ data: saved, error: null }); });
+
+    await act(async () => { fields.Carbs.onChangeText('300'); });
+    await act(async () => { fields.Calories.onChangeText('2800'); });
+    // Fat takes the whole change: (2800 − 180×4 − 300×4) / 9.
+    expect([fields.Protein.value, fields.Carbs.value, fields.Fat.value]).toEqual(['180', '300', '98']);
+
+    await act(async () => { fields.Fat.onChangeText('60'); });
+    await act(async () => { fields.Calories.onChangeText('3000'); });
+    expect([fields.Protein.value, fields.Carbs.value, fields.Fat.value]).toEqual(['180', '300', '60']);
+  });
+
   it('puts the cursor in the field it was opened from once the targets arrive', async () => {
     const { Sheet, reads, fields, focused } = sheetHarness('protein');
     await mount(createElement(Sheet));

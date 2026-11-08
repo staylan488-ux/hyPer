@@ -166,24 +166,84 @@ describe('Schedule sheet, in order', () => {
 });
 
 describe('Schedule sheet, set weekdays', () => {
-  it('counts a rhythm rebuilt for a changed number of program days as a change', async () => {
-    // Saved for three days a week; the program now has four.
+  const circle = (weekday: string) => [...host.querySelectorAll('button')].find((button) => button.getAttribute('aria-label')?.startsWith(`${weekday},`))!;
+  const note = () => [...host.querySelectorAll('p')].map((p) => p.textContent).join(' ');
+
+  it('keeps the days saved though the program’s number of days changed', async () => {
+    // Saved for Mon, Wed, Fri; the program now has four days.
     app.setState({ activeSplit: program(4) });
     todayPlan.setState({ hero: { kind: 'rest' }, schedule: weekly, upNext: days[1] });
     await open();
 
-    expect(trainingDays()).toEqual(['Monday, first training day', 'Tuesday, training day', 'Thursday, training day', 'Friday, training day']);
-    expect(leaveGuarded).toBe(true);
-    await act(async () => { saveButton().click(); });
-    expect(save).toHaveBeenCalledWith('user-1', expect.objectContaining({ mode: 'fixed', weekdays: [1, 2, 4, 5] }));
+    expect(trainingDays()).toEqual(['Monday, training day', 'Wednesday, training day', 'Friday, training day']);
+    expect(note()).toContain('4 program days at 3 sessions a week');
+    expect(leaveGuarded).toBe(false);
   });
 
-  it('is unchanged when the rhythm shown is the one saved', async () => {
+  it('is unchanged when the days shown are the ones saved', async () => {
     todayPlan.setState({ hero: { kind: 'rest' }, schedule: weekly, upNext: days[1] });
     await open();
 
-    expect(trainingDays()).toEqual(['Monday, first training day', 'Wednesday, training day', 'Friday, training day']);
+    expect(trainingDays()).toEqual(['Monday, training day', 'Wednesday, training day', 'Friday, training day']);
+    expect(note()).toContain('Program days follow in order, the same each week.');
     expect(leaveGuarded).toBe(false);
+  });
+
+  it('starts a new schedule on the usual days for the program’s length', async () => {
+    todayPlan.setState({ hero: { kind: 'no-schedule' }, schedule: null, upNext: null });
+    await open();
+    expect(trainingDays()).toEqual(['Monday, training day', 'Wednesday, training day', 'Friday, training day']);
+  });
+
+  it('switches one day at a tap and saves exactly the days picked', async () => {
+    todayPlan.setState({ hero: { kind: 'rest' }, schedule: weekly, upNext: days[1] });
+    await open();
+
+    // Train Tuesday, Thursday and Saturday instead.
+    for (const name of ['Monday', 'Wednesday', 'Friday', 'Saturday', 'Thursday', 'Tuesday']) {
+      await act(async () => { circle(name).click(); });
+    }
+    expect(trainingDays()).toEqual(['Tuesday, training day', 'Thursday, training day', 'Saturday, training day']);
+    expect(circle('Monday').getAttribute('aria-label')).toBe('Monday, rest day');
+    expect(circle('Tuesday').dataset.selected).toBe('true');
+    expect(leaveGuarded).toBe(true);
+    await act(async () => { saveButton().click(); });
+    expect(save).toHaveBeenCalledWith('user-1', expect.objectContaining({ mode: 'fixed', weekdays: [2, 4, 6], anchorDay: 2 }));
+  });
+
+  it('trains on one day or all seven', async () => {
+    todayPlan.setState({ hero: { kind: 'rest' }, schedule: weekly, upNext: days[1] });
+    await open();
+    for (const name of ['Tuesday', 'Thursday', 'Saturday', 'Sunday']) {
+      await act(async () => { circle(name).click(); });
+    }
+    expect(trainingDays()).toHaveLength(7);
+    await act(async () => { saveButton().click(); });
+    expect(save).toHaveBeenCalledWith('user-1', expect.objectContaining({ weekdays: [1, 2, 3, 4, 5, 6, 0] }));
+  });
+
+  it('waits for at least one training day before saving, and says so', async () => {
+    todayPlan.setState({ hero: { kind: 'rest' }, schedule: weekly, upNext: days[1] });
+    await open();
+    for (const name of ['Monday', 'Wednesday', 'Friday']) {
+      await act(async () => { circle(name).click(); });
+    }
+    expect(trainingDays()).toEqual([]);
+    expect(saveButton().disabled).toBe(true);
+    expect(note()).toBe('Pick at least one training day to save.');
+    await act(async () => { saveButton().click(); });
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('keeps the program’s first day on the weekday it was saved on', async () => {
+    // Saved before exact days: Wed, Fri, Sun with Wednesday first.
+    const fromWednesday: PlanSchedule = { ...weekly, weekdays: [3, 5, 0], anchorDay: 3 };
+    todayPlan.setState({ hero: { kind: 'rest' }, schedule: fromWednesday, upNext: days[1] });
+    await open();
+    expect(trainingDays()).toEqual(['Wednesday, training day', 'Friday, training day', 'Sunday, training day']);
+    await act(async () => { circle('Monday').click(); });
+    await act(async () => { saveButton().click(); });
+    expect(save).toHaveBeenCalledWith('user-1', expect.objectContaining({ weekdays: [3, 5, 0, 1], anchorDay: 3 }));
   });
 });
 
