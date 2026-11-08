@@ -52,6 +52,8 @@ const openMonth = () => {
 };
 
 const CHECK_CONNECTION = 'Check your connection and try again.';
+const DELETE_UNCONFIRMED = "Couldn't confirm the delete";
+const DELETE_UNCONFIRMED_MESSAGE = 'It may have gone through. Fuel shows what is saved once it reads the day again; check your connection.';
 
 /** How long Undo stays after a delete, as Train's skip does; longer with VoiceOver. */
 const UNDO_MS = 5000;
@@ -95,8 +97,10 @@ function holdingUndoAlert(title: string, message: string, buttons: AlertButton[]
 function deleteWithUndo(log: FoodLog) {
   useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1, restoring: false }));
   // A failed delete keeps its Undo: its answer may have been lost after the
-  // row went, and Undo writes the row back as it was either way.
-  report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
+  // row went, and Undo writes the row back as it was either way. Its alert
+  // says only what is known; the store reads the day again to show what the
+  // server has.
+  report(useFuelStore.getState().deleteEntry(log.id), DELETE_UNCONFIRMED, DELETE_UNCONFIRMED_MESSAGE);
 }
 
 /**
@@ -150,7 +154,7 @@ const DAY_CELL_TEXT_MAX = 1.3;
  * A Fuel write's result: a success tick, or an error buzz and an alert, so a
  * failed delete or move is never silent.
  */
-function report(write: Promise<boolean>, failure: string) {
+function report(write: Promise<boolean>, failure: string, message = CHECK_CONNECTION) {
   void write
     .catch(() => false)
     .then((ok) => {
@@ -159,7 +163,7 @@ function report(write: Promise<boolean>, failure: string) {
         return;
       }
       haptics.error();
-      holdingUndoAlert(failure, CHECK_CONNECTION);
+      holdingUndoAlert(failure, message);
     });
 }
 

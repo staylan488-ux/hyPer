@@ -456,7 +456,7 @@ describe("Fuel's Undo with deletes and Undos overlapping", () => {
     deleteEntry.mockResolvedValueOnce(false);
     await renderFuel();
     await remove('Oats');
-    expect(alert.mock.calls[0].slice(0, 2)).toEqual(['Not deleted', 'Check your connection and try again.']);
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(["Couldn't confirm the delete", 'It may have gone through. Fuel shows what is saved once it reads the day again; check your connection.']);
     await wait(30_000);
     expect(undoBar.props?.label).toBe('Oats deleted');
     await act(async () => { buttons(0)[0].onPress!(); });
@@ -488,7 +488,7 @@ describe("Fuel's Undo with deletes and Undos overlapping", () => {
     await remove('Oats');
     await remove('Milk');
     await act(async () => { oats.resolve(false); });
-    expect(alert.mock.calls[0].slice(0, 2)).toEqual(['Not deleted', 'Check your connection and try again.']);
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(["Couldn't confirm the delete", 'It may have gone through. Fuel shows what is saved once it reads the day again; check your connection.']);
     await wait(30_000);
     expect(undoBar.props?.label).toBe('Milk deleted');
     await act(async () => { buttons(0)[0].onPress!(); });
@@ -592,13 +592,22 @@ describe("Fuel's Undo against the real store and a simulated server", () => {
     if (timing === 'before') await act(async () => { undoBar.props!.onUndo(); });
     await act(async () => { answerDelete(); });
     await settle();
-    expect(alert.mock.calls.some(([title]) => title === 'Not deleted')).toBe(deleted !== 'ok');
-    if (deleted !== 'ok') await press('Not deleted', 'OK');
+    // A failed answer says only what is known: never "Not deleted".
+    expect(alert.mock.calls.map(([title]) => title)).not.toContain('Not deleted');
+    expect(alert.mock.calls.some(([title]) => title === "Couldn't confirm the delete")).toBe(deleted !== 'ok');
+    if (deleted !== 'ok') await press("Couldn't confirm the delete", 'OK');
 
+    if (timing !== 'before') {
+      // Before any Undo, the day shows what the server has: read again after a failed answer.
+      const saved = server.rows.has(row.id);
+      expect(saved).toBe(deleted === 'failed');
+      await vi.waitFor(() => expect(fuel.useFuelStore.getState().totalsNeedRefresh).toBe(false));
+      expect(fuel.useFuelStore.getState().logs.filter((log) => log.id === row.id)).toHaveLength(saved ? 1 : 0);
+      expect(fuel.useFuelStore.getState().todayTotals.calories).toBe(saved ? 150 : 0);
+    }
     if (timing === 'none') {
       // A failed answer keeps the offer: the row may be gone.
       expect(undoBar.props?.label).toBe('Oats deleted');
-      expect(server.rows.has(row.id)).toBe(deleted === 'failed');
       return;
     }
     if (timing === 'after') await act(async () => { undoBar.props!.onUndo(); });

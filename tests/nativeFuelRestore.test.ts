@@ -181,6 +181,36 @@ describe('deleting while the loaded month refreshes', () => {
     expect(useFuelStore.getState().todayTotals.calories).toBe(800);
   });
 
+  it('reads the day again after a failed delete, so a lost answer shows the row gone', async () => {
+    // The server deleted it; only the answer was lost.
+    reads.deleteEntry.mockResolvedValueOnce(false);
+    reads.food.mockResolvedValue({ data: copyMonth().logs.filter((entry) => entry.id !== 'b'), error: null });
+    expect(await useFuelStore.getState().deleteEntry('b')).toBe(false);
+    await vi.waitFor(() => expect(reads.food).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(useFuelStore.getState().totalsNeedRefresh).toBe(false));
+    expect(useFuelStore.getState().logs.map((entry) => entry.id)).not.toContain('b');
+    expect(useFuelStore.getState().todayTotals.calories).toBe(500);
+  });
+
+  it('lets no read from before a failed delete decide what shows', async () => {
+    const stale = deferred<{ data: FoodLog[]; error: null }>();
+    const deletion = deferred<boolean>();
+    reads.food.mockReturnValueOnce(stale.promise);
+    reads.deleteEntry.mockReturnValueOnce(deletion.promise);
+    const refresh = useFuelStore.getState().refresh();
+    await vi.waitFor(() => expect(reads.food).toHaveBeenCalledTimes(2));
+    const removing = useFuelStore.getState().deleteEntry('b');
+    reads.food.mockResolvedValue({ data: copyMonth().logs.filter((entry) => entry.id !== 'b'), error: null });
+    deletion.resolve(false);
+    expect(await removing).toBe(false);
+    // It read the month before the delete reached the server.
+    stale.resolve({ data: copyMonth().logs, error: null });
+    await refresh;
+    await vi.waitFor(() => expect(useFuelStore.getState().totalsNeedRefresh).toBe(false));
+    expect(useFuelStore.getState().logs.map((entry) => entry.id)).not.toContain('b');
+    expect(useFuelStore.getState().todayTotals.calories).toBe(500);
+  });
+
   it('does not restore a failed deletion into another month', async () => {
     const deletion = deferred<boolean>();
     reads.deleteEntry.mockReturnValueOnce(deletion.promise);

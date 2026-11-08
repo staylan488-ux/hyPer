@@ -281,13 +281,15 @@ export const useFuelStore = create<FuelState>((set, get) => {
       const ok = await deletion;
       if (!isCurrent() || deletedEntries.get(id) !== deletion) return ok;
       if (!ok) {
+        // A failed answer may have come after the row went. It shows again
+        // meanwhile; older reads are dropped and the shown month and today's
+        // totals read again, so the server decides.
         deletedEntries.delete(id);
         if (removed && get().loadedMonth === monthOf(removed.date) && !get().logs.some((log) => log.id === id)) {
           set({ logs: [...get().logs, removed] });
           syncTodayTotals();
-        } else if (removed?.date === get().todayKey) {
-          void get().loadToday();
         }
+        void get().refreshAfterWrite();
       }
       return ok;
     }),
