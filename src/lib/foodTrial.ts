@@ -44,10 +44,13 @@ function outcome(status: number, payload: unknown): Record<string, unknown> {
  * Sends a request. With `onProgress`, the meal analysis is followed: the
  * service answers with its steps as server-sent events and the outcome last.
  * A service without steps (an older one, a replay or a refusal) answers with
- * one JSON reply, read as before.
+ * one JSON reply, read as before. The steps are read with TextDecoder; a
+ * runtime without one asks for the one reply instead, so the analysis still
+ * runs, without its steps.
  */
-async function post(body: object, accessToken: string, onProgress?: (step: AnalysisProgress) => void): Promise<Record<string, unknown>> {
+async function post(body: object, accessToken: string, follow?: (step: AnalysisProgress) => void): Promise<Record<string, unknown>> {
   if (!accessToken) throw new Error('Sign in to use the food trial.');
+  const onProgress = typeof TextDecoder === 'function' ? follow : undefined;
   const response = await fetch(endpoint(), {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
