@@ -67,7 +67,7 @@ type PendingAdd = { pending: PendingEntryId; date: Date; time: string; groups: N
  * in Recent, until it is logged again. Once touched, the card holds still
  * until Fuel is left, so nothing moves under a finger.
  */
-export function GapPicks({ userId, day, totals, target, goal, dayLogs }: {
+export function GapPicks(props: {
   userId: string;
   /** Today's key; the card shows only on today. */
   day: string;
@@ -77,6 +77,10 @@ export function GapPicks({ userId, day, totals, target, goal, dayLogs }: {
   /** Today's entries: a food already eaten today comes a little later. */
   dayLogs: readonly FoodLog[];
 }) {
+  return <GapPicksForDay key={`${props.userId}:${props.day}`} {...props} />;
+}
+
+function GapPicksForDay({ userId, day, totals, target, goal, dayLogs }: Parameters<typeof GapPicks>[0]) {
   const settings = useFuelReminderStore((state) => state.settings);
   const evening = useEvening(gapEveningStart(settings));
   const kept = useSyncExternalStore(subscribeRecentCache, () => readRecentCache(userId));

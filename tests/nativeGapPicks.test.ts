@@ -314,6 +314,24 @@ describe('logging a pick', () => {
     await act(async () => { finish(true); });
     expect(rows['Protein shake'].state).toBe('done');
   });
+
+  it.each(['day', 'account'])('does not reuse another %s’s pending add', async (scope) => {
+    const ids: string[] = [];
+    saveQuickAdd.mockImplementation(async (_food, entry) => {
+      ids.push(entry.pending.take());
+      return false;
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    await leaveFuel();
+    vi.setSystemTime(new Date('2026-11-09T19:30:00'));
+    await show(scope === 'day' ? { day: '2026-11-09' } : { userId: 'user-2' });
+    await returnToFuel();
+    expect(rows['Protein shake'].state).toBeUndefined();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).not.toBe(ids[0]);
+  });
 });
 
 describe('a pick’s other actions', () => {
