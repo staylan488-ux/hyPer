@@ -41,27 +41,46 @@ export function defaultWeekdays(daysPerWeek: number): number[] {
 export interface PlanScheduleChoices {
   startDate: string;
   mode: PlanMode;
-  /** Fixed: the weekday of the first training day (0 = Sunday). */
-  anchorDay: number;
+  /** Fixed: the days of the week to train on (0 = Sunday), in any order. */
+  weekdays: readonly number[];
+  /**
+   * Fixed: the weekday that carries the program's first day, kept when it is
+   * still a training day (a saved schedule's first weekday). Otherwise the
+   * first training day of the Monday-first week does.
+   */
+  firstWeekday?: number;
   /** Flexible: the split day that is up next. */
   flexDayIndex: number;
 }
 
 /** Turns the editor's choices into the schedule to save. */
 export function buildPlanSchedule(
-  split: { id: string; days_per_week: number; days: readonly unknown[] },
+  split: { id: string; days: readonly unknown[] },
   choices: PlanScheduleChoices,
 ): PlanSchedule {
   const dayCount = split.days.length;
   const flexIndex = dayCount > 0 ? normalizeBySize(choices.flexDayIndex, dayCount) : undefined;
+  const weekdays = choices.mode === 'fixed' ? orderTrainingWeekdays(choices.weekdays, choices.firstWeekday) : [];
   return {
     splitId: split.id,
     startDate: choices.startDate,
     mode: choices.mode,
-    weekdays: choices.mode === 'fixed' ? buildFixedWeekdays(choices.anchorDay, split.days_per_week) : [],
-    anchorDay: choices.mode === 'fixed' ? choices.anchorDay : 0,
+    weekdays,
+    anchorDay: choices.mode === 'fixed' ? weekdays[0] ?? 1 : 0,
     flexAnchorIndex: choices.mode === 'flex' ? flexIndex : undefined,
   };
+}
+
+/**
+ * The chosen training days in the order the program's days fall on them:
+ * Monday first, as every week in the app runs, starting from `first` when it
+ * is one of them. The first entry carries the program's first day.
+ */
+export function orderTrainingWeekdays(weekdays: readonly number[], first?: number): number[] {
+  const mondayFirst = (day: number) => (day + 6) % 7;
+  const days = normalizeWeekdayOrder([...weekdays]).sort((a, b) => mondayFirst(a) - mondayFirst(b));
+  const start = first === undefined ? -1 : days.indexOf(normalizeBySize(first, 7));
+  return start > 0 ? [...days.slice(start), ...days.slice(0, start)] : days;
 }
 
 export function buildFixedWeekdays(anchorDay: number, daysPerWeek: number): number[] {

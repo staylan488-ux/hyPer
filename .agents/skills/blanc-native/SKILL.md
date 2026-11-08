@@ -367,9 +367,13 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   (`withoutSessionMarks`).
 - Before a session, Train shows today's [PlanCard](../../../native/src/components/PlanCard.tsx)
   (shared with Today), then every other day to start. Its header menu holds the
-  schedule sheet (`native/src/app/schedule.tsx`, the web's Day 1 and rhythm
-  choices, saved through the shared `buildPlanSchedule`; saving bumps
-  `useScheduleRevision` so open screens re-read it) and Program, which
+  schedule sheet (`native/src/app/schedule.tsx`: Day 1, then either the exact
+  training weekdays, a tap per day switching training and rest, or In order;
+  saved through the shared `buildPlanSchedule`, which keeps the days picked
+  and orders them Monday first, a saved first weekday kept; saving bumps
+  `useScheduleRevision` so open screens re-read it; Today's and Session
+  complete's week count goes by the days picked, `weekSessionTarget`) and
+  Program, which
   holds the training mode and, in Program days with a program, Adaptive
   scheduling. Flexible mode names the session or starts a quick
   start; the session grows with Add movement, the pencil renames it, and
