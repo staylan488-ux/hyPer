@@ -23,7 +23,9 @@ import { gainOnLastTime } from '~/lib/beatLastTime';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { changeSetCount, confirmRemoveMovement, errorMessage, setSkipped, switchBack, unlinkSuperset } from '~/lib/movement';
+import { formatWhole } from '~/lib/format';
 import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes';
+import { usePriorRecordsStore } from '~/lib/records';
 import { usePreviousNotesStore, usePreviousTargets, useSessionModel, type Movement } from '~/lib/session';
 import { movementLine } from '~/lib/sessionModel';
 import { chooseRpe, parseNumber } from '~/lib/setEntry';
@@ -125,6 +127,8 @@ function MovementDetail({
   const note = useMovementNote(workoutId, movement.exerciseId, movement.note);
   // Last time's note for this movement, from the lookup Train made.
   const lastNote = usePreviousNotesStore((state) => (state.workoutId === workoutId ? state.notes[movement.exerciseId] : undefined));
+  // The movement's best before this workout, read for Session complete's records.
+  const bestBefore = usePriorRecordsStore((state) => (state.workoutId === workoutId ? state.records[movement.exerciseId]?.estMax : undefined));
   // Logged sets that beat the same set last time carry an up mark.
   const previous = usePreviousTargets(workoutId);
   const hasUnfinished = inWorkout && movement.sets.some((set) => !set.completed);
@@ -284,6 +288,19 @@ function MovementDetail({
           </FormNote>
         ) : null}
       </Section>
+
+      {/* Every past session of this movement, its records and its trend, on Train. The sheet closes first, so the page opens on top. */}
+      <Label style={{ marginTop: space.section }}>
+        <Row
+          title="History"
+          detail={bestBefore ? `Est. max ${formatWhole(bestBefore.value)} lb` : undefined}
+          chevron
+          onPress={() => {
+            router.back();
+            router.push({ pathname: '/train/exercise', params: { id: movement.exerciseId, name: movement.name } });
+          }}
+        />
+      </Label>
 
       {hasUnfinished ? (
         <Section title="This workout">

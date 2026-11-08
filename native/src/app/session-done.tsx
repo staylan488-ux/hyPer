@@ -79,13 +79,18 @@ export default function SessionDone() {
   const day = format(summary.startedAt, 'EEEE, MMMM d');
   const time = format(summary.startedAt, 'h:mm a');
 
+  const records = summary.records ?? [];
+  const bestIsRecord = records.some(
+    (record) => summary.best && record.name === summary.best.name && record.set.weight === summary.best.weight && record.set.reps === summary.best.reps,
+  );
   // Label, value, and what VoiceOver says for the value when it differs. The tally and the line under the title
   // already give the sets, and the beats lead the card, so neither takes a row.
   const rows: [string, string, string?][] = [
     // A bodyweight session moves no load: leave the zero out.
     ...(summary.volume > 0 ? [['Volume', `${formatWhole(summary.volume)} lb`] as [string, string]] : []),
     ['Time', formatMinutes(summary.minutes)],
-    ...(summary.best
+    // A best set that is also a record is said once, with the records.
+    ...(summary.best && !bestIsRecord
       ? [
           [
             'Best set',
@@ -99,6 +104,7 @@ export default function SessionDone() {
   const tally = summary.marks.length > 0;
   // Only when some set beat the same set last time: no zero.
   const beats = summary.beat > 0 ? `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'} beat last time` : null;
+  const lead = tally || beats || records.length > 0;
 
   return (
     <>
@@ -124,7 +130,7 @@ export default function SessionDone() {
           </View>
 
           {/* A standard card: the 18-point padding and the edge and shadow every Label has, so its text sits on the app's shared edge. */}
-          <Label style={{ marginTop: 22, paddingHorizontal: 18, paddingTop: tally || beats ? 18 : 10, paddingBottom: 18 }}>
+          <Label style={{ marginTop: 22, paddingHorizontal: 18, paddingTop: lead ? 18 : 10, paddingBottom: 18 }}>
             {/* A session without sets has no tally, as on Today. */}
             {tally ? (
               <Tally
@@ -142,7 +148,34 @@ export default function SessionDone() {
               </BlancText>
             ) : null}
 
-            {tally || beats ? <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 20 }} /> : null}
+            {/* Records broken: the heading in ink, then each movement and the set that did it. */}
+            {records.length > 0 ? (
+              <View style={{ marginTop: beats ? 14 : tally ? 20 : 0 }}>
+                <BlancText variant="body" accessibilityElementsHidden importantForAccessibility="no">
+                  {records.length === 1 ? 'New record' : `${records.length} new records`}
+                </BlancText>
+                {records.map((record) => {
+                  const value = formatSet(record.set.weight, record.set.reps);
+                  return (
+                    // One fact for VoiceOver: "New record, Bench Press, 225 pounds × 5".
+                    <View
+                      key={record.exerciseId}
+                      accessible
+                      accessibilityLabel={speak(`New record, ${record.name}, ${value}`)}
+                      style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 6, ...(large ? { flexWrap: 'wrap', columnGap: 12 } : { gap: 12 }) }}>
+                      <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? undefined : { flexShrink: 1 }}>
+                        {record.name}
+                      </BlancText>
+                      <BlancText variant="secondary" weight="500" style={{ fontVariant: ['tabular-nums'] }}>
+                        {value}
+                      </BlancText>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {lead ? <View style={{ height: 0.5, backgroundColor: c.hairline, marginTop: 20 }} /> : null}
             <View style={{ paddingVertical: 10 }}>
               {rows.map(([label, value, spoken]) => (
                 // One fact for VoiceOver: "Volume, 12,400 pounds".
@@ -160,7 +193,7 @@ export default function SessionDone() {
                   </BlancText>
                 </View>
               ))}
-              {summary.best ? (
+              {summary.best && !bestIsRecord ? (
                 // Read with the Best set row above.
                 <BlancText
                   variant="footnote"

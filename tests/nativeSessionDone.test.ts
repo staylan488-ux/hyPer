@@ -55,6 +55,7 @@ function finished(sets: number, beat: number): FinishedSummary {
     volume: 12400,
     minutes: 52,
     best: { name: 'Bench Press', weight: 185, reps: 6 },
+    records: [],
   };
 }
 
@@ -175,5 +176,43 @@ describe('Session complete\'s card', () => {
     expect(rows).toEqual(['5 of 9 sets · Friday, November 6 · 1:17 AM', 'Volume', 'Time', 'Best set']);
     expect(spanNamed('Sets')).toBeUndefined();
     expect(spanNamed('Beat last time')).toBeUndefined();
+  });
+});
+
+describe('Session complete\'s records', () => {
+  it('names each record after the beats, one stop each, and says a best set that is a record once', async () => {
+    summary = {
+      ...finished(9, 4),
+      records: [
+        { exerciseId: 'bench', name: 'Bench Press', kind: 'max', set: { weight: 185, reps: 6 } },
+        { exerciseId: 'pullup', name: 'Pull-up', kind: 'reps', set: { weight: 0, reps: 14 } },
+      ],
+    };
+    await open();
+    const heading = spanNamed('2 new records')!;
+    expect({ variant: heading.dataset.variant, tone: heading.dataset.tone }).toEqual({ variant: 'body', tone: 'ink' });
+    expect(voiceOver()).toEqual([
+      'Upper A. Session complete, Friday, November 6, 1:17 AM',
+      '9 of 9 sets logged',
+      '4 sets beat last time',
+      'New record, Bench Press, 185 pounds × 6',
+      'New record, Pull-up, 14 reps',
+      'Volume, 12,400 pounds',
+      'Time, 52 minutes',
+      'Saved to History',
+      'Done',
+    ]);
+  });
+
+  it('says one record in the singular, keeps a best set that is not a record, and says nothing without one', async () => {
+    summary = { ...finished(9, 0), records: [{ exerciseId: 'row', name: 'Barbell Row', kind: 'heaviest', set: { weight: 155, reps: 8 } }] };
+    await open();
+    expect(spanNamed('New record')).toBeDefined();
+    expect(spanNamed('Best set')).toBeDefined();
+    act(() => root.unmount());
+    root = createRoot(host);
+    summary = finished(9, 0);
+    await open();
+    expect(host.textContent).not.toContain('record');
   });
 });
