@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import * as dates from 'date-fns';
-import { act, createElement, Fragment, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
+import { act, createElement, Fragment, useEffect, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -68,7 +68,7 @@ const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } =
 let root: Root | undefined;
 let host: HTMLDivElement;
 
-async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, copyAgain = false, meal = false, fuelModule }: {
+async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, copyAgain = false, meal = false, fuelModule, gapPicks = Empty }: {
   day?: string;
   logged?: boolean;
   source?: string;
@@ -83,6 +83,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   meal?: boolean;
   /** The real Fuel store (native/src/lib/fuel.ts) in place of the stand-in. */
   fuelModule?: object;
+  gapPicks?: ComponentType<{ visible?: boolean }>;
 } = {}) {
   const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null as string | null, sort_order: 0, source }] : [];
   if (logged && milk) logs.push({ id: 'log-milk', date: day, food: milkFood, servings: 1, logged_at: `${day}T09:00:00Z`, group_id: null, sort_order: 1, source });
@@ -143,7 +144,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
     zustand: { create: zustandCreate },
     '~/components/Track': { Track: ({ progress }: { progress: number }) => createElement('i', { 'data-track': String(progress) }) },
-    '~/fuel/GapPicks': { GapPicks: () => null },
+    '~/fuel/GapPicks': { GapPicks: gapPicks },
     '~/fuel/DayMark': { DayMark: (props: MarkProps) => { marks.push(props); return null; } },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': fuelModule ?? {
@@ -162,6 +163,10 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   host = document.createElement('div');
   root = createRoot(host);
   await act(async () => { root!.render(createElement(Fuel)); });
+  return async (nextDay: string) => {
+    day = nextDay;
+    await act(async () => { root!.render(createElement(Fuel)); });
+  };
 }
 
 beforeEach(() => {
@@ -202,6 +207,25 @@ describe("Fuel's date under the title", () => {
     await renderFuel({ day: '2026-11-03' });
     await act(async () => { pressables['Tuesday, November 3'].onPress!(); });
     expect(push).toHaveBeenCalledWith('/fuel-month');
+  });
+});
+
+describe('Fuel gap-pick lifetime', () => {
+  it('hides rather than unmounts retry state when browsing past days', async () => {
+    const mount = vi.fn();
+    const unmount = vi.fn();
+    let visible: boolean | undefined;
+    const selectDay = await renderFuel({ gapPicks: function GapPicksProbe(props) {
+      visible = props.visible;
+      useEffect(() => { mount(); return () => { unmount(); }; }, []);
+      return null;
+    } });
+    await selectDay('2026-11-04');
+    expect(unmount).not.toHaveBeenCalled();
+    expect(visible).toBe(false);
+    await selectDay(TODAY);
+    expect(mount).toHaveBeenCalledTimes(1);
+    expect(visible).toBe(true);
   });
 });
 

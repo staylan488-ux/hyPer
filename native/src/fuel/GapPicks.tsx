@@ -71,6 +71,8 @@ export function GapPicks(props: {
   userId: string;
   /** Today's key; the card shows only on today. */
   day: string;
+  /** Hide the card without dropping an unresolved write when another date is selected. */
+  visible?: boolean;
   totals: MacroTotals;
   target: { calories?: number | null; protein?: number | null } | null | undefined;
   goal: NutritionGoal | null | undefined;
@@ -80,13 +82,13 @@ export function GapPicks(props: {
   return <GapPicksForDay key={`${props.userId}:${props.day}`} {...props} />;
 }
 
-function GapPicksForDay({ userId, day, totals, target, goal, dayLogs }: Parameters<typeof GapPicks>[0]) {
+function GapPicksForDay({ userId, day, visible = true, totals, target, goal, dayLogs }: Parameters<typeof GapPicks>[0]) {
   const settings = useFuelReminderStore((state) => state.settings);
   const evening = useEvening(gapEveningStart(settings));
   const kept = useSyncExternalStore(subscribeRecentCache, () => readRecentCache(userId));
   useEffect(() => {
-    if (evening) void loadRecentCache(userId, LOGS_MAX_AGE_MS);
-  }, [evening, userId]);
+    if (visible && evening) void loadRecentCache(userId, LOGS_MAX_AGE_MS);
+  }, [visible, evening, userId]);
   // Read again on each visit: a food hidden in Log food's Recent stays out here too.
   const [hidden, setHidden] = useState(() => readHidden(userId));
   const eatenToday = useMemo(() => new Set(dayLogs.flatMap((log) => (log.food ? [recentFoodKey(log.food)] : []))), [dayLogs]);
@@ -107,16 +109,18 @@ function GapPicksForDay({ userId, day, totals, target, goal, dayLogs }: Paramete
   useFocusEffect(
     useCallback(() => {
       setHidden(readHidden(userId));
-      return () => {
-        // A failed response may still have committed. Keep its id as well as a running save's.
-        if (pendingAdds.current.size > 0) return;
-        for (const added of addedEntries.current.values()) if (added.removing) return;
-        pendingAdds.current.clear();
-        addedEntries.current.clear();
-        setStates({});
-        setHeld(null);
+      const releaseConfirmed = () => {
+        const retained = new Set(pendingAdds.current.keys());
+        for (const [key, added] of addedEntries.current) {
+          if (added.removing) retained.add(key);
+          else addedEntries.current.delete(key);
+        }
+        setStates((current) => Object.fromEntries(Object.entries(current).filter(([key]) => retained.has(key))));
+        if (retained.size === 0) setHeld(null);
       };
-    }, [userId]),
+      if (visible) releaseConfirmed();
+      return releaseConfirmed;
+    }, [userId, visible]),
   );
 
   const add = async (pick: GapPick) => {
@@ -199,7 +203,7 @@ function GapPicksForDay({ userId, day, totals, target, goal, dayLogs }: Paramete
 
   // A held card leaves out what was hidden since; the others stay where they are.
   const picks = (shown?.picks ?? []).filter((pick) => !(hidden[pick.key] >= pick.addedAt));
-  if (!shown || picks.length === 0) return null;
+  if (!visible || !shown || picks.length === 0) return null;
   // The foods' total, as each meal's header gives its own.
   const note = shown.aim === 'calories' ? `${formatWhole(shown.kcal)} kcal` : `${formatWhole(shown.protein)} g protein`;
   return (

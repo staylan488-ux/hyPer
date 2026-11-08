@@ -394,8 +394,8 @@ export default function FuelScreen() {
         )}
 
         {/* Today in the evening, well short: the usual foods that close the gap, one tap each. */}
-        {live && loaded && !empty && userId ? (
-          <GapPicks userId={userId} day={todayKey} totals={totals} target={target} goal={goal} dayLogs={logs} />
+        {userId ? (
+          <GapPicks userId={userId} day={todayKey} visible={live && loaded && !empty} totals={totals} target={target} goal={goal} dayLogs={logs} />
         ) : null}
 
         {/* One day's list: rows and meals fold away and close up when removed.
