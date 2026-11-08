@@ -5,8 +5,9 @@
 // Order matters. WHOOP is told first, while the stored token still exists;
 // the food analysis records are removed next; the account goes last, and its
 // rows in every table go with it (each one cascades from auth.users through
-// profiles). Only the last step decides success: the first two are
-// best-effort, so a WHOOP outage can never keep someone from leaving.
+// profiles, or directly from auth.users for the food ledger). WHOOP revocation
+// is best-effort; legacy Storage cleanup must succeed while sign-in still works
+// so a failure can be retried without orphaning the saved analyses.
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -63,7 +64,8 @@ export function createDeleteAccountHandler(services: DeleteAccountServices) {
     try {
       await services.removeFoodRecords(userId);
     } catch (error) {
-      log('delete-account: food analysis records not removed (continuing)', error);
+      log('delete-account: food analysis records not removed', error);
+      return json({ error: 'Could not remove saved food analyses. Try again.' }, 503);
     }
 
     try {
@@ -104,4 +106,21 @@ export async function listFilesUnder(
     }
   }
   return files;
+}
+
+/** Legacy writers must be stopped before cleanup. A concurrent deleter can
+ * shrink any page while it is being listed, so verify the root again at zero.
+ * Never delete auth after an incomplete sweep; the signed-in user can retry.
+ */
+export async function removeFilesUnder(
+  list: (prefix: string, offset: number) => Promise<StorageEntry[]>,
+  remove: (paths: string[]) => Promise<void>,
+  prefix: string,
+  pageSize = 1000,
+): Promise<void> {
+  const files = await listFilesUnder(list, prefix, pageSize);
+  for (let start = 0; start < files.length; start += 100) {
+    await remove(files.slice(start, start + 100));
+  }
+  if ((await list(prefix.replace(/\/+$/, ''), 0)).length > 0) throw new Error('Food records remain; retry cleanup');
 }

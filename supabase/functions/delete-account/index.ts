@@ -4,20 +4,20 @@
 // analyze-food-trial. The service role never reaches the app.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.115.0';
 import { WHOOP_API_BASE } from '../_shared/whoop.ts';
-import { createDeleteAccountHandler, listFilesUnder } from './handler.ts';
-
-const BATCH = 100;
+import { createDeleteAccountHandler, removeFilesUnder } from './handler.ts';
 
 Deno.serve(async (request: Request) => {
   const url = Deno.env.get('SUPABASE_URL')?.trim();
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-  if (!url || !serviceKey) {
+  const foodBucket = Deno.env.get('FOOD_ANALYSIS_BUCKET')?.trim();
+  // Enable only after the new writer is deployed and old Storage writes have
+  // quiesced; see docs/food-analysis-ledger.md. A deploy alone is not a drain.
+  const ledgerReady = Deno.env.get('FOOD_ANALYSIS_DATABASE_LEDGER_READY') === 'true';
+  if (!url || !serviceKey || !foodBucket || !ledgerReady) {
     return new Response(JSON.stringify({ error: 'Account deletion is not configured.' }), {
       status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
   }
-  // The food analysis ledger's private bucket; unset where food analysis isn't deployed.
-  const foodBucket = Deno.env.get('FOOD_ANALYSIS_BUCKET')?.trim();
   const service = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, { ...init, signal: AbortSignal.timeout(15_000) }) },
@@ -38,18 +38,16 @@ Deno.serve(async (request: Request) => {
       });
     },
     async removeFoodRecords(userId) {
-      if (!foodBucket) return;
       const bucket = service.storage.from(foodBucket);
       // The ledger names each account's folder by its lower-case id (gateway.ts).
-      const files = await listFilesUnder(async (prefix, offset) => {
+      await removeFilesUnder(async (prefix, offset) => {
         const { data, error } = await bucket.list(prefix, { limit: 1000, offset });
         if (error) throw error;
         return (data ?? []).map((entry) => ({ name: entry.name, id: entry.id ?? null }));
-      }, `food-v1/${userId.toLowerCase()}`);
-      for (let start = 0; start < files.length; start += BATCH) {
-        const { error } = await bucket.remove(files.slice(start, start + BATCH));
+      }, async (paths) => {
+        const { error } = await bucket.remove(paths);
         if (error) throw error;
-      }
+      }, `food-v1/${userId.toLowerCase()}`);
     },
     async deleteUser(userId) {
       const { error } = await service.auth.admin.deleteUser(userId);

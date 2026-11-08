@@ -1,12 +1,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.115.0';
 import { createTrialHandler } from './gateway.ts';
 import { createStorageLedger } from './storageLedger.ts';
+import { createDatabaseLedger } from './databaseLedger.ts';
 import { analyzeMeal } from './model.ts';
 import { interpretServing } from './serving.ts';
 import { suggestTargets } from './coach.ts';
 
 // No client-provided API key, provider, model, URL or user ID is trusted.
-// The operator provisions a private bucket and these secrets before deployment.
+// The operator applies the ledger migration and keeps the legacy bucket private.
 Deno.serve(async (request: Request) => {
   try {
     const required = (name: string) => {
@@ -27,7 +28,10 @@ Deno.serve(async (request: Request) => {
         maxAttempts: Number(Deno.env.get('FOOD_ANALYSIS_MAX_DAILY_REQUESTS') ?? '24'),
         allowedOrigins: required('FOOD_ANALYSIS_ALLOWED_ORIGINS').split(',').map(value => value.trim()),
       },
-      ledger: createStorageLedger({ url, serviceRoleKey: key, bucket: required('FOOD_ANALYSIS_BUCKET') }),
+      ledger: createDatabaseLedger({
+        url, serviceRoleKey: key,
+        legacy: createStorageLedger({ url, serviceRoleKey: key, bucket: required('FOOD_ANALYSIS_BUCKET') }),
+      }),
       async authenticate(token) {
         const { data, error } = await authClient.auth.getUser(token);
         return error ? null : data.user?.id ?? null;
