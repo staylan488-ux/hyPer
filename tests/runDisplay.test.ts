@@ -33,6 +33,7 @@ describe('run display', () => {
   it('reads distances in metres under a mile and miles beyond', () => {
     expect(formatRunDistance(0)).toBe('0 m');
     expect(formatRunDistance(399.6)).toBe('400 m');
+    expect(formatRunDistance(1480.2)).toBe('1,480 m');
     expect(formatRunDistance(1609.344)).toBe('1.00 mi');
     expect(formatRunDistance(5_000)).toBe('3.11 mi');
   });

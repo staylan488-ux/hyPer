@@ -44,7 +44,7 @@ import { refusePress } from '~/lib/launch';
 import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
-import { LoggerContext, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
+import { LoggerContext, type AddedQuickAdd, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchField, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { EntryMethods, type EntryMethod } from '~/fuel/EntryMethods';
@@ -115,10 +115,11 @@ function useClaims(): [number, () => () => void] {
  * Params: `entry` (an entry id to edit), `day` (yyyy-MM-dd, default today),
  * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
  * `saveEntries` (comma-separated logged entries to keep as a new saved meal),
+ * `newSavedMeal=1` (an empty meal to build and keep as a saved meal, nothing logged),
  * `start=camera`, `atMs` (Snap a meal: press time, straight into the camera).
  */
 export default function LogFoodSheet() {
-  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; start?: string; atMs?: string }>();
+  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; newSavedMeal?: string; start?: string; atMs?: string }>();
   const userId = useAuthStore((state) => state.user?.id) ?? '';
   // read once: the entry being edited stays as it was when the sheet opened
   const [editing] = useState<FoodLog | null>(() => (params.entry ? useFuelStore.getState().logs.find((log) => log.id === params.entry) ?? null : null));
@@ -127,7 +128,9 @@ export default function LogFoodSheet() {
     params.savedMeal ? useYouMealsStore.getState().meals?.find((meal) => meal.id === params.savedMeal) ?? null : null,
   );
   // Fuel's "Save as meal": logged entries, in the day's order, to keep as a new saved meal.
+  // You's "New saved meal" starts the same save-only meal with no foods yet.
   const [saveFrom] = useState<FoodLog[] | null>(() => {
+    if (params.newSavedMeal) return [];
     if (!params.saveEntries) return null;
     const logs = useFuelStore.getState().logs;
     const found = params.saveEntries.split(',').flatMap((id) => logs.filter((log) => log.id === id));
@@ -148,7 +151,7 @@ export default function LogFoodSheet() {
   const [pressedAt, setPressedAt] = useState<Date | null>(() => params.start === 'camera' ? snapMealDate(params.atMs) : null);
   // Snap a meal (lib/launch.ts): a new entry, straight into the camera.
   const startCamera = !editing && !savedMeal && !saveFrom && (snapRestart > 0 || params.start === 'camera');
-  const selectedKey = editing?.date ?? saveFrom?.[0].date ?? (pressedAt ? format(pressedAt, 'yyyy-MM-dd') : params.day ?? today());
+  const selectedKey = editing?.date ?? saveFrom?.[0]?.date ?? (pressedAt ? format(pressedAt, 'yyyy-MM-dd') : params.day ?? today());
   // A sheet with nothing to log into still answers Snap a meal pressed over it: it can't take it.
   const blank = !userId || (Boolean(params.saveEntries) && !saveFrom);
   useEffect(() => {
@@ -161,7 +164,7 @@ export default function LogFoodSheet() {
   if (params.saveEntries && !saveFrom) return <Empty text="Those foods are no longer in your log." />;
   return (
     <LoggerSession
-      key={`${userId}:${editing?.id ?? savedMeal?.id ?? (saveFrom ? `save:${params.saveEntries}` : snapRestart > 0 ? `snap:${snapRestart}` : 'new')}`}
+      key={`${userId}:${editing?.id ?? savedMeal?.id ?? (saveFrom ? `save:${params.saveEntries ?? 'new'}` : snapRestart > 0 ? `snap:${snapRestart}` : 'new')}`}
       userId={userId}
       editing={editing}
       savedMeal={savedMeal}
@@ -243,6 +246,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       ? { food: editing.food, meta: null, servings: editing.servings }
       : null,
   );
+  // An entry opened to edit shows its own food's review first: ✕ closes it, and
+  // Change food (under the name) goes to the lists, where ‹ alone said neither.
+  const editingOwnFood = Boolean(editing && chosen && editing.food?.id === chosen.food.id);
   const [manual, setManual] = useState<ManualDraft>(() =>
     editing?.food ? { ...emptyManual, fields: manualFromFood(editing.food), servings: String(editing.servings) } : emptyManual,
   );
@@ -277,6 +283,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const saving = saveClaims > 0;
   const [quickAddStates, setQuickAddStates] = useState<Record<string, QuickAddState>>({});
   const [pendingQuickAdds] = useState(() => new Map<string, PendingQuickAdd>());
+  const [addedQuickAdds] = useState(() => new Map<string, AddedQuickAdd>());
   const quickAddFailed = Object.values(quickAddStates).some((state) => state === 'error');
   // A confirmed save (or a discarded meal edit) closes the sheet without
   // asking about the work it settled: the guard sees `closing` first, then an
@@ -343,7 +350,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   });
   // what Save as meal opened with, so closing asks only once it was changed
   const [savingFrom] = useState(() => (saveFrom ? meal : null));
-  const [mealReview, setMealReview] = useState(Boolean(meal));
+  // A new saved meal opens on its foods to add; anything else with a meal opens on its review.
+  const [mealReview, setMealReview] = useState(Boolean(meal) && !(saveFrom && saveFrom.length === 0));
   // Snap a meal over a meal kept from last time: the meal waits under Resume pending meal.
   const [paused, setPaused] = useState(() => startCamera && meal !== null);
   const [storageFailed, setStorageFailed] = useState(false);
@@ -442,6 +450,17 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     [meal, updateMeal, loadManual],
   );
 
+  // Search's "Enter manually": the latest Manual draft decides whether the
+  // name is filled in, read through a ref so the context stays the same.
+  const enterManuallyNow = useRef<(name: string) => void>(() => {});
+  useLayoutEffect(() => {
+    enterManuallyNow.current = (name: string) => {
+      if (saving) return;
+      if (!manualHasChanges(manual, manualBase, savedMeals)) loadManual({ ...emptyManual, fields: { ...emptyManual.fields, name: name.trim().slice(0, 120) } });
+      showTab('manual');
+    };
+  });
+
   const context = useMemo<LoggerContextValue>(
     () => ({
       purpose,
@@ -459,6 +478,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       composeMeal: (food, editSaved) => {
         if (!saving) startMeal(food, editSaved);
       },
+      enterManually: (name) => enterManuallyNow.current(name),
       complete,
       beginBusy,
       beginRead,
@@ -466,8 +486,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       quickAddStates,
       setQuickAddStates,
       pendingQuickAdds,
+      addedQuickAdds,
     }),
-    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave, saving, quickAddStates, pendingQuickAdds],
+    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave, saving, quickAddStates, pendingQuickAdds, addedQuickAdds],
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
@@ -559,7 +580,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     ? savedTarget
       ? 'Edit saved meal'
       : saveFrom
-        ? 'Save as meal'
+        ? saveFrom.length > 0 ? 'Save as meal' : 'New saved meal'
         : editing
           ? 'Edit meal'
           : 'Build a meal'
@@ -569,7 +590,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const subtitle = inMeal
     ? capturing
       ? 'Add ingredients'
-      : saveFrom && !savedTarget
+      : saveFrom?.[0] && !savedTarget
         ? `From ${saveFrom[0].date === todayKey ? 'today' : format(new Date(`${saveFrom[0].date}T12:00:00`), 'EEE, MMM d')}`
         : null
     : // Where the food goes, said positively: the meal set (suggestFor's, or
@@ -876,7 +897,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   return (
     <LoggerContext.Provider value={context}>
       <KeyboardAwareScrollView
-        bottomOffset={24}
+        // On Barcode the typed digits' Look up barcode sits under the field:
+        // the pad's bar covered it, so the field rises with room for it.
+        bottomOffset={tab === 'scan' && !chosen ? 24 + 12 + 54 : 24}
         style={{ flex: 1, backgroundColor: c.ground }}
         contentContainerStyle={{ paddingBottom: 48 }}
         stickyHeaderIndices={[0]}
@@ -886,7 +909,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         onScrollBeginDrag={() => dismissOpenSwipeRow()}>
         <View style={{ backgroundColor: c.ground, paddingBottom: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16 }}>
-            {chosen ? (
+            {chosen && !editingOwnFood ? (
               <GlassButton symbol="chevron.left" accessibilityLabel="Back" disabled={saving} onPress={() => setChosen(null)} />
             ) : (
               <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
@@ -927,6 +950,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
                 hitSlop={8}
                 onPress={() => {
                   haptics.tap();
+                  // A meal with nothing in it has nothing to lose: no question first.
+                  if (!meal || meal.ingredients.length === 0) {
+                    discardMeal();
+                    return;
+                  }
                   Alert.alert('Discard this meal?', 'The meal you are building is cleared.', [
                     { text: 'Keep', style: 'cancel' },
                     { text: 'Discard', style: 'destructive', onPress: discardMeal },
@@ -995,6 +1023,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             onAmountChange={editing?.food?.id === chosen.food.id
               ? (servings) => setManual((draft) => ({ ...draft, servings: servings === null ? '' : String(servings) }))
               : undefined}
+            onChangeFood={editingOwnFood && !saving ? () => setChosen(null) : undefined}
           />
         ) : (
           <View key={captureKey}>

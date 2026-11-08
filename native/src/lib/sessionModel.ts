@@ -238,10 +238,13 @@ export function buildSessionModel(
 /**
  * After a set is logged: the movement that is up next (a superset's partner
  * for the same round, else more of the same movement, else the next in turn),
- * and whether to rest. A superset rests only after B.
+ * and whether to rest. A superset rests only after B. The workout's last set
+ * starts no rest: nothing is left to rest for, and its timer would ping the
+ * phone after the workout. A flexible session still rests, since its next
+ * movement is usually added after the last set.
  */
 export function afterLoggedSet(
-  session: Pick<SessionModel, 'movements' | 'pairings'>,
+  session: Pick<SessionModel, 'movements' | 'pairings'> & Partial<Pick<SessionModel, 'flexible'>>,
   logged: WorkoutSet,
   latestSets: readonly WorkoutSet[],
 ): { nextExerciseId: string | null; rest: boolean } {
@@ -249,7 +252,8 @@ export function afterLoggedSet(
   const flow = session.pairings.get(logged.exercise_id);
   const listed = latestSets.filter((set) => order.includes(set.exercise_id));
   const next = nextWorkoutSet(listed, order, logged, flow, session.pairings);
-  return { nextExerciseId: next?.exercise_id ?? null, rest: !flow || flow.role === 'B' };
+  const more = next !== undefined || Boolean(session.flexible);
+  return { nextExerciseId: next?.exercise_id ?? null, rest: more && (!flow || flow.role === 'B') };
 }
 
 /** "Skipped Row.", "Ended Row and Curl early.", or how many. */

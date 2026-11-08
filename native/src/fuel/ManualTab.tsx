@@ -83,11 +83,14 @@ export function manualHasChanges(draft: ManualDraft, base: ManualDraft, savedMea
   return !(saved && sameServings && foodValuesMatch(saved, valuesOf(draft.fields)));
 }
 
-/** Manual entry: describe it to the AI, or type the name and macros per serving. */
+/** Manual entry: the name and macros per serving (on the worker, also an AI estimate into them). */
 export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: {
   draft: ManualDraft;
   setDraft: (update: (draft: ManualDraft) => ManualDraft) => void;
-  /** Gemini mode: the description goes to the AI tab instead of filling these fields. */
+  /**
+   * Gemini mode, where descriptions belong to the meal view behind Describe's
+   * door (this hands one there): the tab then shows no Describe of its own.
+   */
   onGeminiHandoff?: (description: string) => void;
   /** Told whether Describe with AI holds typed text, which only this tab keeps (Snap a meal must not drop it). */
   onDescribeText?: (typed: boolean) => void;
@@ -319,7 +322,10 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
 
   return (
     <View>
-      {/* Describe with AI */}
+      {/* Describe with AI. With Gemini, Describe is its own door in the row
+          just above, so Manual opens straight on its fields; on the worker
+          (no Describe door) it estimates into them from here. */}
+      {onGeminiHandoff ? null : (
       <Section title="Describe with AI" style={{ marginTop: 0 }}>
         <Label>
           {describeOpen ? (
@@ -343,10 +349,10 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
                   {description.trim().length < 5 ? 'At least 5 characters' : `${description.length} / ${DESCRIBE_LIMIT}`}
                 </BlancText>
                 <Capsule
-                  title={onGeminiHandoff ? 'Review with Gemini' : 'Estimate'}
+                  title="Estimate"
                   busy={describing}
                   disabled={description.trim().length < 5}
-                  onPress={() => (onGeminiHandoff ? onGeminiHandoff(description) : void describe())}
+                  onPress={() => void describe()}
                 />
               </View>
             </View>
@@ -379,8 +385,9 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
           </View>
         ) : null}
       </Section>
+      )}
 
-      <Section title="Food" note="per serving">
+      <Section title="Food" note="per serving" style={onGeminiHandoff ? { marginTop: 0 } : undefined}>
         <Label>
           <FieldRow
             label="Name"

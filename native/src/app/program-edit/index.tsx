@@ -3,7 +3,7 @@ import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { router, Stack, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { Alert, Keyboard, ScrollView, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -52,9 +52,23 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
  * Create.
  */
 export default function ProgramEditScreen() {
-  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const { mode, day } = useLocalSearchParams<{ mode?: string; day?: string }>();
   const hasDraft = useSplitEditStore((state) => state.draft !== null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Opened on one day (a tap on its exercises in the program view): that day
+  // goes on top, with the program under it to go back to and save from.
+  // Unsaved edits kept on this device are offered first, on the program: the
+  // day would edit the saved program, and its first change would drop that
+  // offer and overwrite the kept edits.
+  const openedDay = useRef(false);
+  useEffect(() => {
+    if (openedDay.current || !day) return;
+    openedDay.current = true;
+    const { draft, restorable } = useSplitEditStore.getState();
+    if (!restorable && draft?.days.some((entry) => entry.id === day)) {
+      router.push({ pathname: '/program-edit/day', params: { id: day } });
+    }
+  }, [day]);
   if (mode === 'new' && !hasDraft) return <Chooser onNotice={setNotice} />;
   return <Editor notice={notice} />;
 }

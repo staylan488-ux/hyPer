@@ -25,6 +25,7 @@ const Empty = () => null;
 const noop = () => {};
 const finish = vi.fn();
 const navigate = vi.fn();
+const openTrain = vi.fn();
 const push = vi.fn();
 
 // Each part says what it is, so a check can read the card's skeleton in order.
@@ -56,8 +57,10 @@ const plan = loadNativeModule<Record<string, (props: never) => ReactNode>>('comp
   '~/lib/accessibility': silentAccessibility,
   '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min` },
   '~/lib/haptics': { haptics: { tap: noop } },
+  '~/lib/openTrain': { openTrain },
   '~/lib/session': { useStartSession: () => ({ starting: null, start: async () => false }) },
   '~/lib/today': { useFinishedToday: (done: boolean) => (done ? finished : null) },
+  '~/lib/program': { newProgram: () => undefined },
   '~/theme/blanc': { useBlanc: () => ({ pressed: '#eee' }) },
 });
 
@@ -98,6 +101,7 @@ async function open() {
     '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min`, formatSet: (weight: number | null, reps: number | null) => (weight !== null && reps !== null ? `${weight} lb × ${reps}` : ''), formatWhole: String },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop } },
+    '~/lib/openTrain': { openTrain },
     '~/lib/fuel': { today: () => '2026-11-04', todayTotalsShown: () => null, useFuelStore: create(() => ({})) },
     '~/lib/motion': { figureLayout: {} },
     '~/lib/session': { useNow: () => Date.parse('2026-11-04T18:10:00Z'), useSessionModel: () => session },
@@ -117,6 +121,7 @@ const skeleton = () =>
 beforeEach(() => {
   finish.mockClear();
   navigate.mockClear();
+  openTrain.mockClear();
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -143,7 +148,8 @@ describe('Today\'s live workout card', () => {
     expect(host.textContent).not.toContain('Finish to save the session');
     expect(buttons()).toEqual(['Resume']);
     await act(async () => { host.querySelector('button')!.click(); });
-    expect(navigate).toHaveBeenCalledWith('/train');
+    // Train's own top, never stacked over a page left open in Train.
+    expect(openTrain).toHaveBeenCalledOnce();
     expect(finish).not.toHaveBeenCalled();
   });
 

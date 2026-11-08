@@ -1,9 +1,10 @@
 import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState, useSyncExternalStore } from 'react';
-import { ActionSheetIOS, Alert, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { ActionSheetIOS, Alert, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View, type AlertButton } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { create } from 'zustand';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { getLogDate } from '@/lib/nutritionLogUtils';
@@ -29,14 +30,16 @@ import { RollingText } from '~/components/RollingText';
 import { Hairline, Row, type DetailParts } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
-import { TabScroll } from '~/components/TabScroll';
+import { tabBarCover, TabScroll } from '~/components/TabScroll';
+import { UndoBar } from '~/components/UndoBar';
 import { Track } from '~/components/Track';
 import { DayMark } from '~/fuel/DayMark';
-import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { announce, screenReaderRunning, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { useWorkoutBarShown } from '~/lib/workoutBar';
 import { useYouMealsStore } from '~/lib/you';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
@@ -49,6 +52,97 @@ const openMonth = () => {
 };
 
 const CHECK_CONNECTION = 'Check your connection and try again.';
+const DELETE_UNCONFIRMED = "Couldn't confirm the delete";
+const DELETE_UNCONFIRMED_MESSAGE = 'It may have gone through. Fuel shows what is saved once it reads the day again; check your connection.';
+
+/** How long Undo stays after a delete, as Train's skip does; longer with VoiceOver. */
+const UNDO_MS = 5000;
+const UNDO_MS_SCREEN_READER = 20000;
+
+/**
+ * The entry just deleted, to take back from the bar at the foot for a few
+ * seconds (`key` starts that time again), whether Undo is putting it back,
+ * and how many of Fuel's alerts are up: the bar's time stands still behind them.
+ */
+const useDeletedEntry = create<{ entry: FoodLog | null; key: number; restoring: boolean; alerts: number }>(() => ({ entry: null, key: 0, restoring: false, alerts: 0 }));
+
+/**
+ * One of Fuel's alerts: a failure, or Copy again's question. While it is up,
+ * the Undo bar keeps whatever it offers then (the alert covers it); once
+ * dismissed, by any button, that offer gets its full time again.
+ */
+function holdingUndoAlert(title: string, message: string, buttons: AlertButton[] = [{ text: 'OK' }]) {
+  useDeletedEntry.setState((state) => ({ alerts: state.alerts + 1 }));
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    useDeletedEntry.setState((state) => ({ alerts: Math.max(0, state.alerts - 1), key: state.key + 1 }));
+  };
+  Alert.alert(
+    title,
+    message,
+    buttons.map((button) => ({
+      ...button,
+      onPress: (value?: string) => {
+        release();
+        button.onPress?.(value);
+      },
+    })),
+    { cancelable: true, onDismiss: release },
+  );
+}
+
+/** Deletes an entry at once and offers Undo at the foot, which puts it back as it was. */
+function deleteWithUndo(log: FoodLog) {
+  useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1, restoring: false }));
+  // A failed delete keeps its Undo: its answer may have been lost after the
+  // row went, and Undo writes the row back as it was either way. Its alert
+  // says only what is known; the store reads the day again to show what the
+  // server has.
+  report(useFuelStore.getState().deleteEntry(log.id), DELETE_UNCONFIRMED, DELETE_UNCONFIRMED_MESSAGE);
+}
+
+/**
+ * Undo: the bar stays, busy, until the entry is confirmed back. Its failure
+ * offers Try again for that entry alone; one a newer delete has taken the
+ * bar from only says so. Either alert holds the bar while it is up.
+ */
+function undoDelete() {
+  const { entry, restoring } = useDeletedEntry.getState();
+  if (!entry || restoring) return;
+  useDeletedEntry.setState({ restoring: true });
+  const name = entry.food?.name ?? 'Food';
+  void useFuelStore
+    .getState()
+    .restoreEntry(entry)
+    .catch(() => false)
+    .then((ok) => {
+      // Not when a newer delete has the bar now, or Fuel was left.
+      const shown = useDeletedEntry.getState().entry === entry;
+      if (ok) {
+        if (shown) useDeletedEntry.setState({ entry: null, restoring: false });
+        haptics.success();
+        announce(`${name} back`);
+        return;
+      }
+      haptics.error();
+      if (!shown) {
+        holdingUndoAlert('Not put back', `${name} couldn't be put back. Check your connection.`);
+        return;
+      }
+      useDeletedEntry.setState({ restoring: false });
+      holdingUndoAlert('Not put back', CHECK_CONNECTION, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Try again',
+          onPress: () => {
+            if (useDeletedEntry.getState().entry === entry) undoDelete();
+          },
+        },
+      ]);
+    });
+}
 
 /**
  * The week strip's cells are a fixed seven across: their text stops growing
@@ -60,7 +154,7 @@ const DAY_CELL_TEXT_MAX = 1.3;
  * A Fuel write's result: a success tick, or an error buzz and an alert, so a
  * failed delete or move is never silent.
  */
-function report(write: Promise<boolean>, failure: string) {
+function report(write: Promise<boolean>, failure: string, message = CHECK_CONNECTION) {
   void write
     .catch(() => false)
     .then((ok) => {
@@ -69,7 +163,7 @@ function report(write: Promise<boolean>, failure: string) {
         return;
       }
       haptics.error();
-      Alert.alert(failure, CHECK_CONNECTION);
+      holdingUndoAlert(failure, message);
     });
 }
 
@@ -82,7 +176,7 @@ function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
   const copy = () => report(useFuelStore.getState().copyToToday(logs, group), 'Not copied');
   const inMeal = todayLogsInMatchingMeal(group);
   if (inMeal && alreadyOnDay(logs, inMeal)) {
-    Alert.alert('Copy again?', logs.length === 1 ? "Today's meal already has this food." : "Today's meal already has these foods.", [
+    holdingUndoAlert('Copy again?', logs.length === 1 ? "Today's meal already has this food." : "Today's meal already has these foods.", [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Copy', onPress: copy },
     ]);
@@ -135,6 +229,20 @@ export default function FuelScreen() {
   // Bulking, going past a target is a good day, not a red one.
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const { selected, logs, groups, loaded, status } = useFuelDay();
+  // The latest delete's Undo, for a few seconds; leaving Fuel lets it go.
+  const deleted = useDeletedEntry((state) => state.entry);
+  const deletedKey = useDeletedEntry((state) => state.key);
+  const restoring = useDeletedEntry((state) => state.restoring);
+  const workoutBar = useWorkoutBarShown((state) => state.shown);
+  useEffect(() => {
+    if (!deleted) return;
+    const timer = setTimeout(() => {
+      const state = useDeletedEntry.getState();
+      if (state.key === deletedKey && !state.restoring && state.alerts === 0) useDeletedEntry.setState({ entry: null });
+    }, screenReaderRunning() ? UNDO_MS_SCREEN_READER : UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [deleted, deletedKey]);
+  useEffect(() => () => useDeletedEntry.setState({ entry: null, restoring: false }), []);
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
   // Read on every render and handed down, so the rows' "today" changes at
@@ -321,6 +429,8 @@ export default function FuelScreen() {
           </BlancText>
         ) : null}
       </TabScroll>
+
+      <UndoBar label={deleted ? `${deleted.food?.name ?? 'Food'} deleted` : null} bottom={tabBarCover(workoutBar) + 8} busy={restoring} onUndo={undoDelete} />
     </>
   );
 }
@@ -543,8 +653,8 @@ function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: 
   const savedMeals = useKnownSavedMeals();
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
-  // The row slides away at once; it comes back if the delete fails.
-  const remove = () => report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
+  // The row slides away at once; it comes back if the delete fails, and Undo at the foot brings it back.
+  const remove = () => deleteWithUndo(log);
 
   // Move to opens the day's other meals; the hold menu, the swipe's More
   // and VoiceOver all offer the same list.

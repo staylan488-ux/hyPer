@@ -77,10 +77,10 @@ describe('A row detail in parts', () => {
     expect(label).toBe(silentAccessibility.speak('Greek yogurt, 60 g · 8 g protein · 7:30 AM · Estimate, 120'));
   });
 
-  it('wraps as one line of words at the large text sizes, as before', async () => {
+  it('puts each part on its own line at the large text sizes, so no figure breaks from its unit', async () => {
     large = true;
     const { texts } = await draw(yogurt);
-    expect(texts.find((text) => text.text === '60 g · 8 g protein · 7:30 AM · Estimate')).toMatchObject({ lines: 'any' });
+    expect(texts.find((text) => text.text === '60 g\n8 g protein\n7:30 AM\nEstimate')).toMatchObject({ lines: 'any' });
     expect(texts.some((text) => text.text === '60 g')).toBe(false);
   });
 

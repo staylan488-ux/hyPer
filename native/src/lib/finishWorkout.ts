@@ -21,8 +21,9 @@ const useClosing = create<{ closing: boolean }>(() => ({ closing: false }));
 
 /**
  * Finishing the live workout, wherever Finish is tapped (Train's header, its
- * "All sets logged" card, Today's session card): ask, save the notes, close
- * it, then show the summary. `finish` keeps its identity, so a header built
+ * "All sets logged" card, Today's session card): ask (unless a program
+ * session is fully logged with nothing skipped), save the notes, close it,
+ * then show the summary. `finish` keeps its identity, so a header built
  * once can call it; a second tap while it saves does nothing.
  */
 export function useFinishWorkout(session: SessionModel | null) {
@@ -96,11 +97,19 @@ export function useFinishWorkout(session: SessionModel | null) {
       }
     };
 
+    // A program session with every set logged and nothing skipped has nothing
+    // to warn about or choose: Finish finishes, without asking first.
+    const skipped = skippedLine(current);
+    if (!current.flexible && current.sets.length > 0 && current.doneCount >= current.sets.length && !skipped) {
+      void close(false);
+      return;
+    }
+
     // Keeping it as a quick start replaces one with the same name.
     const state = useAppStore.getState();
     const label = state.currentWorkoutDayPlan?.day_label.trim() ?? '';
     const replaces = current.flexible && label !== '' && state.flexTemplates.some((template) => template.label === label);
-    const counted = [`${current.doneCount} of ${current.sets.length} sets logged.`, skippedLine(current)].filter(Boolean).join(' ');
+    const counted = [`${current.doneCount} of ${current.sets.length} sets logged.`, skipped].filter(Boolean).join(' ');
     Alert.alert('Finish workout?', replaces ? `${counted} Saving as a quick start replaces your “${current.dayName}” quick start.` : counted, [
       ...(current.flexible && current.movements.length > 0
         ? [{ text: 'Finish and save as quick start', onPress: () => void close(true) }]

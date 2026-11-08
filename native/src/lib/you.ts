@@ -114,8 +114,8 @@ export const useWeightStore = create<WeightState>(() => ({
 let readsStarted = 0;
 let recentShown = 0;
 let allShown = 0;
-/** The reads still running, each with its account's check. */
-const readsRunning = new Map<number, () => boolean>();
+/** The reads still running, each with its account's check and whether it reads every weigh-in. */
+const readsRunning = new Map<number, { isCurrent: () => boolean; all: boolean }>();
 
 /**
  * Weigh-ins deleted here, or being deleted. A read that started before a
@@ -136,7 +136,7 @@ export async function loadWeights({ all = false }: { all?: boolean } = {}): Prom
   if (!userId) return;
   const isCurrent = captureAccountScope();
   const read = ++readsStarted;
-  readsRunning.set(read, isCurrent);
+  readsRunning.set(read, { isCurrent, all });
   useWeightStore.setState({ loading: true });
   const now = new Date();
   const since = bodyWeightWindowStart(WEIGHT_TREND_WINDOW_DAYS, now);
@@ -170,7 +170,7 @@ export async function loadWeights({ all = false }: { all?: boolean } = {}): Prom
   } finally {
     readsRunning.delete(read);
     // Loading while another read for this account still runs.
-    if (isCurrent()) useWeightStore.setState({ loading: [...readsRunning.values()].some((current) => current()) });
+    if (isCurrent()) useWeightStore.setState({ loading: [...readsRunning.values()].some((running) => running.isCurrent()) });
   }
 }
 
@@ -192,16 +192,33 @@ export function setWeightUnit(unit: WeightUnit) {
   useWeightStore.setState({ unit });
 }
 
-/** Records a typed weigh-in, then reloads the history. Returns an error message or null. */
-export async function logWeighIn(kilograms: number): Promise<string | null> {
+/**
+ * When a weigh-in logged for a day ('yyyy-MM-dd') was taken: now for today;
+ * on an earlier day, that day at the present time of day.
+ */
+export function weighInTime(day: string, today: string, now = new Date()): Date {
+  if (day >= today) return now;
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(year, month - 1, date, now.getHours(), now.getMinutes());
+}
+
+/**
+ * Records a typed weigh-in, now or on an earlier day, then reloads the
+ * history. Returns an error message or null. With every weigh-in on show
+ * (the weigh-ins list), or a read of them all still on its way (You's first
+ * load), it reads them all again, so one dated before the recent window is
+ * listed too: the read on its way may have left before this weigh-in.
+ */
+export async function logWeighIn(kilograms: number, measuredAt: Date = new Date()): Promise<string | null> {
   const userId = currentUserId();
   if (!userId) return 'Sign in again to log your weight.';
   try {
-    await recordManualBodyWeight(userId, kilograms);
+    await recordManualBodyWeight(userId, kilograms, measuredAt);
   } catch (error) {
     return error instanceof Error ? error.message : 'Could not save that weigh-in.';
   }
-  await loadWeights();
+  const allWanted = useWeightStore.getState().all !== null || [...readsRunning.values()].some((running) => running.all && running.isCurrent());
+  await loadWeights({ all: allWanted });
   return null;
 }
 

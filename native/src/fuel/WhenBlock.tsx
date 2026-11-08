@@ -1,35 +1,22 @@
 import { endOfDay, format, parseISO } from 'date-fns';
-import { ActionSheetIOS, View } from 'react-native';
 
-import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
 import { FormNote, PickerRow } from '~/components/Form';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { Label } from '~/components/Label';
-import { Hairline, Row } from '~/components/Row';
+import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
-import { haptics } from '~/lib/haptics';
 import { timeAsDate, usesDayGroups } from '~/lib/foodLogger';
 
 import { useLogger } from './context';
 
-/** Day, time and meal for the entry. */
+/** Day and time for the entry; the meal is the sheet's destination line, under its title. */
 export function WhenBlock({ disabled }: { disabled?: boolean }) {
-  const { when, setWhen, selectedKey, groups, purpose } = useLogger();
+  const { when, setWhen, selectedKey, purpose } = useLogger();
   // The Day picker ends on today, moving on at midnight while the sheet is open.
   const currentDay = useCurrentDayKey();
   const latestDay = endOfDay(parseISO(currentDay));
   if (purpose === 'ingredients') return null;
   const sameDay = usesDayGroups(when, selectedKey);
-  const group = sameDay ? groups.find((candidate) => candidate.id === when.groupId) ?? null : null;
-
-  const chooseGroup = () => {
-    const options = [NO_MEAL, ...groups.map((candidate) => nutritionGroupTitle(candidate, groups)), 'Cancel'];
-    ActionSheetIOS.showActionSheetWithOptions({ title: 'Add to', options, cancelButtonIndex: options.length - 1 }, (index) => {
-      if (index === options.length - 1) return;
-      haptics.select();
-      setWhen({ ...when, groupId: index === 0 ? null : groups[index - 1].id });
-    });
-  };
 
   return (
     <Section title="When">
@@ -56,22 +43,9 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
           disabled={disabled}
           onChange={(date) => setWhen({ ...when, time: format(date, 'HH:mm') })}
         />
-        <Hairline />
-        {sameDay ? (
-          <Row
-            form
-            title="Add to"
-            value={group ? nutritionGroupTitle(group, groups) : NO_MEAL}
-            chevron={!disabled}
-            onPress={disabled ? undefined : chooseGroup}
-          />
-        ) : (
-          <View>
-            <Row form title="Add to" value={`${NO_MEAL} on ${format(when.date, 'MMM d')}`} />
-          </View>
-        )}
       </Label>
-      {!sameDay ? <FormNote>Meals shown here belong to {format(new Date(`${selectedKey}T12:00:00`), 'MMM d')}.</FormNote> : null}
+      {/* The meal is chosen on the line under the sheet's title, which names it; another day's food goes in no meal. */}
+      {!sameDay ? <FormNote>To add it to one of that day's meals, log it from {format(when.date, 'MMM d')} in Fuel.</FormNote> : null}
     </Section>
   );
 }

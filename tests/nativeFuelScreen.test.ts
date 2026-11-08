@@ -7,14 +7,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fuelSummary from '@/lib/fuelSummary';
 import * as composition from '@/lib/mealComposition';
 import * as calendar from '@/lib/nutritionCalendar';
+import { captureAccountScope } from '@/lib/accountScope';
 import * as groupsRules from '@/lib/nutritionGroups';
 import * as ledger from '@/lib/nutritionLedger';
 import * as logUtils from '@/lib/nutritionLogUtils';
 import * as macros from '@/lib/nutritionMacros';
+import * as repeated from '@/lib/repeatEntries';
 import * as savedMealFromLog from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import * as meals from '../native/src/lib/meals';
+import { create as zustandCreate } from 'zustand';
 
 // Fuel's screen: the date under the large title opens the month (the bar keeps
 // + alone), and a day with food ends on a quiet Log food for that day. A new
@@ -31,13 +35,19 @@ const noop = () => {};
 type Press = { accessibilityRole?: string; accessibilityLabel?: string; accessibilityHint?: string; onPress?: () => void; children?: ReactNode };
 type CapsuleProps = { title: string; variant?: 'primary' | 'quiet'; onPress: () => void };
 type HeaderItem = { label: string; onPress: () => void };
-type RowProps = { title: string; detail?: string | readonly string[]; value?: string; accessibilityLabel?: string; onPress?: () => void };
+type RowProps = { title: string; detail?: string | readonly string[]; value?: string; accessibilityLabel?: string; onPress?: () => void; menu?: { title: string; run?: () => void }[] };
+type UndoBarProps = { label: string | null; busy?: boolean; onUndo: () => void };
+type AlertButton = { text: string; style?: string; onPress?: () => void };
 type MarkProps = { logged: boolean; kcal?: number; target?: number | null };
 type Target = { calories: number; protein: number; carbs: number; fat: number };
 
 const oats: Food = {
   id: 'oats', user_id: null, name: 'Oats', calories: 150, protein: 5, carbs: 27, fat: 3,
   serving_size: 40, serving_unit: 'g', source: 'usda', fdc_id: '1',
+};
+const milkFood: Food = {
+  id: 'milk', user_id: null, name: 'Milk', calories: 120, protein: 8, carbs: 12, fat: 5,
+  serving_size: 240, serving_unit: 'ml', source: 'usda', fdc_id: '2',
 };
 const TODAY = '2026-11-05';
 const noSavedFoods: Food[] = [];
@@ -47,20 +57,31 @@ const pressables: Record<string, Press> = {};
 const capsules: Record<string, CapsuleProps> = {};
 const rows: Record<string, RowProps> = {};
 const marks: MarkProps[] = [];
+const undoBar: { props?: UndoBarProps } = {};
+const alert = vi.fn();
+const deleteEntry = vi.fn<(id: string) => Promise<boolean>>();
+const restoreEntry = vi.fn<(log: object) => Promise<boolean>>();
 const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } = {};
 let root: Root | undefined;
 let host: HTMLDivElement;
 
-async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1 }: {
+async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, copyAgain = false, fuelModule }: {
   day?: string;
   logged?: boolean;
   source?: string;
   target?: Target | null;
   loaded?: boolean;
   fontScale?: number;
+  /** A second entry, Milk, after the Oats. */
+  milk?: boolean;
+  /** Today's matching meal already has what Copy to today would copy. */
+  copyAgain?: boolean;
+  /** The real Fuel store (native/src/lib/fuel.ts) in place of the stand-in. */
+  fuelModule?: object;
 } = {}) {
   const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null, sort_order: 0, source }] : [];
-  const fuel = { selected: day, logs, groups: [] };
+  if (logged && milk) logs.push({ id: 'log-milk', date: day, food: milkFood, servings: 1, logged_at: `${day}T09:00:00Z`, group_id: null, sort_order: 1, source });
+  const fuel = { selected: day, logs, groups: [], deleteEntry, restoreEntry, copyToToday: vi.fn(async () => true) };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
     'date-fns': dates,
     'expo-router': {
@@ -70,7 +91,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     'expo-symbols': { SymbolView: Empty },
     'react-native': {
       ActionSheetIOS: {},
-      Alert: {},
+      Alert: { alert },
       Pressable: (props: Press) => {
         if (props.accessibilityLabel) pressables[props.accessibilityLabel] = props;
         return createElement('div', { 'data-press': props.accessibilityLabel, 'data-hint': props.accessibilityHint }, props.children);
@@ -93,7 +114,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '@/lib/nutritionGroups': groupsRules,
     '@/lib/nutritionLedger': ledger,
     '@/lib/nutritionMacros': macros,
-    '@/lib/repeatEntries': { alreadyOnDay: () => false },
+    '@/lib/repeatEntries': { alreadyOnDay: () => copyAgain },
     '@/lib/savedFoodsCache': { readSavedFoodsCache: () => noSavedFoods, subscribeSavedFoodsCache: () => noop },
     '@/lib/savedMealFromLog': savedMealFromLog,
     '@/stores/appStore': {
@@ -108,14 +129,17 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/components/Row': { Row: (props: RowProps) => { rows[props.title] = props; return null; }, Hairline: Empty },
     '~/components/Section': { Section: Wrap },
     '~/components/SwipeRow': { SwipeRow: Wrap },
-    '~/components/TabScroll': { TabScroll: Wrap },
+    '~/components/TabScroll': { TabScroll: Wrap, tabBarCover: () => 0 },
+    '~/components/UndoBar': { UndoBar: (props: UndoBarProps) => { undoBar.props = props; return null; } },
+    '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
+    zustand: { create: zustandCreate },
     '~/components/Track': { Track: ({ progress }: { progress: number }) => createElement('i', { 'data-track': String(progress) }) },
     '~/fuel/DayMark': { DayMark: (props: MarkProps) => { marks.push(props); return null; } },
     '~/lib/format': { formatWhole: String },
-    '~/lib/fuel': {
+    '~/lib/fuel': fuelModule ?? {
       dayKey: (date: Date) => dates.format(date, 'yyyy-MM-dd'),
       useTodayKey: () => TODAY,
-      todayLogsInMatchingMeal: () => null,
+      todayLogsInMatchingMeal: () => (copyAgain ? [] : null),
       useFuelDay: () => ({ selected: day, loaded, status: loaded ? 'ready' : 'loading', logs: loaded ? fuel.logs : [], groups: fuel.groups }),
       useFuelStore: Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel }),
     },
@@ -136,6 +160,10 @@ beforeEach(() => {
   push.mockClear();
   for (const record of [pressables, capsules, rows]) for (const key of Object.keys(record)) delete record[key];
   marks.length = 0;
+  undoBar.props = undefined;
+  alert.mockClear();
+  deleteEntry.mockReset().mockResolvedValue(true);
+  restoreEntry.mockReset().mockResolvedValue(true);
   screen.options = undefined;
 });
 afterEach(async () => {
@@ -272,5 +300,326 @@ describe("Fuel's day card", () => {
     await renderFuel({ target, logged: false });
     expect(host.querySelector('section [data-hint="Edits your calorie target"]')).toBeNull();
     expect(host.querySelectorAll('[data-track]')).toHaveLength(0);
+  });
+});
+
+describe("Fuel's Undo after a delete", () => {
+  it('stays, busy, until the entry is back, and is there to try again after a failure', async () => {
+    let answer!: (ok: boolean) => void;
+    restoreEntry.mockReturnValueOnce(new Promise<boolean>((resolve) => { answer = resolve; }));
+    await renderFuel();
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    expect(deleteEntry).toHaveBeenCalledWith('log-oats');
+    expect(undoBar.props?.label).toBe('Oats deleted');
+
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(restoreEntry).toHaveBeenCalledWith(expect.objectContaining({ id: 'log-oats' }));
+    expect(undoBar.props).toMatchObject({ label: 'Oats deleted', busy: true });
+    // A second tap meanwhile writes nothing more.
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(restoreEntry).toHaveBeenCalledOnce();
+
+    await act(async () => { answer(false); });
+    expect(alert).toHaveBeenCalledWith('Not put back', 'Check your connection and try again.', expect.any(Array), expect.anything());
+    expect(undoBar.props).toMatchObject({ label: 'Oats deleted', busy: false });
+
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(restoreEntry).toHaveBeenCalledTimes(2);
+    expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('keeps a failed Undo past its time while the failure shows, until Try again puts the entry back', async () => {
+    // The bar's countdown runs on these timers (only Date is faked for the rest of the file).
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
+    restoreEntry.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    await renderFuel();
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    await act(async () => { undoBar.props!.onUndo(); });
+    expect(alert).toHaveBeenCalledOnce();
+    // The alert stays up well past the bar's time (VoiceOver's 20 seconds too).
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    expect(undoBar.props?.label).toBe('Oats deleted');
+
+    const [title, message, buttons] = alert.mock.calls[0] as [string, string, AlertButton[]];
+    expect([title, message]).toEqual(['Not put back', 'Check your connection and try again.']);
+
+    await act(async () => { buttons.find((button) => button.text === 'Try again')!.onPress!(); });
+    expect(restoreEntry).toHaveBeenCalledTimes(2);
+    expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('gives the bar its full time again once a failure is dismissed', async () => {
+    // The bar's countdown runs on these timers (only Date is faked for the rest of the file).
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
+    restoreEntry.mockResolvedValueOnce(false);
+    await renderFuel();
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    await act(async () => { undoBar.props!.onUndo(); });
+    const buttons = alert.mock.calls[0][2] as AlertButton[];
+    await act(async () => { vi.advanceTimersByTime(30_000); });
+    await act(async () => { buttons.find((button) => button.text === 'Cancel')!.onPress!(); });
+    await act(async () => { vi.advanceTimersByTime(4_000); });
+    expect(undoBar.props?.label).toBe('Oats deleted');
+    await act(async () => { vi.advanceTimersByTime(1_500); });
+    expect(undoBar.props?.label).toBeNull();
+    expect(restoreEntry).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Fuel's Undo with deletes and Undos overlapping", () => {
+  // The bar's countdown runs on these timers (only Date is faked for the rest of the file).
+  const fakeTimers = () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
+  };
+  const remove = (name: string) => act(async () => { rows[name].menu!.find((item) => item.title === 'Delete')!.run!(); });
+  const undo = () => act(async () => { undoBar.props!.onUndo(); });
+  const wait = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); });
+  const buttons = (call: number) => alert.mock.calls[call][2] as AlertButton[];
+  function later<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => { resolve = done; });
+    return { promise, resolve };
+  }
+
+  it('holds a newer delete’s Undo behind an older Undo’s failure, then gives it its full time', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    restoreEntry.mockReturnValueOnce(oats.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await undo();
+    await remove('Milk');
+    expect(undoBar.props).toMatchObject({ label: 'Milk deleted', busy: false });
+
+    await act(async () => { oats.resolve(false); });
+    expect(alert).toHaveBeenCalledOnce();
+    await wait(30_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(['Not put back', "Oats couldn't be put back. Check your connection."]);
+    // The old failure can't retry anything: its Undo is gone, and Milk's is not its own.
+    expect(buttons(0).map((button) => button.text)).toEqual(['OK']);
+
+    await act(async () => { buttons(0)[0].onPress!(); });
+    await wait(4_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await wait(1_500);
+    expect(undoBar.props?.label).toBeNull();
+    expect(restoreEntry).toHaveBeenCalledOnce();
+  });
+
+  it('leaves a newer delete’s Undo to its own time when an older Undo succeeds meanwhile', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    restoreEntry.mockReturnValueOnce(oats.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await undo();
+    await remove('Milk');
+    await wait(3_000);
+    await act(async () => { oats.resolve(true); });
+    expect(alert).not.toHaveBeenCalled();
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await wait(2_100);
+    expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('keeps a newer Undo running while an older Undo fails, and puts back only what each was for', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    const milk = later<boolean>();
+    restoreEntry.mockReturnValueOnce(oats.promise).mockReturnValueOnce(milk.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await undo();
+    await remove('Milk');
+    await undo();
+    expect(undoBar.props).toMatchObject({ label: 'Milk deleted', busy: true });
+
+    await act(async () => { oats.resolve(false); });
+    expect(buttons(0).map((button) => button.text)).toEqual(['OK']);
+    expect(undoBar.props).toMatchObject({ label: 'Milk deleted', busy: true });
+    await act(async () => { buttons(0)[0].onPress!(); });
+    await act(async () => { milk.resolve(true); });
+    expect(undoBar.props?.label).toBeNull();
+    expect(restoreEntry.mock.calls.map(([log]) => (log as { id: string }).id)).toEqual(['log-oats', 'log-milk']);
+  });
+
+  it('keeps the Undo of a delete that answered with a failure, held behind its alert', async () => {
+    // The answer can be lost after the row went: Undo writes it back either way.
+    fakeTimers();
+    deleteEntry.mockResolvedValueOnce(false);
+    await renderFuel();
+    await remove('Oats');
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(["Couldn't confirm the delete", 'It may have gone through. Fuel shows what is saved once it reads the day again; check your connection.']);
+    await wait(30_000);
+    expect(undoBar.props?.label).toBe('Oats deleted');
+    await act(async () => { buttons(0)[0].onPress!(); });
+    await undo();
+    expect(restoreEntry).toHaveBeenCalledWith(expect.objectContaining({ id: 'log-oats' }));
+    expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('holds the Undo behind Copy again’s question, then gives it its full time', async () => {
+    fakeTimers();
+    await renderFuel({ day: '2026-11-04', milk: true, copyAgain: true });
+    await remove('Milk');
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Copy to today')!.run!(); });
+    expect(alert.mock.calls[0][0]).toBe('Copy again?');
+    await wait(30_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await act(async () => { buttons(0).find((button) => button.text === 'Cancel')!.onPress!(); });
+    await wait(4_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await wait(1_500);
+    expect(undoBar.props?.label).toBeNull();
+  });
+
+  it('holds a newer delete’s Undo behind an older delete’s failure, then gives it its full time', async () => {
+    fakeTimers();
+    const oats = later<boolean>();
+    deleteEntry.mockReturnValueOnce(oats.promise);
+    await renderFuel({ milk: true });
+    await remove('Oats');
+    await remove('Milk');
+    await act(async () => { oats.resolve(false); });
+    expect(alert.mock.calls[0].slice(0, 2)).toEqual(["Couldn't confirm the delete", 'It may have gone through. Fuel shows what is saved once it reads the day again; check your connection.']);
+    await wait(30_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await act(async () => { buttons(0)[0].onPress!(); });
+    await wait(4_000);
+    expect(undoBar.props?.label).toBe('Milk deleted');
+    await wait(1_500);
+    expect(undoBar.props?.label).toBeNull();
+  });
+});
+
+describe("Fuel's Undo against the real store and a simulated server", () => {
+  const press = (title: string, text: string) => {
+    const call = alert.mock.calls.find(([shown]) => shown === title)!;
+    return act(async () => { (call[2] as AlertButton[]).find((button) => button.text === text)!.onPress!(); });
+  };
+
+  /** The real Fuel store (native/src/lib/fuel.ts) on a simulated server: its rows, and its delete and restore. */
+  function serverStore() {
+    const rows = new Map<string, { id: string; date: string }>();
+    const deleteEntry = vi.fn<(id: string) => Promise<boolean>>();
+    const restoreEntry = vi.fn<(log: { id: string; date: string }) => Promise<boolean>>();
+    const query = { select: () => query, eq: () => query, gte: () => query, lte: () => query, order: async () => ({ data: [], error: null }) };
+    const fuel = loadNativeModule<typeof import('../native/src/lib/fuel')>('lib/fuel.ts', {
+      'date-fns': dates,
+      zustand: { create: zustandCreate },
+      '@/lib/accountScope': { captureAccountScope },
+      '@/lib/nutritionLogQueries': {
+        fetchNutritionLogsWithFoods: async (_user: string, range: { from: string; to: string }) => ({
+          data: [...rows.values()].filter((row) => row.date >= range.from && row.date <= range.to),
+          error: null,
+        }),
+      },
+      '@/lib/nutritionDay': { ensureDefaultGroups: async () => null, deleteNutritionEntry: deleteEntry, restoreNutritionEntry: restoreEntry },
+      '@/lib/nutritionGroups': groupsRules,
+      '@/lib/nutritionMacros': macros,
+      '@/lib/repeatEntries': repeated,
+      '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
+      '@/lib/supabase': { supabase: { from: () => query } },
+      './meals': meals,
+    });
+    return { fuel, server: { rows, deleteEntry, restoreEntry } };
+  }
+
+  it('keeps Undo and its Try again when a delete’s answer is lost after the row went', async () => {
+    const { fuel, server } = serverStore();
+    server.rows.set('log-oats', { id: 'log-oats', user_id: 'user-a', date: TODAY, logged_at: `${TODAY}T08:00:00Z`, food_id: 'oats', servings: 1, group_id: null, sort_order: 0, food: oats } as never);
+    let answerDelete!: () => void;
+    server.deleteEntry.mockImplementationOnce((id) => new Promise<boolean>((resolve) => {
+      // The server deletes the row; its answer is lost on the way back.
+      answerDelete = () => { server.rows.delete(id); resolve(false); };
+    }));
+    server.restoreEntry
+      .mockResolvedValueOnce(false)
+      .mockImplementationOnce(async (log) => { server.rows.set(log.id, log); return true; });
+    await fuel.useFuelStore.getState().loadToday(TODAY);
+    await renderFuel({ fuelModule: fuel });
+
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    // Undo is asked for before the delete's answer comes back.
+    await act(async () => { undoBar.props!.onUndo(); });
+    await act(async () => { answerDelete(); });
+    await vi.waitFor(() => expect(alert.mock.calls.map(([title]) => title)).toContain('Not put back'));
+    expect(server.rows.has('log-oats')).toBe(false);
+    expect(undoBar.props?.label).toBe('Oats deleted');
+
+    await press('Not put back', 'Try again');
+    await vi.waitFor(() => expect(undoBar.props?.label).toBeNull());
+    expect(server.restoreEntry).toHaveBeenCalledTimes(2);
+    expect(server.rows.has('log-oats')).toBe(true);
+    await vi.waitFor(() => expect(fuel.useFuelStore.getState().logs.map((log) => log.id)).toContain('log-oats'));
+  });
+  // Every delete answer, with Undo asked for never, before the answer or after it, and each restore answer.
+  const deletes = ['ok', 'failed', 'lost'] as const;
+  const restores = ['ok', 'failed', 'lost'] as const;
+  const cases = deletes.flatMap((deleted) => [
+    [deleted, 'none', 'ok'] as const,
+    ...(['before', 'after'] as const).flatMap((timing) => restores.map((restored) => [deleted, timing, restored] as const)),
+  ]);
+  it.each(cases)('delete %s, Undo %s, restore %s: Undo stays until the entry is back, with Try again after any failure', async (deleted, timing, restored) => {
+    const { fuel, server } = serverStore();
+    const row = { id: 'log-oats', user_id: 'user-a', date: TODAY, logged_at: `${TODAY}T08:00:00Z`, food_id: 'oats', servings: 1, group_id: null, sort_order: 0, food: oats };
+    server.rows.set(row.id, row as never);
+    let answerDelete!: () => void;
+    server.deleteEntry.mockImplementationOnce((id) => new Promise<boolean>((resolve) => {
+      answerDelete = () => {
+        if (deleted !== 'failed') server.rows.delete(id);
+        resolve(deleted === 'ok');
+      };
+    }));
+    server.restoreEntry
+      .mockImplementationOnce(async (log) => {
+        if (restored !== 'failed') server.rows.set(log.id, log);
+        return restored === 'ok';
+      })
+      .mockImplementation(async (log) => { server.rows.set(log.id, log); return true; });
+    await fuel.useFuelStore.getState().loadToday(TODAY);
+    await renderFuel({ fuelModule: fuel });
+    const settle = () => act(async () => { for (let tick = 0; tick < 30; tick += 1) await Promise.resolve(); });
+
+    await act(async () => { rows.Oats.menu!.find((item) => item.title === 'Delete')!.run!(); });
+    if (timing === 'before') await act(async () => { undoBar.props!.onUndo(); });
+    await act(async () => { answerDelete(); });
+    await settle();
+    // A failed answer says only what is known: never "Not deleted".
+    expect(alert.mock.calls.map(([title]) => title)).not.toContain('Not deleted');
+    expect(alert.mock.calls.some(([title]) => title === "Couldn't confirm the delete")).toBe(deleted !== 'ok');
+    if (deleted !== 'ok') await press("Couldn't confirm the delete", 'OK');
+
+    if (timing !== 'before') {
+      // Before any Undo, the day shows what the server has: read again after a failed answer.
+      const saved = server.rows.has(row.id);
+      expect(saved).toBe(deleted === 'failed');
+      await vi.waitFor(() => expect(fuel.useFuelStore.getState().totalsNeedRefresh).toBe(false));
+      expect(fuel.useFuelStore.getState().logs.filter((log) => log.id === row.id)).toHaveLength(saved ? 1 : 0);
+      expect(fuel.useFuelStore.getState().todayTotals.calories).toBe(saved ? 150 : 0);
+    }
+    if (timing === 'none') {
+      // A failed answer keeps the offer: the row may be gone.
+      expect(undoBar.props?.label).toBe('Oats deleted');
+      return;
+    }
+    if (timing === 'after') await act(async () => { undoBar.props!.onUndo(); });
+    await settle();
+    if (restored !== 'ok') {
+      await vi.waitFor(() => expect(alert.mock.calls.map(([title]) => title)).toContain('Not put back'));
+      expect(undoBar.props?.label).toBe('Oats deleted');
+      await press('Not put back', 'Try again');
+    }
+    await vi.waitFor(() => expect(undoBar.props?.label).toBeNull());
+    expect(server.rows.has(row.id)).toBe(true);
+    await vi.waitFor(() => expect(fuel.useFuelStore.getState().todayLoadedForUserId).toBe('user-a'));
+    await vi.waitFor(() => expect(fuel.useFuelStore.getState().logs.filter((log) => log.id === row.id)).toHaveLength(1));
   });
 });

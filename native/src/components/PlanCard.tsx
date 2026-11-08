@@ -13,9 +13,11 @@ import { Tally } from '~/components/Tally';
 import { speak, useLargeText } from '~/lib/accessibility';
 import { formatMinutes } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
+import { newProgram } from '~/lib/program';
 import { useStartSession } from '~/lib/session';
 import { useFinishedToday, type FinishedToday } from '~/lib/today';
 import { useBlanc } from '~/theme/blanc';
+import { openTrain } from '~/lib/openTrain';
 
 // Today's training in one card: a title, at most one quiet line, at most one
 // button. The shared todayHero rule (src/lib/todayModel), in few words. Shown
@@ -52,7 +54,7 @@ export function PlanCard({
   const [doneFromCopy, setDoneFromCopy] = useState(false);
   const sayDone = hero.kind === 'done' && (seeded || doneFromCopy);
   if (sayDone !== doneFromCopy) setDoneFromCopy(sayDone);
-  const toTrain = () => router.navigate('/train');
+  const toTrain = openTrain;
   const openSchedule = () => router.push('/schedule');
 
   let title: string;
@@ -110,7 +112,8 @@ export function PlanCard({
     case 'first-run':
       title = hasPrograms ? 'No active program' : 'No program yet';
       detail = hasPrograms ? 'Choose a program to use' : 'Five questions, or start blank';
-      action = { title: hasPrograms ? 'Choose' : 'Create', primary: true, onPress: () => router.push('/train/program') };
+      // Create goes straight to the questions (Program's own card would only ask again); Choose lists the programs.
+      action = { title: hasPrograms ? 'Choose' : 'Create', primary: true, onPress: () => (hasPrograms ? router.push('/train/program') : newProgram()) };
       break;
     case 'schedule-error':
       title = 'Couldn’t load your plan';

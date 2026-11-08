@@ -20,3 +20,13 @@ export function useAuthScreen(): AuthScreen {
   const signInInstead = useSignInInstead((state) => state.chosen);
   return authScreen({ initialized, user, reconnecting }, signInInstead);
 }
+
+/**
+ * The server's words for the common failures, said plainly: a wrong email or
+ * password, and no connection. Anything else shows as the server wrote it.
+ */
+export function authErrorWords(message: string): string {
+  if (/invalid login credentials/i.test(message)) return 'That email and password don’t match. Check them and try again.';
+  if (/failed to fetch|network request failed|network error|timed? ?out/i.test(message)) return 'Couldn’t reach hyPer. Check your connection and try again.';
+  return message;
+}

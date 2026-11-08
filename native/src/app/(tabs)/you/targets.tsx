@@ -182,11 +182,12 @@ export default function TargetsScreen() {
         )}
 
         <Label style={{ marginTop: space.section }}>
-          <Row title="Calculate targets" chevron onPress={() => router.push('/targets-calculate')} />
+          {/* Two ways to new numbers, each saying how, since the names alone read alike. */}
+          <Row title="Calculate targets" detail="From your body, activity and goal" chevron onPress={() => router.push('/targets-calculate')} />
           {coachAvailable ? (
             <>
               <Hairline />
-              <Row title="Suggest targets" chevron onPress={() => router.push('/targets-coach')} />
+              <Row title="Suggest targets" detail="Describe your goal to the AI coach" chevron onPress={() => router.push('/targets-coach')} />
             </>
           ) : null}
         </Label>

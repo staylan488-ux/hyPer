@@ -17,7 +17,7 @@ import { haptics } from '~/lib/haptics';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 
 import { useLogger } from './context';
-import { Empty, FoodRow, foodLine, useQuickAdd, type AddState } from './FoodLists';
+import { Empty, FoodRow, foodLine, quickAddMenu, useQuickAdd, type AddState } from './FoodLists';
 import { useHiddenRecentFoods, useRecentLogs } from './recent';
 
 /** "150 g · 31 g protein": what + logs (its kcal sits on the right). */
@@ -33,7 +33,7 @@ function usualLine(recent: RecentFood, amount: string): string {
 export function RecentTab({ userId }: { userId: string }) {
   const logger = useLogger();
   // Rows get `add` on its own: it stays the same function while `added` changes.
-  const { added, add: quickAdd, enabled } = useQuickAdd();
+  const { added, add: quickAdd, takeOut: quickTakeOut, enabled } = useQuickAdd();
   const { logs, failed, version, settle, retry } = useRecentLogs(userId);
   const { hidden, hide } = useHiddenRecentFoods(userId);
   const foods = useMemo(() => (logs ? rankRecentFoods(logs, today(), { hidden }) : null), [logs, hidden]);
@@ -43,6 +43,10 @@ export function RecentTab({ userId }: { userId: string }) {
   const add = (recent: RecentFood) => {
     settle();
     void quickAdd(recent.key, recent.food, { servings: recent.servings, source: recent.source });
+  };
+  const takeOut = (recent: RecentFood) => {
+    settle();
+    void quickTakeOut(recent.key);
   };
   const open = (recent: RecentFood) => {
     settle();
@@ -84,6 +88,7 @@ export function RecentTab({ userId }: { userId: string }) {
                 purpose={logger.purpose}
                 quickAdd={enabled}
                 onAdd={add}
+                onTakeOut={takeOut}
                 onOpen={open}
                 onHide={hideFood}
               />
@@ -101,23 +106,24 @@ export function RecentTab({ userId }: { userId: string }) {
 }
 
 /** One recent food; drawn again only when its own food or state, or the sheet's purpose, changes. */
-function RecentRow({ recent, divided, state, purpose, quickAdd, onAdd, onOpen, onHide }: {
+function RecentRow({ recent, divided, state, purpose, quickAdd, onAdd, onTakeOut, onOpen, onHide }: {
   recent: RecentFood;
   divided: boolean;
   state?: AddState;
   purpose: 'log' | 'ingredients';
   quickAdd: boolean;
   onAdd: (recent: RecentFood) => void;
+  onTakeOut: (recent: RecentFood) => void;
   onOpen: (recent: RecentFood) => void;
   onHide: (recent: RecentFood) => void;
 }) {
   // A built meal logs again whole; as an ingredient it goes through the review, as on Saved.
   const canQuickAdd = quickAdd && (purpose === 'log' || !decodeMealComposition(recent.food.description));
-  // A hold offers the usual amount at once, the review, and hiding the food.
+  // A hold offers the usual amount at once (or, once added, taking it back out), the review, and hiding the food.
   const amount = servingLabel({ servings: recent.servings, food: recent.food });
   const menu: MenuAction[] = [
     ...(canQuickAdd
-      ? [{ title: purpose === 'ingredients' ? 'Add as ingredient' : `Log ${amount} now`, symbol: 'plus.circle', run: () => onAdd(recent) }]
+      ? quickAddMenu({ purpose, state, logTitle: `Log ${amount} now`, onAdd: () => onAdd(recent), onTakeOut: () => onTakeOut(recent) })
       : []),
     { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => onOpen(recent) },
     ...(purpose === 'log'
@@ -132,6 +138,7 @@ function RecentRow({ recent, divided, state, purpose, quickAdd, onAdd, onOpen, o
       servings={recent.servings}
       onOpen={() => onOpen(recent)}
       onAdd={canQuickAdd ? () => onAdd(recent) : undefined}
+      onTakeOut={() => onTakeOut(recent)}
       menu={menu}
     />
   );

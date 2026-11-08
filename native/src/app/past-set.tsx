@@ -37,6 +37,7 @@ export default function PastSetSheet() {
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState(false);
   const weightField = useRef<TextField>(null);
+  const repsField = useRef<TextField>(null);
   const selectedOnce = useRef(false);
   const number = params.number ?? String(set?.set_number ?? '');
   const name = (set?.exercise as { name?: string } | undefined)?.name ?? 'Set';
@@ -122,6 +123,10 @@ export default function PastSetSheet() {
                 }}
                 editable={!saving}
                 maxLength={6}
+                // Next goes on to the reps, as on the live set card.
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => repsField.current?.focus()}
                 accessibilityLabel="Weight in pounds"
               />
               <BlancText variant="secondary" tone="graphite" {...spokenByField}>
@@ -133,6 +138,7 @@ export default function PastSetSheet() {
             </BlancText>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 5 }}>
               <FigureInput
+                ref={repsField}
                 value={reps}
                 fontSize={56}
                 onChangeText={setReps}

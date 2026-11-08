@@ -31,6 +31,7 @@ import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
 import { useTodayPlan } from '~/lib/today';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
+import { openTrain } from '~/lib/openTrain';
 
 /**
  * The Fuel card's height at the standard text size, held while the saved
@@ -172,7 +173,7 @@ function SessionLabel({ session }: { session: SessionModel }) {
   // which asks for its first movement.
   const empty = session.movements.length === 0;
   const { finish, closing } = useFinishWorkout(session);
-  const openWorkout = () => router.navigate('/train');
+  const openWorkout = openTrain;
   const title = current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log';
   const line = current
     ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
@@ -236,9 +237,9 @@ function setLine(setNumber: number, sets: number, weight: number | null, reps: n
   return load ? `${base} · ${load}` : base;
 }
 
-/** "3 of 4 sessions this week", or "2 sessions this week" without a weekly target. */
+/** "3 of 4 sessions this week", or "2 sessions this week" without a weekly target (nothing yet says nothing). */
 function weekNote(done: number | null, target: number | null | undefined): string | undefined {
-  if (done === null) return undefined;
+  if (done === null || (done === 0 && !target)) return undefined;
   return target ? `${done} of ${target} sessions this week` : `${done} ${done === 1 ? 'session' : 'sessions'} this week`;
 }
 

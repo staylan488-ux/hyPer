@@ -208,6 +208,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - Accessibility (2026-11-04): the app works with VoiceOver, every text size up
   to AX5, Increase Contrast and Reduce Motion, and looks exactly the same at
   iOS's default settings. Keep it that way in new work:
+  - A Row's detail line in parts ("6:58 AM · 16 min · 0.40 mi") stacks one
+    part per line at these sizes, so no figure breaks from its unit.
   - Text grows along each role's iOS text style ([textSize](../../../native/src/theme/textSize.ts),
     through BlancText); big figures stop at 1.3×. Layout for the accessibility
     sizes goes behind `useLargeText()` from
@@ -251,12 +253,15 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   combined (the owner's call on 2026-11-05): Photo opens the camera at once
   and adds what it takes, Describe puts the cursor in Your meal, and nothing
   is estimated until Analyze meal; only Snap a meal estimates on its own. A
-  device set to the worker gets Photo alone. Search stays a food search. The
+  device set to the worker gets Photo alone. Search stays a food search; with no
+  match, or offline, it offers Enter it manually (Manual with the words as the
+  name). The
   line under the title says where food goes ("Adds to today", "Adds to
   Lunch"); its menu offers No meal, the day's meals, New meal and New snack
   (on Fuel's day). "No meal" (`NO_MEAL`) names foods outside a meal
   everywhere, and a lone unnamed snack is "Snack" (`nutritionGroupTitle`).
-  The line names only where food goes, never a total, in a 44 pt target.
+  The line names only where food goes, never a total, in a 44 pt target; it is
+  the one meal control (a review's When holds only Day and Time).
   The chosen entry method is lifted like a chosen Chip. No food list carries
   a kcal heading. Recent ends in Build a meal; Saved has no Edit mode (each
   meal swipes and holds for Edit and Delete) and ends in New saved meal. At
@@ -325,8 +330,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   to refresh, and a small destructive button with no swipe behind it asks
   first.
 - Food AI: the owner logs with Gemini (the web logger's hosted mode), so the
-  native app defaults to it (Photo and Describe, Manual's hand-off, Describe
-  amount); a device set to the worker gets the worker's photo view under the same Photo button.
+  native app defaults to it (Photo and Describe, Describe amount); with
+  Gemini, Manual opens straight on its fields (Describe is the door beside
+  it), while the worker's Manual keeps its own Describe with AI estimate; a
+  device set to the worker gets the worker's photo view under the same Photo button.
   While a Gemini analysis runs, its buttons give way to the Analysis card
   (`native/src/fuel/AnalysisProgress.tsx`, wording in `src/lib/analysisProgress.ts`;
   the owner's ask, 2026-11-06): the step under way on top with a graphite
@@ -402,7 +409,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   survives leaving Train and relaunching. Lengths are kept per movement through
   the shared `src/lib/restPreferences.ts`, as on the web (own length, else the
   last one chosen, else 90 s), and a logged set starts rest at its movement's
-  length.
+  length, except the last set of a program session (nothing left to rest
+  for; a flexible session still rests, its next movement comes after).
+  Finish asks first unless a program session is fully logged with nothing
+  skipped. Whenever the movement up changes, its card scrolls just into view.
 - Away from the app ([lib/rest.ts](../../../native/src/lib/rest.ts)): a running
   rest schedules the web's "Rest over" notification (expo-notifications, local
   only: `enableRemoteNotifications: false` keeps push out of the entitlements),
@@ -466,7 +476,12 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   and Progress
   in Today's (`today/progress`). Past-workout edits go through
   `editPastWorkout` in [lib/history.ts](../../../native/src/lib/history.ts),
-  which runs the web's edit protocol one edit at a time per workout. Delete a
+  which runs the web's edit protocol one edit at a time per workout (the set
+  editor's weight goes Next to reps). History's month pages stop at the
+  current month, as Fuel's do, and follow midnight (`useCurrentDayKey`).
+  Program view's rows open that day in the editor (`editProgramDay`), or the
+  program alone while unsaved edits kept on the device wait for Restore or
+  Discard. Delete a
   workout only after `confirmDeleteWorkout` asks. The muscle figure draws the
   shared maquette shapes with react-native-svg.
 - You (milestone 7) is the You tab's stack (`you/weight`, `weigh-ins`,
@@ -496,8 +511,10 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
 - Run (`native/src/app/run.tsx`, a full-screen modal from Train's ⋯ menu,
   You's Start a run, or the run card): set up (Long run or Splits, auto-split,
   a simulated route in sample mode), live (the current split's pace, time,
-  distance, average; Split, Rest or Resume, and Hold to finish), then the
-  finished run to save (to History), discard (asks first) or export its
+  distance, average; Split, Rest or Resume, and Hold to finish, which fills,
+  ticks and ends the run as the finger lifts, so the next screen gets its first
+  tap), then the
+  finished run to save (to History, opened on the run's day), discard (asks first) or export its
   private GPS diagnostics. The engine and recovery are the web's
   (`useRunTracker`, `src/lib/runTracker.ts`, `nativeRunSource`), the words and
   choices `src/lib/runDisplay.ts`. Location (and Motion) are asked on Start,
@@ -550,6 +567,35 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   a photo's menu is up (`showPhotoChoices`). Intents that open the app
   compile into the app (the control's also into the extension), App Shortcuts
   only into the app, never into a pod.
+- First-time and failure paths (UX pass, 2026-11-07): Today's No program yet
+  Create opens the new-program questions at once; You's empty weight card
+  opens Log weight; a workout read that failed shows "Couldn’t load your
+  plan" with Retry rather than an empty place; sign-in and food analysis say
+  common failures in plain words (`authErrorWords`, foodTrial's `outcome`),
+  never a bare status code. Opening the workout from Today, the workout bar
+  or Progress goes through `openTrain` (Train's stack popped to its top, never
+  stacked over History). Done on Session complete opens the tab bar out
+  (`useTabBarExpand`), since iOS keeps it shrunk from the workout page.
+  Undo and second chances: deleting a Fuel entry shows an Undo bar over the
+  tab bar (5 s, 20 s with VoiceOver; `restoreEntry` writes the row back,
+  then reads the month and today's totals again). Undo stays, busy, until the
+  write is confirmed. A failure's alert offers Try again for that entry only
+  (an Undo a newer delete replaced just says it failed). A delete that
+  answered with a failure keeps its Undo, since the answer may have been lost
+  after the row went; its alert says the delete couldn't be confirmed (never
+  "Not deleted"), and the store reads the day again to show what is saved. The bar never runs out behind any of Fuel's alerts
+  (`holdingUndoAlert`: failures and Copy again's question): dismissed,
+  whatever it offers then gets its full time again. A quick-add's
+  tick takes the food back out on a second tap; its hold menu and VoiceOver
+  say Log only before the add and Take it out after, and nothing logs that
+  food and meal again while its removal runs. Edit entry closes
+  with ✕ and changes the food from its Change food row. Saved meals' + builds
+  a new saved meal without logging it. Rest alerts say what they are for
+  before iOS's notification prompt (`explainRestAlerts`). Log weight's Day
+  (today by default, never later) logs a missed weigh-in at the present time
+  of day. On Barcode, Log food's scroll keeps room for Look up barcode above
+  the number pad's bar (a button under that bar takes no taps), and the
+  lookup adds no second tap to the capsule's own.
 - A screen with unsaved edits uses `useLeaveGuard` (`native/src/lib/leaveGuard.ts`):
   closing asks first, and after Discard it steps aside before closing. While
   a save runs, pass `busy` so a close waits for it (Log food claims it for

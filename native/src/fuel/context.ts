@@ -18,6 +18,9 @@ export type QuickAddState = 'saving' | 'done' | 'error';
  */
 export type PendingQuickAdd = { pending: PendingEntryId; when: When; groups: NutritionGroup[]; inFlight: boolean };
 
+/** A confirmed quick add: the entry it wrote, for its tick to take back out, and whether that removal is running. */
+export type AddedQuickAdd = { id: string; name: string; removing: boolean };
+
 export type LoggerContextValue = {
   /** Logging entries, or adding ingredients to a meal being built. */
   purpose: 'log' | 'ingredients';
@@ -35,6 +38,8 @@ export type LoggerContextValue = {
   addIngredients: (ingredients: MealIngredient[]) => void;
   /** A saved composed meal: opens it in the meal builder (log purpose). */
   composeMeal: (food: Food, editSaved?: boolean) => void;
+  /** Manual, with this name typed in (Search's way on when nothing matches); Manual's own typing is kept. */
+  enterManually?: (name: string) => void;
   /** Closes the sheet after a confirmed save. */
   complete: () => void;
   /** Claims the sheet for a lookup; the returned cleanup releases only that claim, once. Closing asks first meanwhile. */
@@ -51,6 +56,8 @@ export type LoggerContextValue = {
   quickAddStates: Record<string, QuickAddState>;
   setQuickAddStates: Dispatch<SetStateAction<Record<string, QuickAddState>>>;
   pendingQuickAdds: Map<string, PendingQuickAdd>;
+  /** Confirmed quick adds by the same key, until their tick takes them back out. */
+  addedQuickAdds: Map<string, AddedQuickAdd>;
 };
 
 export const LoggerContext = createContext<LoggerContextValue | null>(null);

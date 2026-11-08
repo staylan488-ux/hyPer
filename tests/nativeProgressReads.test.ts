@@ -196,6 +196,7 @@ async function open() {
     '~/lib/format': { formatMinutes, formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { select: noop } },
+    '~/lib/openTrain': { openTrain: () => undefined },
     '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => palette },
     '~/theme/useMuscleTones': { useMuscleTones: () => ({}) },
   });

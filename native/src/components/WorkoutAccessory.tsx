@@ -9,6 +9,7 @@ import { haptics } from '~/lib/haptics';
 import { restLeft, useRestStore } from '~/lib/rest';
 import { useNow, useSessionModel } from '~/lib/session';
 import { useBlanc } from '~/theme/blanc';
+import { openTrain } from '~/lib/openTrain';
 
 import { BlancText } from './BlancText';
 import { LiveClock } from './LiveClock';
@@ -64,7 +65,7 @@ export function WorkoutAccessory() {
       )}
       onPress={() => {
         haptics.tap();
-        router.navigate('/train');
+        openTrain();
         if (resting || paused) router.push('/rest');
       }}
       style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18 }}>

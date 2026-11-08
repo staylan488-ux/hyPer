@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ActionSheetIOS, View } from 'react-native';
+import { ActionSheetIOS, Pressable, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { barcodeProviderLabel } from '@/lib/barcodeLookup';
@@ -41,7 +41,14 @@ import { WhenBlock } from './WhenBlock';
  * from Recent opens at its usual amount, in its own unit when it is weighed or
  * measured (150 g rather than 1.5 servings). The header's back chevron changes the food.
  */
-export function FoodReview({ food, meta, servings: usual, onAmountChange }: { food: Food; meta: ChosenMeta; servings?: number; onAmountChange?: (servings: number | null) => void }) {
+export function FoodReview({ food, meta, servings: usual, onAmountChange, onChangeFood }: {
+  food: Food;
+  meta: ChosenMeta;
+  servings?: number;
+  onAmountChange?: (servings: number | null) => void;
+  /** An entry being edited: picks another food from the lists in place of this one. */
+  onChangeFood?: () => void;
+}) {
   const logger = useLogger();
   const large = useLargeText();
   const units = getCompatibleMeasurementUnits(food.serving_unit);
@@ -135,6 +142,22 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange }: { fo
         <BlancText variant="secondary" tone="graphite" style={{ marginTop: 6 }} accessibilityLabel={`${speak(basis[0].toUpperCase() + basis.slice(1))}, ${spokenMacros(food)}`}>
           {basis[0].toUpperCase() + basis.slice(1)} · {foodMacroLine(food)}
         </BlancText>
+        {onChangeFood ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Change food"
+            accessibilityHint="Picks another food for this entry"
+            hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+            onPress={() => {
+              haptics.tap();
+              onChangeFood();
+            }}
+            style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', marginTop: 4, opacity: pressed ? 0.45 : 1 })}>
+            <BlancText variant="bodyStrong" size={15}>
+              Change food
+            </BlancText>
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={{ marginTop: 22 }}>

@@ -82,7 +82,7 @@ describe('workout Live Activity rest state', () => {
 describe('workoutActivityDetailLine', () => {
   it('names the set that is up, sets done of planned, and tonnage', () => {
     expect(workoutActivityDetailLine({ nextSetNumber: 3, completedSets: 5, totalSets: 12, tonnage: 4200.4 })).toBe(
-      'set 3 · 5 of 12 sets · 4,200 lb',
+      'Set 3 · 5 of 12 sets · 4,200 lb',
     );
   });
 
@@ -91,7 +91,7 @@ describe('workoutActivityDetailLine', () => {
       '12 of 12 sets · 9,100 lb',
     );
     expect(workoutActivityDetailLine({ nextSetNumber: 1, completedSets: 0, totalSets: 12, tonnage: 0 })).toBe(
-      'set 1 · 0 of 12 sets',
+      'Set 1 · 0 of 12 sets',
     );
   });
 });

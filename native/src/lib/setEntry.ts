@@ -25,6 +25,8 @@ export function chooseRpe(onChoose: (rpe: number | null) => void) {
   ActionSheetIOS.showActionSheetWithOptions(
     {
       title: 'How hard was that set?',
+      // The scale in words, for anyone new to RPE.
+      message: '10 means no reps left. 9 means 1 more was possible, 8 means 2, 7 means 3.',
       options: ['Cancel', ...RPE_CHOICES.map((value) => `RPE ${value}`), 'No RPE'],
       cancelButtonIndex: 0,
     },

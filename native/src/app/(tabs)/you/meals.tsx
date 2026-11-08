@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -19,6 +19,12 @@ import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { editSavedMeal, loadYouMeals, usePullRefresh, useYouMealsStore } from '~/lib/you';
 import { useBlanc } from '~/theme/blanc';
+
+/** Opens the meal builder empty, to keep a new saved meal without logging it. */
+function newSavedMeal() {
+  haptics.tap();
+  router.push({ pathname: '/log-food', params: { newSavedMeal: '1' } });
+}
 
 /**
  * Saved meals: the meals kept for quick logging. Tap to edit; swipe for Edit
@@ -63,7 +69,20 @@ export default function SavedMealsScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Saved meals' }} />
+      <Stack.Screen
+        options={{
+          title: 'Saved meals',
+          // A new saved meal is built from foods and kept, without logging it.
+          unstable_headerRightItems: () => [
+            {
+              type: 'button',
+              label: 'New saved meal',
+              icon: { type: 'sfSymbol', name: 'plus' },
+              onPress: newSavedMeal,
+            },
+          ],
+        }}
+      />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         {meals === null ? (
           <ActivityIndicator style={{ marginTop: 40 }} />
@@ -74,7 +93,7 @@ export default function SavedMealsScreen() {
               <Capsule title="Try again" fill onPress={() => void loadYouMeals()} />
             ) : (
               <BlancText variant="secondary" tone="graphite">
-                Meals you save while logging food show up here.
+                Meals you save while logging food show up here, or build one with +.
               </BlancText>
             )}
           </Label>

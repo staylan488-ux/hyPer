@@ -476,6 +476,62 @@ describe('Apple Health switch after a failed first sync', () => {
   });
 });
 
+// Log weight takes a day, today by default, for a weigh-in that was missed.
+describe('Logging a missed weigh-in', () => {
+  type WeighIns = {
+    weighInTime: (day: string, today: string, now?: Date) => Date;
+    logWeighIn: (kilograms: number, measuredAt?: Date) => Promise<string | null>;
+    useWeightStore: { setState: (state: { all: unknown[] | null }) => void };
+  };
+  const now = new Date(2026, 10, 7, 18, 45, 30);
+
+  it('takes today’s weigh-in now, and an earlier day’s at the present time of day', () => {
+    const you = youHarness().you as unknown as WeighIns;
+    expect(you.weighInTime('2026-11-07', '2026-11-07', now)).toBe(now);
+    expect(you.weighInTime('2026-11-06', '2026-11-07', now)).toEqual(new Date(2026, 10, 6, 18, 45));
+    expect(you.weighInTime('2026-07-15', '2026-11-07', now)).toEqual(new Date(2026, 6, 15, 18, 45));
+  });
+
+  it('records the day picked, then reads every weigh-in again when they are all on show', async () => {
+    const { you, imports, getAllBodyWeights, getBodyWeightHistorySince } = youHarness();
+    const weighIns = you as unknown as WeighIns;
+    const record = imports['@/lib/healthWeights'].recordManualBodyWeight;
+    const july = new Date(2026, 6, 15, 18, 45);
+
+    await expect(weighIns.logWeighIn(76.2, july)).resolves.toBeNull();
+    expect(record).toHaveBeenCalledWith('user-1', 76.2, july);
+    expect(getAllBodyWeights).not.toHaveBeenCalled();
+
+    // The weigh-ins list has read them all: one dated before the recent window is listed too.
+    weighIns.useWeightStore.setState({ all: [] });
+    getBodyWeightHistorySince.mockClear();
+    await weighIns.logWeighIn(76.2, july);
+    expect(getAllBodyWeights).toHaveBeenCalledTimes(1);
+    expect(getBodyWeightHistorySince).not.toHaveBeenCalled();
+  });
+
+  it('reads every weigh-in again when You’s first full read is still on its way', async () => {
+    const { you, getAllBodyWeights } = youHarness();
+    const weighIns = you as unknown as WeighIns & {
+      loadWeights: (options?: { all?: boolean }) => Promise<void>;
+      useWeightStore: { getState: () => { all: { id: string }[] | null } };
+    };
+    const july = new Date(2026, 6, 15, 18, 45);
+    const logged = { id: 'w-july', kilograms: 76.2, measured_at: july.toISOString(), source: 'manual' };
+    let answerFirst!: (list: unknown[]) => void;
+    getAllBodyWeights.mockReturnValueOnce(new Promise((resolve) => { answerFirst = resolve; }));
+    getAllBodyWeights.mockResolvedValueOnce([logged]);
+    const first = weighIns.loadWeights({ all: true });
+
+    await expect(weighIns.logWeighIn(76.2, july)).resolves.toBeNull();
+    expect(getAllBodyWeights).toHaveBeenCalledTimes(2);
+    // The first read left before the weigh-in and answers without it, last.
+    answerFirst([]);
+    await first;
+    expect(weighIns.useWeightStore.getState().all?.map((entry) => entry.id)).toEqual(['w-july']);
+  });
+});
+
 describe('Connecting WHOOP', () => {
   it('starts the first import once connected', async () => {
     const { you, useAppStore } = youHarness();
@@ -924,15 +980,17 @@ describe('Reading every weigh-in', () => {
     const slow = deferred<unknown[]>();
     harness.getAllBodyWeights.mockReturnValueOnce(slow.promise);
     const full = you.loadWeights({ all: true });
-    // A weigh-in is logged while the full read is out; its own read lands first.
+    // A weigh-in is logged while the full read is out; its own read (of every
+    // weigh-in, as one is on its way) lands first.
     harness.getBodyWeightHistorySince.mockResolvedValue([weighIn('new', 82, new Date().toISOString())]);
+    harness.getAllBodyWeights.mockResolvedValueOnce([weighIn('new', 82, new Date().toISOString()), weighIn('old', 79, '2026-01-01T15:00:00Z')]);
     expect(await you.logWeighIn(82)).toBeNull();
     slow.resolve([weighIn('old', 79, '2026-01-01T15:00:00Z')]);
     await full;
 
     const state = you.useWeightStore.getState();
     expect(state.history.map((entry) => entry.id)).toEqual(['new']);
-    expect(state.all?.map((entry) => entry.id)).toEqual(['old']);
+    expect(state.all?.map((entry) => entry.id)).toEqual(['new', 'old']);
     expect(state.loading).toBe(false);
   });
 

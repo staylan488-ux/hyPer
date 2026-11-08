@@ -79,9 +79,9 @@ export function formatRunPace(secondsPerMile: number | null): string | null {
   return formatPace(secondsPerMile);
 }
 
-/** Metres for sub-mile stretches (track words: "400 m"), miles beyond. */
+/** Metres for sub-mile stretches (track words: "400 m", "1,480 m"), miles beyond. */
 export function formatRunDistance(distanceM: number): string {
-  if (distanceM < MILE_M) return `${Math.round(distanceM)} m`;
+  if (distanceM < MILE_M) return `${Math.round(distanceM).toLocaleString('en-US')} m`;
   return formatDistanceMi(distanceM) ?? '0.00 mi';
 }
 

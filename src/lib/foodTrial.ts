@@ -30,8 +30,13 @@ class FollowInterrupted extends Error {}
 
 function outcome(status: number, payload: unknown): Record<string, unknown> {
   const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
-  if (status < 200 || status > 299) throw new Error(typeof body?.error === 'string' && body.error ? body.error : `Food trial returned ${status}.`);
-  if (!body) throw new Error('Food trial returned an invalid response.');
+  // The service's own words when it gives some; otherwise plain ones (no
+  // internal names or bare status codes on the person's screen).
+  if (status < 200 || status > 299) {
+    if (typeof body?.error === 'string' && body.error) throw new Error(body.error);
+    throw new Error(status >= 500 ? 'Food analysis isn’t available right now. Try again in a moment.' : `Couldn’t analyze this meal (error ${status}). Try again.`);
+  }
+  if (!body) throw new Error('Food analysis sent back an answer it couldn’t read. Try again.');
   return body;
 }
 

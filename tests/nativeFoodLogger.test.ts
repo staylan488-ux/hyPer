@@ -71,7 +71,7 @@ function deferred<T>() {
 }
 
 type Button = { title: string; disabled?: boolean; onPress: () => void };
-type Field = { label: string; value?: string; onChangeText: (text: string) => void };
+type Field = { label: string; value?: string; onChangeText: (text: string) => void; onSubmitEditing?: () => void };
 type Press = {
   children?: ReactNode | ((state: { pressed: boolean }) => ReactNode);
   onPress?: () => void;
@@ -145,7 +145,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   /** Runs the real Recent cache against this data-read boundary. */
   readRecent?: typeof recentFoods.loadRecentLogs;
   realClock?: boolean;
-  fuelActions?: { refresh: () => Promise<void>; refreshAfterWrite: () => Promise<void>; invalidateTotals: () => void };
+  fuelActions?: { refresh: () => Promise<void>; refreshAfterWrite: () => Promise<void>; invalidateTotals: () => void; deleteEntry?: (id: string) => Promise<boolean> };
   /** The day's meals as Fuel's store holds them. */
   dayGroups?: NutritionGroup[];
   /** The day Fuel shows, where its addGroup makes a meal. */
@@ -173,7 +173,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     methods?: { selected: string | null; gemini: boolean; photoWaiting: boolean; disabled: boolean; onSelect: (method: string) => void };
     saved?: { onEditSavedMeal: (food: Food) => void };
     review?: ReviewProps;
-    foodReview?: { food: Food };
+    foodReview?: { food: Food; onChangeFood?: () => void };
     manual?: ManualProps;
     photo?: PhotoProps;
     ai?: AiProps;
@@ -187,7 +187,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     /** Search's results, for the words in the field. */
     search?: { query: string };
     /** The sheet's scroll view as last drawn: its children and which of them stay pinned. */
-    scroll?: PropsWithChildren<{ stickyHeaderIndices?: number[] }>;
+    scroll?: PropsWithChildren<{ stickyHeaderIndices?: number[]; bottomOffset?: number }>;
   } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {}, toggles: {} };
   Object.defineProperty(captured, 'picker', {
     get: () => {
@@ -218,6 +218,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   const token = vi.fn(async () => 'test');
   const ground = vi.fn(async () => [photoItem]);
   const alert = vi.fn();
+  const tap = vi.fn();
   const success = vi.fn();
   const error = vi.fn();
   const saveMeal = vi.fn(async () => {});
@@ -280,7 +281,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     fuel.groups = [...fuel.groups, { id: `new-${kind}`, user_id: 'user-a', date: fuel.selected, kind, label: null, sort_order: fuel.groups.length }];
     return true;
   });
-  const fuel = { selected: fuelDay, loadedMonth: fuelDay.slice(0, 7), logs: [entry], groups: dayGroups, refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, addGroup, ...fuelActions };
+  const fuel = { selected: fuelDay, loadedMonth: fuelDay.slice(0, 7), logs: [entry], groups: dayGroups, refresh: noop, refreshAfterWrite: noop, invalidateTotals: noop, deleteEntry: vi.fn<(id: string) => Promise<boolean>>(async () => true), addGroup, ...fuelActions };
   const useFuelStore = Object.assign((select: (state: typeof fuel) => unknown) => select(fuel), { getState: () => fuel });
   const imports: Record<string, unknown> = {
     'date-fns': dates,
@@ -384,7 +385,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/lib/foodLogger': { initialWhen: when, usesDayGroups: () => sameDay, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
     './fuel': { useFuelStore },
     '~/lib/fuel': { groupsForDay: (key: string) => fuel.groups.filter((group) => group.date === key), loadDayGroups: async (key: string) => fuel.groups.filter((group) => group.date === key), suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
-    '~/lib/haptics': { haptics: { tap: noop, select: noop, success, error } },
+    '~/lib/haptics': { haptics: { tap, select: noop, success, error } },
     '~/lib/launchActions': launchActions,
     '~/lib/launch': { refusePress },
     '~/lib/leaveGuard': { useLeaveGuard: (on: boolean, message: { title: string }, options: { busy?: boolean } = {}) => { captured.guard = { on, message, busy: options.busy }; } },
@@ -579,6 +580,16 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     expect(captured.buttons[name].disabled).not.toBe(true);
     await act(async () => { captured.buttons[name].onPress(); });
   };
+  /** Edit entry's Change food, under the food's name (the header's ✕ closes). */
+  const changeFood = async () => {
+    const link = captured.pressables['Change food'];
+    if (link) {
+      await act(async () => { link.onPress?.(); });
+      return;
+    }
+    expect(captured.foodReview?.onChangeFood).toBeDefined();
+    await act(async () => { captured.foodReview!.onChangeFood!(); });
+  };
   /** Focuses Search foods (and types into it), as a tap on the field does. */
   const search = async (words?: string) => {
     const field = captured.inputs['Search foods'];
@@ -619,8 +630,8 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   // Snap a meal pressed while this sheet is on top (lib/launch.ts hands it over).
   const ask = (atMs?: number) => act(async () => { launchActions.askLoggerCamera(atMs); });
   return {
-    captured, imports, render, close, text, tab, click, press, search, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
-    token, ground, alert, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, retire, loadSaved, mealsState, back, push,
+    captured, imports, render, close, text, tab, click, changeFood, press, search, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
+    token, ground, alert, tap, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, retire, loadSaved, mealsState, back, push,
     refusePress, announce, when, addGroup, dismissKeyboard, permission, readAccess, shutter, library, openCamera, cameraBack, cameraText, cameraUp, shoot, flush, openSettings,
   };
 }
@@ -657,9 +668,24 @@ describe('editing measured food entries', () => {
     const h = loggerHarness({ editing: true, realReview: true });
     await h.render();
     await act(async () => { h.captured.fields.Amount.onChangeText('120'); });
-    await h.click('Back');
+    await h.changeFood();
     await h.click('Save changes');
     expect(h.saveFood).toHaveBeenCalledWith(expect.objectContaining({ servings: 0.5, editingId: loggedMilk.id }));
+  });
+});
+
+describe('Edit entry: a way out and a way to another food', () => {
+  it('opens with ✕ to close and Change food under the name, and ‹ only once another food is picked', async () => {
+    const h = loggerHarness({ editing: true });
+    await h.render();
+    expect(h.captured.buttons.Close).toBeDefined();
+    expect(h.captured.buttons.Back).toBeUndefined();
+    expect(h.captured.foodReview?.onChangeFood).toBeDefined();
+    await h.changeFood();
+    expect(h.captured.buttons.Close).toBeDefined();
+    await act(async () => { h.captured.context!.chooseFood(recipe); });
+    expect(h.captured.buttons.Back).toBeDefined();
+    expect(h.captured.foodReview?.onChangeFood).toBeUndefined();
   });
 });
 
@@ -694,7 +720,7 @@ describe('native food logger transitions', () => {
   it('keeps Saved → Edit separate from the entry that originally opened the sheet', async () => {
     const h = loggerHarness({ editing: true });
     await h.render();
-    await h.click('Back');
+    await h.changeFood();
     await h.tab('saved');
     await act(async () => { h.captured.saved!.onEditSavedMeal(recipe); });
     expect(h.captured.review!.savedTarget?.id).toBe(recipe.id);
@@ -706,7 +732,7 @@ describe('native food logger transitions', () => {
     await h.close();
     await h.render();
     expect(h.captured.review).toBeUndefined();
-    await h.click('Back');
+    await h.changeFood();
     expect(h.captured.manual!.draft.fields.name).toBe('Milk');
     await h.tab('saved');
     await act(async () => { h.captured.saved!.onEditSavedMeal(recipe); });
@@ -729,7 +755,7 @@ describe('native food logger transitions', () => {
     const oldRead = deferred<{ meals: Food[] }>();
     h.loadSaved.mockReturnValueOnce(oldRead.promise);
     await h.render();
-    await h.click('Back');
+    await h.changeFood();
     await act(async () => { h.captured.fields.Name.onChangeText('My milk entry'); });
     await h.tab('saved');
     expect(h.mealsState.meals?.some((food) => food.id === savedMilk.id)).toBe(false);
@@ -777,6 +803,30 @@ describe('native food logger transitions', () => {
     await h.click('Save changes');
     expect(h.saveMeal).toHaveBeenCalledWith(expect.anything(), 'user-a', expect.objectContaining({ editEntryId: loggedMilk.id, editSavedMealId: undefined }));
     expect(composition.loadMealDraft('user-a', 'edit:log-milk')).toBeNull();
+  });
+
+  // The number pad's bar covered Look up barcode, so a tap on it did nothing.
+  it('keeps Look up barcode above the number pad, and taps once for it', async () => {
+    const h = loggerHarness();
+    await h.render();
+    expect(h.captured.scroll!.bottomOffset).toBe(24);
+    await h.tab('scan');
+    // The field rises with room for the 54 pt capsule 12 pt under it.
+    expect(h.captured.scroll!.bottomOffset).toBe(90);
+
+    await act(async () => { h.captured.fields['Barcode'].onChangeText('012345678905'); });
+    h.tap.mockClear();
+    await h.click('Look up barcode');
+    // The capsule gives its own tap; the lookup adds none.
+    expect(h.tap).not.toHaveBeenCalled();
+    await act(async () => { h.lookup.resolve({ status: 'miss' }); });
+    expect(h.error).toHaveBeenCalled();
+
+    // The pad's Search key has no capsule, so the lookup taps for it.
+    await act(async () => { h.captured.fields['Barcode'].onSubmitEditing?.(); });
+    expect(h.tap).toHaveBeenCalledTimes(1);
+    await h.tab('manual');
+    expect(h.captured.scroll!.bottomOffset).toBe(24);
   });
 
   it('releases an abandoned scan before its response, allowing another input method', async () => {
@@ -1411,8 +1461,9 @@ describe('native food logger: Snap a meal', () => {
     expect(h.captured.ai!.cameraRequest).toBe(0);
   });
 
-  it('refuses while a description typed in Manual’s Describe with AI would be lost', async () => {
-    const h = loggerHarness();
+  it('refuses while a description typed in Manual’s Describe with AI would be lost (worker)', async () => {
+    // Only the worker's Manual has its own Describe: with Gemini it is the door beside Manual.
+    const h = loggerHarness({ worker: true });
     await h.render();
     await h.appear();
     await h.tab('manual');
@@ -1421,13 +1472,21 @@ describe('native food logger: Snap a meal', () => {
     await h.ask();
     expect(h.refusePress).toHaveBeenCalledOnce();
     expect(h.captured.picker!.selection).toBe('manual');
-    expect(h.captured.ai!.cameraRequest).toBe(0);
     // cleared again, the sheet holds nothing and takes the press
     await act(async () => { h.captured.inputs['Describe the food'].onChangeText!(' '); });
     await h.ask();
     expect(h.refusePress).toHaveBeenCalledOnce();
     expect(h.captured.picker!.selection).toBe('photo');
-    expect(h.captured.ai!.cameraRequest).toBe(1);
+    expect(h.captured.photo!.cameraRequest).toBe(1);
+  });
+
+  it('opens Manual straight on its fields with Gemini, which describes through its own door', async () => {
+    const h = loggerHarness();
+    await h.render();
+    await h.tab('manual');
+    expect(h.text()).not.toContain('Describe with AI');
+    expect(h.captured.buttons['Describe a meal or food']).toBeUndefined();
+    expect(h.captured.fields.Name).toBeDefined();
   });
 
   it('starts over when asked before the sheet has appeared, and opens the camera once it has', async () => {
@@ -1736,7 +1795,7 @@ describe('native food logger amounts and replacements', () => {
     localStorage.setItem(photoReview.COMBINE_MEAL_KEY, '0');
     const h = loggerHarness({ editing: true, worker: true });
     await h.render();
-    await h.click('Back');
+    await h.changeFood();
     await h.tab('photo');
     const plate = [photoItem, { ...photoItem, id: 'photo-oats', name: 'Oats' }];
     await act(async () => { h.captured.photo!.setDraft((draft) => ({ ...draft, items: plate })); });
@@ -1747,7 +1806,7 @@ describe('native food logger amounts and replacements', () => {
 
     localStorage.setItem(photoReview.COMBINE_MEAL_KEY, '1');
     await h.render();
-    await h.click('Back');
+    await h.changeFood();
     await h.tab('photo');
     await act(async () => { h.captured.photo!.setDraft((draft) => ({ ...draft, items: plate })); });
     expect(h.captured.buttons['Log 1 meal'].disabled).not.toBe(true);
@@ -1803,7 +1862,7 @@ describe('native food logger holds the sheet while a save runs', () => {
     const write = deferred<void>();
     h.saveFood.mockReturnValueOnce(write.promise);
     await h.render();
-    await h.click('Back');
+    await h.changeFood();
     await act(async () => { h.captured.fields.Calories.onChangeText('140'); });
     await h.click('Save changes');
     expect(h.captured.guard).toMatchObject({ on: true, busy: true });
@@ -2032,11 +2091,11 @@ describe('quick add: each food to the meal it went to', () => {
     const h = loggerHarness({ realLists: true, dayGroups: [lunch] });
     await h.render();
     await h.press('Add Milk');
-    expect(h.captured.pressables['Milk added'].disabled).toBe(true);
+    expect(h.captured.pressables['Milk added. Take it out']).toBeDefined();
     await sendTo(h, 'Adds to today', 1);
     expect(h.text()).toContain('Adds to Lunch');
     expect(h.text()).not.toContain('Added');
-    expect(h.captured.pressables['Milk added']).toBeUndefined();
+    expect(h.captured.pressables['Milk added. Take it out']).toBeUndefined();
     expect(h.captured.pressables['Add Milk'].disabled).not.toBe(true);
     await h.press('Add Milk');
     expect(h.persistEntry).toHaveBeenCalledTimes(2);
@@ -2047,8 +2106,89 @@ describe('quick add: each food to the meal it went to', () => {
     expect(h.entries.size).toBe(2);
     // Back where it first went: still done, and it can't go there twice.
     await sendTo(h, 'Adds to Lunch', 0);
-    expect(h.captured.pressables['Milk added'].disabled).toBe(true);
+    expect(h.captured.pressables['Milk added. Take it out']).toBeDefined();
     expect(h.persistEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes a quick add back out with a tap on its tick, and the + returns', async () => {
+    const h = loggerHarness({ realLists: true });
+    await h.render();
+    await h.press('Add Milk');
+    const written = h.persistEntry.mock.calls[0][2];
+    await h.press('Milk added. Take it out');
+    const fuel = (h.imports['~/lib/fuel'] as { useFuelStore: { getState: () => { deleteEntry: ReturnType<typeof vi.fn> } } }).useFuelStore.getState();
+    // The entry the + wrote, by the id it wrote under.
+    expect(written).toBeTruthy();
+    expect(fuel.deleteEntry).toHaveBeenCalledWith(written);
+    expect(h.captured.pressables['Add Milk']).toBeDefined();
+    expect(h.persistEntry).toHaveBeenCalledTimes(1);
+  });
+
+  /** The food row's VoiceOver actions (its hold menu's and swipe's), and a way to run one. */
+  const rowActions = (h: Harness, food: string) => {
+    const [, row] = savedRow(h, food);
+    const actions = row.accessibilityActions ?? [];
+    return {
+      labels: actions.map((action) => action.label),
+      run: (label: string) => {
+        const action = actions.find((candidate) => candidate.label === label)!;
+        return act(async () => { row.onAccessibilityAction!({ nativeEvent: { actionName: action.name } }); });
+      },
+    };
+  };
+  const deleteEntryOf = (h: Harness) =>
+    (h.imports['~/lib/fuel'] as { useFuelStore: { getState: () => { deleteEntry: ReturnType<typeof vi.fn> } } }).useFuelStore.getState().deleteEntry;
+
+  it.each([['recent', 'Log 240 ml now'], ['saved', 'Log one serving now']])('offers %s’s Log only until the food is added, then Take it out, and Log never removes it', async (tab, log) => {
+    const h = loggerHarness({ realLists: true, rowActions: true });
+    await h.render();
+    if (tab === 'saved') await h.tab(tab);
+    const before = rowActions(h, 'Milk');
+    expect(before.labels).toContain(log);
+    expect(before.labels).not.toContain('Take it out');
+    await before.run(log);
+    expect(h.persistEntry).toHaveBeenCalledOnce();
+    const written = h.persistEntry.mock.calls[0][2];
+
+    const added = rowActions(h, 'Milk');
+    expect(added.labels).not.toContain(log);
+    expect(added.labels).toContain('Take it out');
+    // A Log from a menu drawn before the add (still open) logs nothing and removes nothing.
+    await before.run(log);
+    expect(deleteEntryOf(h)).not.toHaveBeenCalled();
+    expect(h.persistEntry).toHaveBeenCalledOnce();
+    expect(h.text()).toContain('Added');
+
+    await added.run('Take it out');
+    expect(deleteEntryOf(h)).toHaveBeenCalledWith(written);
+    expect(rowActions(h, 'Milk').labels).toContain(log);
+    expect(h.captured.pressables['Add Milk']).toBeDefined();
+  });
+
+  it('logs nothing while a removal is on its way, so its answer can’t clear a new entry’s tick', async () => {
+    const h = loggerHarness({ realLists: true, rowActions: true });
+    await h.render();
+    const removal = deferred<boolean>();
+    deleteEntryOf(h).mockImplementationOnce(() => removal.promise);
+    const log = rowActions(h, 'Milk');
+    await h.press('Add Milk');
+    await act(async () => { h.captured.pressables['Milk added. Take it out'].onPress!(); });
+    expect(deleteEntryOf(h)).toHaveBeenCalledOnce();
+
+    // A Log from an older menu writes nothing meanwhile, and the menu offers neither Log nor Take it out.
+    await log.run('Log 240 ml now');
+    expect(h.persistEntry).toHaveBeenCalledOnce();
+    const removing = rowActions(h, 'Milk');
+    expect(removing.labels).not.toContain('Log 240 ml now');
+    expect(removing.labels).not.toContain('Take it out');
+
+    await act(async () => { removal.resolve(true); });
+    expect(h.captured.pressables['Add Milk']).toBeDefined();
+    expect(h.text()).not.toContain('Added');
+    // Logged again afterwards, it is a new entry of its own.
+    await h.press('Add Milk');
+    expect(h.persistEntry).toHaveBeenCalledTimes(2);
+    expect(h.persistEntry.mock.calls[1][2]).not.toBe(h.persistEntry.mock.calls[0][2]);
   });
 
   it('takes one write for a second tap that lands before the row redraws', async () => {
@@ -2252,7 +2392,7 @@ describe('food writes invalidate old reminder totals', () => {
       expect(h.back).toHaveBeenCalledOnce();
     } else {
       if (path === 'log') await h.tab('manual');
-      if (path === 'edit') await h.click('Back');
+      if (path === 'edit') await h.changeFood();
       await act(async () => { h.captured.fields.Name.onChangeText('Milk'); });
       await h.click(path === 'edit' ? 'Save changes' : 'Log entry');
       expect(h.saveFood).toHaveBeenCalledOnce();

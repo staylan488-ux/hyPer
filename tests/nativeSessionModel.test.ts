@@ -436,6 +436,17 @@ describe('buildSessionModel with skipped movements', () => {
     expect(afterLoggedSet(model!, logged, sets).nextExerciseId).toBeNull();
   });
 
+  it('starts no rest after the workout\'s last set, except in a flexible session', () => {
+    const model = buildSessionModel(midSession(), { split }, null);
+    const allDone = midSession().sets.map((entry) => ({ ...entry, completed: true }));
+    const last = allDone[allDone.length - 1];
+    expect(afterLoggedSet(model!, last, allDone)).toEqual({ nextExerciseId: null, rest: false });
+    expect(afterLoggedSet({ ...model!, flexible: true }, last, allDone)).toEqual({ nextExerciseId: null, rest: true });
+    // One set left anywhere still rests.
+    const oneLeft = allDone.map((entry, index) => (index === 0 ? { ...entry, completed: false } : entry));
+    expect(afterLoggedSet(model!, last, oneLeft).rest).toBe(true);
+  });
+
   it('has nothing up once the rest is skipped', () => {
     const plan = dayPlan([item(bench, 0), item(row, 1, { skipped: true }), item(incline, 2, { skipped: true })]);
     const model = buildSessionModel(midSession(), { split, plan }, null);

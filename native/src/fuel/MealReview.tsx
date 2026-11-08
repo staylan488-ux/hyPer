@@ -140,7 +140,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         </BlancText>
       </View>
 
-      <Section title="Ingredients" action={frozen ? undefined : { title: 'Add', onPress: onAddIngredients }}>
+      <Section title="Ingredients" action={frozen ? undefined : { title: 'Add', symbol: 'plus', onPress: onAddIngredients }}>
         <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
           {draft.ingredients.map((item, index) => (
             <Animated.View key={item.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
@@ -210,6 +210,10 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
         ) : null}
 
         {error ? <FormNote alert>{error}</FormNote> : null}
+        {/* The one thing still missing, so the dimmed button says why. */}
+        {!error && !draft.locked && !draft.name.trim() && draft.ingredients.length > 0 ? (
+          <FormNote>{`Name the meal to ${saveOnly || savedTarget || editingEntryId ? 'save' : 'log'} it.`}</FormNote>
+        ) : null}
         <View style={{ paddingHorizontal: space.inset, marginTop: 20, gap: 12 }}>
           <Capsule
             title={draft.locked ? 'Retry save' : saveOnly ? 'Save meal' : savedTarget || editingEntryId ? 'Save changes' : 'Log meal'}

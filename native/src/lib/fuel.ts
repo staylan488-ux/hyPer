@@ -12,6 +12,7 @@ import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import {
   createNutritionGroup,
   deleteNutritionEntry,
+  restoreNutritionEntry,
   deleteNutritionGroup,
   ensureDefaultGroups,
   mergeGroups,
@@ -78,6 +79,8 @@ type FuelState = {
   /** Creates a day's missing Breakfast, Lunch and Dinner (a failed day is not retried this session). */
   ensureDayGroups: (key: string) => Promise<void>;
   deleteEntry: (id: string) => Promise<boolean>;
+  /** Undo for a delete: puts the entry back as it was, once its delete has finished. */
+  restoreEntry: (log: FoodLog) => Promise<boolean>;
   moveEntry: (id: string, groupId: string | null) => Promise<boolean>;
   moveEntryToYesterday: (id: string) => Promise<boolean>;
   /** Logs a past day's entries again today, in the matching meal, then shows today. */
@@ -107,6 +110,8 @@ const copyIds = new Map<string, string[]>();
 // Today's month as the phone's copy (launchCache.ts), until a real read replaces it.
 let monthFromCopy = false;
 const deletedEntries = new Map<string, Promise<boolean>>();
+// Undo's writes on their way, so a second Undo waits for the first instead of writing again.
+const restoringEntries = new Map<string, Promise<boolean>>();
 
 export const useFuelStore = create<FuelState>((set, get) => {
   const loadMonth = async (month: string) => {
@@ -276,15 +281,44 @@ export const useFuelStore = create<FuelState>((set, get) => {
       const ok = await deletion;
       if (!isCurrent() || deletedEntries.get(id) !== deletion) return ok;
       if (!ok) {
+        // A failed answer may have come after the row went. It shows again
+        // meanwhile; older reads are dropped and the shown month and today's
+        // totals read again, so the server decides.
         deletedEntries.delete(id);
         if (removed && get().loadedMonth === monthOf(removed.date) && !get().logs.some((log) => log.id === id)) {
           set({ logs: [...get().logs, removed] });
           syncTodayTotals();
-        } else if (removed?.date === get().todayKey) {
-          void get().loadToday();
         }
+        void get().refreshAfterWrite();
       }
       return ok;
+    }),
+
+    restoreEntry: editsCopy((log: FoodLog) => {
+      const running = restoringEntries.get(log.id);
+      if (running) return running;
+      const restoring = (async () => {
+        const isCurrent = captureAccountScope();
+        // The delete lands first, so the entry is never written and then removed.
+        await deletedEntries.get(log.id);
+        if (!isCurrent()) return false;
+        // restoreNutritionEntry writes only the row's own columns, never the joined food.
+        const ok = await restoreNutritionEntry(log).catch(() => false);
+        if (!isCurrent()) return ok;
+        // Put back, or perhaps put back (a lost answer): from here the server's
+        // own reads decide whether it shows. Reads that left before this are
+        // dropped (they may predate the delete or the write), and the shown
+        // month and today's totals, wherever Fuel is, read again.
+        deletedEntries.delete(log.id);
+        if (ok && get().loadedMonth === monthOf(log.date) && !get().logs.some((candidate) => candidate.id === log.id)) {
+          set({ logs: [...get().logs, log] });
+        }
+        if (ok) syncTodayTotals();
+        void get().refreshAfterWrite();
+        return ok;
+      })().finally(() => restoringEntries.delete(log.id));
+      restoringEntries.set(log.id, restoring);
+      return restoring;
     }),
 
     moveEntry: editsCopy(async (id: string, groupId: string | null) => {
@@ -464,6 +498,7 @@ export function resetFuel() {
   defaultsInFlight.clear();
   copyIds.clear();
   deletedEntries.clear();
+  restoringEntries.clear();
   const key = today();
   useFuelStore.setState({
     selected: key, loadedMonth: null, logs: [], groups: [], status: 'idle', todayKey: key,

@@ -105,6 +105,7 @@ async function open() {
     '~/lib/format': { formatLoad: String, formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics },
+    '~/lib/openTrain': { openTrain: () => undefined },
     '~/lib/fuel': { today: () => DAY, todayTotalsShown, useFuelStore: fuelStore },
     '~/lib/motion': { figureLayout: undefined },
     '~/lib/session': { useNow: () => Date.now(), useSessionModel: () => null },

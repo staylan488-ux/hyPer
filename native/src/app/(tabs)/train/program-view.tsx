@@ -14,7 +14,7 @@ import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { deleteProgram, editProgram, planTarget, setActiveProgram } from '~/lib/program';
+import { deleteProgram, editProgram, editProgramDay, planTarget, setActiveProgram } from '~/lib/program';
 import { space } from '~/theme/blanc';
 
 /**
@@ -157,7 +157,8 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
           return (
             <Section key={day.id} title={day.day_name}>
               <Label>
-                {day.exercises.length === 0 ? <Row title="No exercises yet" quiet /> : null}
+                {/* A day's rows open that day in the editor, where its sets, reps and movements change. */}
+                {day.exercises.length === 0 ? <Row title="No exercises yet" quiet onPress={() => editProgramDay(split, day.id)} /> : null}
                 {blocks.map((block, index) => (
                   <View key={block[0].id}>
                     {index > 0 ? <Hairline /> : null}
@@ -173,6 +174,7 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
                             detail={partner ? `Superset with ${partner}` : undefined}
                             value={target}
                             accessibilityLabel={[name, spokenTarget(target), partner ? `superset with ${partner}` : null].filter(Boolean).join(', ')}
+                            onPress={() => editProgramDay(split, day.id)}
                           />
                         </View>
                       );

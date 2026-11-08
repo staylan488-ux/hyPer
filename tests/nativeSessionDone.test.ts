@@ -79,6 +79,7 @@ async function open() {
       '~/components/Tally': { Tally },
       '~/lib/accessibility': silentAccessibility,
       '~/lib/finished': { savedLine, useFinishedStore: create(() => ({ summary })) },
+      '~/lib/workoutBar': { useTabBarExpand: { getState: () => ({ expand: () => undefined }) } },
       '~/lib/format': format,
       '~/theme/blanc': { space: { gutter: 16, inset: 16, section: 26 }, useBlanc: () => ({}) },
     },

@@ -1,6 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { format } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -9,6 +9,7 @@ import Animated, { Easing, ReduceMotion, useAnimatedStyle, useSharedValue, withT
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createSimulatedSource, useRunTracker, type PositionSource } from '@/hooks/useRunTracker';
+import { getActivitySessionDateKey } from '@/lib/activitySessions';
 import { gpsScenarios } from '@/lib/gpsScenarios';
 import { NativeRun } from '@/lib/nativeBridge';
 import {
@@ -47,14 +48,14 @@ import {
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, MenuRow } from '~/components/Form';
+import { FieldRow, FormNote, MenuRow, type TextField } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { announce, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
-import { loadHistoryMonth } from '~/lib/history';
+import { loadHistoryMonth, selectHistoryDay } from '~/lib/history';
 import { holdRunLinks } from '~/lib/launchLink';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { space, useBlanc } from '~/theme/blanc';
@@ -159,6 +160,9 @@ function Setup({ tracker }: { tracker: Tracker }) {
   const preview = isPreviewActive();
   const [mode, setMode] = useState<RunMode>('free');
   const [autoLap, setAutoLap] = useState<AutoLapChoice>(DEFAULT_AUTO_LAP);
+  // Set when Custom distance is chosen, so its field opens ready to type (not on a later visit).
+  const customFocus = useRef(false);
+  const customField = useRef<TextField>(null);
   const [customMetres, setCustomMetres] = useState(DEFAULT_CUSTOM_AUTO_LAP_M);
   const [source, setSource] = useState<SourceChoice>(preview ? gpsScenarios[0].id : 'gps');
   const [locationBlocked, setLocationBlocked] = useState<'off' | 'approximate' | null>(null);
@@ -261,12 +265,22 @@ function Setup({ tracker }: { tracker: Tracker }) {
                   label="Split"
                   value={autoLap}
                   options={AUTO_LAP_OPTIONS}
-                  onChange={(next) => setAutoLap(next as AutoLapChoice)}
+                  onChange={(next) => {
+                    // Custom distance asks for a number: its field comes up ready to type.
+                    if (next === 'custom' && autoLap !== 'custom') customFocus.current = true;
+                    setAutoLap(next as AutoLapChoice);
+                  }}
                 />
                 {autoLap === 'custom' ? (
                   <>
                     <Hairline />
                     <FieldRow
+                      ref={customField}
+                      autoFocus={customFocus.current}
+                      selectTextOnFocus
+                      // iOS skips selectTextOnFocus for a field focused as it appears: select
+                      // the number once it has focus, so typing replaces it.
+                      onFocus={() => requestAnimationFrame(() => customField.current?.setSelection(0, customMetres.length))}
                       label="Distance"
                       unit="m"
                       value={customMetres}
@@ -585,12 +599,22 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
   const [width, setWidth] = useState(0);
   const progress = useSharedValue(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The hold is complete and the finger is still down: the run ends as it lifts.
+  // Ending it under the finger swapped the screen mid-touch, and iOS then
+  // dropped the next tap (Save run needed two).
+  const held = useRef(false);
+  const [ready, setReady] = useState(false);
 
   // The fill shows how long is left to hold, so it runs under Reduce Motion
   // too, like iOS's progress bars; skipped, it would read as done at once.
   const cancel = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
+    if (held.current) {
+      held.current = false;
+      onFinish();
+      return;
+    }
     setHolding(false);
     progress.value = withTiming(0, { duration: 150, reduceMotion: ReduceMotion.Never });
   };
@@ -605,12 +629,16 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
 
   const begin = () => {
     haptics.tap();
+    held.current = false;
+    setReady(false);
     setHolding(true);
     progress.value = withTiming(1, { duration: HOLD_TO_FINISH_MS, easing: Easing.linear, reduceMotion: ReduceMotion.Never });
     timer.current = setTimeout(() => {
       timer.current = null;
-      setHolding(false);
-      complete();
+      // Done: the success tick says so now, and lifting the finger ends the run.
+      held.current = true;
+      setReady(true);
+      haptics.success();
     }, HOLD_TO_FINISH_MS);
   };
 
@@ -622,7 +650,7 @@ function HoldToFinish({ onFinish }: { onFinish: () => void }) {
       { text: 'Keep running', style: 'cancel' },
       { text: 'Finish', onPress: complete },
     ]);
-  const title = holding ? 'Keep holding…' : 'Hold to finish';
+  const title = holding ? (ready ? 'Let go to finish' : 'Keep holding…') : 'Hold to finish';
   // At the accessibility text sizes both copies of the words wrap alike.
   const words = [{ textAlign: 'center' as const }, large ? { paddingHorizontal: 20 } : null];
 
@@ -689,8 +717,15 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
       haptics.success();
       announce('Run saved');
       discard();
-      // History already open in Train shows again without reading, so read its month here.
-      void loadHistoryMonth();
+      // History opens on the run's day, so the run just saved is what shows
+      // (a run kept for later can be from another day). That is the day its
+      // record is filed under, as History lists it: a retry reuses the record
+      // its first try made, dated where that try was. History already open in
+      // Train shows again without reading, so read that month here.
+      const savedDay = getActivitySessionDateKey(saved);
+      const runDay = savedDay ? parseISO(savedDay) : new Date(run.startedAtMs);
+      selectHistoryDay(runDay);
+      void loadHistoryMonth(startOfMonth(runDay));
       router.dismiss();
       router.navigate('/train/history');
     } catch (error) {

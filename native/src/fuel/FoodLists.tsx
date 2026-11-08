@@ -170,7 +170,7 @@ export function foodLine(food: Food, servings = 1, amount?: string | null, compo
 }
 
 /** One food: tap to review it; the round button logs it at once (one serving unless `servings` says). */
-export function FoodRow({ food, state, opening, onOpen, onAdd, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
+export function FoodRow({ food, state, opening, onOpen, onAdd, onTakeOut, menu, onLongPress, showBasis, detail, composed, servings = 1 }: {
   food: Food;
   state?: AddState;
   /** A built meal, when the list has already decoded it. */
@@ -185,6 +185,8 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, menu, onLongPress
   showBasis?: boolean;
   onOpen: () => void;
   onAdd?: () => void;
+  /** The tick's tap once it is added: takes that entry back out. */
+  onTakeOut?: () => void;
   /** What a hold offers, as iOS's context menu. */
   menu?: MenuAction[];
   onLongPress?: () => void;
@@ -282,10 +284,10 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, menu, onLongPress
       {onAdd || opening ? (
         <RoundButton
           symbol={state === 'done' ? 'checkmark' : 'plus'}
-          label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added` : `Add ${food.name}`}
+          label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added. Take it out` : `Add ${food.name}`}
           busy={state === 'saving' || opening}
           done={state === 'done'}
-          onPress={() => onAdd?.()}
+          onPress={() => (state === 'done' ? onTakeOut?.() : onAdd?.())}
         />
       ) : null}
     </View>
@@ -304,7 +306,7 @@ function RoundButton({ symbol, label, busy, done, onPress }: {
   symbol: 'plus' | 'checkmark';
   label: string;
   busy?: boolean;
-  /** Already logged: the tick stays put so a second tap can't log it twice. */
+  /** Already logged: the ink tick, and a tap on it takes the entry back out (it never logs twice). */
   done?: boolean;
   onPress: () => void;
 }) {
@@ -313,8 +315,8 @@ function RoundButton({ symbol, label, busy, done, onPress }: {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      disabled={busy || done}
-      accessibilityState={{ disabled: Boolean(busy || done), busy: Boolean(busy) }}
+      disabled={busy}
+      accessibilityState={{ disabled: Boolean(busy), busy: Boolean(busy) }}
       // a 32-point disc, 44 points to touch
       hitSlop={6}
       onPress={() => {
@@ -347,29 +349,48 @@ function quickAddKey(when: When, food: string): string {
 }
 
 /**
+ * The hold menu's quick add (VoiceOver offers it too), saying what it does
+ * now: log the food, or take back out the entry its tick stands for. None
+ * while either runs, as the round button is busy then.
+ */
+export function quickAddMenu({ purpose, state, logTitle, onAdd, onTakeOut }: {
+  purpose: 'log' | 'ingredients';
+  state?: AddState;
+  logTitle: string;
+  onAdd: () => void;
+  onTakeOut: () => void;
+}): MenuAction[] {
+  if (purpose === 'ingredients') return [{ title: 'Add as ingredient', symbol: 'plus.circle', run: onAdd }];
+  if (state === 'saving') return [];
+  if (state === 'done') return [{ title: 'Take it out', symbol: 'minus.circle', destructive: true, run: onTakeOut }];
+  return [{ title: logTitle, symbol: 'plus.circle', run: onAdd }];
+}
+
+/**
  * One-tap logging from a list: one serving now (or the amount given), into the
  * sheet's meal. Each food keeps its state per destination, so one added to
  * Breakfast can still go to Lunch, and keeps its retry-safe id and first
- * destination until its save is confirmed.
+ * destination until its save is confirmed. A confirmed one stays done, and
+ * can't be logged there again, until `takeOut` takes its entry back out.
  */
 export function useQuickAdd() {
   const logger = useLogger();
-  const { quickAddStates: states, setQuickAddStates: setStates, pendingQuickAdds: pendingAdds } = logger;
+  const { quickAddStates: states, setQuickAddStates: setStates, pendingQuickAdds: pendingAdds, addedQuickAdds: addedEntries } = logger;
   // The rows see only this destination's states, by food.
   const here = quickAddKey(logger.when, '');
   const added: Record<string, AddState> = {};
   if (logger.purpose === 'log') {
     for (const [key, state] of Object.entries(states)) if (key.startsWith(here)) added[key.slice(here.length)] = state;
   }
-  // `add` reads the sheet as last drawn from here, so it stays one function
-  // and a list redraws only the row whose state changed.
-  const drawn = useRef({ states, logger });
+  // `add` and `takeOut` read the sheet as last drawn from here, so each stays
+  // one function and a list redraws only the row whose state changed.
+  const drawn = useRef(logger);
   useLayoutEffect(() => {
-    drawn.current = { states, logger };
+    drawn.current = logger;
   });
 
   const add = useCallback(async (foodKey: string, food: Food, options: { servings?: number; source?: string } = {}) => {
-    const { states: drawnStates, logger: sheet } = drawn.current;
+    const sheet = drawn.current;
     const servings = options.servings ?? 1;
     if (sheet.purpose === 'ingredients') {
       try {
@@ -384,13 +405,16 @@ export function useQuickAdd() {
     const key = quickAddKey(sheet.when, foodKey);
     const kept = pendingAdds.get(key);
     // One write at a time for a food and meal, read now rather than as drawn,
-    // so a second tap before the redraw can't start another; a confirmed one stays done.
-    if (kept?.inFlight || drawnStates[key] === 'done') return;
+    // so a second tap before the redraw can't start another; a confirmed one
+    // (its removal running or not) is not logged again.
+    if (kept?.inFlight || addedEntries.has(key)) return;
     // A retry after an unconfirmed save writes that same entry: its id (the
     // write upserts on it, so it can't log twice), its time and its meal.
     const attempt = kept ?? { pending: createPendingEntryId(), when: sheet.when, groups: sheet.groups, inFlight: false };
     attempt.inFlight = true;
     pendingAdds.set(key, attempt);
+    // The id this save writes under (the same one a retry reuses), kept for taking it back.
+    const entryId = attempt.pending.take();
     const release = sheet.beginSave();
     setStates((state) => ({ ...state, [key]: 'saving' }));
     const saved = await saveQuickAdd(food, {
@@ -409,6 +433,7 @@ export function useQuickAdd() {
       return;
     }
     pendingAdds.delete(key);
+    addedEntries.set(key, { id: entryId, name: food.name, removing: false });
     haptics.success();
     setStates((state) => ({ ...state, [key]: 'done' }));
     release();
@@ -416,8 +441,40 @@ export function useQuickAdd() {
     announce(`${food.name} added`);
     // Fuel, Today and the widgets show it at once, whether or not the sheet stays open.
     void useFuelStore.getState().refreshAfterWrite();
-  }, [pendingAdds, setStates]);
-  return { added, add, enabled: !logger.editing };
+  }, [pendingAdds, addedEntries, setStates]);
+
+  // Takes back what a quick add logged (a mis-tapped +), and the + comes back.
+  // Its removal holds the food and meal as an add does: nothing logs it again
+  // until the removal has answered.
+  const takeOut = useCallback(async (foodKey: string) => {
+    const sheet = drawn.current;
+    const key = quickAddKey(sheet.when, foodKey);
+    const logged = addedEntries.get(key);
+    if (!logged || logged.removing) return;
+    logged.removing = true;
+    const release = sheet.beginSave();
+    setStates((state) => ({ ...state, [key]: 'saving' }));
+    const removed = await useFuelStore.getState().deleteEntry(logged.id).catch(() => false);
+    logged.removing = false;
+    release();
+    if (!removed) {
+      haptics.error();
+      setStates((state) => ({ ...state, [key]: 'done' }));
+      announce(`Couldn't take out ${logged.name}`);
+      return;
+    }
+    addedEntries.delete(key);
+    haptics.success();
+    setStates((state) => {
+      const next = { ...state };
+      delete next[key];
+      return next;
+    });
+    announce(`${logged.name} taken out`);
+    void useFuelStore.getState().refreshAfterWrite();
+  }, [addedEntries, setStates]);
+
+  return { added, add, takeOut, enabled: !logger.editing };
 }
 
 /**
@@ -427,7 +484,7 @@ export function useQuickAdd() {
  */
 export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) => void }) {
   const logger = useLogger();
-  const { added, add: quickAdd, enabled } = useQuickAdd();
+  const { added, add: quickAdd, takeOut: quickTakeOut, enabled } = useQuickAdd();
   const meals = logger.savedMeals;
 
   const open = (meal: Food) => {
@@ -435,6 +492,7 @@ export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) =>
     else logger.chooseFood(meal);
   };
   const add = (meal: Food) => void quickAdd(meal.id, meal);
+  const takeOut = (meal: Food) => void quickTakeOut(meal.id);
 
   // A deleted meal slides away at once (no question, as a swipe in Mail; past
   // logs keep it) and comes back if retiring it fails.
@@ -472,6 +530,7 @@ export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) =>
       quickAdd={enabled}
       onOpen={open}
       onAdd={add}
+      onTakeOut={takeOut}
       onEdit={onEditSavedMeal}
       onRemove={remove}
     />
@@ -499,7 +558,7 @@ export function SavedTab({ onEditSavedMeal }: { onEditSavedMeal: (meal: Food) =>
 }
 
 /** One saved meal; drawn again only when its own meal or state changes. */
-function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onEdit, onRemove }: {
+function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onTakeOut, onEdit, onRemove }: {
   meal: Food;
   divided: boolean;
   state?: AddState;
@@ -507,6 +566,7 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onEd
   quickAdd: boolean;
   onOpen: (meal: Food) => void;
   onAdd: (meal: Food) => void;
+  onTakeOut: (meal: Food) => void;
   onEdit: (meal: Food) => void;
   onRemove: (meal: Food) => void;
 }) {
@@ -515,7 +575,7 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onEd
   const canQuickAdd = quickAdd && !composed;
   const menu: MenuAction[] = [
     ...(canQuickAdd
-      ? [{ title: purpose === 'ingredients' ? 'Add as ingredient' : 'Log one serving now', symbol: 'plus.circle', run: () => onAdd(meal) }]
+      ? quickAddMenu({ purpose, state, logTitle: 'Log one serving now', onAdd: () => onAdd(meal), onTakeOut: () => onTakeOut(meal) })
       : []),
     { title: 'Review and log', symbol: 'list.bullet.rectangle', run: () => onOpen(meal) },
     ...(purpose === 'log'
@@ -532,6 +592,7 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onEd
       state={state}
       onOpen={() => onOpen(meal)}
       onAdd={canQuickAdd ? () => onAdd(meal) : undefined}
+      onTakeOut={() => onTakeOut(meal)}
       menu={menu}
     />
   );
@@ -565,7 +626,7 @@ export function SearchTab({ query }: { query: string }) {
   const [found, setFound] = useState<{ query: string; foods: Food[] | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
-  const { added, add: quickAdd, enabled } = useQuickAdd();
+  const { added, add: quickAdd, takeOut: quickTakeOut, enabled } = useQuickAdd();
   const trimmed = query.trim();
   // A result's portion read claims the sheet until the review opens, so Snap a
   // meal can't hide that review behind the camera. Closing meanwhile loses
@@ -626,6 +687,7 @@ export function SearchTab({ query }: { query: string }) {
     setOpening(null);
   };
   const add = (key: string, food: Food) => void quickAdd(key, food);
+  const takeOut = (key: string) => void quickTakeOut(key);
 
   // Named only while both kinds show, so a list of one kind carries no heading.
   const both = saved.length > 0 && Boolean(results && results.length > 0);
@@ -646,6 +708,7 @@ export function SearchTab({ query }: { query: string }) {
                     state={added[meal.id]}
                     onOpen={() => openSaved(meal)}
                     onAdd={enabled && !composed ? () => add(meal.id, meal) : undefined}
+                    onTakeOut={() => takeOut(meal.id)}
                   />
                 </View>
               );
@@ -671,6 +734,7 @@ export function SearchTab({ query }: { query: string }) {
                 quickAdd={enabled}
                 onOpen={open}
                 onAdd={add}
+                onTakeOut={takeOut}
               />
             );
           })}
@@ -678,21 +742,35 @@ export function SearchTab({ query }: { query: string }) {
       ) : null}
       {searching ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
       {trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
-      {results !== null && results.length === 0 && saved.length === 0 ? <Empty text="No USDA matches." /> : null}
+      {results !== null && results.length === 0 && saved.length === 0 ? (
+        <>
+          <Empty text="No USDA matches." />
+          {/* Not a dead end: the food can still go in by hand, with its name already typed. */}
+          {logger.purpose === 'log' && logger.enterManually ? (
+            <Capsule title="Enter it manually" variant="quiet" onPress={() => logger.enterManually?.(trimmed)} style={{ alignSelf: 'center', marginTop: 14 }} />
+          ) : null}
+        </>
+      ) : null}
       {failed ? (
         <View style={{ alignItems: 'center', gap: 14, marginTop: 32 }}>
           <BlancText variant="secondary" tone="graphite">
             The search failed. Check your connection.
           </BlancText>
-          <Capsule
-            title="Retry"
-            variant="quiet"
-            onPress={() => {
-              // the spinner, not the failure, while it tries again
-              setFound(null);
-              setAttempt((value) => value + 1);
-            }}
-          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
+            <Capsule
+              title="Retry"
+              variant="quiet"
+              onPress={() => {
+                // the spinner, not the failure, while it tries again
+                setFound(null);
+                setAttempt((value) => value + 1);
+              }}
+            />
+            {/* Offline, typing it in is the way on. */}
+            {logger.purpose === 'log' && logger.enterManually ? (
+              <Capsule title="Enter it manually" variant="quiet" onPress={() => logger.enterManually?.(trimmed)} />
+            ) : null}
+          </View>
         </View>
       ) : null}
     </View>
@@ -709,7 +787,7 @@ function GroupCaption({ children }: { children: string }) {
 }
 
 /** One USDA result; drawn again only when its own state changes or another opens. */
-function SearchRow({ food, rowKey, divided, state, opening, dimmed, quickAdd, onOpen, onAdd }: {
+function SearchRow({ food, rowKey, divided, state, opening, dimmed, quickAdd, onOpen, onAdd, onTakeOut }: {
   food: Food;
   rowKey: string;
   divided: boolean;
@@ -720,6 +798,7 @@ function SearchRow({ food, rowKey, divided, state, opening, dimmed, quickAdd, on
   quickAdd: boolean;
   onOpen: (food: Food) => Promise<void>;
   onAdd: (key: string, food: Food) => void;
+  onTakeOut: (key: string) => void;
 }) {
   return (
     <View style={{ opacity: dimmed ? 0.5 : 1 }}>
@@ -731,6 +810,7 @@ function SearchRow({ food, rowKey, divided, state, opening, dimmed, quickAdd, on
         showBasis
         onOpen={() => void onOpen(food)}
         onAdd={quickAdd ? () => onAdd(rowKey, food) : undefined}
+        onTakeOut={() => onTakeOut(rowKey)}
       />
     </View>
   );
