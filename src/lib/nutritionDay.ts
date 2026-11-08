@@ -78,7 +78,7 @@ export async function createNutritionGroup(
   kind: 'meal' | 'snack',
   dayGroups: NutritionGroup[],
   at: Date = new Date(),
-): Promise<GroupsResult> {
+): Promise<{ ok: true; groups: NutritionGroup[]; created: NutritionGroup } | { ok: false; inserted: boolean }> {
   const { data, error } = await supabase.from('nutrition_groups').insert({
     user_id: userId,
     date: dateKey,
@@ -96,7 +96,7 @@ export async function createNutritionGroup(
   if (!await persistGroupOrder(changedGroupOrders([...dayGroups, created], normalized))) {
     return { ok: false, inserted: true };
   }
-  return { ok: true, groups: normalized };
+  return { ok: true, groups: normalized, created: normalized.find((group) => group.id === created.id) ?? created };
 }
 
 /**

@@ -60,6 +60,8 @@ let notes: Record<string, { note: string }>;
 let note: string | null;
 let session: Record<string, unknown>;
 let total: number;
+/** What makes the movement more than a plain one: a superset or a swap. */
+let pairing: Record<string, unknown>;
 
 /** Barbell Row, set 3 of 3 (or of `total`): two logged at 80 × 8, the third filled in from them. */
 function liveSession(total = 3) {
@@ -75,6 +77,7 @@ function liveSession(total = 3) {
     note,
     skipped: false,
     endedEarly: false,
+    ...pairing,
   };
   return {
     workoutId: 'w1',
@@ -208,6 +211,7 @@ const textNamed = (words: string) => [...host.querySelectorAll<HTMLElement>('spa
 
 beforeEach(() => {
   total = 3;
+  pairing = {};
   note = null;
   notes = {};
   previous = { row: { 1: { weight: 80, reps: 8, rpe: null }, 2: { weight: 80, reps: 8, rpe: null }, 3: { weight: 80, reps: 8, rpe: null } } };
@@ -266,6 +270,20 @@ describe('the set card under the collapsed bar', () => {
     const block = faded[0].textContent ?? '';
     for (const words of ['Barbell Row', 'Set 3 of 3', '8–10 reps', 'Bench at notch 4', 'Straps on the last set']) expect(block).toContain(words);
     expect(faded[0].querySelector('[data-field]')).toBeNull();
+  });
+});
+
+describe('the set card\'s rep target', () => {
+  it.each([
+    ['a superset', { superset: { groupId: 'g1', role: 'A', partnerId: 'curl', partnerName: 'Hammer Curl' } }, 'superset with Hammer Curl'],
+    ['a swapped movement', { substitutesFor: { exercise_id: 'bench', exercise_name: 'Bench Press', notes: null } }, 'instead of Bench Press'],
+  ])('still shows, and says, the target reps for %s', async (_case, extra, context) => {
+    pairing = extra;
+    await open();
+    const line = [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent?.startsWith('Set 3 of 3'))!;
+    expect(line.textContent).toBe(`Set 3 of 3 · ${context} · 8–10 reps`);
+    const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
+    expect(name.getAttribute('aria-label')).toContain('8 to 10 reps');
   });
 });
 

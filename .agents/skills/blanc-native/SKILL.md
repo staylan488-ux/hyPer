@@ -359,8 +359,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   stays in the list as Skipped (a tap brings it back as the one up now; Undo
   at the foot does the same for 5 s), its unlogged sets leave the counts and
   never come up next, and a superset partner carries on alone. Finish names
-  what was skipped and, once the workout is saved, deletes those unlogged
-  sets (`removeUnloggedSets`) so History shows what was done. Logged sets
+  what was skipped and deletes those unlogged sets (`removeUnloggedSets`)
+  before it closes the workout, so History shows what was done; if that
+  fails, the workout stays open to finish again. Logged sets
   stay, so beat last time and next time's "Last time" read only logged sets.
   Quick starts and a movement chosen again never keep a skip
   (`withoutSessionMarks`).

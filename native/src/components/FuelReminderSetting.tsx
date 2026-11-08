@@ -1,11 +1,12 @@
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Linking } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { onAppVisible } from '@/lib/appVisibility';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { setFuelReminderEnabled, setFuelReminderTime, useFuelReminderStore } from '~/lib/fuelReminder';
-import { fuelReminderNote, hasReminderTarget, minutesOf, REMINDER_EARLIEST, REMINDER_LATEST, reminderTimeDate } from '~/lib/fuelReminderPlan';
+import { fuelReminderNote, hasReminderTarget, minutesOf, REMINDER_EARLIEST, REMINDER_LATEST, reminderPickerDay, reminderTimeDate } from '~/lib/fuelReminderPlan';
 import { blockExit, rowEnter, rowLayout } from '~/lib/motion';
 import { space } from '~/theme/blanc';
 
@@ -13,8 +14,6 @@ import { Capsule } from './Capsule';
 import { FormNote, PickerRow, ToggleRow } from './Form';
 import { Label } from './Label';
 import { Hairline } from './Row';
-
-const REMINDER_RANGE = { min: reminderTimeDate(REMINDER_EARLIEST), max: reminderTimeDate(REMINDER_LATEST) };
 
 /**
  * You's fuel reminder: a switch and an evening time, kept on this phone. It
@@ -30,7 +29,12 @@ export function FuelReminderSetting({ rows, top = space.section }: { rows?: Reac
   const goal = useAppStore((state) => state.nutritionProfile?.goal ?? null);
   // Only once targets have loaded, so the note doesn't flash at launch.
   const noTarget = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId && !hasReminderTarget(state.macroTarget));
-  const time = useMemo(() => reminderTimeDate(settings.minutes), [settings.minutes]);
+  // The picker takes fixed moments: they are made again for the phone's time
+  // zone when the app comes back, so the time and the evening window stay
+  // local after travel, as the reminder itself does.
+  const [day, setDay] = useState(reminderPickerDay);
+  useEffect(() => onAppVisible(() => setDay(reminderPickerDay())), []);
+  const time = reminderTimeDate(settings.minutes, day);
   return (
     // One group with the food settings above it, its note as the group's footer.
     <Animated.View layout={rowLayout} style={{ marginTop: top }}>
@@ -50,8 +54,8 @@ export function FuelReminderSetting({ rows, top = space.section }: { rows?: Reac
               label="Time"
               mode="time"
               value={time}
-              min={REMINDER_RANGE.min}
-              max={REMINDER_RANGE.max}
+              min={reminderTimeDate(REMINDER_EARLIEST, day)}
+              max={reminderTimeDate(REMINDER_LATEST, day)}
               onChange={(next) => setFuelReminderTime(minutesOf(next))}
             />
           </Animated.View>

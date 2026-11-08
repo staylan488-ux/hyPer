@@ -53,63 +53,101 @@ beforeEach(() => {
 });
 
 describe('deleting a workout that carries WHOOP stats', () => {
-  it('brings its WHOOP activity back to the day', async () => {
-    answer = (request) => (request.table === 'workouts' ? { data: [{ whoop_session_id: 'a1', user_id: 'user-1' }] } : {});
+  const linked = { data: { whoop_session_id: 'a1', user_id: 'user-1' } };
+
+  it('brings its WHOOP activity back to the day before the workout goes', async () => {
+    answer = (request) => (request.table === 'workouts' && request.op === 'select' ? linked : {});
 
     await useAppStore.getState().deleteWorkout('w1');
 
     const [restore] = writesTo('activity_sessions');
     expect(restore).toMatchObject({ op: 'update', values: { dismissed_at: null }, filters: { id: 'a1', user_id: 'user-1' } });
-    // After the workout is gone, never before.
-    expect(requests.map((request) => request.table)).toEqual(['workouts', 'activity_sessions']);
+    // Before the workout is gone, so no failure after it can leave the activity hidden.
+    expect(requests.map((request) => `${request.table} ${request.op}`)).toEqual(['workouts select', 'activity_sessions update', 'workouts delete']);
   });
 
-  it('brings it back after the delete that falls back to removing sets first', async () => {
-    let attempts = 0;
+  it('brings it back before the delete that falls back to removing sets first', async () => {
+    let deletes = 0;
     answer = (request) => {
       if (request.table !== 'workouts') return {};
-      attempts += 1;
-      return attempts === 1 ? { error: { code: '23503', message: 'foreign key violation' } } : { data: [{ whoop_session_id: 'a1', user_id: 'user-1' }] };
+      if (request.op === 'select') return linked;
+      deletes += 1;
+      return deletes === 1 ? { error: { code: '23503', message: 'foreign key violation' } } : {};
     };
 
     await useAppStore.getState().deleteWorkout('w1');
 
     expect(writesTo('sets')).toHaveLength(1);
+    expect(writesTo('workouts')).toHaveLength(2);
     expect(writesTo('activity_sessions')).toEqual([expect.objectContaining({ values: expect.objectContaining({ dismissed_at: null }), filters: { id: 'a1', user_id: 'user-1' } })]);
   });
 
   it('touches no activity when the workout had no WHOOP stats', async () => {
-    answer = (request) => (request.table === 'workouts' ? { data: [{ whoop_session_id: null, user_id: 'user-1' }] } : {});
+    answer = (request) => (request.table === 'workouts' && request.op === 'select' ? { data: { whoop_session_id: null, user_id: 'user-1' } } : {});
 
     await useAppStore.getState().deleteWorkout('w1');
 
     expect(writesTo('activity_sessions')).toEqual([]);
+    expect(writesTo('workouts')).toHaveLength(1);
   });
 
-  it('still reports the delete when the activity cannot be brought back', async () => {
-    answer = (request) => (request.table === 'workouts' ? { data: [{ whoop_session_id: 'a1', user_id: 'user-1' }] } : { error: failure });
+  it('keeps the workout, and its stats, when the activity cannot be brought back', async () => {
+    answer = (request) => (request.table === 'workouts' ? linked : { error: failure });
 
-    await expect(useAppStore.getState().deleteWorkout('w1')).resolves.toBeUndefined();
+    await expect(useAppStore.getState().deleteWorkout('w1')).rejects.toBe(failure);
+    expect(writesTo('workouts')).toEqual([]);
   });
 
-  it('leaves the activity hidden when the workout delete fails', async () => {
-    answer = (request) => (request.table === 'workouts' ? { error: { code: '42501', message: 'permission denied' } } : {});
+  it('deletes nothing when the workout cannot be read first', async () => {
+    answer = (request) => (request.table === 'workouts' ? { error: failure } : {});
 
-    await expect(useAppStore.getState().deleteWorkout('w1')).rejects.toMatchObject({ code: '42501' });
+    await expect(useAppStore.getState().deleteWorkout('w1')).rejects.toBe(failure);
     expect(writesTo('activity_sessions')).toEqual([]);
+    expect(writesTo('workouts')).toEqual([]);
+  });
+
+  it('leaves the activity on its day when the delete fails or its answer is lost, and a retry finishes', async () => {
+    // The delete lands but its answer is lost: the activity is already back.
+    let gone = false;
+    answer = (request) => {
+      if (request.table !== 'workouts') return {};
+      if (request.op === 'select') return gone ? { data: null } : linked;
+      gone = true;
+      return { error: { message: 'network down' } };
+    };
+    await expect(useAppStore.getState().deleteWorkout('w1')).rejects.toMatchObject({ message: 'network down' });
+    expect(writesTo('activity_sessions')).toHaveLength(1);
+
+    // The retry finds the workout gone and deletes nothing more; the activity stays shown.
+    answer = (request) => (request.table === 'workouts' && request.op === 'select' ? { data: null } : {});
+    await expect(useAppStore.getState().deleteWorkout('w1')).resolves.toBeUndefined();
+    expect(writesTo('activity_sessions')).toHaveLength(1);
   });
 });
 
 describe('attaching WHOOP stats to a workout', () => {
-  it('takes the stats back off when the activity could not be hidden, so it never shows beside them', async () => {
+  // The hide's answer fails (it may still have landed); what follows on activity_sessions answers as given.
+  const hideFails = (after: Answer = {}) => {
+    let calls = 0;
+    return () => {
+      calls += 1;
+      return calls === 1 ? { error: failure } : after;
+    };
+  };
+
+  it('shows the activity again, then takes the stats back off, when its hide went unanswered', async () => {
     const live = workout({ completed: false });
     useAppStore.setState({ currentWorkout: live });
+    const activity = hideFails();
     answer = (request) => {
-      if (request.table !== 'workouts') return { error: failure };
+      if (request.table !== 'workouts') return activity();
       return request.values?.whoop_session_id === null ? { data: { ...live, whoop_session_id: null, strain: null } } : { data: { ...live, whoop_session_id: 'a1', strain: 11.2 } };
     };
 
     await expect(useAppStore.getState().attachWhoopToWorkout(live, whoopActivity)).rejects.toThrow('Try again');
+    // A hide that landed is undone before the stats come off, so the activity is never left hidden with nothing holding its stats.
+    expect(requests.map((request) => `${request.table} ${request.op}`)).toEqual(['workouts update', 'activity_sessions update', 'activity_sessions update', 'workouts update']);
+    expect(writesTo('activity_sessions')[1]).toMatchObject({ values: { dismissed_at: null }, filters: { id: 'a1', user_id: 'user-1' } });
     // Only while the workout still carries this activity's stats, so "Not added" is true and Add is offered again.
     expect(writesTo('workouts')[1]).toMatchObject({
       op: 'update', values: { whoop_session_id: null, strain: null }, filters: { id: 'w1', user_id: 'user-1', whoop_session_id: 'a1' },
@@ -117,11 +155,23 @@ describe('attaching WHOOP stats to a workout', () => {
     expect(useAppStore.getState().currentWorkout).toMatchObject({ whoop_session_id: null, strain: null });
   });
 
+  it('keeps the stats on the workout when the activity cannot be shown again, so Remove can bring it back', async () => {
+    const live = workout({ completed: false });
+    useAppStore.setState({ currentWorkout: live });
+    answer = (request) => (request.table === 'workouts' ? { data: { ...live, whoop_session_id: 'a1', strain: 11.2 } } : { error: failure });
+
+    await expect(useAppStore.getState().attachWhoopToWorkout(live, whoopActivity)).rejects.toThrow('Try again');
+    expect(writesTo('activity_sessions')).toHaveLength(2);
+    expect(writesTo('workouts')).toHaveLength(1);
+    expect(useAppStore.getState().currentWorkout).toMatchObject({ whoop_session_id: 'a1', strain: 11.2 });
+  });
+
   it('keeps showing the stats that landed when taking them back off fails too', async () => {
     const live = workout({ completed: false });
     useAppStore.setState({ currentWorkout: live });
+    const activity = hideFails();
     answer = (request) => {
-      if (request.table !== 'workouts') return { error: failure };
+      if (request.table !== 'workouts') return activity();
       return request.values?.whoop_session_id === null ? { error: failure } : { data: { ...live, whoop_session_id: 'a1', strain: 11.2 } };
     };
 
@@ -132,15 +182,12 @@ describe('attaching WHOOP stats to a workout', () => {
   });
 
   it('a retry finishes the job', async () => {
-    let hides = 0;
-    answer = (request) => {
-      if (request.table === 'workouts') return { data: workout({ whoop_session_id: 'a1' }) };
-      hides += 1;
-      return hides === 1 ? { error: failure } : {};
-    };
+    const activity = hideFails();
+    answer = (request) => (request.table === 'workouts' ? { data: workout({ whoop_session_id: 'a1' }) } : activity());
 
     await expect(useAppStore.getState().attachWhoopToWorkout(workout(), whoopActivity)).rejects.toThrow();
     await expect(useAppStore.getState().attachWhoopToWorkout(workout(), whoopActivity)).resolves.toMatchObject({ whoop_session_id: 'a1' });
+    expect(writesTo('activity_sessions').at(-1)).toMatchObject({ values: { dismissed_at: expect.any(String) } });
   });
 });
 

@@ -32,7 +32,7 @@ import { supabase } from '@/lib/supabase';
 import { getPreferredWeightUnit, setPreferredWeightUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import { mergeWeightHistory } from '@/lib/weightHistory';
 import { whoopCallbackStatus } from '@/lib/whoopStatus';
-import { useAppStore } from '@/stores/appStore';
+import { macroTargetSaves, nutritionProfileSaves, useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import type { Food } from '@/types';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -279,13 +279,16 @@ export const useTargetsStore = create<TargetsState>(() => ({ status: 'loading', 
 
 /**
  * Reads the saved targets and nutrition profile together. A successful empty
- * read clears them; a failed one keeps what is shown. True once they are read
+ * read clears them; a failed one keeps what is shown, and so does a read that
+ * a save overtook (the save's own values are newer). True once they are read
  * for this account.
  */
 export async function loadTargets(): Promise<boolean> {
   const userId = currentUserId();
   if (!userId) return false;
   const isCurrent = captureAccountScope();
+  const targetBeforeSaves = macroTargetSaves.begin();
+  const profileBeforeSaves = nutritionProfileSaves.begin();
   useTargetsStore.setState({ status: 'loading' });
   try {
     const [target, profile] = await Promise.all([
@@ -295,10 +298,8 @@ export async function loadTargets(): Promise<boolean> {
     if (target.error) throw target.error;
     if (!isCurrent()) return false;
     useAppStore.setState({
-      macroTarget: target.data ?? null,
-      nutritionProfile: profile,
-      macroTargetLoadedForUserId: userId,
-      nutritionProfileLoadedForUserId: userId,
+      ...(targetBeforeSaves() ? { macroTarget: target.data ?? null, macroTargetLoadedForUserId: userId } : null),
+      ...(profileBeforeSaves() ? { nutritionProfile: profile, nutritionProfileLoadedForUserId: userId } : null),
     });
     useTargetsStore.setState({ status: 'ready' });
     return true;

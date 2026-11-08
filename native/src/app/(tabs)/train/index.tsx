@@ -685,7 +685,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               {/* The name and its line open the movement's sets, note and swap, like ⋯. */}
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={speak([current.movement.name, cardLine, repTarget && !current.movement.superset && !current.movement.substitutesFor ? repTarget : null].filter(Boolean).join(', '))}
+                accessibilityLabel={speak([current.movement.name, cardLine, repTarget].filter(Boolean).join(', '))}
                 accessibilityHint="Opens its sets, note and swap"
                 onPress={() => {
                   haptics.tap();
@@ -702,7 +702,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 {/* Where the set stands, then what it asks for: the rep target in ink, the one instruction on the card. */}
                 <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
                   {cardLine}
-                  {repTarget && !current.movement.superset && !current.movement.substitutesFor ? (
+                  {repTarget ? (
                     <BlancText variant="secondary" weight="500">
                       {cardLine ? ' · ' : ''}
                       {repTarget}

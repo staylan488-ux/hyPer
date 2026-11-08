@@ -18,6 +18,8 @@ import {
 } from '@/lib/sessionPlan';
 import type { SetRangeNotesResult } from '@/lib/setRangeNotes';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
+
+import { formatRepRange } from './format';
 import type { ExerciseSubstitution, Split, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
 export type Movement = {
@@ -275,4 +277,22 @@ export function skippedLine(session: Pick<SessionModel, 'movements'>): string | 
     namesLine(marked.filter((movement) => movement.endedEarly).map((movement) => movement.name), 'Ended', ' early'),
   ].filter(Boolean);
   return lines.length > 0 ? lines.join(' ') : null;
+}
+
+/**
+ * The movement sheet's line under the name: how a skip ended, else "Instead
+ * of Bench Press" for a swap or the superset, then the rep target it still
+ * asks for; with neither, the set count.
+ */
+export function movementLine(movement: Movement): string {
+  if (movement.endedEarly) return `Ended early · ${movement.done} of ${movement.sets.length} sets`;
+  if (movement.skipped) return 'Skipped for this workout';
+  const pairing = movement.substitutesFor
+    ? `Instead of ${movement.substitutesFor.exercise_name ?? 'the planned movement'}`
+    : movement.superset
+      ? `Superset ${movement.superset.role} with ${movement.superset.partnerName}`
+      : null;
+  const target = formatRepRange(movement.plan?.target_reps_min, movement.plan?.target_reps_max);
+  const sets = movement.sets.length;
+  return [pairing, target].filter(Boolean).join(' · ') || `${sets} ${sets === 1 ? 'set' : 'sets'}`;
 }

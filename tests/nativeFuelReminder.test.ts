@@ -267,6 +267,15 @@ describe('handing the reminder to iOS', () => {
     expect(JSON.parse(localStorage.getItem('hyper:fuel-reminder:user-1')!)).toEqual({ enabled: false, minutes: 1200 });
   });
 
+  it('clears a reminder already shown when switched off, leaving Rest over', async () => {
+    await render();
+    await settle();
+    ios.presented = [id(DAY), 'hyper-rest-over'];
+    mod.setFuelReminderEnabled(false);
+    await settle();
+    expect(ios.presented).toEqual(['hyper-rest-over']);
+  });
+
   it('sends at most one a day, even when the time moves later after it went out', async () => {
     await render();
     await settle();

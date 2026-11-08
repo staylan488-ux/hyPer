@@ -103,19 +103,34 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeC
 
   if (workoutIds.length === 0) return {};
 
-  const { data: previousSets, error: previousSetsError } = await supabase
-    .from('sets')
-    .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
-    .in('workout_id', workoutIds)
-    .in('exercise_id', exerciseIds);
+  // A page at a time in a fixed order: one request returns at most
+  // PREVIOUS_SETS_PAGE_SIZE rows, and a cut-off reply could drop last time's sets.
+  const previousSets: PreviousSetSummary[] = [];
+  for (let offset = 0; ; offset += PREVIOUS_SETS_PAGE_SIZE) {
+    const { data, error: previousSetsError } = await supabase
+      .from('sets')
+      .select('workout_id, exercise_id, set_number, weight, reps, rpe, completed')
+      .in('workout_id', workoutIds)
+      .in('exercise_id', exerciseIds)
+      .order('workout_id', { ascending: true })
+      .order('exercise_id', { ascending: true })
+      .order('set_number', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + PREVIOUS_SETS_PAGE_SIZE - 1);
 
-  if (previousSetsError) {
-    console.error('Error loading previous sets for target-to-beat:', previousSetsError);
-    return null;
+    if (previousSetsError) {
+      console.error('Error loading previous sets for target-to-beat:', previousSetsError);
+      return null;
+    }
+    previousSets.push(...((data || []) as PreviousSetSummary[]));
+    if (!data || data.length < PREVIOUS_SETS_PAGE_SIZE) break;
   }
 
-  return buildPreviousSetTargets(workoutIds, (previousSets || []) as PreviousSetSummary[]);
+  return buildPreviousSetTargets(workoutIds, previousSets);
 }
+
+/** Rows per request for last time's sets: the API's own cap. */
+const PREVIOUS_SETS_PAGE_SIZE = 1_000;
 
 export type PreviousMovementNotes = Record<string, { note: string; date: string }>;
 

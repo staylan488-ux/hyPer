@@ -68,6 +68,8 @@ const appStore = create(() => ({
   nutritionProfile: null,
 }));
 const DAY = '2026-11-04';
+// Today's corner P's scroll fade (lib/brand.ts).
+const markAtRest = { value: 1 };
 const totals = { calories: 1200, protein: 90, carbs: 0, fat: 0 };
 const fuelStore = create(() => ({ todayKey: DAY, todayLoadedKey: DAY as string | null, todayTotals: totals }));
 
@@ -100,7 +102,7 @@ async function open() {
     '~/components/TabScroll': { TabScroll: Wrap },
     '~/components/Track': { Track: Empty },
     '~/lib/accountData': { useAccountRefresh: () => ({ refreshing: false, refresh: noop }) },
-    '~/lib/brand': { useIntroRise: () => ({}) },
+    '~/lib/brand': { markAtRest, useIntroRise: () => ({}) },
     '~/lib/finishWorkout': { useFinishWorkout: () => ({ finish: noop, closing: false }) },
     '~/lib/format': { formatLoad: String, formatWhole: (value: number) => String(Math.round(value)) },
     '~/lib/accessibility': silentAccessibility,
@@ -135,6 +137,17 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+});
+
+describe('Today’s corner mark', () => {
+  it('is back at rest once Today closes, so it shows when Today opens again', async () => {
+    await open();
+    // Scrolled until the P stepped back, then signed out.
+    markAtRest.value = 0;
+    act(() => root.unmount());
+    root = createRoot(host);
+    expect(markAtRest.value).toBe(1);
+  });
 });
 
 describe('Today’s Fuel card', () => {

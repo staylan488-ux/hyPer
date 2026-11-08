@@ -16,3 +16,20 @@ export function createRequestGate() {
 }
 
 export type RequestGate = ReturnType<typeof createRequestGate>;
+
+// Reads of a value the app also saves. A read begun before a save landed may
+// hold what that save replaced, so it must not be shown: begin() at a read's
+// start hands back its isCurrent check, which turns false once saved() is
+// called as a save lands. Reads never cancel each other.
+export function createSaveGate() {
+  let saves = 0;
+  return {
+    begin(): () => boolean {
+      const at = saves;
+      return () => saves === at;
+    },
+    saved() {
+      saves += 1;
+    },
+  };
+}

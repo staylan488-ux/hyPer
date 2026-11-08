@@ -5,6 +5,7 @@ const database = vi.hoisted(() => {
   const state = {
     results: {} as Record<string, Result>,
     rows: null as Record<string, Record<string, unknown>[]> | null,
+    cap: 1000,
     calls: [] as Array<{ table: string; chain: Array<[string, ...unknown[]]> }>,
   };
 
@@ -23,6 +24,7 @@ const database = vi.hoisted(() => {
     in(...args: unknown[]) { return this.record('in', ...args); }
     order(...args: unknown[]) { return this.record('order', ...args); }
     limit(...args: unknown[]) { return this.record('limit', ...args); }
+    range(...args: unknown[]) { return this.record('range', ...args); }
     then<TResult1 = Result, TResult2 = never>(
       onfulfilled?: ((value: Result) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -47,6 +49,10 @@ const database = vi.hoisted(() => {
       });
       const limit = this.chain.find(([method]) => method === 'limit')?.[1];
       if (typeof limit === 'number') rows = rows.slice(0, limit);
+      const range = this.chain.find(([method]) => method === 'range');
+      if (range) rows = rows.slice(Number(range[1]), Number(range[2]) + 1);
+      // The API's own cap: one reply holds at most this many rows.
+      rows = rows.slice(0, state.cap);
       return Promise.resolve({ data: rows, error: null }).then(onfulfilled, onrejected);
     }
   }
@@ -209,6 +215,7 @@ describe('fetchPreviousSetTargets', () => {
   beforeEach(() => {
     database.state.results = {};
     database.state.rows = null;
+    database.state.cap = 1000;
     database.state.calls = [];
   });
 
@@ -290,9 +297,32 @@ describe('fetchPreviousSetTargets', () => {
           ['select', 'workout_id, exercise_id, set_number, weight, reps, rpe, completed'],
           ['in', 'workout_id', ['w2', 'w1']],
           ['in', 'exercise_id', ['bench', 'row']],
+          ['order', 'workout_id', { ascending: true }],
+          ['order', 'exercise_id', { ascending: true }],
+          ['order', 'set_number', { ascending: true }],
+          ['order', 'id', { ascending: true }],
+          ['range', 0, 999],
         ],
       },
     ]);
+  });
+
+  it('reads every set of the last 30 workouts, past the API\'s row cap, so last time is never cut off', async () => {
+    // Forty bench sets in each of 30 workouts: 1,200 rows, the newest stored last.
+    const workouts = Array.from({ length: 30 }, (_, index) => ({
+      id: `w${String(index).padStart(2, '0')}`, user_id: 'user-1', date: `2026-08-${String(index + 1).padStart(2, '0')}`, created_at: `2026-08-${String(index + 1).padStart(2, '0')}T18:00:00.000Z`,
+    }));
+    database.state.rows = {
+      workouts,
+      sets: workouts.flatMap((workout, index) => Array.from({ length: 40 }, (_, set) => ({
+        ...row({ workout_id: workout.id, set_number: set + 1, weight: 100 + index }), id: `${workout.id}-${String(set).padStart(2, '0')}`, completed: true,
+      }))),
+    };
+    const targets = await fetchPreviousSetTargets(params);
+    // The newest workout's sets, though the first reply could not hold them.
+    expect(targets?.bench[1].weight).toBe(129);
+    expect(targets?.bench[40].weight).toBe(129);
+    expect(database.state.calls.filter((call) => call.table === 'sets')).toHaveLength(2);
   });
 
   it('skips the sets query when there are no earlier workouts', async () => {

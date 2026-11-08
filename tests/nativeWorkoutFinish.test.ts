@@ -92,6 +92,23 @@ describe('Finish keeps the confirmed workout and account', () => {
     expect(push).toHaveBeenCalledWith('/session-done');
   });
 
+  it('takes out the skipped movements’ unlogged sets before closing, and stays open to try again when that fails', async () => {
+    currentSession = { ...session('workout-A'), movements: [{ exerciseId: 'row', skipped: false }, { exerciseId: 'curl', skipped: true }] } as unknown as SessionModel;
+    store.removeUnloggedSets.mockRejectedValueOnce(new Error('Could not save that change.'));
+    await confirm(false);
+    expect(store.removeUnloggedSets).toHaveBeenCalledWith('workout-A', ['curl']);
+    // Nothing says it finished while the saved workout would still hold the skipped sets.
+    expect(store.completeWorkout).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(showSummary).not.toHaveBeenCalled();
+
+    await confirm(false);
+    expect(store.removeUnloggedSets).toHaveBeenCalledTimes(2);
+    expect(store.completeWorkout).toHaveBeenCalledTimes(1);
+    expect(store.removeUnloggedSets.mock.invocationCallOrder[1]).toBeLessThan(store.completeWorkout.mock.invocationCallOrder[0]);
+    expect(push).toHaveBeenCalledWith('/session-done');
+  });
+
   it('does not finish a replacement workout while the quick start is saving', async () => {
     const saved = deferred();
     store.saveFlexibleTemplateFromCurrentWorkout.mockReturnValue(saved.promise);

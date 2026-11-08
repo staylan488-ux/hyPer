@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useEffect } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -62,6 +63,14 @@ export default function TodayScreen() {
   const large = useLargeText();
   const c = useBlanc();
 
+  // Today opens again at rest (after a sign-out and back in): its corner P with it.
+  useEffect(
+    () => () => {
+      markAtRest.value = 1;
+    },
+    [],
+  );
+
   return (
     <>
       <Stack.Screen
@@ -71,7 +80,7 @@ export default function TodayScreen() {
           unstable_headerLeftItems: () => [
             {
               type: 'custom',
-              element: <BrandMark size={HEADER_MARK_SIZE} anchor style={headerMarkSlot} />,
+              element: <BrandMark size={HEADER_MARK_SIZE} anchor fadesWithScroll style={headerMarkSlot} />,
               hidesSharedBackground: true,
             },
           ],

@@ -87,10 +87,15 @@ function checkPermission(ask = false) {
   });
 }
 
-/** You's switch. On asks iOS in context, and the hand-over follows the answer; refused, it stays on and You offers Settings. */
+/**
+ * You's switch. On asks iOS in context, and the hand-over follows the answer;
+ * refused, it stays on and You offers Settings. Off takes back what iOS holds
+ * (the hand-over) and clears one already shown.
+ */
 export function setFuelReminderEnabled(enabled: boolean) {
   saveSettings({ enabled });
   if (enabled) checkPermission(true);
+  else void inOrder(() => dismissDelivered());
 }
 /** You's time, kept to the evening window. */
 export function setFuelReminderTime(minutes: number) {
