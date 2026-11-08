@@ -194,6 +194,8 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
                 );
               })}
             </View>
+            {/* A tap moves the whole rhythm rather than switching one day, which the circles alone don't say. */}
+            <FormNote>Training days are marked, starting from the filled one. Tap a day to start the week there.</FormNote>
           </>
         ) : (
           <>

@@ -1,7 +1,7 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { accessibilityLabel, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -115,6 +115,11 @@ function Calculator() {
   });
   const [initial] = useState(() => initialWizardDraft(profile, openedKg));
   const [draft, setDraft] = useState<WizardDraft>(initial);
+  // Next on the number pad walks age, weight, height and body fat in order.
+  const weightField = useRef<TextField>(null);
+  const heightField = useRef<TextField>(null);
+  const bodyFatField = useRef<TextField>(null);
+  const next = { returnKeyType: 'next' as const, submitBehavior: 'submit' as const };
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -205,25 +210,58 @@ function Calculator() {
             </Picker>
           </SegmentRow>
           <Hairline />
-          <FieldRow label="Age" unit="yrs" accessibilityLabel="Age, years" value={draft.age} keyboardType="number-pad" maxLength={3} selectTextOnFocus onChangeText={(age) => update({ age })} />
+          <FieldRow
+            label="Age"
+            unit="yrs"
+            accessibilityLabel="Age, years"
+            value={draft.age}
+            keyboardType="number-pad"
+            maxLength={3}
+            selectTextOnFocus
+            {...next}
+            onSubmitEditing={() => weightField.current?.focus()}
+            onChangeText={(age) => update({ age })}
+          />
           <Hairline />
           <FieldRow
+            ref={weightField}
             label="Weight"
             unit={imperial ? 'lb' : 'kg'}
             value={draft.weight}
             keyboardType="decimal-pad"
             maxLength={5}
             selectTextOnFocus
+            {...next}
+            onSubmitEditing={() => heightField.current?.focus()}
             onChangeText={(weight) => update({ weight })}
           />
           <Hairline />
           {imperial ? (
-            <HeightRow feet={draft.heightFeet} inches={draft.heightInches} onFeet={(heightFeet) => update({ heightFeet })} onInches={(heightInches) => update({ heightInches })} />
+            <HeightRow
+              feetRef={heightField}
+              feet={draft.heightFeet}
+              inches={draft.heightInches}
+              onFeet={(heightFeet) => update({ heightFeet })}
+              onInches={(heightInches) => update({ heightInches })}
+              onNext={() => bodyFatField.current?.focus()}
+            />
           ) : (
-            <FieldRow label="Height" unit="cm" accessibilityLabel="Height, centimeters" value={draft.heightCm} keyboardType="number-pad" maxLength={3} selectTextOnFocus onChangeText={(heightCm) => update({ heightCm })} />
+            <FieldRow
+              ref={heightField}
+              label="Height"
+              unit="cm"
+              accessibilityLabel="Height, centimeters"
+              value={draft.heightCm}
+              keyboardType="number-pad"
+              maxLength={3}
+              selectTextOnFocus
+              {...next}
+              onSubmitEditing={() => bodyFatField.current?.focus()}
+              onChangeText={(heightCm) => update({ heightCm })}
+            />
           )}
           <Hairline />
-          <FieldRow label="Body fat" unit={draft.bodyFat.trim() ? '%' : undefined} value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
+          <FieldRow ref={bodyFatField} label="Body fat" unit={draft.bodyFat.trim() ? '%' : undefined} value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
         </Label>
         <FormNote>{openedKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
       </Section>
@@ -408,11 +446,18 @@ function SegmentRow({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-/** Feet and inches, as FieldRow: a tap on the row starts with feet, Next goes on to inches. */
-function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: string; onFeet: (value: string) => void; onInches: (value: string) => void }) {
+/** Feet and inches, as FieldRow: a tap on the row starts with feet, Next goes on to inches, then on to the next field. */
+function HeightRow({ feetRef, feet, inches, onFeet, onInches, onNext }: {
+  feetRef: RefObject<TextField | null>;
+  feet: string;
+  inches: string;
+  onFeet: (value: string) => void;
+  onInches: (value: string) => void;
+  onNext: () => void;
+}) {
   const c = useBlanc();
   const large = useLargeText();
-  const feetField = useRef<TextField>(null);
+  const feetField = feetRef;
   const inchesField = useRef<TextField>(null);
   const input = { color: c.ink, padding: 0, minHeight: 44, minWidth: 44, textAlign: 'right' as const, fontVariant: ['tabular-nums' as const] };
   const fields = (
@@ -443,7 +488,9 @@ function HeightRow({ feet, inches, onFeet, onInches }: { feet: string; inches: s
         keyboardType="number-pad"
         maxLength={2}
         selectTextOnFocus
-        returnKeyType="done"
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={onNext}
         accessibilityLabel="Height, inches"
         lineBreakModeIOS="tail"
         style={[typeScale.field, input]}

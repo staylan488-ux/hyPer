@@ -207,7 +207,8 @@ function WeightCard() {
           }
           onPress={() => {
             haptics.tap();
-            router.push('/you/weight');
+            // With no weigh-ins yet the card's own words ask for one: it opens Log weight, not an empty page.
+            router.push(!latest && !loading && !failed ? '/log-weight' : '/you/weight');
           }}
           style={({ pressed }) => ({ padding: 18, gap: 4, backgroundColor: pressed ? c.pressed : 'transparent' })}>
           {latest ? (

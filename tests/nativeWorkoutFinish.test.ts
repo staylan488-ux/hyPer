@@ -143,6 +143,25 @@ describe('Finish keeps the confirmed workout and account', () => {
     expect(host.querySelector('button')!.disabled).toBe(false);
   });
 
+  it('finishes a fully logged program session without asking', async () => {
+    buttons = [];
+    currentSession = { ...session('workout-A'), flexible: false } as SessionModel;
+    await act(async () => { root.render(createElement(Probe)); });
+    await act(async () => { host.querySelector('button')!.click(); });
+    expect(buttons).toEqual([]);
+    expect(store.completeWorkout).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith('/session-done');
+  });
+
+  it('still asks before finishing a program session with sets left', async () => {
+    buttons = [];
+    currentSession = { ...session('workout-A'), flexible: false, doneCount: 1, sets: [{}, {}] } as unknown as SessionModel;
+    await act(async () => { root.render(createElement(Probe)); });
+    await act(async () => { host.querySelector('button')!.click(); });
+    expect(buttons.map((button) => button.text)).toEqual(['Finish', 'Keep going']);
+    expect(store.completeWorkout).not.toHaveBeenCalled();
+  });
+
   it('reenables editing when Finish cannot save', async () => {
     store.saveFlexibleTemplateFromCurrentWorkout.mockRejectedValue(new Error('offline'));
     await confirm();

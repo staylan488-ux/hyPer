@@ -8,7 +8,7 @@ import { useKeepAwakeWhile } from '@/lib/keepAwake';
 import { useAuthStore } from '@/stores/authStore';
 
 import { WorkoutAccessory } from '~/components/WorkoutAccessory';
-import { useWorkoutBarShown } from '~/lib/workoutBar';
+import { useTabBarExpand, useWorkoutBarShown } from '~/lib/workoutBar';
 import { useAccountData, useAccountDay } from '~/lib/accountData';
 import { useFinishedStore } from '~/lib/finished';
 import { resetFuel } from '~/lib/fuel';
@@ -104,13 +104,26 @@ export default function TabsLayout() {
     [],
   );
 
+  // A request to open the bar out: no shrinking for a moment, then as before.
+  const expandRequests = useTabBarExpand((state) => state.requests);
+  const [expanding, setExpanding] = useState(false);
+  useEffect(() => {
+    if (expandRequests === 0) return;
+    const start = setTimeout(() => setExpanding(true), 600);
+    const end = setTimeout(() => setExpanding(false), 3000);
+    return () => {
+      clearTimeout(start);
+      clearTimeout(end);
+    };
+  }, [expandRequests]);
+
   return (
     <NativeTabs
       tintColor={dynamicInk}
       labelStyle={{ selected: { color: dynamicInk } }}
       // On every tab. iOS only shrinks pages that scroll well past the screen
       // and sticks on pages just past that, so tab pages use TabScroll.
-      minimizeBehavior="onScrollDown"
+      minimizeBehavior={expanding ? 'never' : 'onScrollDown'}
       // iOS's tab bar has no tap feedback of its own, so a press gets one here.
       screenListeners={{ tabPress: () => haptics.tap() }}>
       {accessory ? (

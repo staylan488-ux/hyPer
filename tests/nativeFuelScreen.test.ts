@@ -15,6 +15,7 @@ import * as savedMealFromLog from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import { create as zustandCreate } from 'zustand';
 
 // Fuel's screen: the date under the large title opens the month (the bar keeps
 // + alone), and a day with food ends on a quiet Log food for that day. A new
@@ -108,7 +109,10 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/components/Row': { Row: (props: RowProps) => { rows[props.title] = props; return null; }, Hairline: Empty },
     '~/components/Section': { Section: Wrap },
     '~/components/SwipeRow': { SwipeRow: Wrap },
-    '~/components/TabScroll': { TabScroll: Wrap },
+    '~/components/TabScroll': { TabScroll: Wrap, tabBarCover: () => 0 },
+    '~/components/UndoBar': { UndoBar: () => null },
+    '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
+    zustand: { create: zustandCreate },
     '~/components/Track': { Track: ({ progress }: { progress: number }) => createElement('i', { 'data-track': String(progress) }) },
     '~/fuel/DayMark': { DayMark: (props: MarkProps) => { marks.push(props); return null; } },
     '~/lib/format': { formatWhole: String },

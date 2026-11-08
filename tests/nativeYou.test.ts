@@ -476,6 +476,41 @@ describe('Apple Health switch after a failed first sync', () => {
   });
 });
 
+// Log weight takes a day, today by default, for a weigh-in that was missed.
+describe('Logging a missed weigh-in', () => {
+  type WeighIns = {
+    weighInTime: (day: string, today: string, now?: Date) => Date;
+    logWeighIn: (kilograms: number, measuredAt?: Date) => Promise<string | null>;
+    useWeightStore: { setState: (state: { all: unknown[] | null }) => void };
+  };
+  const now = new Date(2026, 10, 7, 18, 45, 30);
+
+  it('takes today’s weigh-in now, and an earlier day’s at the present time of day', () => {
+    const you = youHarness().you as unknown as WeighIns;
+    expect(you.weighInTime('2026-11-07', '2026-11-07', now)).toBe(now);
+    expect(you.weighInTime('2026-11-06', '2026-11-07', now)).toEqual(new Date(2026, 10, 6, 18, 45));
+    expect(you.weighInTime('2026-07-15', '2026-11-07', now)).toEqual(new Date(2026, 6, 15, 18, 45));
+  });
+
+  it('records the day picked, then reads every weigh-in again when they are all on show', async () => {
+    const { you, imports, getAllBodyWeights, getBodyWeightHistorySince } = youHarness();
+    const weighIns = you as unknown as WeighIns;
+    const record = imports['@/lib/healthWeights'].recordManualBodyWeight;
+    const july = new Date(2026, 6, 15, 18, 45);
+
+    await expect(weighIns.logWeighIn(76.2, july)).resolves.toBeNull();
+    expect(record).toHaveBeenCalledWith('user-1', 76.2, july);
+    expect(getAllBodyWeights).not.toHaveBeenCalled();
+
+    // The weigh-ins list has read them all: one dated before the recent window is listed too.
+    weighIns.useWeightStore.setState({ all: [] });
+    getBodyWeightHistorySince.mockClear();
+    await weighIns.logWeighIn(76.2, july);
+    expect(getAllBodyWeights).toHaveBeenCalledTimes(1);
+    expect(getBodyWeightHistorySince).not.toHaveBeenCalled();
+  });
+});
+
 describe('Connecting WHOOP', () => {
   it('starts the first import once connected', async () => {
     const { you, useAppStore } = youHarness();

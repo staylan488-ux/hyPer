@@ -1,5 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { accessibilityLabel, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { endOfDay, format, parseISO } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Keyboard, ScrollView, View } from 'react-native';
@@ -9,15 +10,20 @@ import { formatWeight, type WeightUnit } from '@/lib/weightDisplayCore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FigureInput } from '~/components/FigureInput';
+import { PickerRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
+import { Label } from '~/components/Label';
 import { useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
-import { logWeighIn, setWeightUnit, useWeightStore } from '~/lib/you';
+import { logWeighIn, setWeightUnit, useWeightStore, weighInTime } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
-/** Log weight: one number in the unit you weigh in, saved as a typed weigh-in. */
+/**
+ * Log weight: one number in the unit you weigh in, saved as a typed weigh-in:
+ * now, or on an earlier day for one that was missed.
+ */
 export default function LogWeightSheet() {
   const c = useBlanc();
   const latest = useWeightStore((state) => state.history[0] ?? null);
@@ -26,6 +32,9 @@ export default function LogWeightSheet() {
   // A sheet left open past midnight stops calling yesterday "today".
   const todayKey = useCurrentDayKey();
   const [draft, setDraft] = useState('');
+  // The day picked for a missed weigh-in; null logs it now.
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const shownDay = pickedDay && pickedDay < todayKey ? pickedDay : todayKey;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A save that failed (not a number to fix) makes the button Retry.
@@ -56,7 +65,7 @@ export default function LogWeightSheet() {
     Keyboard.dismiss();
     setSaving(true);
     setError(null);
-    const failure = await logWeighIn(parsed.kilograms);
+    const failure = await logWeighIn(parsed.kilograms, weighInTime(shownDay, todayKey));
     if (failure) {
       haptics.error();
       setError(failure);
@@ -130,6 +139,18 @@ export default function LogWeightSheet() {
           </BlancText>
         ) : null}
       </View>
+
+      {/* Today by default; an earlier day logs a missed weigh-in at this time of day. */}
+      <Label style={{ marginTop: 18 }}>
+        <PickerRow
+          label="Day"
+          mode="date"
+          value={parseISO(shownDay)}
+          max={endOfDay(parseISO(todayKey))}
+          disabled={saving}
+          onChange={(date) => setPickedDay(format(date, 'yyyy-MM-dd'))}
+        />
+      </Label>
 
       {/* The sheet's action, as large and at the same inset as the other sheets'. */}
       <View style={{ marginHorizontal: space.inset, marginTop: 22 }}>

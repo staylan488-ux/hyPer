@@ -13,6 +13,7 @@ import { Label } from '~/components/Label';
 import { Tally } from '~/components/Tally';
 import { speak, useLargeText } from '~/lib/accessibility';
 import { savedLine, useFinishedStore } from '~/lib/finished';
+import { useTabBarExpand } from '~/lib/workoutBar';
 import { formatMinutes, formatSet, formatWhole } from '~/lib/format';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -59,6 +60,8 @@ export default function SessionDone() {
     closed.current = true;
     router.dismiss();
     router.navigate('/today');
+    // The workout page had shrunk the tab bar; Today opens with every tab showing.
+    useTabBarExpand.getState().expand();
   };
 
   if (!summary) {

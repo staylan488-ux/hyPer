@@ -35,11 +35,13 @@ const noop = () => {};
 const history = create<{ finished: Finished | null | undefined }>(() => ({ finished: undefined }));
 const programs = create<{ splits: Split[] }>(() => ({ splits: [] }));
 const push = vi.fn();
+const newProgram = vi.fn();
+const openTrain = vi.fn();
 
 const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>(
   'components/PlanCard.tsx',
   {
-    'expo-router': { router: { navigate: noop, push } },
+    'expo-router': { router: { navigate: noop, push, dismissTo: noop } },
     // The finished card's chevron: a mark only, hidden from VoiceOver.
     'expo-symbols': { SymbolView: (props: { name: string }) => createElement('u', { 'data-symbol': props.name }) },
     '@/stores/appStore': { useAppStore: programs },
@@ -65,6 +67,8 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
     '~/lib/accessibility': silentAccessibility,
     '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min` },
     '~/lib/haptics': { haptics: { tap: noop } },
+    '~/lib/openTrain': { openTrain: openTrain },
+    '~/lib/program': { newProgram },
     '~/lib/session': { useStartSession: () => ({ starting: null, start: async () => false }) },
     '~/lib/today': { useFinishedToday: (done: boolean) => history((state) => (done ? state.finished : null)) },
     '~/theme/blanc': { useBlanc: () => ({ pressed: '#eee' }) },
@@ -116,8 +120,10 @@ describe('Plan card without an active program', () => {
     expect(host.textContent).toContain('No program yet');
     expect(host.textContent).toContain('Five questions, or start blank');
     expect(host.querySelector('button')?.textContent).toBe('Create');
+    // Create opens the questions at once, rather than a Program page that asks again.
     await act(async () => host.querySelector('button')?.click());
-    expect(push).toHaveBeenLastCalledWith('/train/program');
+    expect(newProgram).toHaveBeenCalledOnce();
+    expect(push).toHaveBeenCalledTimes(1);
   });
 });
 

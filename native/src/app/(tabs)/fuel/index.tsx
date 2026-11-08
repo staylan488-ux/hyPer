@@ -1,9 +1,10 @@
 import { addWeeks, format, isAfter, isSameDay, startOfDay } from 'date-fns';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { ActionSheetIOS, Alert, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { create } from 'zustand';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { getLogDate } from '@/lib/nutritionLogUtils';
@@ -29,14 +30,16 @@ import { RollingText } from '~/components/RollingText';
 import { Hairline, Row, type DetailParts } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { SwipeRow } from '~/components/SwipeRow';
-import { TabScroll } from '~/components/TabScroll';
+import { tabBarCover, TabScroll } from '~/components/TabScroll';
+import { UndoBar } from '~/components/UndoBar';
 import { Track } from '~/components/Track';
 import { DayMark } from '~/fuel/DayMark';
-import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { announce, screenReaderRunning, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import { useWorkoutBarShown } from '~/lib/workoutBar';
 import { useYouMealsStore } from '~/lib/you';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
 
@@ -49,6 +52,38 @@ const openMonth = () => {
 };
 
 const CHECK_CONNECTION = 'Check your connection and try again.';
+
+/** How long Undo stays after a delete, as Train's skip does; longer with VoiceOver. */
+const UNDO_MS = 5000;
+const UNDO_MS_SCREEN_READER = 20000;
+
+/** The entry just deleted, to take back from the bar at the foot for a few seconds. */
+const useDeletedEntry = create<{ entry: FoodLog | null; key: number }>(() => ({ entry: null, key: 0 }));
+
+/** Deletes an entry at once and offers Undo at the foot, which puts it back as it was. */
+function deleteWithUndo(log: FoodLog) {
+  useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1 }));
+  report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
+}
+
+function undoDelete() {
+  const { entry } = useDeletedEntry.getState();
+  if (!entry) return;
+  useDeletedEntry.setState({ entry: null });
+  void useFuelStore
+    .getState()
+    .restoreEntry(entry)
+    .catch(() => false)
+    .then((ok) => {
+      if (ok) {
+        haptics.success();
+        announce(`${entry.food?.name ?? 'Food'} back`);
+        return;
+      }
+      haptics.error();
+      Alert.alert('Not put back', CHECK_CONNECTION);
+    });
+}
 
 /**
  * The week strip's cells are a fixed seven across: their text stops growing
@@ -135,6 +170,18 @@ export default function FuelScreen() {
   // Bulking, going past a target is a good day, not a red one.
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const { selected, logs, groups, loaded, status } = useFuelDay();
+  // The latest delete's Undo, for a few seconds; leaving Fuel lets it go.
+  const deleted = useDeletedEntry((state) => state.entry);
+  const deletedKey = useDeletedEntry((state) => state.key);
+  const workoutBar = useWorkoutBarShown((state) => state.shown);
+  useEffect(() => {
+    if (!deleted) return;
+    const timer = setTimeout(() => {
+      if (useDeletedEntry.getState().key === deletedKey) useDeletedEntry.setState({ entry: null });
+    }, screenReaderRunning() ? UNDO_MS_SCREEN_READER : UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [deleted, deletedKey]);
+  useEffect(() => () => useDeletedEntry.setState({ entry: null }), []);
   const monthLogs = useFuelStore((state) => state.logs);
   const selectedDate = new Date(`${selected}T12:00:00`);
   // Read on every render and handed down, so the rows' "today" changes at
@@ -321,6 +368,8 @@ export default function FuelScreen() {
           </BlancText>
         ) : null}
       </TabScroll>
+
+      <UndoBar label={deleted ? `${deleted.food?.name ?? 'Food'} deleted` : null} bottom={tabBarCover(workoutBar) + 8} onUndo={undoDelete} />
     </>
   );
 }
@@ -543,8 +592,8 @@ function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: 
   const savedMeals = useKnownSavedMeals();
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
-  // The row slides away at once; it comes back if the delete fails.
-  const remove = () => report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
+  // The row slides away at once; it comes back if the delete fails, and Undo at the foot brings it back.
+  const remove = () => deleteWithUndo(log);
 
   // Move to opens the day's other meals; the hold menu, the swipe's More
   // and VoiceOver all offer the same list.

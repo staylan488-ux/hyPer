@@ -48,7 +48,8 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
   }, [state, beginBusy]);
 
   const resolve = useCallback(
-    async (rawValue: string, format?: string) => {
+    // pressed: Look up barcode, whose capsule has already given its tap.
+    async (rawValue: string, format?: string, pressed = false) => {
       const barcode = normalizeFoodBarcode(rawValue, format);
       if (!barcode) {
         haptics.error();
@@ -56,7 +57,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
         setMessage(BARCODE_MESSAGES.invalid);
         return;
       }
-      haptics.tap();
+      if (!pressed) haptics.tap();
       setMissed(null);
       setState('looking-up');
       setMessage(`Looking up ${barcode}…`);
@@ -197,7 +198,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
         </Label>
         {/* Scan's size; the main action when this phone cannot scan. */}
         <View style={{ paddingHorizontal: space.inset, marginTop: 12 }}>
-          <Capsule title="Look up barcode" variant={available ? 'quiet' : 'primary'} size="large" fill disabled={!typedValid || busy} onPress={() => void resolve(typed)} />
+          <Capsule title="Look up barcode" variant={available ? 'quiet' : 'primary'} size="large" fill disabled={!typedValid || busy} onPress={() => void resolve(typed, undefined, true)} />
         </View>
       </View>
 

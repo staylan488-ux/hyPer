@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { startOfMonth } from 'date-fns';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,7 +38,8 @@ const requestPermissions = vi.fn<() => Promise<Permission>>();
 const openSettings = vi.fn();
 const router = { dismiss: vi.fn(), navigate: vi.fn() };
 const saveTrackedRun = vi.fn<(run: runTracker.FinishedRun) => Promise<{ id: string } | null>>();
-const loadHistoryMonth = vi.fn<() => Promise<void>>();
+const loadHistoryMonth = vi.fn<(month?: Date) => Promise<void>>();
+const selectHistoryDay = vi.fn<(day: Date) => void>();
 
 let root: Root;
 let host: HTMLDivElement;
@@ -46,7 +48,7 @@ async function renderRunScreen() {
   const { default: RunScreen } = loadNativeModule<{ default: () => ReactNode }>('app/run.tsx', {
     '@expo/ui/swift-ui': { Host: box, Picker: box, Text: box },
     '@expo/ui/swift-ui/modifiers': { pickerStyle: () => null, tag: () => null, tint: () => null },
-    'date-fns': { format: () => '' },
+    'date-fns': { format: () => '', startOfMonth },
     'expo-router': { router },
     'react-native': {
       ActionSheetIOS: { showActionSheetWithOptions: vi.fn() },
@@ -83,7 +85,7 @@ async function renderRunScreen() {
     '~/components/Section': { Section: box },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { error: vi.fn(), select: vi.fn(), success: vi.fn(), tap: vi.fn() } },
-    '~/lib/history': { loadHistoryMonth },
+    '~/lib/history': { loadHistoryMonth, selectHistoryDay },
     '~/lib/launchLink': launchLink,
     '~/platform/previewFlag': { isPreviewActive: () => false },
     '~/theme/blanc': { space: { gutter: 16, inset: 16 }, useBlanc: () => ({}) },
@@ -172,12 +174,14 @@ describe('saving a finished run', () => {
     tracker.finishedRun = null;
   });
 
-  it('reads History’s month again, then opens History', async () => {
+  it('reads History’s month again, then opens History on the run’s day', async () => {
     saveTrackedRun.mockResolvedValue({ id: 'activity-1' });
     await act(async () => { button('Save run')!.click(); });
 
     expect(saveTrackedRun).toHaveBeenCalledWith(run);
+    expect(selectHistoryDay).toHaveBeenCalledWith(new Date(run.startedAtMs));
     expect(loadHistoryMonth).toHaveBeenCalledTimes(1);
+    expect(loadHistoryMonth.mock.calls[0][0]?.getMonth()).toBe(new Date(run.startedAtMs).getMonth());
     expect(router.navigate).toHaveBeenCalledWith('/train/history');
   });
 

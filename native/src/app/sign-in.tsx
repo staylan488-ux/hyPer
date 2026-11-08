@@ -15,6 +15,7 @@ import { Hairline } from '~/components/Row';
 import { useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useIntroRise } from '~/lib/brand';
 import { clearFuelReminders } from '~/lib/fuelReminder';
+import { authErrorWords } from '~/lib/auth';
 import { haptics } from '~/lib/haptics';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
@@ -85,7 +86,7 @@ export default function SignIn() {
       const { error: signInError } = await signIn(trimmedEmail, password);
       if (signInError) {
         haptics.error();
-        setError(signInError.message);
+        setError(authErrorWords(signInError.message));
       }
       return;
     }
@@ -94,7 +95,7 @@ export default function SignIn() {
     const { error: signUpError, existingAccount } = await signUp(trimmedEmail, password, displayName);
     if (signUpError) {
       haptics.error();
-      setError(signUpError.message);
+      setError(authErrorWords(signUpError.message));
       setShowSignInPrompt(existingAccount);
       setSignupSuccess(null);
       setPendingVerificationEmail(null);
@@ -121,7 +122,7 @@ export default function SignIn() {
     // Closing the sheet is a choice, not a failure.
     if (providerError && providerError.message !== SIGN_IN_CANCELLED) {
       haptics.error();
-      setError(providerError.message);
+      setError(authErrorWords(providerError.message));
     }
   };
 
@@ -150,7 +151,7 @@ export default function SignIn() {
       const { error: resendError } = await resendSignupConfirmation(targetEmail);
       if (resendError) {
         haptics.error();
-        setError(resendError.message);
+        setError(authErrorWords(resendError.message));
         return;
       }
       haptics.success();

@@ -35,6 +35,8 @@ export type LoggerContextValue = {
   addIngredients: (ingredients: MealIngredient[]) => void;
   /** A saved composed meal: opens it in the meal builder (log purpose). */
   composeMeal: (food: Food, editSaved?: boolean) => void;
+  /** Manual, with this name typed in (Search's way on when nothing matches); Manual's own typing is kept. */
+  enterManually?: (name: string) => void;
   /** Closes the sheet after a confirmed save. */
   complete: () => void;
   /** Claims the sheet for a lookup; the returned cleanup releases only that claim, once. Closing asks first meanwhile. */

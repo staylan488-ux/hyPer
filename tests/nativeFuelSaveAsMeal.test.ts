@@ -17,6 +17,7 @@ import * as savedMealFromLog from '@/lib/savedMealFromLog';
 import type { Food } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import { create as zustandCreate } from 'zustand';
 
 // the real saved-foods cache runs over this account store
 const auth = vi.hoisted(() => ({ state: { user: { id: 'user-a' } } }));
@@ -84,7 +85,10 @@ async function renderFuel({ compile = false } = {}) {
     '~/components/Row': { Row: (props: { title: string; menu?: MenuAction[] }) => { rows[props.title] = props; return null; }, Hairline: Empty },
     '~/components/Section': { Section: Wrap },
     '~/components/SwipeRow': { SwipeRow: Wrap },
-    '~/components/TabScroll': { TabScroll: Wrap },
+    '~/components/TabScroll': { TabScroll: Wrap, tabBarCover: () => 0 },
+    '~/components/UndoBar': { UndoBar: () => null },
+    '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
+    zustand: { create: zustandCreate },
     '~/components/Track': { Track: Empty },
     '~/fuel/DayMark': { DayMark: Empty },
     '~/lib/format': { formatWhole: String },

@@ -10,7 +10,7 @@ import {
   normalizeNutritionGroupOrder,
 } from '@/lib/nutritionGroups';
 import { supabase } from '@/lib/supabase';
-import type { NutritionGroup } from '@/types';
+import type { NutritionGroup, NutritionLog } from '@/types';
 
 /** Writes each group's sort_order; false when any write failed. */
 export async function persistGroupOrder(groups: NutritionGroup[]): Promise<boolean> {
@@ -182,6 +182,40 @@ export async function moveEntryToPreviousDay(log: { id: string; date: string; lo
 }
 
 /** Deletes an entry (no confirm). */
+/**
+ * Puts a deleted entry back exactly as it was (Undo after a delete): the same
+ * row id, food, amount, time, meal and source. False when it could not be
+ * written, for example after its meal was deleted too.
+ */
+export async function restoreNutritionEntry(log: NutritionLog & { created_at?: string | null }): Promise<boolean> {
+  const row = {
+    id: log.id,
+    user_id: log.user_id,
+    date: log.date,
+    logged_at: log.logged_at,
+    food_id: log.food_id,
+    servings: log.servings,
+    meal_type: log.meal_type ?? null,
+    group_id: log.group_id ?? null,
+    sort_order: log.sort_order ?? 0,
+    source: log.source ?? 'manual',
+    external_id: log.external_id ?? null,
+    import_batch_id: log.import_batch_id ?? null,
+    ...(log.created_at ? { created_at: log.created_at } : {}),
+  };
+  try {
+    const { error } = await supabase.from('nutrition_logs').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.error('Error restoring entry:', error);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Error restoring entry:', error);
+    return false;
+  }
+}
+
 export async function deleteNutritionEntry(logId: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('nutrition_logs').delete().eq('id', logId);

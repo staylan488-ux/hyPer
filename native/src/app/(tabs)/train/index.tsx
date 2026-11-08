@@ -143,16 +143,19 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       });
     });
   };
-  const focusedId = useFocusStore((state) => state.exerciseId);
-  const focusSeen = useRef(focusedId);
-  const onFocusChange = useEffectEvent(() => revealCard());
-  useEffect(() => {
-    if (focusSeen.current === focusedId) return;
-    focusSeen.current = focusedId;
-    onFocusChange();
-  }, [focusedId]);
-
   const current = session.current;
+  // Whatever brought the next movement up (its last set logged, a skip, a
+  // swap, one brought back or tapped in the list): its card shows with its
+  // name, rather than staying scrolled under the bar from typing or the list.
+  const currentId = current?.movement.exerciseId ?? null;
+  const currentSeen = useRef(currentId);
+  const onCurrentChange = useEffectEvent(() => revealCard());
+  useEffect(() => {
+    if (currentSeen.current === currentId) return;
+    currentSeen.current = currentId;
+    if (currentId) onCurrentChange();
+  }, [currentId]);
+
   const [draft, setDraft] = useState<Draft | null>(() => (current ? suggestedDraft(current, previous) : null));
   const [saving, setSaving] = useState(false);
   // The set whose save failed: its card says so and offers Retry. Another

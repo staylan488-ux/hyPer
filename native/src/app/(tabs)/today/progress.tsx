@@ -1,5 +1,5 @@
 import { format, isSameMonth, parseISO, startOfWeek, subDays } from 'date-fns';
-import { router, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
@@ -28,6 +28,7 @@ import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
 import { useMuscleTones } from '~/theme/useMuscleTones';
+import { openTrain } from '~/lib/openTrain';
 
 const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
@@ -141,7 +142,7 @@ export default function ProgressScreen() {
                   Log a session and Progress tracks each muscle&apos;s weekly sets against its landmarks.
                 </BlancText>
                 <View style={{ alignSelf: 'flex-start' }}>
-                  <Capsule title="Start training" onPress={() => router.navigate('/train')} />
+                  <Capsule title="Start training" onPress={openTrain} />
                 </View>
               </Label>
             ) : (

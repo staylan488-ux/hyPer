@@ -3,6 +3,7 @@
 // phone locked or the app in the background, in a single slot. Local only: the
 // app asks for no push permission.
 import * as Notifications from 'expo-notifications';
+import { Alert } from 'react-native';
 
 import { isFuelReminderId } from '~/lib/fuelReminderPlan';
 
@@ -25,12 +26,27 @@ Notifications.setNotificationHandler({
 
 let permissionRequested = false;
 
+/**
+ * Says why before iOS asks: its own prompt names only the app, and it came up
+ * the moment the first set was logged with nothing to say it was the rest
+ * timer. Not now leaves iOS's question for a later launch.
+ */
+function explainRestAlerts(): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert('Rest alerts', 'hyPer can tell you when rest is over, even with your phone locked.', [
+      { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+      { text: 'Continue', onPress: () => resolve(true) },
+    ]);
+  });
+}
+
 /** Ask once, the first time a rest runs, so the iOS prompt appears in context. */
 async function ensurePermission(): Promise<boolean> {
   const status = await Notifications.getPermissionsAsync();
   if (status.granted) return true;
   if (permissionRequested || !status.canAskAgain) return false;
   permissionRequested = true;
+  if (!(await explainRestAlerts())) return false;
   const requested = await Notifications.requestPermissionsAsync({
     ios: { allowAlert: true, allowSound: true, allowBadge: false },
   });

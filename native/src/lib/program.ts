@@ -33,9 +33,14 @@ const userId = () => useAuthStore.getState().user?.id ?? null;
 // the screen's own tap for a header item), so these two stay silent.
 
 /** Opens the editor on a saved program. */
-export function editProgram(split: Split) {
+export function editProgram(split: Split, dayId?: string) {
   useSplitEditStore.getState().startEdit(split, { userId: userId() });
-  router.push({ pathname: '/program-edit', params: { mode: 'edit' } });
+  router.push({ pathname: '/program-edit', params: dayId ? { mode: 'edit', day: dayId } : { mode: 'edit' } });
+}
+
+/** Opens the editor on one day; the program stays under it to go back to and save from. */
+export function editProgramDay(split: Split, dayId: string) {
+  editProgram(split, dayId);
 }
 
 /** Opens the new-program chooser. */

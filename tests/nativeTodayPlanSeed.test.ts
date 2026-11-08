@@ -204,11 +204,21 @@ describe('holding the plan for the workout read', () => {
   it('stays loading until this launch’s workout read lands', async () => {
     readTodayDone.mockResolvedValue({ title: 'Push' });
     hint.setState({ seed: null, holdPlan: true });
-    accountDay.setState({ loading: false });
     await render();
     expect(latest.hero.kind).toBe('loading');
     await update(() => app.setState({ workoutLoadedForUserId: 'user-2' }));
     expect(latest.hero.kind).toBe('loading');
+    await update(() => accountDay.setState({ loading: false }));
+    await update(() => app.setState({ workoutLoadedForUserId: USER }));
+    expect(latest.hero).toEqual({ kind: 'done', title: 'Push' });
+  });
+
+  it('offers Retry, not an empty place, once the account load ends without the workout read', async () => {
+    readTodayDone.mockResolvedValue({ title: 'Push' });
+    hint.setState({ seed: null, holdPlan: true });
+    accountDay.setState({ loading: false });
+    await render();
+    expect(latest.hero.kind).toBe('schedule-error');
     await update(() => app.setState({ workoutLoadedForUserId: USER }));
     expect(latest.hero).toEqual({ kind: 'done', title: 'Push' });
   });

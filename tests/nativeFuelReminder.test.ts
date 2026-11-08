@@ -538,6 +538,7 @@ describe('the notification handler', () => {
     const setNotificationHandler = vi.fn();
     loadNativeModule('platform/restNotifications.ts', {
       'expo-notifications': { setNotificationHandler, SchedulableTriggerInputTypes: { DATE: 'date' } },
+      'react-native': { Alert: { alert: vi.fn() } },
       '~/lib/fuelReminderPlan': plan,
     });
     const { handleNotification } = setNotificationHandler.mock.calls[0][0] as {
@@ -550,6 +551,51 @@ describe('the notification handler', () => {
   });
 });
 
+
+describe('the first rest asks for alerts with a reason', () => {
+  type Choice = { text: string; onPress?: () => void };
+  const load = (granted: boolean) => {
+    let choices: Choice[] = [];
+    const alert = vi.fn((_title: string, _message: string, buttons: Choice[]) => { choices = buttons; });
+    const requestPermissionsAsync = vi.fn(async () => ({ granted }));
+    const scheduleNotificationAsync = vi.fn(async () => 'id');
+    const module = loadNativeModule<{ scheduleRestEndNotification: (endsAt: string) => Promise<void> }>('platform/restNotifications.ts', {
+      'expo-notifications': {
+        setNotificationHandler: vi.fn(),
+        SchedulableTriggerInputTypes: { DATE: 'date' },
+        getPermissionsAsync: vi.fn(async () => ({ granted: false, canAskAgain: true })),
+        requestPermissionsAsync,
+        scheduleNotificationAsync,
+      },
+      'react-native': { Alert: { alert } },
+      '~/lib/fuelReminderPlan': plan,
+    });
+    return { module, alert, requestPermissionsAsync, scheduleNotificationAsync, choose: (text: string) => choices.find((choice) => choice.text === text)!.onPress!() };
+  };
+  const later = () => new Date(Date.now() + 90_000).toISOString();
+
+  it('explains first, then lets iOS ask on Continue', async () => {
+    const h = load(true);
+    const scheduling = h.module.scheduleRestEndNotification(later());
+    await vi.waitFor(() => expect(h.alert).toHaveBeenCalledOnce());
+    expect(h.alert.mock.calls[0][0]).toBe('Rest alerts');
+    expect(h.requestPermissionsAsync).not.toHaveBeenCalled();
+    h.choose('Continue');
+    await scheduling;
+    expect(h.requestPermissionsAsync).toHaveBeenCalledOnce();
+    expect(h.scheduleNotificationAsync).toHaveBeenCalledOnce();
+  });
+
+  it('asks iOS nothing on Not now, and the rest runs without an alert', async () => {
+    const h = load(true);
+    const scheduling = h.module.scheduleRestEndNotification(later());
+    await vi.waitFor(() => expect(h.alert).toHaveBeenCalledOnce());
+    h.choose('Not now');
+    await scheduling;
+    expect(h.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(h.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
 
 describe('confirmed food writes with a failed refresh', () => {
   const log = (calories: number, protein: number): FoodLog => ({

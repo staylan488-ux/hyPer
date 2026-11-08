@@ -20,6 +20,12 @@ describe('hosted food trial transport', () => {
     await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('same input');
     expect(fetcher).toHaveBeenCalledOnce();
   });
+  it('says a failure without the service’s own words plainly, never as a status code alone', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 503 })));
+    await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('Food analysis isn’t available right now. Try again in a moment.');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Daily limit reached.' }), { status: 429 })));
+    await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('Daily limit reached.');
+  });
   it('does not fallback when the model is unavailable or substituted', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...previewFoodTrialResult, model: 'different-model' }))));
     await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('unexpected model');

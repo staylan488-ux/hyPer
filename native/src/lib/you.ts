@@ -192,16 +192,31 @@ export function setWeightUnit(unit: WeightUnit) {
   useWeightStore.setState({ unit });
 }
 
-/** Records a typed weigh-in, then reloads the history. Returns an error message or null. */
-export async function logWeighIn(kilograms: number): Promise<string | null> {
+/**
+ * When a weigh-in logged for a day ('yyyy-MM-dd') was taken: now for today;
+ * on an earlier day, that day at the present time of day.
+ */
+export function weighInTime(day: string, today: string, now = new Date()): Date {
+  if (day >= today) return now;
+  const [year, month, date] = day.split('-').map(Number);
+  return new Date(year, month - 1, date, now.getHours(), now.getMinutes());
+}
+
+/**
+ * Records a typed weigh-in, now or on an earlier day, then reloads the
+ * history. Returns an error message or null. With every weigh-in on show
+ * (the weigh-ins list), it reads them all again, so one dated before the
+ * recent window is listed too.
+ */
+export async function logWeighIn(kilograms: number, measuredAt: Date = new Date()): Promise<string | null> {
   const userId = currentUserId();
   if (!userId) return 'Sign in again to log your weight.';
   try {
-    await recordManualBodyWeight(userId, kilograms);
+    await recordManualBodyWeight(userId, kilograms, measuredAt);
   } catch (error) {
     return error instanceof Error ? error.message : 'Could not save that weigh-in.';
   }
-  await loadWeights();
+  await loadWeights({ all: useWeightStore.getState().all !== null });
   return null;
 }
 

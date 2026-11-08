@@ -238,7 +238,10 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
     });
     return { lifts, other };
   }, [workouts, activities]);
-  const pages = useMemo(() => [addMonths(month, -1), month, addMonths(month, 1)], [month]);
+  // History looks back: the month after this one is all days to come, so the
+  // pages stop at this month (no next page to swipe to, the arrow dimmed).
+  const hasNext = startOfMonth(month) < startOfMonth(parseISO(todayKey));
+  const pages = useMemo(() => (hasNext ? [addMonths(month, -1), month, addMonths(month, 1)] : [addMonths(month, -1), month]), [month, hasNext]);
 
   // VoiceOver hears the new month however it turned (an arrow, a swipe, a
   // day of the next month, Today), since focus stays where it was.
@@ -286,6 +289,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
         <MonthArrow
           symbol="chevron.right"
           label="Next month"
+          disabled={!hasNext}
           onPress={() => {
             if (reduceMotion) {
               arrowTurn.current = true;
@@ -466,18 +470,21 @@ function DayCell({
   );
 }
 
-function MonthArrow({ symbol, label, onPress }: { symbol: 'chevron.left' | 'chevron.right'; label: string; onPress: () => void }) {
+function MonthArrow({ symbol, label, disabled = false, onPress }: { symbol: 'chevron.left' | 'chevron.right'; label: string; disabled?: boolean; onPress: () => void }) {
   const c = useBlanc();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={() => {
         haptics.select();
         onPress();
       }}
       style={({ pressed }) => ({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
-      <SymbolView name={symbol} size={16} weight="semibold" tintColor={c.ink} />
+      {/* With no month to turn to, the chevron stays in its place in the quiet upcoming grey. */}
+      <SymbolView name={symbol} size={16} weight="semibold" tintColor={disabled ? c.upcoming : c.ink} />
     </Pressable>
   );
 }
@@ -493,11 +500,11 @@ function AddActivityButton({ day }: { day: string }) {
         haptics.tap();
         router.push({ pathname: '/activity', params: { day } });
       }}
-      // "+ Add", as every in-content add reads ("+ Log food", "+ Log").
+      // "+ Add activity", naming what it adds as "+ Log food" does (a bare "Add" could mean a workout), and the sheet it opens.
       style={({ pressed }) => ({ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 5, opacity: pressed ? 0.45 : 1 })}>
       <SymbolView name="plus" size={13} weight="semibold" tintColor={c.ink} />
-      <BlancText variant="bodyStrong" size={15}>
-        Add
+      <BlancText variant="bodyStrong" size={15} numberOfLines={1}>
+        Add activity
       </BlancText>
     </Pressable>
   );

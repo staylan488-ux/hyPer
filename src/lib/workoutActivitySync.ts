@@ -139,7 +139,7 @@ export function workoutActivityDetailLine({
   tonnage: number;
 }): string {
   return [
-    nextSetNumber ? `set ${nextSetNumber}` : null,
+    nextSetNumber ? `Set ${nextSetNumber}` : null,
     `${completedSets} of ${totalSets} sets`,
     tonnage > 0 ? `${Math.round(tonnage).toLocaleString('en-US')} lb` : null,
   ]

@@ -191,8 +191,16 @@ describe("History's month grid", () => {
   // The month's cells, in grid order, for each of the three pages (last, this, next month).
   const grids = () => [...host.querySelectorAll('div')].filter((node) => node.children.length >= 28 && node.children.length % 7 === 0);
 
-  it('starts its weeks on Monday, as the training week and Fuel do: M T W T F S S', async () => {
+  // The month shown is November 2026; "today" decides whether the month after it is drawn.
+  const today = async (iso: string) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(iso));
     await open();
+  };
+  afterEach(() => vi.useRealTimers());
+
+  it('starts its weeks on Monday, as the training week and Fuel do: M T W T F S S', async () => {
+    await today('2027-01-10T12:00:00');
     const header = [...host.querySelectorAll('div')].find(
       (node) => node.children.length === 7 && [...node.children].every((child) => /^[A-Z]$/.test(child.textContent ?? '')),
     );
@@ -203,5 +211,10 @@ describe("History's month grid", () => {
     expect(november[7]).toBe('2');
     // December begins on a Tuesday, the second place.
     expect([...grids()[2].children].map((cell) => cell.textContent).slice(0, 2)).toEqual(['', '1']);
+  });
+
+  it('stops at the current month: no page of days to come to swipe to', async () => {
+    await today('2026-11-07T12:00:00');
+    expect(grids()).toHaveLength(2);
   });
 });

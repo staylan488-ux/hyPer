@@ -98,7 +98,7 @@ export function useLaunchActionRunner(): void {
 function runLaunchStep(step: LaunchStep): void {
   if (step.kind === 'open-log-food') router.push(step.camera ? { pathname: '/log-food', params: { start: 'camera', atMs: String(step.atMs) } } : '/log-food');
   else if (step.kind === 'logger-camera') askLoggerCamera(step.atMs);
-  // The same call as the workout bar, Today's Open workout and PlanCard.
+  // Switches to Train as it was left, as tapping its tab does.
   else if (step.kind === 'train') router.navigate('/train');
   else if (step.kind === 'refused') refusePress();
 }

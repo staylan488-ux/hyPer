@@ -12,6 +12,7 @@ import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import {
   createNutritionGroup,
   deleteNutritionEntry,
+  restoreNutritionEntry,
   deleteNutritionGroup,
   ensureDefaultGroups,
   mergeGroups,
@@ -78,6 +79,8 @@ type FuelState = {
   /** Creates a day's missing Breakfast, Lunch and Dinner (a failed day is not retried this session). */
   ensureDayGroups: (key: string) => Promise<void>;
   deleteEntry: (id: string) => Promise<boolean>;
+  /** Undo for a delete: puts the entry back as it was, once its delete has finished. */
+  restoreEntry: (log: FoodLog) => Promise<boolean>;
   moveEntry: (id: string, groupId: string | null) => Promise<boolean>;
   moveEntryToYesterday: (id: string) => Promise<boolean>;
   /** Logs a past day's entries again today, in the matching meal, then shows today. */
@@ -285,6 +288,22 @@ export const useFuelStore = create<FuelState>((set, get) => {
         }
       }
       return ok;
+    }),
+
+    restoreEntry: editsCopy(async (log: FoodLog) => {
+      const isCurrent = captureAccountScope();
+      // The delete lands first, so the entry is never written and then removed.
+      await deletedEntries.get(log.id);
+      if (!isCurrent()) return false;
+      // restoreNutritionEntry writes only the row's own columns, never the joined food.
+      const ok = await restoreNutritionEntry(log);
+      if (!ok || !isCurrent()) return ok;
+      deletedEntries.delete(log.id);
+      if (get().loadedMonth === monthOf(log.date) && !get().logs.some((candidate) => candidate.id === log.id)) {
+        set({ logs: [...get().logs, log] });
+      }
+      syncTodayTotals();
+      return true;
     }),
 
     moveEntry: editsCopy(async (id: string, groupId: string | null) => {

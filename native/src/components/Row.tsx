@@ -63,6 +63,11 @@ export function Row({ title, detail: given, detailMark, value, leading, trailing
   const c = useBlanc();
   const large = useLargeText();
   const detail = detailLine(given);
+  // At the accessibility sizes each part of the line ("6:58 AM · 16 min ·
+  // 0.40 mi") takes its own line, so no figure breaks from its unit ("16 /
+  // min"); a long wrapped line here was also drawn on one clipped line.
+  // VoiceOver still reads the line whole.
+  const shownDetail = large && detail ? detail.split(' · ').join('\n') : detail;
   // In parts on one line, the first gives way; at the large sizes the line wraps whole.
   const parts = typeof given !== 'string' && given && given.length > 1 && given[0] && !large ? given : null;
   // Spoken as its words only: icons such as the chevron add nothing, and
@@ -108,7 +113,7 @@ export function Row({ title, detail: given, detailMark, value, leading, trailing
               <PartsLine parts={parts} style={{ flex: 1 }} />
             ) : (
               <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ flexShrink: 1 }}>
-                {detail}
+                {shownDetail}
               </BlancText>
             )}
           </View>
@@ -116,7 +121,7 @@ export function Row({ title, detail: given, detailMark, value, leading, trailing
           <PartsLine parts={parts} style={{ marginTop: 1 }} />
         ) : detail ? (
           <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-            {detail}
+            {shownDetail}
           </BlancText>
         ) : null}
         {value && large ? (

@@ -282,7 +282,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, menu, onLongPress
       {onAdd || opening ? (
         <RoundButton
           symbol={state === 'done' ? 'checkmark' : 'plus'}
-          label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added` : `Add ${food.name}`}
+          label={opening ? `Opening ${food.name}` : state === 'done' ? `${food.name} added. Take it out` : `Add ${food.name}`}
           busy={state === 'saving' || opening}
           done={state === 'done'}
           onPress={() => onAdd?.()}
@@ -304,7 +304,7 @@ function RoundButton({ symbol, label, busy, done, onPress }: {
   symbol: 'plus' | 'checkmark';
   label: string;
   busy?: boolean;
-  /** Already logged: the tick stays put so a second tap can't log it twice. */
+  /** Already logged: the ink tick, and a tap on it takes the entry back out (it never logs twice). */
   done?: boolean;
   onPress: () => void;
 }) {
@@ -313,8 +313,8 @@ function RoundButton({ symbol, label, busy, done, onPress }: {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      disabled={busy || done}
-      accessibilityState={{ disabled: Boolean(busy || done), busy: Boolean(busy) }}
+      disabled={busy}
+      accessibilityState={{ disabled: Boolean(busy), busy: Boolean(busy) }}
       // a 32-point disc, 44 points to touch
       hitSlop={6}
       onPress={() => {
@@ -352,6 +352,9 @@ function quickAddKey(when: When, food: string): string {
  * Breakfast can still go to Lunch, and keeps its retry-safe id and first
  * destination until its save is confirmed.
  */
+/** Each confirmed quick add's entry, by its key, so a tap on its tick can take it back. */
+const quickAddedEntries = new Map<string, { id: string; name: string }>();
+
 export function useQuickAdd() {
   const logger = useLogger();
   const { quickAddStates: states, setQuickAddStates: setStates, pendingQuickAdds: pendingAdds } = logger;
@@ -383,14 +386,41 @@ export function useQuickAdd() {
     }
     const key = quickAddKey(sheet.when, foodKey);
     const kept = pendingAdds.get(key);
+    // A tap on the tick takes back what it just logged (a mis-tapped +), and the + comes back.
+    if (drawnStates[key] === 'done' && !kept?.inFlight) {
+      const logged = quickAddedEntries.get(key);
+      if (!logged) return;
+      const release = sheet.beginSave();
+      setStates((state) => ({ ...state, [key]: 'saving' }));
+      const removed = await useFuelStore.getState().deleteEntry(logged.id).catch(() => false);
+      release();
+      if (removed) {
+        quickAddedEntries.delete(key);
+        haptics.success();
+        setStates((state) => {
+          const next = { ...state };
+          delete next[key];
+          return next;
+        });
+        announce(`${logged.name} taken out`);
+        void useFuelStore.getState().refreshAfterWrite();
+      } else {
+        haptics.error();
+        setStates((state) => ({ ...state, [key]: 'done' }));
+        announce(`Couldn't take out ${logged.name}`);
+      }
+      return;
+    }
     // One write at a time for a food and meal, read now rather than as drawn,
-    // so a second tap before the redraw can't start another; a confirmed one stays done.
+    // so a second tap before the redraw can't start another.
     if (kept?.inFlight || drawnStates[key] === 'done') return;
     // A retry after an unconfirmed save writes that same entry: its id (the
     // write upserts on it, so it can't log twice), its time and its meal.
     const attempt = kept ?? { pending: createPendingEntryId(), when: sheet.when, groups: sheet.groups, inFlight: false };
     attempt.inFlight = true;
     pendingAdds.set(key, attempt);
+    // The id this save writes under (the same one a retry reuses), kept for taking it back.
+    const entryId = attempt.pending.take();
     const release = sheet.beginSave();
     setStates((state) => ({ ...state, [key]: 'saving' }));
     const saved = await saveQuickAdd(food, {
@@ -409,6 +439,7 @@ export function useQuickAdd() {
       return;
     }
     pendingAdds.delete(key);
+    quickAddedEntries.set(key, { id: entryId, name: food.name });
     haptics.success();
     setStates((state) => ({ ...state, [key]: 'done' }));
     release();
@@ -678,21 +709,35 @@ export function SearchTab({ query }: { query: string }) {
       ) : null}
       {searching ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
       {trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
-      {results !== null && results.length === 0 && saved.length === 0 ? <Empty text="No USDA matches." /> : null}
+      {results !== null && results.length === 0 && saved.length === 0 ? (
+        <>
+          <Empty text="No USDA matches." />
+          {/* Not a dead end: the food can still go in by hand, with its name already typed. */}
+          {logger.purpose === 'log' && logger.enterManually ? (
+            <Capsule title="Enter it manually" variant="quiet" onPress={() => logger.enterManually?.(trimmed)} style={{ alignSelf: 'center', marginTop: 14 }} />
+          ) : null}
+        </>
+      ) : null}
       {failed ? (
         <View style={{ alignItems: 'center', gap: 14, marginTop: 32 }}>
           <BlancText variant="secondary" tone="graphite">
             The search failed. Check your connection.
           </BlancText>
-          <Capsule
-            title="Retry"
-            variant="quiet"
-            onPress={() => {
-              // the spinner, not the failure, while it tries again
-              setFound(null);
-              setAttempt((value) => value + 1);
-            }}
-          />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
+            <Capsule
+              title="Retry"
+              variant="quiet"
+              onPress={() => {
+                // the spinner, not the failure, while it tries again
+                setFound(null);
+                setAttempt((value) => value + 1);
+              }}
+            />
+            {/* Offline, typing it in is the way on. */}
+            {logger.purpose === 'log' && logger.enterManually ? (
+              <Capsule title="Enter it manually" variant="quiet" onPress={() => logger.enterManually?.(trimmed)} />
+            ) : null}
+          </View>
         </View>
       ) : null}
     </View>

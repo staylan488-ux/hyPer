@@ -63,10 +63,14 @@ export function useTodayPlan() {
   const storeReady = Boolean(userId) && hydratedForUserId === userId;
   // The phone's copy didn't say "no workout": the plan waits for this launch's workout read.
   const heldForWorkout = holdPlan && !workoutLoaded;
+  // The account load is over and that read still hasn't landed (no connection):
+  // the card says so with Retry rather than holding an empty place.
+  const workoutReadFailed = heldForWorkout && !loading;
+  const [retryWorkout] = useState(() => () => void useAppStore.getState().fetchCurrentWorkout());
 
   const hero = useMemo(
     () =>
-      todayHero({
+      workoutReadFailed ? { kind: 'schedule-error' as const, retry: retryWorkout } : todayHero({
         heroLoading: (loading && !storeReady) || heldForWorkout,
         currentWorkout,
         currentWorkoutDayPlan,
@@ -85,6 +89,8 @@ export function useTodayPlan() {
         adaptiveSchedulingEnabled,
       }),
     [
+      workoutReadFailed,
+      retryWorkout,
       loading,
       storeReady,
       heldForWorkout,
