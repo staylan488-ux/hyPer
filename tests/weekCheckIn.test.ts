@@ -9,9 +9,10 @@ vi.mock('@/lib/supabase', () => ({ supabase: {
 } }));
 
 import {
-  checkInWeek, checkInWeekLabel, estimatedMax, goalPaceKg, hasCheckIn, isCheckInDay, paceCall,
-  readWeekCheckIn, weekEating, weekRecords, weekWeight, type RecordSet,
+  checkInWeek, checkInWeekLabel, goalPaceKg, hasCheckIn, isCheckInDay, paceCall, priorRecords,
+  readWeekCheckIn, weekEating, weekRecords, weekWeight, type RecordSet, type WeekSet,
 } from '@/lib/weekCheckIn';
+import type { MovementSetRow } from '@/lib/movementHistory';
 
 // The Monday check-in looks back at the training week before (Monday to
 // Sunday): weight against the goal's pace, food a day, sets per muscle and
@@ -93,37 +94,44 @@ describe('food', () => {
 });
 
 describe('records', () => {
-  const set = (exerciseId: string, weight: number, reps: number, date = '2026-11-04'): RecordSet => ({ exerciseId, weight, reps, date });
-  const names = new Map([['bench', 'Bench press'], ['lever', 'Front lever'], ['squat', 'Squat'], ['row', 'Row']]);
-
-  it('counts a single as its own weight', () => {
-    expect(estimatedMax(set('bench', 225, 1))).toBe(225);
-    expect(estimatedMax(set('bench', 200, 5))).toBeCloseTo(233.33);
-    expect(estimatedMax(set('lever', 0, 8))).toBeNull();
+  const names: Record<string, string> = { bench: 'Bench press', lever: 'Front lever', squat: 'Squat', row: 'Row' };
+  const weekSet = (exercise: string, weight: number, reps: number, date = '2026-11-04'): WeekSet => ({ exercise_id: exercise, name: names[exercise], weight, reps, date });
+  let rowId = 0;
+  const priorRow = (exercise: string, weight: number, reps: number, date: string, completed = true): MovementSetRow => ({
+    id: `r${++rowId}`, workout_id: `w-${date}`, exercise_id: exercise, set_number: 1, weight, reps, completed: true,
+    workout: { date, created_at: null, completed },
   });
+  const ids = ['bench', 'lever', 'squat', 'row'];
 
-  it('finds one record a movement: a higher estimated max, else a heavier load, else more reps at 0 lb', () => {
-    const prior = [set('bench', 200, 5, '2026-10-20'), set('squat', 200, 10, '2026-10-21'), set('lever', 0, 6, '2026-10-22'), set('row', 150, 10, '2026-10-22')];
-    const week = [
-      set('bench', 205, 5), set('bench', 205, 3),
-      // A heavier triple that doesn't raise the estimated max.
-      set('squat', 230, 1, '2026-11-06'),
-      set('lever', 0, 8, '2026-11-05'),
+  it('finds one record a movement by the movement history’s rule: a higher estimated max, else a heavier load, else more bodyweight reps', () => {
+    const prior = priorRecords([
+      priorRow('bench', 200, 5, '2026-10-20'),
+      priorRow('squat', 200, 10, '2026-10-21'),
+      priorRow('lever', 0, 6, '2026-10-22'),
+      priorRow('row', 150, 10, '2026-10-22'),
+      // Unfinished workouts and the week itself never set the bar.
+      priorRow('bench', 300, 5, '2026-10-23', false),
+      priorRow('bench', 205, 5, '2026-11-04'),
+    ], ids, '2026-11-02');
+    const records = weekRecords([
+      weekSet('bench', 205, 5), weekSet('bench', 205, 3),
+      // A heavier single that doesn't raise the estimated max.
+      weekSet('squat', 230, 1, '2026-11-06'),
+      weekSet('lever', 0, 8, '2026-11-05'),
       // Matching the best is not beating it.
-      set('row', 150, 10),
-    ];
-    const records = weekRecords(week, prior, names);
-    expect(records.map((record) => [record.name, record.kind, record.set.weight, record.set.reps])).toEqual([
-      ['Squat', 'heaviest', 230, 1],
-      ['Front lever', 'most reps', 0, 8],
-      ['Bench press', 'estimated max', 205, 5],
+      weekSet('row', 150, 10),
+    ], prior);
+    expect(records.map((record) => [record.name, record.kind, record.set.weight, record.set.reps, record.set.date])).toEqual([
+      ['Squat', 'heaviest', 230, 1, '2026-11-06'],
+      ['Front lever', 'reps', 0, 8, '2026-11-05'],
+      ['Bench press', 'max', 205, 5, '2026-11-04'],
     ]);
-    expect(records.find((record) => record.name === 'Bench press')?.previous).toEqual(set('bench', 200, 5, '2026-10-20'));
+    expect(records.find((record) => record.name === 'Bench press')?.previous).toEqual({ weight: 200, reps: 5, date: '2026-10-20' });
   });
 
   it('sets nothing in a movement’s first week, with nothing to beat', () => {
-    expect(weekRecords([set('bench', 300, 5)], [], names)).toEqual([]);
-    expect(weekRecords([set('lever', 0, 10)], [set('lever', 20, 5, '2026-10-01')], names)).toEqual([]);
+    expect(weekRecords([weekSet('bench', 300, 5)], priorRecords([], ids, '2026-11-02'))).toEqual([]);
+    expect(weekRecords([weekSet('lever', 0, 10)], priorRecords([priorRow('lever', 20, 5, '2026-10-01')], ids, '2026-11-02'))).toEqual([]);
   });
 });
 
@@ -189,17 +197,10 @@ describe('reading the week', () => {
       ['back', 1, 'below_mev'],
     ]);
     expect(checkIn.records.map((record) => [record.name, record.kind, record.set.weight, record.previous.weight])).toEqual([
-      ['Bench press', 'estimated max', 205, 200],
-      ['Front lever', 'most reps', 0, 0],
+      ['Bench press', 'max', 205, 200],
+      ['Front lever', 'reps', 0, 0],
     ]);
     expect(hasCheckIn(checkIn)).toBe(true);
-  });
-
-  it('reads the earlier sets a page at a time', async () => {
-    const paged = await readWeekCheckIn({ userId: 'u1', todayKey: '2026-11-09', landmarks: [], setPageSize: 2 });
-    const whole = await readWeekCheckIn({ userId: 'u1', todayKey: '2026-11-09', landmarks: [] });
-    expect(paged.records).toEqual(whole.records);
-    expect(paged.records).toHaveLength(2);
   });
 
   it('holds nothing for an empty week', async () => {
@@ -217,7 +218,7 @@ describe('reading the week', () => {
 
 describe('the words on the card and Last week', async () => {
   const words = await import('../native/src/lib/weekCheckIn');
-  const set = (weight: number, reps: number): RecordSet => ({ exerciseId: 'bench', weight, reps, date: '2026-11-04' });
+  const set = (weight: number, reps: number): RecordSet => ({ weight, reps, date: '2026-11-04' });
 
   it('signs a change in the chosen unit, with no sign when it rounds to nothing', () => {
     expect(words.signedWeight(0.2, 'lb')).toBe('+0.4 lb');
@@ -234,9 +235,9 @@ describe('the words on the card and Last week', async () => {
   });
 
   it('says what each record beat', () => {
-    expect(words.recordDetail({ exerciseId: 'bench', name: 'Bench', kind: 'estimated max', set: set(205, 5), previous: set(200, 5) })).toBe('Estimated max 239 lb · was 233');
-    expect(words.recordDetail({ exerciseId: 'bench', name: 'Bench', kind: 'heaviest', set: set(230, 1), previous: set(202.5, 8) })).toBe('Heaviest yet · was 202.5 lb');
-    expect(words.recordDetail({ exerciseId: 'lever', name: 'Lever', kind: 'most reps', set: set(0, 8), previous: set(0, 6) })).toBe('Most reps yet · was 6');
+    expect(words.recordDetail({ exerciseId: 'bench', name: 'Bench', kind: 'max', set: set(205, 5), previous: set(200, 5) })).toBe('Est. max 239 lb · was 233');
+    expect(words.recordDetail({ exerciseId: 'bench', name: 'Bench', kind: 'heaviest', set: set(230, 1), previous: set(202.5, 8) })).toBe('Heaviest · was 202.5 lb');
+    expect(words.recordDetail({ exerciseId: 'lever', name: 'Lever', kind: 'reps', set: set(0, 8), previous: set(0, 6) })).toBe('Most reps · was 6');
   });
 
   it('notes a muscle only outside its range', () => {
@@ -256,7 +257,7 @@ describe('Today’s Monday card', async () => {
   const { checkInLines } = await import('../native/src/lib/weekCheckIn');
   const week = checkInWeek('2026-11-09');
   const landmark = { id: 'l', user_id: 'u1', muscle_group: 'chest' as const, mv: 0, mev: 8, mav_low: 10, mav_high: 16, mrv: 22 };
-  const record = { exerciseId: 'bench', name: 'Bench', kind: 'estimated max' as const, set: { exerciseId: 'bench', weight: 205, reps: 5, date: '2026-11-04' }, previous: { exerciseId: 'bench', weight: 200, reps: 5, date: '2026-10-20' } };
+  const record = { exerciseId: 'bench', name: 'Bench', kind: 'max' as const, set: { weight: 205, reps: 5, date: '2026-11-04' }, previous: { weight: 200, reps: 5, date: '2026-10-20' } };
 
   it('reads a bulking week past its targets as plainly as one under them', () => {
     const lines = checkInLines(

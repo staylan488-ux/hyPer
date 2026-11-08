@@ -8,7 +8,10 @@ import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { supabase } from '@/lib/supabase';
 import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import { dailyMedianWeights, type WeightSampleLike } from '@/lib/weightTrend';
-import { calculateE1RM, toFiniteNumber } from '@/lib/workoutProgress';
+import {
+  buildMovementHistory, fetchMovementSets, findNewRecords, setFigures,
+  type MovementRecords, type MovementSetRow, type RecordKind, type SetFigures,
+} from '@/lib/movementHistory';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
 import type { MuscleGroup, MuscleVolume, VolumeLandmark } from '@/types';
 
@@ -127,18 +130,15 @@ export function weekEating(days: DailyNutrition[]): WeekEating | null {
 
 // ── Records ──────────────────────────────────────────────────────────────
 
-export interface RecordSet {
-  exerciseId: string;
-  weight: number;
-  reps: number;
+/** A set with the day it was done. Weight 0 is bodyweight. */
+export interface RecordSet extends SetFigures {
   date: DayKey;
 }
-
-export type RecordKind = 'estimated max' | 'heaviest' | 'most reps';
 
 export interface WeekRecord {
   exerciseId: string;
   name: string;
+  /** As the movement's own Records name it: estimated max, heaviest, most reps. */
   kind: RecordKind;
   /** The set that set it. */
   set: RecordSet;
@@ -146,59 +146,54 @@ export interface WeekRecord {
   previous: RecordSet;
 }
 
-/** A set's estimated one-rep max; a single counts as its own weight. */
-export function estimatedMax(set: Pick<RecordSet, 'weight' | 'reps'>): number | null {
-  if (set.weight <= 0 || set.reps <= 0) return null;
-  return set.reps === 1 ? set.weight : calculateE1RM(set.weight, set.reps);
-}
-
-const MEASURES: Array<{ kind: RecordKind; value: (set: RecordSet) => number | null }> = [
-  { kind: 'estimated max', value: estimatedMax },
-  { kind: 'heaviest', value: (set) => (set.weight > 0 && set.reps > 0 ? set.weight : null) },
-  // Bodyweight work (0 lb): more reps.
-  { kind: 'most reps', value: (set) => (set.weight === 0 && set.reps > 0 ? set.reps : null) },
-];
-
-/** Floating-point slack, so the same set logged again is never a record. */
-const RECORD_EPSILON = 0.01;
-
-function best(sets: RecordSet[], value: (set: RecordSet) => number | null): { set: RecordSet; value: number } | null {
-  let top: { set: RecordSet; value: number } | null = null;
-  for (const set of sets) {
-    const measured = value(set);
-    if (measured === null) continue;
-    // Ties go to the earlier set, the first time it was done.
-    if (!top || measured > top.value || (measured === top.value && set.date < top.set.date)) top = { set, value: measured };
-  }
-  return top;
+/** A completed set of the week, from a finished workout. */
+export interface WeekSet {
+  exercise_id: string;
+  name: string | null;
+  weight: number;
+  reps: number;
+  date: DayKey;
 }
 
 /**
- * The movements whose best this week beats every finished set before it, one
- * record each: a higher estimated max first, else a heavier load, else more
- * reps at 0 lb. A movement's first week breaks nothing, having nothing to
- * beat. Newest records first, then by name.
+ * The movements whose best this week beats every finished set before it, by
+ * the movement history's own rule (`findNewRecords`, one record a movement:
+ * a higher estimated max first, else a heavier load, else more bodyweight
+ * reps; a movement's first week breaks nothing). `prior` holds each
+ * movement's records before the week. Newest records first, then by name.
  */
-export function weekRecords(weekSets: RecordSet[], priorSets: RecordSet[], names: Map<string, string>): WeekRecord[] {
-  const byExercise = (sets: RecordSet[]) => {
-    const grouped = new Map<string, RecordSet[]>();
-    for (const set of sets) grouped.set(set.exerciseId, [...(grouped.get(set.exerciseId) ?? []), set]);
-    return grouped;
-  };
-  const prior = byExercise(priorSets);
-  const records: WeekRecord[] = [];
-  for (const [exerciseId, sets] of byExercise(weekSets)) {
-    const before = prior.get(exerciseId);
-    if (!before?.length) continue;
-    for (const measure of MEASURES) {
-      const now = best(sets, measure.value);
-      const then = best(before, measure.value);
-      if (!now || !then || now.value <= then.value + RECORD_EPSILON) continue;
-      records.push({ exerciseId, name: names.get(exerciseId) ?? 'Movement', kind: measure.kind, set: now.set, previous: then.set });
-      break;
-    }
-  }
-  return records.sort((a, b) => b.set.date.localeCompare(a.set.date) || a.name.localeCompare(b.name));
+export function weekRecords(weekSets: WeekSet[], prior: Readonly<Record<string, MovementRecords | undefined>>): WeekRecord[] {
+  const found = findNewRecords(
+    weekSets.map((set) => ({ ...set, completed: true, exercise: { name: set.name } })),
+    prior,
+  );
+  return found
+    .flatMap((record): WeekRecord[] => {
+      const before = prior[record.exerciseId];
+      const previous = record.kind === 'max' ? before?.estMax : record.kind === 'heaviest' ? before?.heaviest : before?.mostReps;
+      if (!previous) return [];
+      // The first day of the week the set was done.
+      const date = weekSets
+        .filter((set) => set.exercise_id === record.exerciseId && set.weight === record.set.weight && set.reps === record.set.reps)
+        .map((set) => set.date)
+        .sort()[0];
+      return [{
+        exerciseId: record.exerciseId,
+        name: record.name,
+        kind: record.kind,
+        set: { weight: record.set.weight, reps: record.set.reps, date: date ?? '' },
+        previous: { weight: previous.weight, reps: previous.reps, date: previous.day },
+      }];
+    })
+    .sort((a, b) => b.set.date.localeCompare(a.set.date) || a.name.localeCompare(b.name));
+}
+
+/** Each movement's records from finished workouts before `before`, from its logged sets. */
+export function priorRecords(rows: MovementSetRow[], exerciseIds: string[], before: DayKey): Record<string, MovementRecords> {
+  const earlier = rows.filter((row) => row.workout && row.workout.date < before);
+  return Object.fromEntries(
+    exerciseIds.map((exerciseId) => [exerciseId, buildMovementHistory(earlier.filter((row) => row.exercise_id === exerciseId)).records]),
+  );
 }
 
 // ── Sets per muscle ──────────────────────────────────────────────────────
@@ -242,56 +237,6 @@ type WeekSetRow = {
 
 type WeekWorkoutRow = { id: string; date: string; completed: boolean | null; sets: WeekSetRow[] | null };
 
-type PriorSetRow = {
-  id: string;
-  exercise_id: string;
-  weight: number | string | null;
-  reps: number | string | null;
-  workout: { date: string; completed: boolean | null } | null;
-};
-
-/** Ids per request, so a long list of movements never overflows the URL. */
-const EXERCISE_CHUNK = 100;
-/** One request returns at most this many rows; the history is read a page at a time. */
-const SET_PAGE = 1000;
-const SET_MAX_PAGES = 50;
-
-function recordSet(row: { exercise_id: string; weight: number | string | null; reps: number | string | null }, date: DayKey): RecordSet | null {
-  const weight = toFiniteNumber(row.weight) ?? 0;
-  const reps = toFiniteNumber(row.reps);
-  if (reps === null || reps <= 0 || weight < 0) return null;
-  return { exerciseId: row.exercise_id, weight, reps, date };
-}
-
-/** Every completed set of these movements in finished workouts before `before`, paged by id. */
-async function readPriorSets(exerciseIds: string[], before: DayKey, pageSize: number): Promise<RecordSet[]> {
-  const sets: RecordSet[] = [];
-  for (let index = 0; index < exerciseIds.length; index += EXERCISE_CHUNK) {
-    const chunk = exerciseIds.slice(index, index + EXERCISE_CHUNK);
-    let after: string | null = null;
-    for (let page = 0; page < SET_MAX_PAGES; page++) {
-      let query = supabase
-        .from('sets')
-        .select('id, exercise_id, weight, reps, workout:workouts(date, completed)')
-        .in('exercise_id', chunk)
-        .eq('completed', true);
-      if (after !== null) query = query.gt('id', after);
-      const { data, error } = await query.order('id', { ascending: true }).limit(pageSize);
-      if (error) throw new Error(error.message);
-      const rows = (data ?? []) as unknown as PriorSetRow[];
-      for (const row of rows) {
-        // Only finished workouts count, as the movement's history shows them.
-        if (!row.workout?.completed || row.workout.date >= before) continue;
-        const set = recordSet(row, row.workout.date);
-        if (set) sets.push(set);
-      }
-      if (rows.length < pageSize) break;
-      after = rows[rows.length - 1].id;
-    }
-  }
-  return sets;
-}
-
 /** Midnight at the start of a local day, as an ISO time. */
 const dayStartIso = (day: DayKey) => parseISO(day).toISOString();
 
@@ -303,8 +248,6 @@ export async function readWeekCheckIn(input: {
   userId: string;
   todayKey: DayKey;
   landmarks: VolumeLandmark[];
-  /** Rows a page when reading the earlier sets (tests use a small one). */
-  setPageSize?: number;
 }): Promise<WeekCheckIn> {
   const week = checkInWeek(input.todayKey);
   const nextMonday = format(addDays(parseISO(week.end), 1), 'yyyy-MM-dd');
@@ -341,18 +284,21 @@ export async function readWeekCheckIn(input: {
   }));
 
   // Records come from finished workouts only.
-  const names = new Map<string, string>();
-  const weekSets: RecordSet[] = [];
+  const weekSets: WeekSet[] = [];
   for (const workout of workouts) {
     if (!workout.completed) continue;
     for (const row of workout.sets) {
-      if (row.exercise?.name) names.set(row.exercise_id, row.exercise.name);
-      const set = recordSet(row, workout.date);
-      if (set) weekSets.push(set);
+      const figures = setFigures(row);
+      if (figures) weekSets.push({ exercise_id: row.exercise_id, name: row.exercise?.name ?? null, ...figures, date: workout.date });
     }
   }
-  const exerciseIds = [...new Set(weekSets.map((set) => set.exerciseId))];
-  const priorSets = exerciseIds.length ? await readPriorSets(exerciseIds, week.start, input.setPageSize ?? SET_PAGE) : [];
+  const exerciseIds = [...new Set(weekSets.map((set) => set.exercise_id))];
+  let prior: Record<string, MovementRecords> = {};
+  if (exerciseIds.length) {
+    const rows = await fetchMovementSets(exerciseIds);
+    if (!rows) throw new Error('Couldn’t read the movements’ history.');
+    prior = priorRecords(rows, exerciseIds, week.start);
+  }
 
   return {
     week,
@@ -360,6 +306,6 @@ export async function readWeekCheckIn(input: {
     eating: weekEating(nutrition.weeklyNutrition),
     sets: weekSetCount(volumeRows),
     muscles: weekMuscles(volumeRows, landmarks),
-    records: weekRecords(weekSets, priorSets, names),
+    records: weekRecords(weekSets, prior),
   };
 }

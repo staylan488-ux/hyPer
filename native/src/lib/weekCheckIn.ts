@@ -5,9 +5,10 @@
 import { create } from 'zustand';
 
 import { captureAccountScope } from '@/lib/accountScope';
+import { estimatedMax } from '@/lib/movementHistory';
 import { summarizeWeekVolume } from '@/lib/todayModel';
 import {
-  checkInWeek, estimatedMax, paceCall, readWeekCheckIn, type WeekCheckIn, type WeekRecord, type WeekWeight,
+  checkInWeek, paceCall, readWeekCheckIn, type WeekCheckIn, type WeekRecord, type WeekWeight,
 } from '@/lib/weekCheckIn';
 import { formatWeight, kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
 import { useAppStore } from '@/stores/appStore';
@@ -124,13 +125,17 @@ export function weightLine(weight: WeekWeight, unit: WeightUnit, paceKg: number 
   return { value: signedWeight(weight.changeKg, unit), after: paceKg === null ? '' : ` · ${paceCall(weight.changeKg, paceKg)}` };
 }
 
-/** What a record beat: "Estimated max 263 lb · was 250". Loads are in pounds, as sets are logged. */
+/**
+ * What a record beat, named as the movement's Records and Session complete
+ * name it: "Est. max 239 lb · was 233", "Heaviest · was 202.5 lb", "Most reps
+ * · was 6". Loads are in pounds, as sets are logged.
+ */
 export function recordDetail(record: WeekRecord): string {
-  if (record.kind === 'estimated max') {
-    return `Estimated max ${formatWhole(estimatedMax(record.set) ?? 0)} lb · was ${formatWhole(estimatedMax(record.previous) ?? 0)}`;
+  if (record.kind === 'max') {
+    return `Est. max ${formatWhole(estimatedMax(record.set) ?? 0)} lb · was ${formatWhole(estimatedMax(record.previous) ?? 0)}`;
   }
-  if (record.kind === 'heaviest') return `Heaviest yet · was ${formatLoad(record.previous.weight)} lb`;
-  return `Most reps yet · was ${record.previous.reps}`;
+  if (record.kind === 'heaviest') return `Heaviest · was ${formatLoad(record.previous.weight)} lb`;
+  return `Most reps · was ${record.previous.reps}`;
 }
 
 /** "Under its minimum of 8", "Over its ceiling of 22", or nothing in range. */

@@ -213,8 +213,9 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   `today/week` (the same in sections, sets per muscle and each record with
   what it beat); a hold hides it until next Monday on this phone. Rules and
   reads are `src/lib/weekCheckIn.ts` (weekly averages of daily medians for
-  weight; records from finished workouts only, a movement's first week
-  breaking none), the store and words `native/src/lib/weekCheckIn.ts`. Past a
+  weight; records by the movement history's `findNewRecords`, named as
+  Session complete names them), the store and words
+  `native/src/lib/weekCheckIn.ts`. Past a
   target is never red there, on any goal. `-hyperAction weekCheckIn` shows
   the card on any day in a debug build.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
