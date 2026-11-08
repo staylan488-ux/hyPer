@@ -90,6 +90,7 @@ async function renderFuel({ compile = false } = {}) {
     '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
     zustand: { create: zustandCreate },
     '~/components/Track': { Track: Empty },
+    '~/fuel/GapPicks': { GapPicks: () => null },
     '~/fuel/DayMark': { DayMark: Empty },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': {

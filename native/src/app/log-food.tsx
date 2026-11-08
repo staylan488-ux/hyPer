@@ -44,7 +44,7 @@ import { refusePress } from '~/lib/launch';
 import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
-import { LoggerContext, type AddedQuickAdd, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
+import { LoggerContext, takeReview, type AddedQuickAdd, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchField, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { EntryMethods, type EntryMethod } from '~/fuel/EntryMethods';
@@ -116,10 +116,12 @@ function useClaims(): [number, () => () => void] {
  * `group` (the meal to add to), `savedMeal` (a built saved meal to change),
  * `saveEntries` (comma-separated logged entries to keep as a new saved meal),
  * `newSavedMeal=1` (an empty meal to build and keep as a saved meal, nothing logged),
- * `start=camera`, `atMs` (Snap a meal: press time, straight into the camera).
+ * `start=camera`, `atMs` (Snap a meal: press time, straight into the camera),
+ * `review=1` (Fuel's close-the-gap pick handed over through `offerReview`: its
+ * review at the usual amount, or a built meal's builder).
  */
 export default function LogFoodSheet() {
-  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; newSavedMeal?: string; start?: string; atMs?: string }>();
+  const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; newSavedMeal?: string; start?: string; atMs?: string; review?: string }>();
   const userId = useAuthStore((state) => state.user?.id) ?? '';
   // read once: the entry being edited stays as it was when the sheet opened
   const [editing] = useState<FoodLog | null>(() => (params.entry ? useFuelStore.getState().logs.find((log) => log.id === params.entry) ?? null : null));
@@ -127,6 +129,8 @@ export default function LogFoodSheet() {
   const [savedMeal] = useState<Food | null>(() =>
     params.savedMeal ? useYouMealsStore.getState().meals?.find((meal) => meal.id === params.savedMeal) ?? null : null,
   );
+  // A close-the-gap pick from Fuel, to review before logging.
+  const [reviewing] = useState(() => (params.review ? takeReview() : null));
   // Fuel's "Save as meal": logged entries, in the day's order, to keep as a new saved meal.
   // You's "New saved meal" starts the same save-only meal with no foods yet.
   const [saveFrom] = useState<FoodLog[] | null>(() => {
@@ -171,6 +175,7 @@ export default function LogFoodSheet() {
       saveFrom={saveFrom}
       selectedKey={selectedKey}
       groupParam={snapRestart > 0 ? null : params.group ?? null}
+      reviewing={snapRestart > 0 || editing || savedMeal || saveFrom ? null : reviewing}
       startCamera={startCamera}
       pressedAt={pressedAt}
       appeared={appeared}
@@ -179,7 +184,7 @@ export default function LogFoodSheet() {
   );
 }
 
-function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam, startCamera, pressedAt, appeared, onSnapRestart }: {
+function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, groupParam, reviewing, startCamera, pressedAt, appeared, onSnapRestart }: {
   userId: string;
   editing: FoodLog | null;
   savedMeal: Food | null;
@@ -187,6 +192,8 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   saveFrom: FoodLog[] | null;
   selectedKey: string;
   groupParam: string | null;
+  /** A food to open on: its review at the usual amount, or a built meal's builder. */
+  reviewing: { food: Food; servings: number } | null;
   /** Snap a meal: open on the analysis tab and bring up the camera once the sheet is up. */
   startCamera: boolean;
   /** Validated time of the press that opened this session. */
@@ -244,7 +251,9 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(() =>
     editing?.food && !decodeMealComposition(editing.food.description) && getCompatibleMeasurementUnits(editing.food.serving_unit).length > 1
       ? { food: editing.food, meta: null, servings: editing.servings }
-      : null,
+      : reviewing && !decodeMealComposition(reviewing.food.description)
+        ? { food: reviewing.food, meta: null, servings: reviewing.servings }
+        : null,
   );
   // An entry opened to edit shows its own food's review first: ✕ closes it, and
   // Change food (under the name) goes to the lists, where ‹ alone said neither.
@@ -397,6 +406,13 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     openedSaved.current = true;
     startMeal(savedMeal, true);
   }, [savedMeal, startMeal]);
+  // A built meal picked on Fuel opens in its builder, as Recent opens one.
+  const openedReview = useRef(false);
+  useEffect(() => {
+    if (!reviewing || openedReview.current || !decodeMealComposition(reviewing.food.description)) return;
+    openedReview.current = true;
+    startMeal(reviewing.food);
+  }, [reviewing, startMeal]);
 
   // Read when pressed: a Discard alert opened just before a save must not
   // clear the meal that save is writing.

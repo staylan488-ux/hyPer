@@ -12,6 +12,9 @@ import { onAppVisible } from '@/lib/appVisibility';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
+import { loadRecentCache, readHidden, readRecentCache, subscribeRecentCache } from '~/fuel/recent';
+
+import { gapPlanFor } from './closeGap';
 import { useFuelStore } from './fuel';
 import {
   clampReminderMinutes, DEFAULT_REMINDER_SETTINGS, FUEL_REMINDER_CATEGORY, FUEL_REMINDER_SNAP_ACTION, fuelReminderId, fuelShortfall,
@@ -120,6 +123,7 @@ function wanted(): { userId: string; inputs: Inputs | null } | null {
   const app = useAppStore.getState();
   if (app.macroTargetLoadedForUserId !== userId || app.nutritionProfileLoadedForUserId !== userId) return null;
   if (fuel.todayLoadedForUserId !== userId || fuel.todayLoadedKey !== fuel.todayKey) return null;
+  const goal = app.nutritionProfile?.goal ?? null;
   return {
     userId,
     inputs: {
@@ -127,9 +131,24 @@ function wanted(): { userId: string; inputs: Inputs | null } | null {
       day: fuel.todayKey,
       totals: fuel.todayTotals,
       target: app.macroTarget,
-      goal: app.nutritionProfile?.goal ?? null,
+      goal,
+      // Named once Recent's logs are kept (their read hands the plan over again).
+      picks: gapPlanFor({
+        logs: readRecentCache(userId)?.logs,
+        day: fuel.todayKey,
+        totals: fuel.todayTotals,
+        target: app.macroTarget,
+        goal,
+        hidden: readHidden(userId),
+      }),
     },
   };
+}
+
+/** Recent's logs for the picks, read again at most every ten minutes, and only while the reminder is on. */
+const PICKS_LOGS_MAX_AGE_MS = 10 * 60_000;
+function readPicksLogs(userId: string) {
+  if (useFuelReminderStore.getState().settings.enabled) void loadRecentCache(userId, PICKS_LOGS_MAX_AGE_MS);
 }
 
 const pendingReminderIds = async () =>
@@ -163,6 +182,8 @@ async function hold(userId: string, now: Date, requests: ReminderRequest[], pend
           sound: 'default',
           categoryIdentifier: FUEL_REMINDER_CATEGORY,
           threadIdentifier: FUEL_REMINDER_CATEGORY,
+          // Its words name close-the-gap picks: a tap opens Fuel, where they are.
+          ...(request.opensFuel ? { data: { open: REMINDER_OPENS_FUEL } } : null),
         },
         // Wall-clock parts (month from 1); iOS works out the instant.
         trigger: { type: Notifications.SchedulableTriggerInputTypes.CALENDAR, ...request.at, second: 0, repeats: false },
@@ -182,6 +203,9 @@ async function dismissDelivered(only?: string) {
     if (isFuelReminderId(id) && (only === undefined || id === only)) await Notifications.dismissNotificationAsync(id);
   }
 }
+
+/** A reminder's `data.open` when its tap opens Fuel. */
+const REMINDER_OPENS_FUEL = 'fuel';
 
 let applied: string | null = null;
 let queued = false;
@@ -215,8 +239,9 @@ function requestSync() {
 }
 
 /** Mount and return to the front: the time may have passed, Settings may now allow it, the zone may have changed. */
-function handOverAgain() {
+function handOverAgain(userId: string) {
   applied = null;
+  readPicksLogs(userId);
   checkPermission();
   requestSync();
   void inOrder(() => dismissDelivered());
@@ -296,14 +321,18 @@ function followAccount(userId: string) {
       || s.nutritionProfileLoadedForUserId !== p.nutritionProfileLoadedForUserId) requestSync();
   });
   const stopSelf = useFuelReminderStore.subscribe((s, p) => {
+    if (s.settings.enabled && !p.settings.enabled) readPicksLogs(userId);
     if (s.settings !== p.settings || s.userId !== p.userId || s.permission !== p.permission) requestSync();
   });
-  const stopVisible = onAppVisible(handOverAgain);
-  handOverAgain();
+  // Recent's logs landed or changed: the picks named may change.
+  const stopRecent = subscribeRecentCache(requestSync);
+  const stopVisible = onAppVisible(() => handOverAgain(userId));
+  handOverAgain(userId);
   return () => {
     stopFuel();
     stopApp();
     stopSelf();
+    stopRecent();
     stopVisible();
     // The tabs unmount only on sign-out: nothing of this account stays pending or shown.
     signOutOf(userId);
@@ -315,7 +344,8 @@ let lastOpened: string | null = null;
 let followingTaps = false;
 
 /**
- * A tap on the reminder opens Log food on Recent; its Snap a meal button
+ * A tap on the reminder opens Log food on Recent, or Fuel when it names
+ * close-the-gap picks (Fuel shows them, one tap each); its Snap a meal button
  * (press and hold the reminder) opens the camera. Both go through the launch
  * press store, so they run exactly like the Home Screen quick actions of the
  * same name: once, after the intro, with the app in front, and never closing
@@ -327,7 +357,10 @@ function onReminderResponse(response: Notifications.NotificationResponse | null)
   const key = `${response.notification.request.identifier}:${response.notification.date}:${response.actionIdentifier}`;
   if (key === lastOpened) return;
   lastOpened = key;
-  if (response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) postLaunchPress('log-food');
+  if (response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+    const data = response.notification.request.content?.data as { open?: unknown } | null | undefined;
+    postLaunchPress(data?.open === REMINDER_OPENS_FUEL ? 'fuel' : 'log-food');
+  }
   else if (response.actionIdentifier === FUEL_REMINDER_SNAP_ACTION) postLaunchPress('snap-meal');
 }
 

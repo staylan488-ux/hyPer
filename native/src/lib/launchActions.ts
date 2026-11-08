@@ -13,7 +13,10 @@ import { create } from 'zustand';
 
 /** Mirrors HyperLaunchAction (modules/hyper-launch/ios/HyperLaunchStore.swift). */
 export const LAUNCH_ACTIONS = ['snap-meal', 'log-food', 'train'] as const;
-export type LaunchAction = (typeof LAUNCH_ACTIONS)[number];
+/** Posted by JavaScript only: a Fuel reminder that names close-the-gap picks opens Fuel, where they are. */
+export const APP_LAUNCH_ACTIONS = ['fuel'] as const;
+export type LaunchAction = (typeof LAUNCH_ACTIONS)[number] | (typeof APP_LAUNCH_ACTIONS)[number];
+const KNOWN_ACTIONS: readonly string[] = [...LAUNCH_ACTIONS, ...APP_LAUNCH_ACTIONS];
 export type LaunchPress = { action: LaunchAction; atMs: number };
 
 /** How long a press keeps: through a slow cold launch or the offline wait, never into a later visit. */
@@ -28,7 +31,7 @@ export const PRESS_REFUSED = 'Finish what’s open, then try again.';
 export function parseLaunchPress(raw: unknown): LaunchPress | null {
   if (!raw || typeof raw !== 'object') return null;
   const { action, atMs } = raw as { action?: unknown; atMs?: unknown };
-  if (typeof action !== 'string' || !(LAUNCH_ACTIONS as readonly string[]).includes(action)) return null;
+  if (typeof action !== 'string' || !KNOWN_ACTIONS.includes(action)) return null;
   if (typeof atMs !== 'number' || !Number.isFinite(atMs)) return null;
   return { action: action as LaunchAction, atMs };
 }
@@ -48,7 +51,8 @@ export type LaunchStep =
   | { kind: 'refused' } // something open covers it; nothing is closed
   | { kind: 'open-log-food'; camera: boolean; atMs?: number }
   | { kind: 'logger-camera'; atMs?: number } // the Log food sheet on top decides (sheetSnap)
-  | { kind: 'train' };
+  | { kind: 'train' }
+  | { kind: 'fuel' };
 
 type NavStack = { index?: number; routes: readonly { name: string; state?: unknown }[] };
 const asStack = (value: unknown): NavStack | null =>
@@ -69,6 +73,7 @@ export function planLaunch(action: LaunchAction, stack: readonly string[]): Laun
   if (!stack.includes('(tabs)')) return { kind: 'wait' };
   const top = stack[stack.length - 1];
   if (action === 'train') return top === '(tabs)' ? { kind: 'train' } : { kind: 'refused' };
+  if (action === 'fuel') return top === '(tabs)' ? { kind: 'fuel' } : { kind: 'refused' };
   if (top === 'log-food') return action === 'snap-meal' ? { kind: 'logger-camera' } : { kind: 'none' };
   // Log food under another sheet: one Log food sheet at a time, and the sheet on top stays.
   if (stack.includes('log-food')) return { kind: 'refused' };

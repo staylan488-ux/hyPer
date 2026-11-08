@@ -85,11 +85,12 @@ describe('reminderCopy', () => {
     expect(reminderCopy(totals(1950, 120), { kcal: 850, protein: 40 })).toEqual({
       title: '850 kcal and 40 g protein to go',
       body: 'Still time for a good meal.',
+      picks: false,
     });
     const proteinHit = fuelShortfall(totals(1950, 170), target, 'bulk')!;
-    expect(reminderCopy(totals(1950, 170), proteinHit)).toEqual({ title: '850 kcal to go', body: 'Still time for a good meal.' });
+    expect(reminderCopy(totals(1950, 170), proteinHit)).toEqual({ title: '850 kcal to go', body: 'Still time for a good meal.', picks: false });
     const cut = fuelShortfall(totals(1950, 120), target, 'cut')!;
-    expect(reminderCopy(totals(1950, 120), cut)).toEqual({ title: '40 g protein to go', body: 'Still time for some protein.' });
+    expect(reminderCopy(totals(1950, 120), cut)).toEqual({ title: '40 g protein to go', body: 'Still time for some protein.', picks: false });
   });
 
   it('writes thousands as Fuel does', () => {
@@ -102,6 +103,7 @@ describe('reminderCopy', () => {
     expect(reminderCopy(totals(0, 0), short)).toEqual({
       title: 'Nothing logged today',
       body: 'Log what you’ve eaten to see what’s left.',
+      picks: false,
     });
   });
 });
