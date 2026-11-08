@@ -65,9 +65,9 @@ const UNDO_MS_SCREEN_READER = 20000;
 const useDeletedEntry = create<{ entry: FoodLog | null; key: number; restoring: boolean; alerts: number }>(() => ({ entry: null, key: 0, restoring: false, alerts: 0 }));
 
 /**
- * One of Fuel's failure alerts. While it is up, the Undo bar keeps whatever
- * it offers then (the alert covers it); once dismissed, by any button, that
- * offer gets its full time again.
+ * One of Fuel's alerts: a failure, or Copy again's question. While it is up,
+ * the Undo bar keeps whatever it offers then (the alert covers it); once
+ * dismissed, by any button, that offer gets its full time again.
  */
 function holdingUndoAlert(title: string, message: string, buttons: AlertButton[] = [{ text: 'OK' }]) {
   useDeletedEntry.setState((state) => ({ alerts: state.alerts + 1 }));
@@ -94,12 +94,9 @@ function holdingUndoAlert(title: string, message: string, buttons: AlertButton[]
 /** Deletes an entry at once and offers Undo at the foot, which puts it back as it was. */
 function deleteWithUndo(log: FoodLog) {
   useDeletedEntry.setState((state) => ({ entry: log, key: state.key + 1, restoring: false }));
-  const deletion = useFuelStore.getState().deleteEntry(log.id).catch(() => false);
-  // A delete that failed leaves the entry in place: there is nothing to undo.
-  void deletion.then((ok) => {
-    if (!ok && useDeletedEntry.getState().entry === log) useDeletedEntry.setState({ entry: null, restoring: false });
-  });
-  report(deletion, 'Not deleted');
+  // A failed delete keeps its Undo: its answer may have been lost after the
+  // row went, and Undo writes the row back as it was either way.
+  report(useFuelStore.getState().deleteEntry(log.id), 'Not deleted');
 }
 
 /**
@@ -175,7 +172,7 @@ function copyToToday(logs: FoodLog[], group: NutritionGroup | null) {
   const copy = () => report(useFuelStore.getState().copyToToday(logs, group), 'Not copied');
   const inMeal = todayLogsInMatchingMeal(group);
   if (inMeal && alreadyOnDay(logs, inMeal)) {
-    Alert.alert('Copy again?', logs.length === 1 ? "Today's meal already has this food." : "Today's meal already has these foods.", [
+    holdingUndoAlert('Copy again?', logs.length === 1 ? "Today's meal already has this food." : "Today's meal already has these foods.", [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Copy', onPress: copy },
     ]);

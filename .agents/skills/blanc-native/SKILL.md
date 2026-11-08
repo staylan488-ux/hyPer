@@ -580,10 +580,11 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   tab bar (5 s, 20 s with VoiceOver; `restoreEntry` writes the row back,
   then reads the month and today's totals again). Undo stays, busy, until the
   write is confirmed. A failure's alert offers Try again for that entry only
-  (an Undo a newer delete replaced just says it failed), and a delete that
-  failed drops its Undo. The bar never runs out behind any of Fuel's failure
-  alerts (`holdingUndoAlert`): dismissed, whatever it offers then gets its
-  full time again. A quick-add's
+  (an Undo a newer delete replaced just says it failed). A delete that
+  answered with a failure keeps its Undo, since the answer may have been lost
+  after the row went. The bar never runs out behind any of Fuel's alerts
+  (`holdingUndoAlert`: failures and Copy again's question): dismissed,
+  whatever it offers then gets its full time again. A quick-add's
   tick takes the food back out on a second tap; its hold menu and VoiceOver
   say Log only before the add and Take it out after, and nothing logs that
   food and meal again while its removal runs. Edit entry closes
