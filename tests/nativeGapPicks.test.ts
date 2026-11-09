@@ -62,6 +62,7 @@ let snapshot: { userId: string; logs: RecentLog[]; at: number } | null = null;
 // Fuel's focus: the card's cleanup runs as Fuel is left.
 const focus: { effect?: () => void | (() => void); cleanup?: void | (() => void) } = {};
 const leaveFuel = () => act(async () => { focus.cleanup?.(); focus.cleanup = undefined; });
+const returnToFuel = () => act(async () => { focus.cleanup = focus.effect?.(); });
 
 const GapPicks = loadNativeModule<{ GapPicks: ComponentType<Record<string, unknown>> }>('fuel/GapPicks.tsx', {
   'date-fns': dates,
@@ -260,6 +261,183 @@ describe('logging a pick', () => {
     await leaveFuel();
     await show({ totals: totals(2700, 160) });
     expect(shown()).toEqual([]);
+  });
+
+  it('reuses an unconfirmed write after leaving Fuel, even when a fresh read closes the gap', async () => {
+    const ids: string[] = [];
+    const persisted = new Set<string>();
+    saveQuickAdd.mockImplementation(async (_food, entry) => {
+      const id = entry.pending.take();
+      ids.push(id);
+      persisted.add(id); // The server commits both attempts; the first response is lost.
+      return ids.length > 1;
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(rows['Protein shake'].state).toBe('error');
+
+    await leaveFuel();
+    vi.setSystemTime(new Date(`${TODAY}T20:00:00`));
+    await show({ totals: totals(2700, 160) });
+    await returnToFuel();
+    expect(rows['Protein shake']?.state).toBe('error');
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    expect(persisted.size).toBe(1);
+    expect(saveQuickAdd.mock.calls[1][1]).toEqual(saveQuickAdd.mock.calls[0][1]);
+    expect(rows['Protein shake'].state).toBe('done');
+    await leaveFuel();
+    await returnToFuel();
+    expect(shown()).toEqual([]);
+  });
+
+  it('keeps the retry id when a save fails after Fuel was left', async () => {
+    let finish!: (saved: boolean) => void;
+    const ids: string[] = [];
+    saveQuickAdd.mockImplementation((_food, entry) => {
+      ids.push(entry.pending.take());
+      return new Promise<boolean>((resolve) => { finish = resolve; });
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(rows['Protein shake'].state).toBe('saving');
+    await leaveFuel();
+    await act(async () => { finish(false); });
+    await returnToFuel();
+    await leaveFuel();
+    await returnToFuel();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    await act(async () => { finish(true); });
+    expect(rows['Protein shake'].state).toBe('done');
+  });
+
+  it.each(['day', 'account'])('does not reuse another %s’s pending add', async (scope) => {
+    const ids: string[] = [];
+    saveQuickAdd.mockImplementation(async (_food, entry) => {
+      ids.push(entry.pending.take());
+      return false;
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    await leaveFuel();
+    vi.setSystemTime(new Date('2026-11-09T19:30:00'));
+    await show(scope === 'day' ? { day: '2026-11-09' } : { userId: 'user-2' });
+    await returnToFuel();
+    expect(rows['Protein shake'].state).toBeUndefined();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).not.toBe(ids[0]);
+  });
+
+  it.each([false, true])('retains the attempt while another date hides the card (response delayed: %s)', async (delayed) => {
+    const ids: string[] = [];
+    const persisted = new Set<string>();
+    let finish!: (saved: boolean) => void;
+    saveQuickAdd.mockImplementation(async (_food, entry) => {
+      const id = entry.pending.take();
+      ids.push(id);
+      persisted.add(id);
+      return ids.length > 1 || (delayed ? new Promise<boolean>((resolve) => { finish = resolve; }) : false);
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    await show({ visible: false, totals: totals(0, 0) });
+    expect(shown()).toEqual([]);
+    if (delayed) await act(async () => { finish(false); });
+    vi.setSystemTime(new Date(`${TODAY}T20:00:00`));
+    await show({ visible: true, totals: totals(2700, 160) });
+    expect(rows['Protein shake']?.state).toBe('error');
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    expect(persisted.size).toBe(1);
+    expect(saveQuickAdd.mock.calls[1][1]).toEqual(saveQuickAdd.mock.calls[0][1]);
+  });
+
+  it.each(['blur', 'date'])('releases confirmed ticks independently of unresolved retries on %s', async (navigation) => {
+    const ids: { food: string; id: string }[] = [];
+    saveQuickAdd.mockImplementation(async (food, entry) => {
+      ids.push({ food: food.id, id: entry.pending.take() });
+      return food === toast;
+    });
+    await show();
+    await act(async () => { rows['Peanut butter toast'].onAdd!(); });
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(rows['Peanut butter toast'].state).toBe('done');
+    expect(rows['Protein shake'].state).toBe('error');
+    if (navigation === 'blur') await leaveFuel();
+    else await show({ visible: false });
+    // Log food removed the confirmed toast; the unconfirmed shake must still be retryable.
+    await show({ dayLogs: [] });
+    if (navigation === 'blur') await returnToFuel();
+    expect(rows['Peanut butter toast'].state).toBeUndefined();
+    expect(rows['Protein shake'].state).toBe('error');
+    await act(async () => { rows['Peanut butter toast'].onAdd!(); });
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    expect(ids).toHaveLength(4);
+    expect(ids[2].id).not.toBe(ids[0].id);
+    expect(ids[3]).toEqual(ids[1]);
+  });
+
+  it('releases a confirmed tick on refocus even when its response arrived while away', async () => {
+    let finish!: (saved: boolean) => void;
+    saveQuickAdd.mockImplementation(async (food) => food === toast ? new Promise<boolean>((resolve) => { finish = resolve; }) : false);
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    await act(async () => { rows['Peanut butter toast'].onAdd!(); });
+    await leaveFuel();
+    await act(async () => { finish(true); });
+    await show({ dayLogs: [] });
+    await returnToFuel();
+    expect(rows['Peanut butter toast'].state).toBeUndefined();
+    expect(rows['Protein shake'].state).toBe('error');
+  });
+
+  it('keeps every unresolved pick when another pick confirms', async () => {
+    const ids: { food: string; id: string }[] = [];
+    saveQuickAdd.mockImplementation(async (food, entry) => {
+      ids.push({ food: food.id, id: entry.pending.take() });
+      return false;
+    });
+    await show();
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    await act(async () => { rows['Peanut butter toast'].onAdd!(); });
+    await leaveFuel();
+    await returnToFuel();
+    expect(rows['Protein shake'].state).toBe('error');
+    expect(rows['Peanut butter toast'].state).toBe('error');
+    saveQuickAdd.mockImplementation(async (food, entry) => {
+      ids.push({ food: food.id, id: entry.pending.take() });
+      return true;
+    });
+    await act(async () => { rows['Protein shake'].onAdd!(); });
+    await show({ visible: false });
+    await show();
+    expect(rows['Protein shake'].state).toBeUndefined();
+    expect(rows['Peanut butter toast'].state).toBe('error');
+    await act(async () => { rows['Peanut butter toast'].onAdd!(); });
+    expect(ids.slice(2)).toEqual(ids.slice(0, 2));
+  });
+
+  it('does not discard an undo still running when the card is left', async () => {
+    let finish!: (removed: boolean) => void;
+    deleteEntry.mockImplementation(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    await show();
+    await act(async () => { rows['Peanut butter toast'].onAdd!(); });
+    await act(async () => { rows['Peanut butter toast'].onTakeOut!(); });
+    await leaveFuel();
+    await returnToFuel();
+    await show({ visible: false });
+    await show();
+    expect(rows['Peanut butter toast'].state).toBe('saving');
+    await act(async () => { rows['Peanut butter toast'].onTakeOut!(); });
+    expect(deleteEntry).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(true); });
+    expect(rows['Peanut butter toast'].state).toBeUndefined();
   });
 });
 
