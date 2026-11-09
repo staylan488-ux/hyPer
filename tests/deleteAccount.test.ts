@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createDeleteAccountHandler, listFilesUnder, type DeleteAccountServices, type StorageEntry } from '../supabase/functions/delete-account/handler';
+import { createDeleteAccountHandler, listFilesUnder, removeFilesUnder, type DeleteAccountServices, type StorageEntry } from '../supabase/functions/delete-account/handler';
 
 const USER = '11111111-1111-4111-8111-111111111111';
 
@@ -50,16 +50,27 @@ describe('delete-account function', () => {
     expect(s.deleteUser).not.toHaveBeenCalled();
   });
 
-  it('still deletes the account when WHOOP or the food records fail', async () => {
+  it('still deletes the account when WHOOP revocation fails', async () => {
     const { steps, services: s } = services({
       revokeWhoop: vi.fn(async () => { throw new Error('WHOOP down'); }),
-      removeFoodRecords: vi.fn(async () => { throw new Error('storage down'); }),
     });
     s.deleteUser = vi.fn(async (id: string) => { steps.push(`user:${id}`); });
     const response = await createDeleteAccountHandler(s)(post('good-token'));
     expect(response.status).toBe(200);
-    expect(steps).toEqual([`user:${USER}`]);
-    expect(s.log).toHaveBeenCalledTimes(2);
+    expect(steps).toEqual([`food:${USER}`, `user:${USER}`]);
+    expect(s.log).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the account available to retry when food cleanup fails', async () => {
+    const { services: s } = services({ removeFoodRecords: vi.fn().mockRejectedValueOnce(new Error('storage down')).mockResolvedValue(undefined) });
+    const handler = createDeleteAccountHandler(s);
+    const failed = await handler(post('good-token'));
+    expect(failed.status).toBe(503);
+    expect(await failed.json()).not.toHaveProperty('ok');
+    expect(s.deleteUser).not.toHaveBeenCalled();
+    expect((await handler(post('good-token'))).status).toBe(200);
+    expect(s.removeFoodRecords).toHaveBeenCalledTimes(2);
+    expect(s.deleteUser).toHaveBeenCalledOnce();
   });
 
   it('never reports success when the account itself was not deleted', async () => {
@@ -106,5 +117,36 @@ describe('listing the food records to remove', () => {
 
   it('finds nothing for an account that never analysed food', async () => {
     expect(await listFilesUnder(async () => [], `food-v1/${USER}`)).toEqual([]);
+  });
+
+  it('does not certify a partial sweep after another deleter shrinks a page and crashes', async () => {
+    const prefix = `food-v1/${USER}`;
+    const folder = `${prefix}/results`;
+    const remaining = new Set(Array.from({ length: 8 }, (_, i) => `${i}.json`));
+    let interrupted = false;
+    const list = async (path: string, offset: number): Promise<StorageEntry[]> => {
+      if (path === prefix) return remaining.size ? [{ name: 'results', id: null }] : [];
+      if (offset === 3 && !interrupted) {
+        remaining.delete('0.json');
+        interrupted = true;
+      }
+      return [...remaining].slice(offset, offset + 3).map((name) => ({ name, id: name }));
+    };
+    const remove = async (paths: string[]) => { for (const path of paths) remaining.delete(path.slice(folder.length + 1)); };
+    const { services: s } = services({ removeFoodRecords: () => removeFilesUnder(list, remove, prefix, 3) });
+    const handler = createDeleteAccountHandler(s);
+    expect((await handler(post('good-token'))).status).toBe(503);
+    expect([...remaining]).toEqual(['3.json']);
+    expect(s.deleteUser).not.toHaveBeenCalled();
+    expect((await handler(post('good-token'))).status).toBe(200);
+    expect(remaining.size).toBe(0);
+    expect(s.deleteUser).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed if the final root read fails, even after every remove succeeded', async () => {
+    const list = vi.fn().mockResolvedValueOnce([{ name: 'one.json', id: '1' }]).mockRejectedValueOnce(new Error('list failed'));
+    const remove = vi.fn(async () => {});
+    await expect(removeFilesUnder(list, remove, 'food-v1/x')).rejects.toThrow('list failed');
+    expect(remove).toHaveBeenCalledWith(['food-v1/x/one.json']);
   });
 });

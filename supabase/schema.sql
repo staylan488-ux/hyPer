@@ -1,10 +1,23 @@
 -- Reference snapshot of the public schema, rebuilt from supabase/migrations
--- through 20261012120000 on 2026-10-12 (not checked against a production dump).
+-- through 20261108220000 on 2026-11-08 (not checked against a production dump).
 -- The migrations are the source of truth. This file is for reading: it is not
 -- meant to be replayed on top of the migrations or against production.
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Service-only food analysis claims, quota slots and results. Inserts and
+-- account deletion are coordinated by the auth.users foreign key.
+CREATE TABLE public.food_analysis_ledger (
+  path TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  value JSONB NOT NULL CHECK (jsonb_typeof(value) = 'object'),
+  CONSTRAINT food_analysis_ledger_owner_path CHECK (path LIKE 'food-v1/' || user_id::text || '/%')
+);
+CREATE INDEX food_analysis_ledger_user_id_idx ON public.food_analysis_ledger(user_id);
+ALTER TABLE public.food_analysis_ledger ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.food_analysis_ledger FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT, INSERT ON public.food_analysis_ledger TO service_role;
 
 -- Profiles table (extends Supabase auth.users)
 CREATE TABLE IF NOT EXISTS profiles (
