@@ -76,7 +76,7 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
     '~/lib/program': { newProgram },
     '~/lib/session': { useStartSession: () => ({ starting: null, start: async () => false }) },
     '~/lib/today': { useFinishedToday: (done: boolean) => history((state) => (done ? state.finished : null)) },
-    '~/theme/blanc': { useBlanc: () => ({ pressed: '#eee' }) },
+    '~/theme/blanc': { space: { gutter: 16, labelPad: 18 }, useBlanc: () => ({ pressed: '#eee' }) },
   },
   { compile: true },
 );
