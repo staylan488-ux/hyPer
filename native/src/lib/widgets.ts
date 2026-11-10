@@ -87,12 +87,12 @@ export function useWidgetSnapshot() {
   }, [json, userId]);
 
   // The tabs unmount only on sign-out: the widgets show nothing of the account after it.
-  useEffect(
-    () => () => {
-      written = null;
-      writtenPlan = null;
-      void WidgetData.clear().catch(() => {});
-    },
-    [],
-  );
+  useEffect(() => clearWidgetSnapshot, []);
+}
+
+/** Nobody is signed in: the widgets show nothing of the last account. */
+export function clearWidgetSnapshot(): void {
+  written = null;
+  writtenPlan = null;
+  void WidgetData.clear().catch(() => {});
 }
