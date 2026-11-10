@@ -259,6 +259,29 @@ export function wizardRateDisplay(draft: WizardDraft, result: MacroTargetResult)
   };
 }
 
+/** "Lean Bulk" → "Lean bulk": the app writes in sentence case. */
+export function sentenceLabel(label: string): string {
+  return label.charAt(0) + label.slice(1).toLowerCase();
+}
+
+/**
+ * The saved goal as Targets says it under the calories, so a change of goal
+ * shows where the numbers are: "Bulk · about 0.5 lb a week". The pace is the
+ * one asked for, at the latest weigh-in; with no weigh-in it stays a percent.
+ */
+export function goalLine(
+  profile: Pick<NutritionProfile, 'goal' | 'rate_pct_per_week' | 'unit_system'>,
+  weightKg: number | null | undefined,
+): string {
+  const name = sentenceLabel(GOAL_OPTIONS.find((option) => option.value === profile.goal)?.label ?? profile.goal);
+  const rate = Math.abs(resolveRatePctPerWeek(profile.goal, profile.rate_pct_per_week));
+  if (profile.goal === 'maintain' || rate === 0) return name;
+  if (typeof weightKg !== 'number' || !Number.isFinite(weightKg) || weightKg <= 0) return `${name} · ${rate.toFixed(2)}% a week`;
+  const weeklyKg = (weightKg * rate) / 100;
+  const pace = profile.unit_system === 'imperial' ? `${kgToLbs(weeklyKg).toFixed(1)} lb` : `${weeklyKg.toFixed(2)} kg`;
+  return `${name} · about ${pace} a week`;
+}
+
 /** One line on how the resting rate and protein were worked out. */
 export function wizardMethodNote(result: MacroTargetResult): string {
   return result.bmrMethod === 'cunningham'

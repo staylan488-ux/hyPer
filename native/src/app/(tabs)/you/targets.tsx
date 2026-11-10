@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { goalLine } from '@/lib/nutritionWizard';
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { baseTargets, expenditureSummary, resumeAdaptiveMessage, targetModeLabel } from '@/lib/settingsUx';
 import { useAppStore } from '@/stores/appStore';
@@ -20,7 +21,7 @@ import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility'
 import { haptics } from '~/lib/haptics';
 import { figureLayout } from '~/lib/motion';
 import { isPreviewActive } from '~/platform/previewFlag';
-import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore } from '~/lib/you';
+import { loadTargets, useAnalysisModeStore, usePullRefresh, useTargetsStore, useWeightStore } from '~/lib/you';
 import { space } from '~/theme/blanc';
 
 /** The target and profile in the store came from this launch's own reads, not the phone's copy (launchCache). */
@@ -56,7 +57,13 @@ export default function TargetsScreen() {
   // A refresh that failed keeps the last targets and says so under them.
   const refreshFailed = status === 'error' && target !== null;
   useAnnounce(refreshFailed ? REFRESH_FAILED : null);
-  const mode = targetModeLabel(target ? base.source : undefined, profile?.adaptive_enabled);
+  const latestKg = useWeightStore((state) => state.history[0]?.kilograms);
+  // Targets that follow the goal say the goal, so a change of goal shows here.
+  // Set by hand, or with adapting off, they keep saying that instead.
+  const mode =
+    target && profile?.adaptive_enabled && base.source !== 'manual'
+      ? goalLine(profile, latestKg == null ? null : Number(latestKg))
+      : targetModeLabel(target ? base.source : undefined, profile?.adaptive_enabled);
   const burn = expenditureSummary(profile);
   // The coach is the AI chosen in Food analysis: Gemini needs nothing set
   // up, the Mac worker needs its address.
