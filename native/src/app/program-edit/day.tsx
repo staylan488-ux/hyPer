@@ -88,7 +88,7 @@ export default function ProgramDayScreen() {
   return (
     <>
       <Stack.Screen options={options} />
-      <ScrollView style={{ flex: 1, backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1, backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 120 }}>
         <Section
           title="Exercises"
           style={{ marginTop: 12 }}
@@ -129,7 +129,6 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
   canMoveUp: boolean;
   canMoveDown: boolean;
 }) {
-  const c = useBlanc();
   const store = useSplitEditStore.getState;
   const name = exercise.exercise.name;
   const open = () => router.push({ pathname: '/program-exercise', params: { day: dayId, exercise: exercise.id } });
@@ -186,7 +185,7 @@ function ExerciseRow({ dayId, exercise, partner, canMoveUp, canMoveDown }: {
         { label: 'Swap', onPress: swap },
         { label: 'Remove', destructive: true, onPress: remove },
       ]}>
-      <View style={{ backgroundColor: c.label }}>
+      <View>
         <Row
           title={name}
           detail={detail}

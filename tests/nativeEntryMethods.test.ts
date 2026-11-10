@@ -8,11 +8,11 @@ import { loadNativeModule } from './helpers/loadNativeModule';
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Log food's entry methods (Barcode, Manual, Photo, Describe): the one on
-// screen is drawn as a chosen Chip is, lifted on the label colour, so a
+// screen is drawn as a chosen Chip is, lifted on the chosen colour, so a
 // method is never shown as chosen by its font weight alone.
 
 const Wrap = ({ children }: PropsWithChildren) => createElement(Fragment, null, children);
-const palette = { label: '#FFFFFF', labelEdge: 'rgba(0, 0, 0, 0.06)', pressed: '#E7E6E1', fill: '#ECEBE6', ink: '#0B0B0B' };
+const palette = { label: '#FFFFFF', chosen: '#FFFFFF', labelEdge: 'rgba(0, 0, 0, 0.06)', pressed: '#E7E6E1', fill: '#ECEBE6', ink: '#0B0B0B' };
 
 type Style = Record<string, unknown>;
 type Press = PropsWithChildren<{
@@ -84,9 +84,9 @@ describe('Log food entry methods: the chosen one is drawn as chosen', () => {
     });
     const chosen = drawn[names[method]];
     expect(chosen.accessibilityState).toMatchObject({ selected: true });
-    // the label colour, its hairline edge and the soft shadow: a chosen Chip's look exactly
+    // the chosen colour, its hairline edge and the soft shadow: a chosen Chip's look exactly
     expect(lift(rest(chosen))).toEqual(lift(rest(drawn.chip)));
-    expect(rest(chosen)).toMatchObject({ backgroundColor: palette.label, borderColor: palette.labelEdge, shadowOpacity: 0.08 });
+    expect(rest(chosen)).toMatchObject({ backgroundColor: palette.chosen, borderColor: palette.labelEdge, shadowOpacity: 0.08 });
     for (const other of (Object.keys(names) as Method[]).filter((name) => name !== method)) {
       const quiet = rest(drawn[names[other]]);
       expect(drawn[names[other]].accessibilityState).toMatchObject({ selected: false });

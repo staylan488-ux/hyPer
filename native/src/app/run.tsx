@@ -215,9 +215,9 @@ function Setup({ tracker }: { tracker: Tracker }) {
     <>
       <View style={{ flex: 1, backgroundColor: c.ground }}>
         <TopBar title="Run" />
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
           {tracker.resumable ? (
-            <Label style={{ marginTop: 12, paddingHorizontal: 18, paddingVertical: 16 }}>
+            <Label style={{ marginTop: 12, paddingLeft: 18, paddingRight: 16, paddingVertical: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.live }} />
                 <BlancText variant="headline" accessibilityRole="header" style={large ? { flexShrink: 1 } : undefined}>
@@ -234,7 +234,7 @@ function Setup({ tracker }: { tracker: Tracker }) {
           {/* An interrupted run comes first: resume it or discard it before choosing another. */}
           {tracker.resumable ? null : (
             <View style={{ marginHorizontal: space.inset, marginTop: 12 }}>
-              <Host matchContents={{ vertical: true }} style={{ alignSelf: 'stretch' }}>
+              <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ alignSelf: 'stretch' }}>
                 <Picker
                   selection={mode}
                   onSelectionChange={(next) => {
@@ -484,7 +484,7 @@ function Live({ tracker, state }: { tracker: Tracker; state: TrackerState }) {
     <>
       <View style={{ flex: 1, backgroundColor: c.ground, paddingTop: insets.top + 10, paddingBottom: insets.bottom + 12 }}>
         {large ? (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
             {body}
           </ScrollView>
         ) : (
@@ -785,7 +785,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
     <>
       <View style={{ flex: 1, backgroundColor: c.ground }}>
         <TopBar onClose={closeFinished} />
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
           <View style={{ paddingHorizontal: space.gutter, paddingTop: 8 }}>
             {/* The screen's title, as its top bar has none; days and months in full for VoiceOver. */}
             <BlancText
@@ -814,7 +814,7 @@ function Finished({ run, discard }: { run: FinishedRun; discard: () => void }) {
 
           {splits.length > 1 ? (
             <Section title="Splits">
-              <Label style={{ paddingHorizontal: 18, paddingVertical: 10 }}>
+              <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 10 }}>
                 {splits.map((split, index) => {
                   const pace = split.isRest ? null : formatRunPace(splitPaceSecPerMile(split));
                   return (

@@ -11,6 +11,8 @@ import { maybeSeedPreview } from '@/preview/previewSeed';
 import { useAuthStore } from '@/stores/authStore';
 import { BrandIntro } from '~/components/BrandIntro';
 import { DevLaunchRunner } from '~/components/DevLaunchRunner';
+import { GlassDemo } from '~/components/GlassDemo';
+import { useGlassPressWave } from '~/components/GlassField';
 import { useReduceMotionOverride } from '~/lib/accessibility';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
@@ -59,9 +61,13 @@ export default function RootLayout() {
   const base = dark ? DarkTheme : DefaultTheme;
   const theme = {
     ...base,
-    colors: { ...base.colors, primary: p.ink, background: p.ground, card: p.ground, text: p.ink, border: p.hairline },
+    // Clear: each tab paints its own ground with the molten-glass field over it (TabStack), and
+    // every sheet and full-screen page below sets its own ground.
+    colors: { ...base.colors, primary: p.ink, background: 'transparent', card: 'transparent', text: p.ink, border: p.hairline },
   };
   const screen = useAuthScreen();
+  // A workout press sends the warm wave through the glass behind the app.
+  useGlassPressWave();
   // Cold launch only, and never under Reduce Motion, a scripted dev check or a launch from a press.
   const reducedMotion = useReducedMotion();
   const [introDone, setIntroDone] = useState(() => reducedMotion || introPlayed() || Boolean(readDevLaunch().skipIntro) || launchWaiting());
@@ -83,7 +89,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Protected guard={screen === 'app'}>
-            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(tabs)" options={{ contentStyle: { backgroundColor: 'transparent' } }} />
             <Stack.Screen
               name="session-done"
               options={{ presentation: 'fullScreenModal', gestureEnabled: false, contentStyle: { backgroundColor: p.ground } }}
@@ -266,6 +272,7 @@ export default function RootLayout() {
         )}
         <ReduceMotionSync />
         {__DEV__ ? <DevLaunchRunner /> : null}
+        {__DEV__ ? <GlassDemo /> : null}
       </ThemeProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

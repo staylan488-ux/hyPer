@@ -2,7 +2,7 @@ import { DatePicker, Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { accessibilityLabel as swiftAccessibilityLabel, datePickerStyle, disabled as swiftDisabled, labelsHidden, pickerStyle, tag, tint } from '@expo/ui/swift-ui/modifiers';
 import { SymbolView } from 'expo-symbols';
 import { Children, useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
-import { ActionSheetIOS, Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type TextInputProps } from 'react-native';
+import { ActionSheetIOS, Pressable, Switch, TextInput, View, type KeyboardTypeOptions, type ReturnKeyTypeOptions, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 
 import { fieldLabel, speak, useAnnounce, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -240,7 +240,7 @@ export function PickerRow({ label, value, mode, min, max, onChange, disabled }: 
       <BlancText variant="body" style={large ? undefined : { flex: 1 }} {...spokenByControl}>
         {label}
       </BlancText>
-      <Host matchContents>
+      <Host ignoreSafeArea="all" matchContents>
         <DatePicker
           title={label}
           selection={value}
@@ -305,7 +305,7 @@ export function MenuRow({ label, value, options, onChange }: {
       <BlancText variant="body" style={{ flex: 1 }} {...spokenByControl}>
         {label}
       </BlancText>
-      <Host matchContents>
+      <Host ignoreSafeArea="all" matchContents>
         <Picker
           selection={value}
           onSelectionChange={(next) => {
@@ -371,6 +371,21 @@ function plainText(children: ReactNode): string | null {
 }
 
 /**
+ * A free-text area (a note, a goal, a meal in words) on a page with no
+ * cards: a quiet filled field on the gutter, as the search fields are, so
+ * where to type stays plain once the box around it is gone. A control, not
+ * a container: the text inside keeps the field's own inset.
+ */
+export function FieldArea({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  const c = useBlanc();
+  return (
+    <View style={[{ backgroundColor: c.fill, borderRadius: 12, borderCurve: 'continuous', paddingHorizontal: 14, paddingVertical: 12 }, style]}>
+      {children}
+    </View>
+  );
+}
+
+/**
  * Text under a form block: a hint, or an error in red. Starts on the row
  * text's edge. VoiceOver announces an error when it appears or changes (iOS
  * has no live regions).
@@ -389,7 +404,7 @@ export function FormNote({ children, alert, accessibilityLabel, announcement }: 
       tone={alert ? 'live' : 'graphite'}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={alert ? 'alert' : undefined}
-      style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
+      style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
       {children}
     </BlancText>
   );

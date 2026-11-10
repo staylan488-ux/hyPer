@@ -69,6 +69,29 @@ history keep them (this file at commit b3f61df has the long version).
 - Not done: revoking the Sign in with Apple token on deletion (needs the
   Apple key and the provider refresh token, which Supabase doesn't keep).
 
+## Molten glass and the card-less pages (branch `claude/molten-glass`)
+
+- The look and its rules are in the blanc-native skill (Design). The owner
+  judged it on his phone on 2026-11-09 in the test app: the first build (a
+  field per tab, 30 to 60 fps, full strength) was rejected as laggy and
+  distracting; the rewrite (one shared field at 120 fps, the "faint" level)
+  was approved.
+- It adds a native module (`native/modules/hyper-glass-field`), so a phone
+  needs a full native build, not an over-the-air update.
+- Checked in the simulator: every screen in dark and light, the largest text
+  size, Increase Contrast, Reduce Motion, swipe back, leaving and returning.
+  Measured on the phone: 120 fps with no late frames over 40 s, about 1.2 ms
+  of GPU a frame.
+- Not measured: a day's battery cost of drawing at 120 fps, and Low Power
+  Mode on the phone (meant to cap it at 60). Not checked: VoiceOver.
+- Known and left as is: in light, a darker line passing behind small grey
+  text lowers that text's contrast where they cross; during a swipe back the
+  page's content hides until the slide ends; sheets' round close buttons are a
+  flat fill, not glass.
+- Also in the branch, unrelated to glass: SwiftUI pickers ignore the safe
+  area (a segmented picker used to stick under a sheet's header and overlap
+  the text below while scrolling).
+
 ## Not yet checked on a phone
 
 Each of these passed tests and, where noted in its PR, the simulator with

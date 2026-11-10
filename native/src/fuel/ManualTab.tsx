@@ -18,7 +18,7 @@ import { getSessionUserId } from '@/lib/sessionUser';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, ToggleRow, type TextField } from '~/components/Form';
+import { FieldArea, FieldRow, FormNote, ToggleRow, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
@@ -333,20 +333,22 @@ export function ManualTab({ draft, setDraft, onGeminiHandoff, onDescribeText }: 
         <Label>
           {describeOpen ? (
             <View style={{ paddingVertical: 16, paddingHorizontal: 18, gap: 12 }}>
-              <TextInput
-                selectionColor={c.ink}
-                value={description}
-                onChangeText={(text) => setDescription(text.slice(0, DESCRIBE_LIMIT))}
-                placeholder="e.g. Chipotle chicken bowl with white rice, black beans and guacamole"
-                placeholderTextColor={c.upcoming}
-                multiline
-                autoFocus
-                // Return closes the keyboard; the button below sends it.
-                returnKeyType="done"
-                submitBehavior="blurAndSubmit"
-                accessibilityLabel="Describe the food"
-                style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
-              />
+              <FieldArea>
+                <TextInput
+                  selectionColor={c.ink}
+                  value={description}
+                  onChangeText={(text) => setDescription(text.slice(0, DESCRIBE_LIMIT))}
+                  placeholder="e.g. Chipotle chicken bowl with white rice, black beans and guacamole"
+                  placeholderTextColor={c.upcoming}
+                  multiline
+                  autoFocus
+                  // Return closes the keyboard; the button below sends it.
+                  returnKeyType="done"
+                  submitBehavior="blurAndSubmit"
+                  accessibilityLabel="Describe the food"
+                  style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
+                />
+              </FieldArea>
               <View style={large ? { alignItems: 'flex-start', gap: 12 } : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <BlancText variant="footnote" tone="graphite">
                   {description.trim().length < 5 ? 'At least 5 characters' : `${description.length} / ${DESCRIBE_LIMIT}`}

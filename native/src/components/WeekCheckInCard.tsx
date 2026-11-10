@@ -67,7 +67,7 @@ export function WeekCheckInCard({ checkIn, todayKey }: { checkIn: WeekCheckIn; t
                 paddingLeft: 18,
                 paddingRight: 16,
                 paddingVertical: 14,
-                backgroundColor: pressed ? c.pressed : c.label,
+                backgroundColor: pressed ? c.pressed : 'transparent',
               })}>
               <View style={{ flex: 1, gap: 8 }}>
                 {lines.map((line) => (

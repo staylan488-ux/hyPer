@@ -593,7 +593,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     // movement's last set doesn't remount the row and snap its tally.
     return (
       <SwipeRow name={movement.name} actions={swipe}>
-        <View style={{ backgroundColor: c.label }}>{row}</View>
+        {row}
       </SwipeRow>
     );
   };
@@ -604,7 +604,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     session.movements.length > 0 ? (
       <Section title="Movements">
         {/* Hold a movement to lift it and drag it into place; hold and let
-            go for its sets, note and swap. The card's corners are the rows'. */}
+            go for its sets, note and swap. */}
         <Label>
           <DragList
             items={blocks.map((block) => ({
@@ -621,7 +621,6 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             }))}
             enabled={!reordering}
             revision={orderRevision}
-            roundBottom={!session.flexible}
             // Rules start at the names, past each row's 16 pt mark.
             ruleInset={18}
             onMove={(key, index) => void moveBlock(key, index)}
@@ -691,7 +690,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
         {current && draft ? (
           <View ref={cardRef} collapsable={false} onLayout={measureHeader}>
-          <Label style={{ marginTop: 14, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 18 }}>
+          <Label style={{ marginTop: 14, paddingLeft: 18, paddingRight: 16, paddingTop: 18, paddingBottom: 18 }}>
             {/* Keyed by movement so a switch fades the new movement in instead of jumping. */}
             <Animated.View key={current.movement.exerciseId} entering={FadeIn.duration(220)}>
             {/* The header block fades as it passes under the collapsed bar, which then names the movement. */}
@@ -856,6 +855,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
 
             <Capsule
               title={failed ? 'Retry' : 'Log set'}
+              tone="effort"
               size="large"
               fill
               busy={saving}
@@ -876,13 +876,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             style={{ marginHorizontal: space.inset, marginTop: 18 }}
           />
         ) : (
-          <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
+          <Label style={{ marginTop: 18, padding: 18, paddingRight: 16, gap: 14 }}>
             <View style={{ gap: 4 }}>
               {/* Everything left was skipped when nothing was logged. */}
               <BlancText variant="headline">{session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log'}</BlancText>
               {beat ? <BeatLine key={beat.key} gain={beat.gain} /> : null}
             </View>
-            <Capsule title="Finish workout" size="large" fill busy={closing} onPress={finish} />
+            <Capsule title="Finish workout" tone="effort" size="large" fill busy={closing} onPress={finish} />
           </Label>
         )}
 
@@ -1125,7 +1125,7 @@ function KeyBar({
         paddingHorizontal: 14,
         borderRadius: 18,
         justifyContent: 'center',
-        backgroundColor: pressed ? c.pressed : c.label,
+        backgroundColor: pressed ? c.pressed : c.fill,
       })}>
       <BlancText variant="secondary" weight="600" maxFontSizeMultiplier={KEY_BAR_MAX_SCALE}>
         {label}
@@ -1292,6 +1292,7 @@ function StartPlanned() {
                       // Each day's button names its day.
                       accessibilityLabel={`${starting === day.id ? 'Starting' : 'Start'} ${day.day_name}`}
                       variant="quiet"
+                      tone="effort"
                       busy={starting === day.id}
                       disabled={starting !== null}
                       onPress={() => void start(day.id)}
@@ -1379,7 +1380,7 @@ function StartFlexible() {
 
         <Section title="What are you training?" style={{ marginTop: 18 }}>
           {/* The field fills the card's height, so a tap anywhere on it types. */}
-          <Label style={{ paddingHorizontal: 18, paddingVertical: 3 }}>
+          <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 3 }}>
             <TextInput
               key={field.key}
               defaultValue={field.text}
@@ -1424,6 +1425,7 @@ function StartFlexible() {
 
         <Capsule
           title={label ? `Start ${label}` : 'Start session'}
+          tone="effort"
           size="large"
           fill
           busy={starting}

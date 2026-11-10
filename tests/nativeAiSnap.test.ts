@@ -86,6 +86,7 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
     },
   },
   '~/components/Form': {
+    FieldArea: Wrap,
     FieldRow: Empty,
     FormNote: ({ alert, children }: PropsWithChildren<{ alert?: boolean }>) => createElement('p', alert ? { 'data-alert': 'yes' } : {}, children),
     NumberFieldRow: Empty,

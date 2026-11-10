@@ -1,12 +1,13 @@
-// Blanc: Apple's structure, quiet white labels, and two things of hyPer's own:
-// the red italic P that marks the app, and the set tally from a paper
-// training log.
+// Blanc: Apple's structure, content straight on the page, and two things of
+// hyPer's own: the red italic P that marks the app, and the set tally from a
+// paper training log.
 //
 // SF Pro for everything except the P (Fraunces, in BrandMark). Big figures use
 // SF's Thin weight, the way the Weather app draws temperatures. Small label
-// details use Menlo, the closest monospaced face apps can name. Chalk ground,
-// white labels, black ink; no accent colour. Red is reserved for "live",
-// "over the limit" and the P.
+// details use Menlo, the closest monospaced face apps can name. Chalk ground
+// (true black in dark), black ink; no cards and no accent colour: hierarchy
+// comes from type, space and hairlines on the 16 pt gutter. Red is reserved
+// for "live", "over the limit" and the P.
 import { DynamicColorIOS, Platform, useColorScheme, type TextStyle } from 'react-native';
 
 import { useIncreaseContrast } from '~/lib/accessibility';
@@ -14,6 +15,10 @@ import { useIncreaseContrast } from '~/lib/accessibility';
 export const palettes = {
   light: {
     ground: '#F2F1ED',
+    /**
+     * A surface lifted off the page, never a resting card: a row while it is
+     * dragged, a hold menu's preview. Content at rest sits on the ground.
+     */
     label: '#FFFFFF',
     labelEdge: 'rgba(0, 0, 0, 0.06)',
     ink: '#0B0B0B',
@@ -24,6 +29,8 @@ export const palettes = {
     /** Marks to read but not lead (tally strokes still to do, past bars, weigh-in dots): 3:1 or more on chalk and labels. */
     mark: '#878680',
     fill: '#ECEBE6',
+    /** A chosen chip or segment, lifted on the fill as a segmented control's choice (lighter than the fill in dark too). */
+    chosen: '#FFFFFF',
     pressed: '#E7E6E1',
     capsule: '#0B0B0B',
     onCapsule: '#FFFFFF',
@@ -49,6 +56,7 @@ export const palettes = {
     track: '#363634',
     mark: '#7A7A73',
     fill: '#2C2C2A',
+    chosen: '#4A4A47',
     pressed: '#30302E',
     // A touch below ink, so the main button isn't the brightest slab in a dim room.
     capsule: '#E6E6E2',
@@ -64,9 +72,9 @@ export const palettes = {
     brand: '#E0604F',
   },
   // With Increase Contrast on (Settings, Accessibility, Display & Text Size),
-  // as iOS's own colours do: the same chalk and labels, with darker (in dark,
-  // lighter) secondary text, stronger rules and card edges, and full black
-  // or white ink. Every text tone reads at 4.5:1 or more on every surface
+  // as iOS's own colours do: the same chalk and lifted surfaces, with darker
+  // (in dark, lighter) secondary text, stronger rules and edges, and full
+  // black or white ink. Every text tone reads at 4.5:1 or more on every surface
   // (graphite at about 6:1 and up). The P keeps its colour.
   lightContrast: {
     ground: '#F2F1ED',
@@ -79,6 +87,7 @@ export const palettes = {
     track: '#BDBCB6',
     mark: '#7A7973',
     fill: '#E3E2DC',
+    chosen: '#FFFFFF',
     pressed: '#D8D7D1',
     capsule: '#000000',
     onCapsule: '#FFFFFF',
@@ -103,6 +112,7 @@ export const palettes = {
     track: '#4D4D4A',
     mark: '#85857D',
     fill: '#38383A',
+    chosen: '#5A5A57',
     pressed: '#424240',
     capsule: '#FFFFFF',
     onCapsule: '#000000',
@@ -174,15 +184,21 @@ export const type = {
 } satisfies Record<string, TextStyle>;
 
 export const space = {
-  /** Screen edge to text on the ground: the large title's edge, which the cards share. */
+  /** Screen edge to text on the ground: the large title's edge, which every row and figure shares. */
   gutter: 16,
-  /** Screen edge to a label card. */
+  /** Screen edge to a block's own edge (a button row, a control): the gutter. */
   inset: 16,
+  /**
+   * A Label's inner edge: rows and blocks keep 18 pt of padding, and the
+   * Label reaches 2 pt past the screen edge, so their text lands on the gutter.
+   */
+  labelPad: 18,
   /** Between sections. */
   section: 26,
 } as const;
 
 export const radius = {
+  /** A lifted surface's corners (a dragged row, a hold menu's preview). */
   label: 10,
 } as const;
 

@@ -230,8 +230,16 @@ function PartsLine({ parts: [shrinks, ...whole], style }: { parts: DetailParts; 
   );
 }
 
-/** A 1-pixel rule between rows, inset to line up with row text. */
-export function Hairline({ inset = 18 }: { inset?: number }) {
+/** Where a rule stops short of a Label's right edge: the screen's right gutter. */
+export const HAIRLINE_END = 16;
+
+/**
+ * A 1-pixel rule between rows, inset to line up with row text. With no card
+ * around the rows it ends on the right gutter too, so a list's rules run
+ * gutter to gutter under the large title.
+ */
+export function Hairline({ inset = 18, end = HAIRLINE_END }: { inset?: number; end?: number }) {
   const c = useBlanc();
-  return <View style={{ height: StyleSheet.hairlineWidth, marginLeft: inset, backgroundColor: c.hairline }} />;
+  return <View style={{ height: StyleSheet.hairlineWidth, marginLeft: inset, marginRight: end, backgroundColor: c.hairline }} />;
 }
+

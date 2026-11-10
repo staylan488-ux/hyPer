@@ -80,7 +80,7 @@ export default function PastSetSheet() {
   }, [saved]);
 
   return (
-    <ScrollView
+    <ScrollView showsVerticalScrollIndicator={false}
       style={{ backgroundColor: c.ground }}
       contentContainerStyle={{ paddingBottom: 28 }}
       keyboardShouldPersistTaps="handled"

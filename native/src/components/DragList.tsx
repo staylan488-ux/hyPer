@@ -28,11 +28,10 @@ const HOLD_SLOP = 8;
 /** Until a row has measured itself. */
 const FALLBACK_HEIGHT = 64;
 const SETTLE = { duration: 200 };
+/** Where the rule between rows stops: the right gutter, as Hairline's. */
+const RULE_END = 16;
 
 type Shared = {
-  /** Round the first row's top and the last row's bottom (the list starts or ends its card). */
-  roundTop: boolean;
-  roundBottom: boolean;
   /** Where the rule between rows starts: the rows' text edge. */
   ruleInset: number;
   order: SharedValue<string[]>;
@@ -74,12 +73,10 @@ function totalOf(order: string[], heights: Record<string, number>): number {
  * jumps while the new order saves; the list follows `items` again whenever
  * their order changes (a save landed, or failed and put the old order back).
  */
-export function DragList({ items, enabled, onMove, onHold, onDragging, revision = 0, roundTop = true, roundBottom = true, ruleInset = 18 }: {
+export function DragList({ items, enabled, onMove, onHold, onDragging, revision = 0, ruleInset = 18 }: {
   items: DragItem[];
   /** Bump to put the rows back in the items' order (a move that did not save). */
   revision?: number;
-  roundTop?: boolean;
-  roundBottom?: boolean;
   /** Where the rule between rows starts, as Hairline's inset: the rows' text edge. */
   ruleInset?: number;
   /** False while a move saves: rows don't lift. */
@@ -101,8 +98,8 @@ export function DragList({ items, enabled, onMove, onHold, onDragging, revision 
   const dragY = useSharedValue(0);
   const lift = useSharedValue(0);
   const shared = useMemo<Shared>(
-    () => ({ roundTop, roundBottom, ruleInset, order, pending, heights, active, startTop, dragY, lift }),
-    [roundTop, roundBottom, ruleInset, order, pending, heights, active, startTop, dragY, lift],
+    () => ({ ruleInset, order, pending, heights, active, startTop, dragY, lift }),
+    [ruleInset, order, pending, heights, active, startTop, dragY, lift],
   );
 
   // Follow the items' own order whenever it changes. Not mid-drag; one that
@@ -265,27 +262,22 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
       });
   }, [enabled, id, onDragging, onMove, onHold, active, startTop, startIndex, order, pending, heights, dragY, lift]);
 
-  const { roundTop, roundBottom } = shared;
   const place = useAnimatedStyle(() => {
     const isActive = active.get() === id;
     const y = isActive ? startTop.get() + dragY.get() : (top.get() ?? 0);
     const raised = isActive ? lift.get() : 0;
-    // The card's corners belong to whichever rows sit first and last; a
-    // lifted row is a card of its own.
-    const index = order.get().indexOf(id);
-    const first = roundTop && index === 0 ? radius.label : 0;
-    const last = roundBottom && index === order.get().length - 1 ? radius.label : 0;
-    const lifted = radius.label * raised;
+    // Rows sit on the page with no card; a lifted row is a card of its own.
+    const corner = radius.label * raised;
     return {
       transform: [{ translateY: y }, { scale: 1 + 0.025 * raised }],
       zIndex: isActive ? 10 : 0,
-      borderTopLeftRadius: Math.max(first, lifted),
-      borderTopRightRadius: Math.max(first, lifted),
-      borderBottomLeftRadius: Math.max(last, lifted),
-      borderBottomRightRadius: Math.max(last, lifted),
+      borderRadius: corner,
       boxShadow: liftShadow(raised),
     };
   });
+  // The lifted row's own surface: it fades in as the row rises and out as it
+  // settles, so a row at rest is transparent like the page under it.
+  const surface = useAnimatedStyle(() => ({ opacity: active.get() === id ? lift.get() : 0 }));
   // The rule above a row shows only where a row sits above it, and never on a lifted one.
   const rule = useAnimatedStyle(() => ({
     opacity: order.get().indexOf(id) > 0 && active.get() !== id ? 1 : 0,
@@ -305,8 +297,9 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
             return value[id] === height ? value : { ...value, [id]: height };
           }, false);
         }}
-        style={[{ position: 'absolute', left: 0, right: 0, top: 0, backgroundColor: c.label, overflow: 'hidden', borderCurve: 'continuous' }, place]}>
-        <Animated.View style={[{ height: StyleSheet.hairlineWidth, marginLeft: shared.ruleInset, backgroundColor: c.hairline }, rule]} />
+        style={[{ position: 'absolute', left: 0, right: 0, top: 0, overflow: 'hidden', borderCurve: 'continuous' }, place]}>
+        <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: c.label }, surface]} />
+        <Animated.View style={[{ height: StyleSheet.hairlineWidth, marginLeft: shared.ruleInset, marginRight: RULE_END, backgroundColor: c.hairline }, rule]} />
         <View>{children}</View>
       </Animated.View>
     </GestureDetector>

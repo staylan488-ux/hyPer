@@ -136,7 +136,7 @@ export default function ProgressScreen() {
         <Section title="Muscles" note={`Week of ${format(startOfWeek(parseISO(dayKey), TRAINING_WEEK), 'MMMM d')}`} style={{ marginTop: 6 }}>
           {volume.length === 0 ? (
             volumeRead ? (
-              <Label style={{ paddingHorizontal: 18, paddingVertical: 16, gap: 12 }}>
+              <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 16, gap: 12 }}>
                 <BlancText variant="headline">Nothing trained yet this week</BlancText>
                 <BlancText variant="secondary" tone="graphite">
                   Log a session and Progress tracks each muscle&apos;s weekly sets against its landmarks.
@@ -199,7 +199,7 @@ export default function ProgressScreen() {
         </Section>
 
         <Section title="Training time" note="Last 8 weeks">
-          <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
+          <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 16 }}>
             {hours ? (
               <>
                 <HoursChart points={hours} />
@@ -325,7 +325,7 @@ function Disclosure({ open }: { open: boolean }) {
 
 /** The rail's marker for this week's sets: a short upright tick, a reading on a scale rather than a handle to drag. */
 const TICK = { width: 2, height: 12 } as const;
-/** The card-coloured edge either side of the tick that keeps it clear of the band under it. */
+/** The page-coloured edge either side of the tick that keeps it clear of the band under it. */
 const TICK_EDGE = 1;
 /** The rail's band as the key draws it. */
 const BAND = { width: 14, height: 5 } as const;
@@ -334,7 +334,7 @@ const BAND = { width: 14, height: 5 } as const;
 function Tick({ hot }: { hot: boolean }) {
   const c = useBlanc();
   return (
-    <View style={{ width: TICK.width + TICK_EDGE * 2, height: TICK.height, paddingHorizontal: TICK_EDGE, backgroundColor: c.label }}>
+    <View style={{ width: TICK.width + TICK_EDGE * 2, height: TICK.height, paddingHorizontal: TICK_EDGE, backgroundColor: c.ground }}>
       <View style={{ flex: 1, borderRadius: TICK.width / 2, backgroundColor: hot ? c.live : c.ink }} />
     </View>
   );
@@ -519,7 +519,7 @@ function ScaleLabel({ bottom, above = false, children }: { bottom: `${number}%`;
         ...(above ? { marginBottom: 3, justifyContent: 'flex-end' } : { marginBottom: -SCALE_BOX / 2, justifyContent: 'center' }),
       }}>
       {/* Sized to the figure, never shrunk to fit. */}
-      <View style={{ paddingLeft: SCALE_GAP, backgroundColor: c.label }}>
+      <View style={{ paddingLeft: SCALE_GAP, backgroundColor: c.ground }}>
         <BlancText variant="footnote" tone="graphite" numberOfLines={1} maxFontSizeMultiplier={1.3} style={{ fontVariant: ['tabular-nums'] }}>
           {children}
         </BlancText>
@@ -839,7 +839,7 @@ function NutritionSection({ todayKey }: { todayKey: string }) {
   const note = `${week.written}${shown ? ` · ${logged} ${logged === 1 ? 'day' : 'days'} logged` : ''}`;
   return (
     <Section title="Nutrition" note={note}>
-      <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
+      <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 16 }}>
         {loading ? (
           <Waiting height={120} label="Loading nutrition" />
         ) : error ? (

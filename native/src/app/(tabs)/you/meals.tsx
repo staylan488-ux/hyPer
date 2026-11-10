@@ -18,7 +18,6 @@ import { formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { editSavedMeal, loadYouMeals, usePullRefresh, useYouMealsStore } from '~/lib/you';
-import { useBlanc } from '~/theme/blanc';
 
 /** Opens the meal builder empty, to keep a new saved meal without logging it. */
 function newSavedMeal() {
@@ -32,7 +31,6 @@ function newSavedMeal() {
  * logged entries as they were (the hold menu's Delete says so).
  */
 export default function SavedMealsScreen() {
-  const c = useBlanc();
   const meals = useYouMealsStore((state) => state.meals);
   const failed = useYouMealsStore((state) => state.failed);
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
@@ -87,7 +85,7 @@ export default function SavedMealsScreen() {
         {meals === null ? (
           <ActivityIndicator style={{ marginTop: 40 }} />
         ) : shown.length === 0 ? (
-          <Label style={{ marginTop: 12, padding: 18, gap: failed ? 14 : 2 }}>
+          <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: failed ? 14 : 2 }}>
             <BlancText variant="headline">{failed ? 'Saved meals not loaded' : 'No saved meals yet'}</BlancText>
             {failed ? (
               <Capsule title="Try again" fill onPress={() => void loadYouMeals()} />
@@ -108,7 +106,7 @@ export default function SavedMealsScreen() {
                     { label: 'Edit', onPress: () => editSavedMeal(meal) },
                     { label: 'Delete', destructive: true, onPress: () => void remove(meal) },
                   ]}>
-                  <View style={{ backgroundColor: c.label }}>
+                  <View>
                     <Row
                       title={meal.name}
                       detail={foodLine(meal) || undefined}

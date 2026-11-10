@@ -120,7 +120,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1, backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 40 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>
@@ -135,7 +135,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
       </View>
 
       <Section title="Day 1" style={{ marginTop: 18 }}>
-        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset }}>
+        <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset }}>
           <Picker selection={choice} onSelectionChange={select(setChoice)} modifiers={[pickerStyle('segmented')]}>
             <SwiftText modifiers={[tag('today')]}>Today</SwiftText>
             <SwiftText modifiers={[tag('tomorrow')]}>Tomorrow</SwiftText>
@@ -143,8 +143,8 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
           </Picker>
         </Host>
         {choice === 'pick' ? (
-          <Label style={{ marginTop: 10, paddingHorizontal: 18, paddingVertical: 10 }}>
-            <Host matchContents={{ vertical: true }}>
+          <Label style={{ marginTop: 10, paddingLeft: 18, paddingRight: 16, paddingVertical: 10 }}>
+            <Host ignoreSafeArea="all" matchContents={{ vertical: true }}>
               <DatePicker
                 title="Starts"
                 selection={picked}
@@ -158,7 +158,7 @@ function ScheduleEditor({ split, saved, upNext }: { split: Split; saved: PlanSch
       </Section>
 
       <Section title="Sessions follow">
-        <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset }}>
+        <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset }}>
           <Picker selection={mode} onSelectionChange={select(setMode)} modifiers={[pickerStyle('segmented')]}>
             <SwiftText modifiers={[tag('fixed')]}>Set weekdays</SwiftText>
             <SwiftText modifiers={[tag('flex')]}>In order</SwiftText>

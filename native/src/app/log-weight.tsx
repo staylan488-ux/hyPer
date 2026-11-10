@@ -83,7 +83,7 @@ export default function LogWeightSheet() {
 
   return (
     // The sheet fits its content; at the accessibility text sizes that can pass the screen, so it scrolls.
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} keyboardShouldPersistTaps="handled" scrollEnabled={large}>
+    <ScrollView showsVerticalScrollIndicator={false} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }} keyboardShouldPersistTaps="handled" scrollEnabled={large}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>
@@ -125,7 +125,7 @@ export default function LogWeightSheet() {
             {lastWeighInLabel(latest, failedHistory, todayKey)}
           </BlancText>
           {/* A host that matched its contents both ways shrank the segmented control to its smallest. */}
-          <Host matchContents={{ vertical: true }} style={{ width: 110 }}>
+          <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ width: 110 }}>
             <Picker selection={unit} onSelectionChange={(next) => switchUnit(next as WeightUnit)} modifiers={[pickerStyle('segmented')]}>
               <SwiftText modifiers={[tag('lb'), accessibilityLabel('Pounds')]}>lb</SwiftText>
               <SwiftText modifiers={[tag('kg'), accessibilityLabel('Kilograms')]}>kg</SwiftText>

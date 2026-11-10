@@ -380,7 +380,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/components/Row': { Row: (props: Button) => { captured.buttons[props.title] = props; return null; }, Hairline: Empty },
     '~/components/SwipeRow': { dismissOpenSwipeRow: noop, closeOpenSwipeRow: () => false, SwipeRow: Wrap, useSwipeActions: () => [] },
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => ({ actions: [], run: () => false }) },
-    '~/components/Form': { FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: (props: { label: string; value: boolean }) => { captured.toggles[props.label] = props; return null; }, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
+    '~/components/Form': { FieldArea: Wrap, FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: (props: { label: string; value: boolean }) => { captured.toggles[props.label] = props; return null; }, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
     '~/components/Stepper': { Stepper: Empty },
     '~/lib/format': { formatWhole: String },

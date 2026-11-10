@@ -146,10 +146,33 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   "extra", the line stays full in ink); cutting, maintaining or with no goal
   saved, calories, carbs and fat past target turn red (the owner's call on
   2026-10-30).
-- The white [Label](../../../native/src/components/Label.tsx) is the one container
-  (10 pt continuous corners). Sections are separated by space, rows by hairlines
-  with an iOS press highlight. Ink capsules are primary actions; quiet fill
-  capsules are secondary. A chosen chip is lifted on the fill like a segmented
+- No cards (the owner's call, 2026-11-09: cards are "cheap excuses for a bad
+  UI"). [Label](../../../native/src/components/Label.tsx) is only a grouping,
+  with no fill, corners or edge: content sits straight on the page, ordered by
+  type, space, hairlines and the 16 pt gutter. Sections are separated by
+  space, rows by hairlines with an iOS press highlight. Buttons are Apple's
+  interactive Liquid Glass ([Capsule](../../../native/src/components/Capsule.tsx)):
+  the main action plain frost with an ink title (near-black in dark, white in
+  light), quiet ones lighter; a press sinks a little and lights up from the
+  fingertip (warm for Log set, Resume, Start and Finish; neutral otherwise).
+- Molten glass behind the tabs (approved on the phone, 2026-11-09, at the
+  "faint" level): a real fluid simulation drawn as a few thin lines, in
+  `native/modules/hyper-glass-field` (Metal) through
+  [GlassField](../../../native/src/components/GlassField.tsx). One shared
+  field for all four tabs ([TabStack](../../../native/src/components/TabStack.tsx)),
+  on its own thread at the screen's full rate (120 Hz measured on the owner's
+  phone), so a tab change never resets it. It drifts slowly, stirs a little
+  under the finger and a scroll, and a workout press sends a warm wave up
+  through it. Reduce Motion holds it still, Increase Contrast draws it
+  fainter, Low Power Mode caps it at 60. The owner's bar: it must feel
+  rendered inside the app, never like a video behind it (30 fps and a field
+  per tab were rejected as "laggy" and "cheap"), and stay quiet ("something
+  you notice", not something that "screams"). Tab pages and their navigation
+  theme are clear so it shows; sheets keep their own ground. Give the field
+  view no background colour of its own: iOS reads it for the tab bar's light
+  or dark glass. No page or sheet shows a scroll bar (it read as a web page's).
+  `-hyperGlassLevel off|faint|soft|full` compares levels in a debug build.
+- A chosen chip is lifted on the fill like a segmented
   control's choice (label colour, hairline edge), so a sheet's one filled shape
   stays its main button. One way for each repeated idea: the live workout's
   clock is `LiveClock` (live dot, ticking m:ss) everywhere; a value against its
@@ -222,7 +245,8 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   layouts or signature details (the owner ruled out copying Maison Margiela's
   stitches and numbered label on 2026-10-26).
 - No costume luxury: no serif type outside the P, no Roman numerals,
-  faux-editorial copy, glow, 3D or particles. Sentence case. Touch targets at
+  faux-editorial copy, glow, 3D or particles (the molten glass above and a
+  press's light are the approved exceptions). Sentence case. Touch targets at
   least 44 pt.
 - Accessibility (2026-11-04): the app works with VoiceOver, every text size up
   to AX5, Increase Contrast and Reduce Motion, and looks exactly the same at

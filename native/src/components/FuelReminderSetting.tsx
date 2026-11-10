@@ -70,7 +70,7 @@ export function FuelReminderSetting({ rows, top = space.section }: { rows?: Reac
               variant="quiet"
               onPress={() => void Linking.openSettings()}
               // on the note's text edge (FormNote's margin)
-              style={{ alignSelf: 'flex-start', marginLeft: space.inset + 18, marginTop: 12 }}
+              style={{ alignSelf: 'flex-start', marginLeft: space.gutter, marginTop: 12 }}
             />
           </>
         ) : (

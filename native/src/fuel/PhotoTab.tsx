@@ -492,7 +492,7 @@ function PhotoReview({ draft, setDraft }: { draft: PhotoDraft; setDraft: (update
             {items.map((item, index) => {
               const totals = photoItemTotals(item);
               const body = (
-                <View style={{ paddingVertical: 12, paddingLeft: 18, paddingRight: 8, backgroundColor: c.label }}>
+                <View style={{ paddingVertical: 12, paddingLeft: 18, paddingRight: 8 }}>
                   {/* At the accessibility sizes the name takes the whole line and the grams sit under it. */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
                     <TextInput

@@ -20,7 +20,7 @@ import { createMealIngredient } from '@/lib/mealComposition';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FieldRow, FormNote, NumberFieldRow, ToggleRow } from '~/components/Form';
+import { FieldArea, FieldRow, FormNote, NumberFieldRow, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { HoldMenu, hasHoldMenu, showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { RollingText } from '~/components/RollingText';
@@ -392,8 +392,8 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
-              backgroundColor: pressed ? c.pressed : c.label,
-              boxShadow: `0 0 0 0.5px ${c.labelEdge}`,
+              // A quiet fill tile on the page, as the quiet capsules are.
+              backgroundColor: pressed ? c.pressed : c.fill,
             })}>
             <SymbolView name="camera" size={20} tintColor={c.ink} />
             <BlancText variant="footnote" style={large ? { textAlign: 'center' } : undefined}>
@@ -423,7 +423,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
     return (
       <View>
         <Section title="Your meal" style={{ marginTop: 0 }}>
-          <Label>
+          <FieldArea style={{ marginHorizontal: space.gutter, paddingHorizontal: 0, paddingVertical: 0 }}>
             <TextInput
               selectionColor={c.ink}
               ref={hintField}
@@ -437,9 +437,9 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
               placeholder="e.g. Six Trader Joe’s chicken tikka samosas"
               placeholderTextColor={c.upcoming}
               accessibilityLabel="Your meal"
-              style={[typeScale.fieldLines, { color: c.ink, minHeight: 88, paddingHorizontal: 18, paddingTop: 14, paddingBottom: 16 }]}
+              style={[typeScale.fieldLines, { color: c.ink, minHeight: 88, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }]}
             />
-          </Label>
+          </FieldArea>
           {/* While it runs, only what is being analyzed stays, so the steps sit higher. */}
           {trail ? null : <FormNote>Photo, text, or both. Include the amount and any added oil or sauce you know about.</FormNote>}
         </Section>
@@ -597,7 +597,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
                           showActionSheet(item.name, itemMenu(item));
                         }
                   }
-                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: pressed ? c.pressed : c.label })}>
+                  style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 64, paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: pressed ? c.pressed : 'transparent' })}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
                       {item.name}

@@ -101,7 +101,7 @@ export default function SavedMealSheet() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <ScrollView showsVerticalScrollIndicator={false} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }}>

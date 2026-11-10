@@ -1,0 +1,177 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=1182">
+<style>
+  html, body { margin: 0; background: #0B0B0B; font-family: -apple-system, system-ui; color: #A3A39C; overflow: hidden; }
+  .row { display: flex; gap: 18px; padding: 24px 24px 0; }
+  .panel { position: relative; width: 270px; display: grid; gap: 12px; }
+  .phone { position: relative; width: 270px; height: 587px; border-radius: 34px; overflow: hidden; }
+  .phone canvas { position: absolute; inset: 0; width: 270px; height: 587px; display: block; }
+  .dot { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; pointer-events: none; opacity: 0; }
+  .label { font-size: 15px; font-weight: 600; color: #F2F1ED; padding-left: 4px; }
+  .label span { font-weight: 400; color: #A3A39C; }
+</style></head>
+<body>
+<div class="row" id="row"></div>
+<script>
+window.DEMO = { duration: 10000 };
+const W = 270, H = 587, SCALE = 2;
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+</script>
+<script src="fluid-core.js"></script>
+<script>
+// Molten glass, calm amount, live behind real screenshots of the card-less app (the page colour keyed out so the
+// material shows only where the page is bare). Dark: light on its edges over true black. Light: clear glass on chalk.
+const SHADE = HEAD + `
+  uniform sampler2D uDye; uniform vec2 dyeTexel; uniform int light;
+  vec3 toSrgb(vec3 c){ c = max(c, 0.); return mix(c * 12.92, 1.055 * pow(c, vec3(1. / 2.4)) - .055, step(.0031308, c)); }
+  float L1(vec2 uv){ return length(texture(uDye, uv).rgb); }
+  void main(){
+    vec3 d = texture(uDye, vUv).rgb;
+    float c = length(d);
+    float dx = L1(vUv + vec2(dyeTexel.x * 2., 0.)) - L1(vUv - vec2(dyeTexel.x * 2., 0.));
+    float dy = L1(vUv + vec2(0., dyeTexel.y * 2.)) - L1(vUv - vec2(0., dyeTexel.y * 2.));
+    vec3 n = normalize(vec3(-dx * 3., -dy * 3., .35));
+    vec3 Lt = normalize(vec3(-.45, .65, .6));
+    float body = smoothstep(.02, .14, c);
+    float warm = clamp((d.r - d.b) / max(c, 1e-4) * 1.4, 0., 1.);
+    vec3 ember = vec3(1., .45, .22);
+    float spec = pow(clamp(dot(reflect(-Lt, n), vec3(0., 0., 1.)), 0., 1.), 24.);
+    float edge = smoothstep(.01, .16, length(vec2(dx, dy)) * 3.);
+    float fres = pow(1. - n.z, 1.6) * edge;
+    if (light == 0) {
+      vec3 hi = mix(vec3(.88, .93, 1.), ember, warm);
+      o = vec4(toSrgb(body * (hi * spec * 1.35 + hi * fres * 1.1)), 1.);
+    } else {
+      vec3 ground = vec3(.949, .945, .929);
+      float lines = clamp((spec * 2.1 + fres * 1.7) * body, 0., 1.);       // the same lines dark mode lights up
+      vec3 ink = mix(vec3(.42, .43, .46), vec3(.80, .36, .20), warm);
+      vec3 col = mix(ground, ink, lines * .85);
+      o = vec4(col, 1.);
+    }
+  }`;
+const PANELS = [
+  { shot: 'shot-today-dark.png', light: 0, ground: [0, 0, 0], title: 'Today', sub: 'dark', tap: { x: 224, y: 215 }, btn: [190, 201, 67, 29] },
+  { shot: 'shot-train-dark.png', light: 0, ground: [0, 0, 0], title: 'Train', sub: 'dark', tap: { x: 135, y: 353 }, btn: [12, 336, 245, 35] },
+  { shot: 'shot-today-light.png', light: 1, ground: [242, 241, 237], title: 'Today', sub: 'light', tap: { x: 224, y: 215 }, btn: [190, 201, 67, 29] },
+  { shot: 'shot-train-light.png', light: 1, ground: [242, 241, 237], title: 'Train', sub: 'light', tap: { x: 135, y: 353 }, btn: [12, 336, 245, 35] },
+];
+const EMBER = [1.0, 0.30, 0.16];
+const FINGER = { down: 2500, up: 4300 }, PULSE = 6000;
+function fingerAt(t, tap) {
+  if (t >= FINGER.down - 150 && t <= FINGER.up + 200) {
+    const k = Math.min(1, Math.max(0, (t - FINGER.down) / (FINGER.up - FINGER.down)));
+    const e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    return { x: 210 - 140 * e + 22 * Math.sin(e * Math.PI * 2), y: 480 - 230 * e, press: t >= FINGER.down && t <= FINGER.up ? 1 : 0 };
+  }
+  if (Math.abs(t - (PULSE + 60)) < 220) return { x: tap.x, y: tap.y, press: t >= PULSE && t <= PULSE + 130 ? 1 : 0 };
+  return null;
+}
+async function keyedOverlay(src, ground) {
+  const im = new Image(); im.src = src; await im.decode();
+  const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+  const x = c.getContext('2d'); x.drawImage(im, 0, 0);
+  const id = x.getImageData(0, 0, c.width, c.height), p = id.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const dd = Math.max(Math.abs(p[i] - ground[0]), Math.abs(p[i + 1] - ground[1]), Math.abs(p[i + 2] - ground[2]));
+    const a = Math.min(1, Math.max(0, (dd - 2) / 12));
+    p[i + 3] = Math.round(a * 255);
+  }
+  x.putImageData(id, 0, 0);
+  c.style.cssText = 'position:absolute;inset:0;width:270px;height:587px';
+  return c;
+}
+const row = document.getElementById('row');
+const sims = [];
+(async () => {
+  for (const p of PANELS) {
+    const panel = document.createElement('div'); panel.className = 'panel';
+    const phone = document.createElement('div'); phone.className = 'phone';
+    const cv = document.createElement('canvas'); phone.append(cv);
+    phone.append(await keyedOverlay(p.shot, p.ground));
+    const [bx, by, bw, bh] = p.btn;
+    const btn = document.createElement('div');
+    btn.style.cssText = `position:absolute;left:${bx}px;top:${by}px;width:${bw}px;height:${bh}px;border-radius:${bh / 2}px;overflow:hidden;` +
+      `background:url(${p.shot}) -${bx}px -${by}px / 270px 587px no-repeat;transform-origin:50% 50%`;
+    const glow = document.createElement('div');
+    glow.style.cssText = `position:absolute;inset:0;mix-blend-mode:${p.light ? 'multiply' : 'screen'};opacity:0`;
+    btn.append(glow); phone.append(btn);
+    const dot = document.createElement('div'); dot.className = 'dot';
+    dot.style.background = p.light ? 'rgba(0,0,0,.18)' : 'rgba(255,255,255,.30)';
+    dot.style.border = p.light ? '1px solid rgba(0,0,0,.30)' : '1px solid rgba(255,255,255,.55)';
+    phone.append(dot); panel.append(phone);
+    const label = document.createElement('div'); label.className = 'label'; label.innerHTML = `${p.title} <span>· ${p.sub}</span>`; panel.append(label);
+    row.append(panel);
+    const fl = new Fluid(cv, { curl: 4, velDiss: 0.6, dyeDiss: 0.03, display: 'gloss', exposure: 1 }, 11);
+    sims.push({ p, fl, shade: fl.program(VS, SHADE), dot, btn, glow, last: null, warm: false });
+  }
+  window.READY = true;
+})();
+const record = new URLSearchParams(location.search).has('record');
+let t0 = null;
+function frame(now) {
+  if (!window.READY) { requestAnimationFrame(frame); return; }
+  if (t0 === null) t0 = now;
+  let t = now - t0;
+  if (!record) t = t % DEMO.duration;
+  const ts = t / 1000;
+  for (const s of sims) {
+    const fl = s.fl, gl = fl.gl, fg = fingerAt(t, s.p.tap);
+    if (!s.warm) {
+      s.warm = true;
+      const r = mulberry32(31);
+      for (let i = 0; i < 480; i++) {
+        if (i < 90 && i % 3 === 0) {
+          const x = 0.1 + 0.8 * r(), y = 0.08 + 0.84 * r(), a = r() * Math.PI * 2, amt = s.p.light ? 0.045 : 0.035;
+          fl.splat(x, y, Math.cos(a) * 260, Math.sin(a) * 260, [1.2 * amt, 1.2 * amt, 1.2 * amt], 0.0045);
+        }
+        fl.step(1 / 60);
+      }
+    }
+    if (!s.kr) s.kr = mulberry32(77);
+    const KEEP = new URLSearchParams(location.search).get('keep');
+    const amt0 = s.p.light ? 0.045 : 0.035;
+    if (KEEP && KEEP.startsWith('reg')) { const tgt = s.p.light ? +KEEP.split(':')[2] : +KEEP.split(':')[1]; s.kn = (s.kn || 0) + 1; s.cool = (s.cool || 0) - 1;
+      if (s.cool <= 0 && s.lastE !== undefined && s.lastE < tgt) { s.cool = 8; const r = s.kr, x = 0.1 + 0.8 * r(), y = 0.08 + 0.84 * r(), a = r() * Math.PI * 2, m = 1.2 * amt0; fl.splat(x, y, Math.cos(a) * 260, Math.sin(a) * 260, [m, m, m], 0.0045); } }
+    if (KEEP && KEEP.includes(',')) { const [ev, am, fo, ra] = KEEP.split(',').map(Number); s.kn = (s.kn || 0) + 1; if (s.kn % ev === 0) { const r = s.kr, x = 0.1 + 0.8 * r(), y = 0.08 + 0.84 * r(), a = r() * Math.PI * 2, m = 1.2 * amt0 * am; fl.splat(x, y, Math.cos(a) * fo, Math.sin(a) * fo, [m, m, m], ra); } }
+    for (let e = 0; e < 3; e++) {
+      const x = 0.5 + 0.38 * Math.sin(ts * (0.07 + e * 0.03) + e * 2.1), y = 0.5 + 0.40 * Math.sin(ts * (0.05 + e * 0.02) + e * 1.3);
+      const a = ts * (0.15 + e * 0.05) + e;
+      fl.splat(x, y, Math.cos(a) * 9, Math.sin(a) * 9, null, 0.02);
+    }
+    if (fg && fg.press && s.last && Math.abs(t - PULSE) > 400) fl.splat(fg.x / W, 1 - fg.y / H, (fg.x - s.last.x) / W * 5200, -(fg.y - s.last.y) / H * 5200, null, 0.0022);
+    s.last = fg && fg.press ? fg : null;
+    if (t >= PULSE && t < PULSE + 120) {
+      const k = 0.16, tx = s.p.tap.x / W, ty = 1 - s.p.tap.y / H;
+      fl.splat(tx, ty, 0, 1250, [EMBER[0] * k, EMBER[1] * k, EMBER[2] * k], 0.0045);
+      fl.splat(tx - 0.12, ty + 0.02, -380, 420, null, 0.004);
+      fl.splat(tx + 0.12, ty + 0.02, 380, 420, null, 0.004);
+    }
+    fl.step(1 / 60);
+    gl.useProgram(s.shade.p);
+    gl.uniform1i(s.shade.u.uDye, fl.dye.read.attach(0)); gl.uniform2f(s.shade.u.dyeTexel, 1 / fl.dyeW, 1 / fl.dyeH); gl.uniform1i(s.shade.u.light, s.p.light);
+    fl.run(s.shade, null, [1 / fl.dyeW, 1 / fl.dyeH]);
+    s.fr = (s.fr || 0) + 1;
+    if (s.fr % 10 === 0) { const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      let sum = 0, hi = 0; const g = s.p.ground; for (let i = 0; i < px.length; i += 16) { const d = Math.max(Math.abs(px[i] - g[0]), Math.abs(px[i + 1] - g[1]), Math.abs(px[i + 2] - g[2])); sum += d; if (d > 30) hi++; }
+      const n = px.length / 16; s.lastE = sum / n; (window.E = window.E || {})[s.p.title + s.p.sub] = ((window.E || {})[s.p.title + s.p.sub] || []).concat([[Math.round(s.fr / 60 * 10) / 10, +(sum / n).toFixed(2), +(hi / n * 100).toFixed(2)]]); }
+    // The button answers: it sinks in a little while pressed and springs back, and warm light blooms inside it from
+    // the fingertip, then drains out into the background as the wave.
+    const age = t - PULSE;
+    const sink = age < 0 ? 0 : age < 130 ? Math.min(1, age / 60) : Math.max(0, Math.exp(-(age - 130) / 70) * Math.cos((age - 130) / 55));
+    s.btn.style.transform = `scale(${1 - 0.035 * sink})`;
+    const [bx, by] = s.p.btn;
+    const lx = s.p.tap.x - bx, ly = s.p.tap.y - by;
+    const bloom = age < 0 ? 0 : age < 140 ? age / 140 : Math.exp(-(age - 140) / 260);
+    const reach = 20 + Math.min(1, age / 500) * 260;
+    s.glow.style.opacity = String(bloom);
+    s.glow.style.background = s.p.light
+      ? `radial-gradient(${reach}px ${reach * 0.9}px at ${lx}px ${ly}px, rgba(250,170,130,1) 0%, rgba(252,205,180,1) 45%, rgba(255,255,255,1) 100%)`
+      : `radial-gradient(${reach}px ${reach * 0.9}px at ${lx}px ${ly}px, rgba(255,140,80,.85) 0%, rgba(255,110,60,.35) 50%, rgba(0,0,0,0) 100%)`;
+    s.dot.style.opacity = fg ? String(0.55 + 0.45 * fg.press) : '0';
+    if (fg) { s.dot.style.left = fg.x + 'px'; s.dot.style.top = fg.y + 'px'; }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body></html>

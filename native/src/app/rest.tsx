@@ -270,7 +270,7 @@ export default function RestSheet() {
   // The sheet fits its content; at the accessibility text sizes that can be
   // taller than the screen, so it scrolls.
   return large ? (
-    <ScrollView onMagicTap={magicTap} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 36 }}>
+    <ScrollView showsVerticalScrollIndicator={false} onMagicTap={magicTap} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 36 }}>
       {content}
     </ScrollView>
   ) : (

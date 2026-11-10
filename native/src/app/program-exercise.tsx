@@ -63,7 +63,7 @@ export default function ProgramExerciseSheet() {
   };
 
   return (
-    <ScrollView
+    <ScrollView showsVerticalScrollIndicator={false}
       style={{ backgroundColor: c.ground }}
       contentContainerStyle={{ paddingBottom: 28 }}
       // The sheet fits its content; at the accessibility text sizes that can pass the screen's height.

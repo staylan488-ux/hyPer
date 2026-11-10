@@ -53,7 +53,7 @@ export default function NewPassword() {
   };
 
   return (
-    <KeyboardAwareScrollView
+    <KeyboardAwareScrollView showsVerticalScrollIndicator={false}
       bottomOffset={24}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"

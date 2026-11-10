@@ -127,7 +127,7 @@ export default function SessionDone() {
 
   return (
     <>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false}
         style={{ backgroundColor: c.ground }}
         contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + TITLE_TOP, paddingBottom: insets.bottom + 16 }}>
         {/* Top-anchored like every other screen; Done keeps the foot. */}
@@ -148,8 +148,8 @@ export default function SessionDone() {
             </BlancText>
           </View>
 
-          {/* A standard card: the 18-point padding and the edge and shadow every Label has, so its text sits on the app's shared edge. */}
-          <Label style={{ marginTop: 22, paddingHorizontal: 18, paddingTop: lead ? 18 : 10, paddingBottom: 18 }}>
+          {/* A standard block: the 18-point padding every Label keeps, so its text sits on the app's shared 16 pt edge. */}
+          <Label style={{ marginTop: 22, paddingLeft: 18, paddingRight: 16, paddingTop: lead ? 18 : 10, paddingBottom: 18 }}>
             {/* A session without sets has no tally, as on Today. */}
             {tally ? (
               <Tally
