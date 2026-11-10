@@ -130,16 +130,6 @@ const batches: (() => WhoopWorkoutRecord[])[] = [
 
 let fixtureCursor = 0;
 
-export const WHOOP_FIXTURE_BATCH_COUNT = batches.length;
-
-export function getWhoopFixtureCursor(): number {
-  return Math.min(fixtureCursor, batches.length - 1);
-}
-
-export function resetWhoopFixtures(): void {
-  fixtureCursor = 0;
-}
-
 // fixture stand-in for the whoop-sync Edge Function transport; single page,
 // advances one batch per sync run (clamps on the last batch)
 export async function fetchWhoopFixtureBatch(params: WhoopFetchBatchParams): Promise<WhoopFetchBatchResult> {

@@ -162,6 +162,28 @@ describe('restPreferences', () => {
       expect(prefs['ex-b']?.restSeconds).toBe(120); // remote-only added
     });
 
+    it('keeps a rest length saved while the DB read is still out', async () => {
+      let answer: (result: { data: unknown[]; error: null }) => void = () => {};
+      supabaseMock.from.mockReturnValueOnce({
+        upsert: vi.fn(() => Promise.resolve({ error: null })),
+        select: vi.fn(() => ({
+          eq: vi.fn(() => new Promise<{ data: unknown[] | null; error: { message: string } | null }>((resolve) => { answer = resolve; })),
+        })),
+      });
+
+      const loading = loadRestPreferencesAsync('user1');
+      saveRestPreference('user1', 'ex-a', 200);
+      answer({
+        data: [{ exercise_id: 'ex-b', rest_seconds: 120, updated_at: '2026-06-17T09:00:00.000Z' }],
+        error: null,
+      });
+
+      const prefs = await loading;
+      expect(prefs['ex-a']?.restSeconds).toBe(200);
+      expect(prefs['ex-b']?.restSeconds).toBe(120);
+      expect(loadRestPreferences('user1')['ex-a']?.restSeconds).toBe(200);
+    });
+
     it('falls back to cache when the DB errors', async () => {
       saveRestPreference('user1', 'ex-a', 150);
       supabaseMock.from.mockReturnValueOnce({

@@ -110,25 +110,6 @@ export async function saveExpenditure(
   return normalizeProfile(data);
 }
 
-/** The writable subset of a stored profile. */
-export function toNutritionProfileInput(profile: NutritionProfile): NutritionProfileInput {
-  return {
-    sex: profile.sex,
-    birth_year: profile.birth_year,
-    height_cm: profile.height_cm,
-    body_fat_pct: profile.body_fat_pct,
-    activity: profile.activity,
-    goal: profile.goal,
-    rate_pct_per_week: profile.rate_pct_per_week,
-    unit_system: profile.unit_system,
-    adaptive_enabled: profile.adaptive_enabled,
-    phase_started_on: profile.phase_started_on,
-    expenditure_kcal: profile.expenditure_kcal,
-    expenditure_confidence: profile.expenditure_confidence,
-    expenditure_updated_at: profile.expenditure_updated_at,
-  };
-}
-
 /**
  * Turn a stored profile plus a current bodyweight into calculator input.
  * Pass expenditureKcal explicitly — callers need the PREDICTED figure when

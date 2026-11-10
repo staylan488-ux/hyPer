@@ -29,17 +29,6 @@ function cursorKey(userId: string): string {
   return `${HEALTH_WEIGHT_SYNC_CURSOR_PREFIX}${userId}`;
 }
 
-export async function getBodyWeightHistory(userId: string, limit = 14): Promise<BodyWeightMeasurement[]> {
-  const { data, error } = await supabase
-    .from('body_weight_measurements')
-    .select('*')
-    .eq('user_id', userId)
-    .order('measured_at', { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-  return (data || []) as BodyWeightMeasurement[];
-}
-
 /** Where getBodyWeightHistorySince's window starts: `days` days before `now`, as an ISO time. */
 export function bodyWeightWindowStart(days: number, now: Date = new Date()): string {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1_000).toISOString();
@@ -47,9 +36,9 @@ export function bodyWeightWindowStart(days: number, now: Date = new Date()): str
 
 /**
  * Weigh-ins from the last `days` calendar days, newest first, every one of
- * them (read in pages, as getAllBodyWeights does). getBodyWeightHistory limits
- * by ROWS, so several weigh-ins in one day eat its window — the trend
- * estimator needs a date range instead.
+ * them (read in pages, as getAllBodyWeights does). A row limit would let
+ * several weigh-ins in one day eat the window; the trend estimator needs a
+ * date range.
  */
 export async function getBodyWeightHistorySince(
   userId: string,

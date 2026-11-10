@@ -11,8 +11,6 @@ import {
 } from '@/lib/usdaClient';
 import type { Food } from '@/types';
 
-export { BARCODE_AVAILABILITY_TIMEOUT_MS, BARCODE_LOOKUP_TIMEOUT_MS, BARCODE_MESSAGES, BARCODE_SCAN_TIMEOUT_MS } from '@/lib/barcodes';
-
 export type BarcodeLookup =
   | { status: 'found'; food: Food; provider: BarcodeProvider }
   | { status: 'miss' }

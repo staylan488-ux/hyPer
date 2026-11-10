@@ -4,7 +4,6 @@ import type { PhotoAnalysisItem, PhotoAnalysisProvider } from '@/lib/photoAnalys
 import { searchUsdaFoodsSecure } from '@/lib/usdaClient';
 import type { Food } from '@/types';
 
-export const MAX_PHOTO_UPLOAD_BYTES = 10 * 1024 * 1024;
 // 2576px is the long edge the vision models accept at full resolution; the
 // byte budget scales with the pixel count so the quality loop isn't forced to
 // claw the resolution back as compression artifacts.

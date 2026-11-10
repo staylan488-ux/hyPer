@@ -18,8 +18,9 @@ a build whose configuration differs from the last one.
 ## Native contracts
 
 - Native modules live in `native/modules` (Keychain session, HealthKit, run
-  recorder, barcode scanner, Live Activity, widget data, view frames, presses
-  from outside the app), each with its Swift beside its TypeScript API.
+  recorder, barcode scanner, Live Activity, widget data, view frames, context
+  menus, the glass field, presses from outside the app), each with its Swift
+  beside its TypeScript API.
 - The widget extension (`native/targets/widgets`) is added on prebuild by
   [withHyperWidgets.js](../../../../native/plugins/withHyperWidgets.js).
   `WorkoutActivityAttributes` has one definition in

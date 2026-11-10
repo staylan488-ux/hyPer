@@ -16,7 +16,8 @@ import { useBlanc } from '~/theme/blanc';
  */
 export function Track({ progress, warnOver = true }: { progress: number; warnOver?: boolean }) {
   const c = useBlanc();
-  const clamped = Math.max(0, Math.min(1, progress));
+  // A zero target divides to NaN, which is no width at all.
+  const clamped = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
   const width = useSharedValue(clamped);
   // The value the line last went to: the first run of the effect has nothing to move.
   const shown = useRef(clamped);

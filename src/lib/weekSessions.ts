@@ -24,8 +24,3 @@ export async function readWeekSessionDates(userId: string, dayKey: string): Prom
   if (error) throw error;
   return ((data ?? []) as { date: string }[]).map((row) => row.date).sort();
 }
-
-/** 0 = Monday … 6 = Sunday. */
-export function trainingWeekdayIndex(dayKey: string): number {
-  return (parseISO(dayKey).getDay() + 6) % 7;
-}

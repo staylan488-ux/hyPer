@@ -79,9 +79,10 @@ function servingBasis(serving: FatSecretServing): { size: number; unit: string; 
 }
 
 /**
- * Maps the documented `food.find_id_for_barcode.v2` JSON response into Hyper's
- * provider-neutral food shape. The API call itself must stay behind a static-
- * egress server proxy; FatSecret credentials must never be shipped to clients.
+ * Maps FatSecret's `food.get.v2` JSON response (what the food-lookup function
+ * returns for a barcode, after `food.find_id_for_barcode`) into Hyper's
+ * provider-neutral food shape. The API call itself stays behind that server
+ * proxy; FatSecret credentials must never be shipped to clients.
  */
 export function mapFatSecretBarcodeFood(
   payload: FatSecretBarcodeResponse | null | undefined,

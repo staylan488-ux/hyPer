@@ -36,16 +36,6 @@ export interface NutritionWizardOutcome {
 
 export type WizardOption<T extends string> = { value: T; label: string; hint: string };
 
-export const SEX_OPTIONS: WizardOption<BiologicalSex>[] = [
-  { value: 'male', label: 'Male', hint: 'Biological male metabolism' },
-  { value: 'female', label: 'Female', hint: 'Biological female metabolism' },
-];
-
-export const UNIT_OPTIONS: WizardOption<UnitSystem>[] = [
-  { value: 'imperial', label: 'Imperial', hint: 'lbs, feet & inches' },
-  { value: 'metric', label: 'Metric', hint: 'kg, cm' },
-];
-
 export const ACTIVITY_OPTIONS: WizardOption<ActivityLevel>[] = [
   { value: 'sedentary', label: 'Sedentary', hint: 'Desk job, little walking, no training' },
   { value: 'lightly_active', label: 'Lightly Active', hint: 'Desk job, 1–3 sessions a week' },
@@ -316,9 +306,14 @@ export function wizardOutcome(
   };
 }
 
-/** Whether a recorded weight differs enough from the calculator's to log a new weigh-in. */
+/**
+ * Whether a recorded weight differs enough from the calculator's to log a new
+ * weigh-in. The field shows one decimal, so an untouched weight can sit
+ * exactly half a step (0.05) from the recorded one; the margin keeps that
+ * rounding, which floating point can land just above 0.05, from counting.
+ */
 export function wizardWeightChanged(latestKg: number | null, weightKg: number): boolean {
-  return latestKg == null || Math.abs(latestKg - weightKg) > 0.05;
+  return latestKg == null || Math.abs(latestKg - weightKg) > 0.05 + 1e-9;
 }
 
 /**

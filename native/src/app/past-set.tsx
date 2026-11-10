@@ -54,10 +54,16 @@ export default function PastSetSheet() {
   const save = async () => {
     if (!workout || !set || saving) return;
     Keyboard.dismiss();
-    setSaving(true);
-    setFailed(false);
     const weightValue = weight.trim() ? parseNumber(weight) : null;
     const repsValue = reps.trim() ? parseNumber(reps) : null;
+    // Typed text that is no number ("." alone) must not save as an emptied field.
+    if ((weight.trim() && weightValue === null) || (reps.trim() && repsValue === null)) {
+      haptics.error();
+      setFailed(true);
+      return;
+    }
+    setSaving(true);
+    setFailed(false);
     const values = { weight: weightValue, reps: repsValue === null ? null : Math.round(repsValue), rpe };
     const ok = await editPastWorkout(workout.id, () => {
       // A logged set takes its time from the workout as it is when the save runs.

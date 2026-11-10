@@ -217,11 +217,6 @@ export function mergeQueuedMovementNotePayload(previous: string, next: string, e
   }, after.legacyNote);
 }
 
-/** A background refresh may update untouched fields, never an unsaved draft. */
-export function mergeMovementNoteDrafts(saved: Record<string, string>, drafts: Record<string, string>): Record<string, string> {
-  return { ...saved, ...drafts };
-}
-
 /** A slow save only acknowledges values it actually sent; later typing stays dirty. */
 export function remainingMovementNoteDrafts(drafts: Record<string, string>, saved: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(drafts).filter(([id, value]) => value.trim() !== (saved[id] ?? '')));

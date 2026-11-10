@@ -5,7 +5,6 @@
 // Capacitor shell) stays false and NativeAuth is unavailable: sign-in uses
 // platform/nativeAuth.ts and the session platform/supabase.ts.
 
-import { HyperBarcode } from '../../modules/hyper-barcode';
 import { HyperHealth } from '../../modules/hyper-health';
 import { runningBundleIdentifier } from '../../modules/hyper-keychain/bundle';
 import { HyperRun } from '../../modules/hyper-run';
@@ -116,11 +115,6 @@ interface NativeHealthPlugin {
   addListener(eventName: 'weightSamplesChanged', listener: () => void): Promise<PluginListenerHandle>;
 }
 
-interface NativeBarcodePlugin {
-  getAvailability(): Promise<{ available: boolean }>;
-  scanBarcode(): Promise<{ rawValue: string; format: string }>;
-}
-
 /** Every method rejects; each plugin will be replaced by a native module. */
 function unavailable<T extends object>(name: string): T {
   return new Proxy({} as T, {
@@ -136,5 +130,3 @@ export const NativeAuth = unavailable<NativeAuthPlugin>('HyperAuth');
 export const NativeRun: NativeRunPlugin = HyperRun;
 // HealthKit body weight through native/modules/hyper-health.
 export const NativeHealth: NativeHealthPlugin = HyperHealth;
-// VisionKit's data scanner through native/modules/hyper-barcode.
-export const NativeBarcode: NativeBarcodePlugin = HyperBarcode;

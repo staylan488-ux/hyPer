@@ -25,6 +25,7 @@ import { clearFuelReminders } from '~/lib/fuelReminder';
 import { authErrorWords } from '~/lib/auth';
 import { useAuthLinkError } from '~/lib/authLink';
 import { haptics } from '~/lib/haptics';
+import { clearWidgetSnapshot } from '~/lib/widgets';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -44,10 +45,12 @@ export default function SignIn() {
   // A reset or confirmation link that couldn't sign in says so here.
   const linkError = useAuthLinkError((state) => state.message);
 
-  // Nobody is signed in: no account's fuel reminder stays on this phone, also
-  // when a saved session could not be restored at launch.
+  // Nobody is signed in: no account's fuel reminder or widget figures stay on
+  // this phone, also when a saved session could not be restored at launch (the
+  // tabs, which clear the widgets on sign-out, never mounted then).
   useEffect(() => {
     void clearFuelReminders();
+    clearWidgetSnapshot();
   }, []);
 
   const [isLogin, setIsLogin] = useState(true);
