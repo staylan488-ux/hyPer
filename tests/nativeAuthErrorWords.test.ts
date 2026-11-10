@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { isInviteRefusal } from '@/lib/betaAccess';
 import { loadNativeModule } from './helpers/loadNativeModule';
 
 const { authErrorWords } = loadNativeModule<{ authErrorWords: (message: string) => string }>('lib/auth.ts', {
   zustand: { create: () => () => ({}) },
   '@/lib/authScreen': { authScreen: () => 'app' },
+  '@/lib/betaAccess': { isInviteRefusal },
   '@/stores/authStore': { useAuthStore: () => null },
 });
 
@@ -21,6 +23,14 @@ describe('sign-in errors in plain words', () => {
   it('says a rate limit plainly', () => {
     expect(authErrorWords('email rate limit exceeded')).toBe('Too many tries for now. Wait a minute, then try again.');
     expect(authErrorWords('For security purposes, you can only request this after 42 seconds.')).toBe('Too many tries for now. Wait a minute, then try again.');
+  });
+
+  it('says a sign-up the invite list refused plainly, however Supabase Auth words it', () => {
+    const invite = 'hyPer is invite-only for now. Use the email your invite was sent to.';
+    expect(authErrorWords('Database error saving new user')).toBe(invite);
+    expect(authErrorWords('hyPer is invite-only: this email is not invited')).toBe(invite);
+    expect(authErrorWords('Signups not allowed for this instance')).toBe(invite);
+    expect(authErrorWords('signup_disabled')).toBe(invite);
   });
 
   it('says a reused password plainly', () => {

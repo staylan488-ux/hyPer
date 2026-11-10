@@ -5,6 +5,11 @@ import { createDatabaseLedger } from './databaseLedger.ts';
 import { analyzeMeal } from './model.ts';
 import { interpretServing } from './serving.ts';
 import { suggestTargets } from './coach.ts';
+import { isApprovedUser } from '../_shared/approval.ts';
+
+// Meal analysis, serving interpretation and target suggestions share one
+// counter across all accounts (public.ai_usage_daily).
+const GLOBAL_FEATURE = 'food-analysis';
 
 // No client-provided API key, provider, model, URL or user ID is trusted.
 // The operator applies the ledger migration and keeps the legacy bucket private.
@@ -26,6 +31,8 @@ Deno.serve(async (request: Request) => {
     const handler = createTrialHandler({
       config: {
         maxAttempts: Number(Deno.env.get('FOOD_ANALYSIS_MAX_DAILY_REQUESTS') ?? '24'),
+        // All accounts together. An out-of-range value fails closed (validateConfig).
+        maxGlobalAttempts: Number(Deno.env.get('FOOD_ANALYSIS_MAX_GLOBAL_DAILY_REQUESTS') ?? '50'),
         allowedOrigins: required('FOOD_ANALYSIS_ALLOWED_ORIGINS').split(',').map(value => value.trim()),
       },
       ledger: createDatabaseLedger({
@@ -35,6 +42,19 @@ Deno.serve(async (request: Request) => {
       async authenticate(token) {
         const { data, error } = await authClient.auth.getUser(token);
         return error ? null : data.user?.id ?? null;
+      },
+      isApproved: userId => isApprovedUser(authClient, userId),
+      globalQuota: {
+        async used(date) {
+          const { data, error } = await authClient.rpc('ai_usage_count', { p_feature: GLOBAL_FEATURE, p_usage_date: date });
+          if (error || typeof data !== 'number') throw new Error('Global quota unavailable');
+          return data;
+        },
+        async claim(date, max) {
+          const { data, error } = await authClient.rpc('claim_ai_request', { p_feature: GLOBAL_FEATURE, p_usage_date: date, p_max: max });
+          if (error || typeof data !== 'boolean') throw new Error('Global quota unavailable');
+          return data;
+        },
       },
       analyze: (input, onProgress) => analyzeMeal(input, apiKey, tavilyKey, onProgress),
       // Supabase's runtime keeps the function alive for this work after the app disconnects.

@@ -74,6 +74,16 @@ history keep them (this file at commit b3f61df has the long version).
 - Not done: revoking the Sign in with Apple token on deletion (needs the
   Apple key and the provider refresh token, which Supabase doesn't keep).
 
+## Invite-only and the daily AI ceiling (branch `t3/c5a566da`)
+
+- Rebuilds stale PR #143 on current main: sign-up only for emails in
+  `beta_invites`, app data only for accounts in `approved_users`, a daily
+  ceiling on paid food analysis across all accounts, and the "Not on the list
+  yet" screen. How it works, inviting and the ceiling:
+  [private-beta.md](../private-beta.md). Not deployed; the PR lists the
+  ordered deploy steps. Deploying `analyze-food-trial` from main is the ledger
+  cutover above, so both migrations go first.
+
 ## Molten glass and the card-less pages (branch `claude/molten-glass`)
 
 - The look and its rules are in the blanc-native skill (Design). The owner

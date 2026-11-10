@@ -22,6 +22,14 @@ export default function Index() {
   // The splash screen stays up until the saved session has been read.
   if (screen === 'boot' || openRun) return null;
   const href =
-    screen === 'app' ? (launch ?? '/today') : screen === 'new-password' ? '/new-password' : screen === 'offline' ? '/offline' : '/sign-in';
+    screen === 'app'
+      ? (launch ?? '/today')
+      : screen === 'new-password'
+        ? '/new-password'
+        : screen === 'not-approved'
+          ? '/not-approved'
+          : screen === 'offline'
+            ? '/offline'
+            : '/sign-in';
   return <Redirect href={href} />;
 }

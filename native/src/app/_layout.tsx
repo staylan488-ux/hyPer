@@ -263,6 +263,10 @@ export default function RootLayout() {
           <Stack.Protected guard={screen === 'new-password'}>
             <Stack.Screen name="new-password" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>
+          {/* Signed in, but the server says the account isn't approved (invite-only). */}
+          <Stack.Protected guard={screen === 'not-approved'}>
+            <Stack.Screen name="not-approved" options={{ contentStyle: { backgroundColor: p.ground } }} />
+          </Stack.Protected>
           <Stack.Protected guard={screen === 'offline'}>
             <Stack.Screen name="offline" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>

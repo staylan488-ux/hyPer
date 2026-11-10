@@ -3,6 +3,7 @@ import { isAuthRetryableFetchError, type User, type Session } from '@supabase/su
 import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
+import { fetchBetaAccess, type BetaAccess } from '@/lib/betaAccess';
 import { supabase } from '@/lib/supabase';
 import { resetAppData } from '@/stores/appStore';
 
@@ -34,6 +35,9 @@ function isExistingAccountSignUpResponse(data: { user: User | null; session: Ses
 // skip the refetch while it runs or once the profile is loaded
 let profileRequestFor: string | null = null;
 
+// user id whose private beta check is in flight
+let betaAccessRequestFor: string | null = null;
+
 // a password sign-in by an unconfirmed email emits SIGNED_IN before signIn
 // rejects it and signs out; it must not take over the device AI settings
 function isUnverifiedEmailUser(user: User) {
@@ -54,6 +58,13 @@ interface AuthState {
    * before anything else. Ends when one is saved, the person skips it, or
    * they sign out. */
   passwordRecovery: boolean;
+  /** Private beta: whether the server lists the signed-in account as approved.
+   * 'unknown' (not asked yet, offline, any error) keeps the app open; only the
+   * server's clear "no" for this account shows the not-on-the-list screen.
+   * Reset whenever the account changes, so a switch never inherits an answer. */
+  betaAccess: BetaAccess;
+  /** Asks the server again; the not-on-the-list screen's Check again. */
+  checkBetaAccess: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, displayName?: string) => Promise<SignUpResult>;
   resendSignupConfirmation: (email: string) => Promise<{ error: Error | null }>;
@@ -93,6 +104,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialized: false,
   reconnecting: false,
   passwordRecovery: false,
+  betaAccess: 'unknown',
 
   initialize: async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
@@ -100,6 +112,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (session) {
       set({ session, user: session.user, loading: false, initialized: true });
       get().fetchProfile();
+      void get().checkBetaAccess();
       // no-op when local settings exist; restores them after storage eviction
       if (!isUnverifiedEmailUser(session.user)) void hydratePhotoWorkerSettings(session.user.id);
     } else if (error && isAuthRetryableFetchError(error)) {
@@ -123,6 +136,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const nextId = session?.user?.id ?? null;
       set({ session, user: session?.user ?? null });
       if (prevId && prevId !== nextId) resetAppData();
+      if (prevId !== nextId) set({ betaAccess: 'unknown' });
       // A reset link's code was exchanged for a session: ask for the new
       // password. Any other account change ends a recovery in progress.
       if (event === 'PASSWORD_RECOVERY' && nextId) set({ passwordRecovery: true });
@@ -133,11 +147,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (get().profile?.id !== userId && profileRequestFor !== userId) {
           get().fetchProfile();
         }
+        // Asks again until approved: after an account change, after an
+        // unclear answer, and on every return to the app (its SIGNED_IN), so
+        // someone approved meanwhile gets in without signing in again.
+        if (get().betaAccess !== 'approved') void get().checkBetaAccess();
         if (!isUnverifiedEmailUser(session.user)) void hydratePhotoWorkerSettings(userId);
       } else {
-        set({ profile: null });
+        set({ profile: null, betaAccess: 'unknown' });
       }
     });
+  },
+
+  checkBetaAccess: async () => {
+    const { user } = get();
+    if (!user || isUnverifiedEmailUser(user)) return;
+    const userId = user.id;
+    if (betaAccessRequestFor === userId) return;
+    betaAccessRequestFor = userId;
+    try {
+      const access = await fetchBetaAccess(userId, () => supabase.rpc('my_beta_access'));
+      // An unclear answer never overwrites a clear one, and a slow answer for
+      // a previous account never lands after a switch.
+      if (access !== 'unknown' && get().user?.id === userId) set({ betaAccess: access });
+    } finally {
+      if (betaAccessRequestFor === userId) betaAccessRequestFor = null;
+    }
   },
 
   fetchProfile: async () => {
@@ -294,7 +328,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     invalidateExerciseLibrary();
     resetAppData();
-    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false });
+    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false, betaAccess: 'unknown' });
     return { error: null };
   },
 
@@ -302,6 +336,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await supabase.auth.signOut();
     invalidateExerciseLibrary();
     resetAppData();
-    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false });
+    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false, betaAccess: 'unknown' });
   },
 }));

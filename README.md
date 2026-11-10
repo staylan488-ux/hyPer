@@ -52,6 +52,8 @@ Notes in `docs/`:
 
 - [handoffs/current.md](docs/handoffs/current.md): where things stand, what
   is still unchecked on a phone and the known open issues.
+- [private-beta.md](docs/private-beta.md): inviting someone (hyPer is
+  invite-only) and setting the daily ceiling on AI spend.
 - [serving-entry.md](docs/serving-entry.md): how Describe amount turns words
   into servings.
 - [evidence-pipeline.md](docs/evidence-pipeline.md): where program templates

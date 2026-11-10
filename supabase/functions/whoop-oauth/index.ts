@@ -17,6 +17,7 @@ import {
   signOAuthState,
   verifyOAuthState,
 } from '../_shared/whoop.ts';
+import { approvalRefusal, isApprovedUser } from '../_shared/approval.ts';
 
 interface OAuthActionRequest {
   action?: 'start' | 'disconnect';
@@ -120,6 +121,10 @@ serve(async (req) => {
       if (!payload) return redirectTo('error');
       callbackReturnTo = allowedReturnTo(payload.returnTo, env.appBaseUrl);
       if (!code) return redirectTo('error', callbackReturnTo);
+      const service = createClient(env.supabaseUrl, env.serviceRoleKey);
+      // Approved when the connection started; check again before taking WHOOP's
+      // tokens (a failed check throws and lands in the error redirect below).
+      if (!await isApprovedUser(service, payload.userId)) return redirectTo('error', callbackReturnTo);
 
       const tokens = await exchangeAuthorizationCode({
         code,
@@ -128,7 +133,6 @@ serve(async (req) => {
         redirectUri: callbackUrl(env.supabaseUrl),
       });
 
-      const service = createClient(env.supabaseUrl, env.serviceRoleKey);
       const nowIso = new Date().toISOString();
       const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
@@ -169,6 +173,14 @@ serve(async (req) => {
 
   /* ── POST {action:'start'} ── */
   if (body.action === 'start') {
+    // Private beta: only approved accounts may connect WHOOP. Disconnect stays
+    // open so an account that is not approved can still revoke its tokens.
+    const refusal = await approvalRefusal(
+      createClient(env.supabaseUrl, env.serviceRoleKey),
+      userId,
+      'WHOOP connection is temporarily unavailable.',
+    );
+    if (refusal) return jsonResponse(refusal.body, refusal.status);
     const returnTo = allowedReturnTo(body.returnTo, env.appBaseUrl);
     const state = await signOAuthState(env.stateSecret, userId, 10 * 60 * 1000, returnTo);
     const authorize = new URL(WHOOP_AUTH_URL);

@@ -1,5 +1,5 @@
 -- Reference snapshot of the public schema, rebuilt from supabase/migrations
--- through 20261108220000 on 2026-11-08 (not checked against a production dump).
+-- through 20261109120000 on 2026-11-09 (not checked against a production dump).
 -- The migrations are the source of truth. This file is for reading: it is not
 -- meant to be replayed on top of the migrations or against production.
 
@@ -532,8 +532,9 @@ CREATE POLICY "Users can delete own activity segments" ON activity_segments FOR 
 -- whoop_tokens intentionally has NO policies.
 CREATE POLICY "Users can view own whoop connection" ON whoop_connections FOR SELECT USING (auth.uid() = user_id);
 -- Foods policies
-CREATE POLICY "Users can view own foods" ON foods FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
-CREATE POLICY "Users can insert own foods" ON foods FOR INSERT WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+-- user_id NULL: a shared food (such as a USDA one), for signed-in accounts only
+CREATE POLICY "Users can view own foods" ON foods FOR SELECT TO authenticated USING (auth.uid() = user_id OR user_id IS NULL);
+CREATE POLICY "Users can insert own foods" ON foods FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
 CREATE POLICY "Users can update own foods" ON foods FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own foods" ON foods FOR DELETE USING (auth.uid() = user_id);
 
@@ -605,6 +606,208 @@ CREATE POLICY "Users can insert own rest preferences" ON exercise_rest_preferenc
 CREATE POLICY "Users can update own rest preferences" ON exercise_rest_preferences FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own rest preferences" ON exercise_rest_preferences FOR DELETE USING (auth.uid() = user_id);
 
+-- ─── Private beta (20261109120000) ───────────────────────────────────────
+-- Only accounts in approved_users may read or write app data (a RESTRICTIVE
+-- policy on every table below), and only emails in beta_invites may create an
+-- account. The migration also approved every account that existed when it ran.
+
+CREATE TABLE IF NOT EXISTS public.approved_users (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
+  note TEXT,
+  approved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Only the SQL editor and the service role (Edge Functions) touch this table.
+-- The app asks through my_beta_access() below.
+ALTER TABLE public.approved_users ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.approved_users FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.approved_users TO service_role;
+
+-- Whether the caller (auth.uid()) is approved. Used by every app table's policy.
+CREATE OR REPLACE FUNCTION public.is_approved_user()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT EXISTS (SELECT 1 FROM public.approved_users WHERE user_id = auth.uid());
+$$;
+
+REVOKE ALL ON FUNCTION public.is_approved_user() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_approved_user() TO anon, authenticated, service_role;
+
+-- The app's question: which account is asking, and is it approved? Returning
+-- the id lets the app ignore an answer given for a request that went out
+-- without its sign-in (user_id null), so a signed-in approved person is never
+-- shown the "not on the list" screen by mistake.
+CREATE OR REPLACE FUNCTION public.my_beta_access()
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT jsonb_build_object(
+    'user_id', auth.uid(),
+    'approved', EXISTS (SELECT 1 FROM public.approved_users WHERE user_id = auth.uid())
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.my_beta_access() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.my_beta_access() TO authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS public.beta_invites (
+  email TEXT PRIMARY KEY CHECK (email = lower(btrim(email)) AND email <> ''),
+  note TEXT,
+  invited_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  used_at TIMESTAMPTZ
+);
+
+ALTER TABLE public.beta_invites ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.beta_invites FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.beta_invites TO service_role;
+
+CREATE OR REPLACE FUNCTION public.enforce_beta_invite()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.beta_invites
+    WHERE email = lower(btrim(coalesce(NEW.email, '')))
+  ) THEN
+    -- Supabase Auth reports this to the app as "Database error saving new user".
+    RAISE EXCEPTION 'hyPer is invite-only: this email is not invited'
+      USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.approve_invited_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  INSERT INTO public.approved_users (user_id, email, note)
+  VALUES (NEW.id, lower(btrim(NEW.email)), 'joined from invite')
+  ON CONFLICT (user_id) DO NOTHING;
+
+  UPDATE public.beta_invites
+  SET used_at = now()
+  WHERE email = lower(btrim(coalesce(NEW.email, ''))) AND used_at IS NULL;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.enforce_beta_invite() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.approve_invited_user() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS enforce_beta_invite ON auth.users;
+CREATE TRIGGER enforce_beta_invite
+  BEFORE INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_beta_invite();
+
+DROP TRIGGER IF EXISTS approve_invited_user ON auth.users;
+CREATE TRIGGER approve_invited_user
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.approve_invited_user();
+
+-- Every app table: approved accounts only, ANDed with the policies above.
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'activity_segments', 'activity_sessions', 'body_weight_measurements',
+    'exercise_rest_preferences', 'exercises', 'flex_day_templates', 'foods',
+    'macro_targets', 'nutrition_groups', 'nutrition_import_batches',
+    'nutrition_logs', 'nutrition_profiles', 'plan_schedules', 'profiles',
+    'program_preferences', 'sets', 'split_days', 'split_exercises', 'splits',
+    'volume_landmarks', 'whoop_connections', 'whoop_tokens',
+    'workout_day_plans', 'workouts'
+  ]
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('DROP POLICY IF EXISTS "Private beta: approved users only" ON public.%I', t);
+    EXECUTE format(
+      'CREATE POLICY "Private beta: approved users only" ON public.%I '
+      'AS RESTRICTIVE FOR ALL TO PUBLIC '
+      'USING ((SELECT public.is_approved_user())) '
+      'WITH CHECK ((SELECT public.is_approved_user()))',
+      t
+    );
+  END LOOP;
+END
+$$;
+
+
+-- One daily counter across all accounts for paid food analysis
+-- (FOOD_ANALYSIS_MAX_GLOBAL_DAILY_REQUESTS caps it in analyze-food-trial).
+CREATE TABLE IF NOT EXISTS public.ai_usage_daily (
+  usage_date DATE NOT NULL,
+  feature TEXT NOT NULL,
+  requests INTEGER NOT NULL DEFAULT 0 CHECK (requests >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (usage_date, feature)
+);
+
+ALTER TABLE public.ai_usage_daily ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.ai_usage_daily FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.ai_usage_daily TO service_role;
+
+-- Counts one request unless the day's ceiling is already reached, atomically
+-- (the row lock serializes concurrent claims). Never refunds: a counted
+-- request may already have been billed.
+CREATE OR REPLACE FUNCTION public.claim_ai_request(p_feature TEXT, p_usage_date DATE, p_max INTEGER)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_requests INTEGER;
+BEGIN
+  IF p_max IS NULL OR p_max < 1 OR p_feature IS NULL OR p_usage_date IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  INSERT INTO public.ai_usage_daily AS u (usage_date, feature, requests)
+  VALUES (p_usage_date, p_feature, 1)
+  ON CONFLICT (usage_date, feature) DO UPDATE
+    SET requests = u.requests + 1, updated_at = now()
+    WHERE u.requests < p_max
+  RETURNING u.requests INTO v_requests;
+
+  RETURN v_requests IS NOT NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.ai_usage_count(p_feature TEXT, p_usage_date DATE)
+RETURNS INTEGER
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT coalesce(
+    (SELECT requests FROM public.ai_usage_daily WHERE feature = p_feature AND usage_date = p_usage_date),
+    0
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.claim_ai_request(TEXT, DATE, INTEGER) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ai_usage_count(TEXT, DATE) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_ai_request(TEXT, DATE, INTEGER) TO service_role;
+GRANT EXECUTE ON FUNCTION public.ai_usage_count(TEXT, DATE) TO service_role;
+
 -- Function to create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -628,7 +831,8 @@ CREATE TRIGGER on_auth_user_created
 -- Atomic save of a whole split (name, days, exercises) in one transaction.
 -- The client sends the full desired state; the function reconciles via
 -- upsert + delete. Current definition from 20260221130000 (supersets), with
--- the search_path set by 20260401151500.
+-- the search_path set by 20260401151500 and the approval check from
+-- 20261109120000.
 CREATE OR REPLACE FUNCTION public.save_split_snapshot(
   p_split_id UUID,
   p_name TEXT,
@@ -651,6 +855,10 @@ DECLARE
   v_kept_exercise_ids UUID[] := '{}';
   v_day_kept_exercise_ids UUID[];
 BEGIN
+  IF NOT public.is_approved_user() THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+
   SELECT user_id INTO v_user_id
   FROM splits
   WHERE id = p_split_id;

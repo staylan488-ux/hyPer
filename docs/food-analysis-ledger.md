@@ -27,6 +27,10 @@ The new deletion function defaults to unavailable until explicitly enabled.
 2. Inspect migration history; apply only
    `supabase/migrations/20261108220000_add_food_analysis_ledger.sql`. It is a one-time
    migration, not a replay of `schema.sql` or the entire migrations directory.
+   Apply `20261109120000_private_beta_and_ai_caps.sql` too (before or with
+   it): the new `analyze-food-trial` also checks approval and claims the
+   shared daily counter, and answers 503 for everyone without them
+   ([private beta](private-beta.md)).
 3. Deploy `analyze-food-trial` with the database adapter. Keep `FOOD_ANALYSIS_BUCKET`
    pointing to the **same original private bucket**; don't create a replacement that
    hides the old records/quota. Do not dual-write or fall back to Storage uploads.

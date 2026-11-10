@@ -2,6 +2,7 @@
 // Function secrets and is never shipped in the browser bundle.
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { approvalRefusal } from '../_shared/approval.ts';
 import { corsHeaders, jsonResponse } from '../_shared/oauth.ts';
 
 type FoodLookupRequest =
@@ -128,6 +129,13 @@ serve(async (req) => {
   );
   const { data: authData, error: authError } = await authed.auth.getUser();
   if (authError || !authData.user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  // Private beta: only approved accounts may spend the USDA/FatSecret quotas.
+  const refusal = await approvalRefusal(
+    createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''),
+    authData.user.id,
+    'Food search is temporarily unavailable.',
+  );
+  if (refusal) return jsonResponse(refusal.body, refusal.status);
 
   const body = await req.json().catch(() => ({})) as FoodLookupRequest;
 

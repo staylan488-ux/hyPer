@@ -6,6 +6,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { WHOOP_API_BASE, corsHeaders, jsonResponse, refreshAccessToken } from '../_shared/whoop.ts';
+import { approvalRefusal } from '../_shared/approval.ts';
 
 interface SyncRequest {
   start?: string;
@@ -48,6 +49,9 @@ serve(async (req) => {
   const userId = authData.user.id;
 
   const service = createClient(supabaseUrl, serviceRoleKey);
+  // Private beta: the service role skips RLS, so check approval here.
+  const refusal = await approvalRefusal(service, userId, 'WHOOP sync is temporarily unavailable.');
+  if (refusal) return jsonResponse(refusal.body, refusal.status);
   const { data: tokenRow } = await service
     .from('whoop_tokens')
     .select('access_token, refresh_token, expires_at')
