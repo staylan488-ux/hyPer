@@ -130,7 +130,7 @@ function checkFrontmatter(file, source, expectedName, names) {
 
 function withoutCode(source) {
   let fence;
-  return source.split(/\r?\n/).map((line) => {
+  let prose = source.split(/\r?\n/).map((line) => {
     const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/);
     if (fence) {
       if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length) fence = undefined;
@@ -141,7 +141,14 @@ function withoutCode(source) {
       return '';
     }
     return line.replace(/(`+)[\s\S]*?\1/g, '');
-  }).join('\n').replace(/<!--[\s\S]*?-->/g, '');
+  }).join('\n');
+  // Repeat until nothing changes: removing one comment can join the pieces of another.
+  let before;
+  do {
+    before = prose;
+    prose = prose.replace(/<!--[\s\S]*?-->/g, '');
+  } while (prose !== before);
+  return prose;
 }
 
 function checkTarget(file, target) {
