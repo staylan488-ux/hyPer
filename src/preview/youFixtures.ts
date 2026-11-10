@@ -36,7 +36,7 @@ export function buildYouFixtures(state: YouPreviewState, now = new Date()): Reco
     })),
     whoop_connections: [{
       user_id: PREVIEW_USER_ID, whoop_user_id: 'preview-whoop', scopes: 'read:workout',
-      connected_at: stamp(30), last_synced_at: stamp(0), last_sync_status: 'success', updated_at: stamp(0),
+      connected_at: stamp(30), last_synced_at: stamp(0), last_sync_status: 'ok', updated_at: stamp(0),
     }],
   };
 }

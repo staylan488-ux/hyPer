@@ -5,13 +5,25 @@ Inspect the relevant source and [config.toml](../../../../supabase/config.toml)
 before deployment. `food-lookup` and `whoop-sync` validate the signed-in user;
 an anon/publishable key alone does not substitute for user authentication.
 `whoop-oauth` disables gateway JWT verification for the browser callback and
-performs user/state validation in code. Preserve those distinct auth contracts.
+performs user/state validation in code. `analyze-food-trial` and
+`delete-account` also disable it and verify the bearer token themselves. Preserve those distinct auth contracts.
 
 For a requested deployment, verify the target project and deploy only the named
 function. Use an explicit `--project-ref` resolved for that task, rather than
 relying on a stale linked project. Check required secret names in the function
 source and their presence on the target without printing values. Never assume
 secrets configured on one project are available on another.
+
+Secret names each function reads (as of 2026-11-10; the source is the
+authority, and `SUPABASE_*` values are provided by the platform):
+
+| Function | Required | Optional |
+|---|---|---|
+| `whoop-oauth` | `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `WHOOP_STATE_SECRET`, `APP_BASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | |
+| `whoop-sync` | `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | |
+| `food-lookup` | `USDA_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` | `FATSECRET_ENABLED` (`1` turns the provider on), `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `FATSECRET_SCOPE` |
+| `analyze-food-trial` | `GEMINI_API_KEY`, `TAVILY_API_KEY`, `FOOD_ANALYSIS_ALLOWED_ORIGINS`, `FOOD_ANALYSIS_BUCKET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `FOOD_ANALYSIS_MAX_DAILY_REQUESTS` |
+| `delete-account` | `FOOD_ANALYSIS_BUCKET`, `FOOD_ANALYSIS_DATABASE_LEDGER_READY` (must be `true`; see [the ledger notes](../../../../docs/food-analysis-ledger.md)), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | |
 
 The app's client ([native/src/platform/supabase.ts](../../../../native/src/platform/supabase.ts))
 requires `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` unless
