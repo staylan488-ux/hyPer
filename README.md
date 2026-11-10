@@ -109,3 +109,8 @@ builds a Release for a connected iPhone. Details are in
 Open an issue that describes the problem, what you expected, and any
 screenshots or logs. Agents and contributors working in the repository should
 start with [AGENTS.md](AGENTS.md).
+
+## Security
+
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) describes,
+not in a public issue.
