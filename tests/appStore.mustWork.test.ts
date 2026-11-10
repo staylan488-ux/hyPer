@@ -2959,7 +2959,7 @@ describe('set-count edits never delete finished sets and superset partners follo
       currentWorkoutDayPlan: { id: 'plan-1', workout_id: 'workout-1', day_label: 'Flex', items: [item('ex-a', 0, { target_sets: 2 })] },
     });
     // The user logs a2 while the insert request is in flight.
-    const insert = table.chain.insert.getMockImplementation()!;
+    const insert = table.chain.insert.getMockImplementation() as (payload: Partial<WorkoutSet>[]) => unknown;
     table.chain.insert.mockImplementationOnce((payload: Partial<WorkoutSet>[]) => {
       const current = useAppStore.getState().currentWorkout!;
       useAppStore.setState({

@@ -1,5 +1,5 @@
 import * as dateFns from 'date-fns';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { create } from 'zustand';
 
 import { captureAccountScope, invalidateAccountScope } from '@/lib/accountScope';
@@ -58,7 +58,7 @@ let reloadFails: boolean;
 // Set while a reload reads the workout, so a plan read can tell it belongs to a reload.
 let reloading = false;
 let planRead: (options?: { throwOnError?: boolean }, inReload?: boolean) => Promise<WorkoutDayPlan | null>;
-let monthRead: ReturnType<typeof vi.fn>;
+let monthRead: Mock<(...args: unknown[]) => unknown>;
 let bump: ReturnType<typeof vi.fn>;
 let history: History;
 let savedPlan: WorkoutDayPlan;
@@ -151,7 +151,7 @@ beforeEach(() => {
   reloadFails = false;
   reloading = false;
   planRead = async () => null;
-  monthRead = vi.fn();
+  monthRead = vi.fn<(...args: unknown[]) => unknown>();
   bump = vi.fn();
   Object.values(store).forEach((mock) => mock.mockClear());
   history = load();
