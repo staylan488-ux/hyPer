@@ -3890,6 +3890,22 @@ describe('saveTrackedRun WHOOP absorb failures', () => {
     expect(deletes).toHaveLength(1);
     expect(deletes[0].filters).toContainEqual(['eq', 'id', whoopCopy.id]);
   });
+
+  it('reports the run as saved when removing the emptied WHOOP copy fails', async () => {
+    installRecordingSupabase((q) => {
+      if (isAbsorbWindowRead(q)) return { data: [gpsSession, whoopCopy], error: null };
+      if (q.table === 'activity_sessions' && q.action === 'update') {
+        return { data: { ...gpsSession, ...(q.payload as object) }, error: null };
+      }
+      if (q.table === 'activity_sessions' && q.action === 'delete') return { data: null, error: { message: 'timeout' } };
+      return undefined;
+    });
+
+    const saved = await useAppStore.getState().saveTrackedRun(run);
+
+    expect(saved).toMatchObject({ id: gpsSession.id, strain: whoopCopy.strain });
+    expect(console.error).toHaveBeenCalled();
+  });
 });
 
 describe('settings writes report a missing sign-in instead of success', () => {

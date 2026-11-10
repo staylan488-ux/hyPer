@@ -316,9 +316,14 @@ export function wizardOutcome(
   };
 }
 
-/** Whether a recorded weight differs enough from the calculator's to log a new weigh-in. */
+/**
+ * Whether a recorded weight differs enough from the calculator's to log a new
+ * weigh-in. The field shows one decimal, so an untouched weight can sit
+ * exactly half a step (0.05) from the recorded one; the margin keeps that
+ * rounding, which floating point can land just above 0.05, from counting.
+ */
 export function wizardWeightChanged(latestKg: number | null, weightKg: number): boolean {
-  return latestKg == null || Math.abs(latestKg - weightKg) > 0.05;
+  return latestKg == null || Math.abs(latestKg - weightKg) > 0.05 + 1e-9;
 }
 
 /**

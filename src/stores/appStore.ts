@@ -2808,7 +2808,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           max_hr: absorbable.max_hr,
           energy_kcal: absorbable.energy_kcal,
         });
-        await get().deleteActivitySession(absorbable.id);
+        try {
+          await get().deleteActivitySession(absorbable.id);
+        } catch (deleteError) {
+          // Its segments already moved, so the emptied copy is only a leftover
+          // row; the run is saved and must not be reported as a failed save.
+          console.error('Error removing the WHOOP copy of the run:', deleteError);
+        }
         return enriched ?? session;
       }
     }

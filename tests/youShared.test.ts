@@ -236,6 +236,12 @@ describe('target calculator draft', () => {
     expect(wizardWeightChanged(78.4, wizardOutcome(switchWizardUnits(draft, 'metric'), profile, now).weightKg)).toBe(false);
     expect(wizardWeightChanged(78.4, wizardOutcome({ ...draft, weight: '175' }, profile, now).weightKg)).toBe(true);
     expect(wizardWeightChanged(null, outcome.weightKg)).toBe(true);
+    // 78.35 kg shows as 78.4: the rounding alone is not a new weigh-in.
+    const metricProfile = { ...profile, unit_system: 'metric' as const };
+    const metric = initialWizardDraft(metricProfile, 78.35, now);
+    expect(metric.weight).toBe('78.4');
+    expect(wizardWeightChanged(78.35, wizardOutcome(metric, metricProfile, now).weightKg)).toBe(false);
+    expect(wizardWeightChanged(78.35, wizardOutcome({ ...metric, weight: '78.5' }, metricProfile, now).weightKg)).toBe(true);
   });
 
   it('carries weight and height across a unit switch', () => {

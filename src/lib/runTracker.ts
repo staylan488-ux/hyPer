@@ -617,7 +617,12 @@ export function advanceTracker(state: TrackerState, sample: GpsSample): AdvanceR
     let crossedAutoLap = false;
     while (lapTarget <= next.totalDistanceM) {
       const ratio = (lapTarget - prevDist) / (next.totalDistanceM - prevDist);
-      const crossT = ratio >= 0 && ratio <= 1 ? prev.t + ratio * (sample.t - prev.t) : sample.t;
+      // A split tapped during a GPS gap opens the lap after the previous fix, so
+      // the interpolated crossing can fall before it: a lap never ends before it starts.
+      const crossT = Math.max(
+        next.lapStartMs,
+        ratio >= 0 && ratio <= 1 ? prev.t + ratio * (sample.t - prev.t) : sample.t,
+      );
       const lap: Lap = {
         index: next.laps.length + 1,
         startedAtMs: next.lapStartMs,
@@ -1000,8 +1005,10 @@ export function rollingPaceSecPerMile(state: TrackerState, nowMs: number): numbe
 function paceReferenceNow(state: TrackerState, nowMs: number): number {
   const frozenNow = clockNow(state, nowMs);
   if (state.pausedAtMs != null) return frozenNow;
-  const sampleNow = state.lastSampleMs ?? state.lastAcceptedMs;
-  return sampleNow == null ? frozenNow : Math.min(frozenNow, sampleNow);
+  // Resuming re-anchors lastAcceptedMs but no fix has arrived yet; the older
+  // lastSampleMs would take the pause off the active time a second time.
+  const sampleNow = Math.max(state.lastSampleMs ?? -Infinity, state.lastAcceptedMs ?? -Infinity);
+  return Number.isFinite(sampleNow) ? Math.min(frozenNow, sampleNow) : frozenNow;
 }
 
 // Whole-session active average. Time and distance are sampled together, so the

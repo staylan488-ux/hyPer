@@ -161,7 +161,9 @@ export async function loadRestPreferencesAsync(
       remote[row.exercise_id] = { restSeconds: row.rest_seconds, updatedAt: row.updated_at };
     }
 
-    const merged = mergeRestPreferences(cached, remote);
+    // Read the cache again: a rest length saved while the request was out is
+    // not in `cached`, and merging from that would write over it.
+    const merged = mergeRestPreferences(loadRestPreferences(userId, storage), remote);
     saveLocalCache(userId, merged, storage);
     return merged;
   } catch {

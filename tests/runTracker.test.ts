@@ -297,6 +297,21 @@ describe('pause / resume', () => {
     expect(state.totalDistanceM).toBe(distBefore);
   });
 
+  it('keeps average pace on active time between resuming and the next fix', () => {
+    const tracker = createTracker(defaultTrackerConfig('free'), T0);
+    const samples = shift(buildScenarioSamples([{ speedMps: 3.5, durationS: 600 }]));
+    let { state } = drive(tracker, samples);
+    const pauseT = samples[samples.length - 1].t;
+    const paceBeforePause = averagePaceSecPerMile(state, pauseT);
+
+    state = pauseTracker(state, pauseT);
+    state = resumeTracker(state, pauseT + 300_000);
+
+    // No fix has arrived since the 5-minute pause: the pause must not come off
+    // the active time a second time.
+    expect(averagePaceSecPerMile(state, pauseT + 300_500)).toBe(paceBeforePause);
+  });
+
   it('keeps a rest taken while GPS is acquiring out of the run time', () => {
     const tracker = createTracker(defaultTrackerConfig('free'), T0);
     // Rest at the start line for 2 minutes before the first fix arrives.
@@ -442,6 +457,25 @@ describe('interval laps', () => {
 
     state = drive(state, samples.slice(61)).state;
     expect(rollingPaceSecPerMile(state, samples[samples.length - 1].t)).not.toBeNull();
+  });
+
+  it('never ends an auto split before the manual split that opened it', () => {
+    const tracker = createTracker(defaultTrackerConfig('intervals', 400), T0);
+    const lead = shift(buildScenarioSamples([{ speedMps: 4, durationS: 30 }]));
+    let { state } = drive(tracker, lead);
+    const last = lead[lead.length - 1];
+
+    // GPS goes quiet for 150 s; the split is tapped near the end of the gap.
+    const splitT = last.t + 140_000;
+    state = manualSplit(state, splitT).state;
+    // The next fix is 600 m on (4 m/s), so the 400 m auto split is crossed inside the gap.
+    const result = advanceTracker(state, { ...last, t: last.t + 150_000, lat: last.lat + 600 / 111_195, speedMps: 4 });
+
+    const autoLap = result.state.laps[result.state.laps.length - 1];
+    expect(autoLap.trigger).toBe('auto');
+    expect(autoLap.startedAtMs).toBe(splitT);
+    expect(autoLap.endedAtMs).toBeGreaterThanOrEqual(autoLap.startedAtMs);
+    expect(result.state.lapStartMs).toBe(autoLap.endedAtMs);
   });
 
   it('drops a split taken before GPS lock instead of keeping an empty lap', () => {
