@@ -52,7 +52,7 @@ const log = (id: string, date: string, calories: number, protein: number, user =
 });
 const target = { id: 't1', user_id: USER, calories: 2800, protein: 160, carbs: 350, fat: 80 };
 const seed: TodaySeed = { dayKey: DAY, splitId: 'ppl', mode: 'flexible', basis: '[["push","legs"],null,true]', hero: { kind: 'flexible' }, next: null, weekDone: 2 };
-const live = { id: 'w1', user_id: USER, split_day_id: null, date: DAY, notes: null, completed: false, created_at: '2026-11-04T12:00:00.000Z', sets: [] } as unknown as Workout;
+const live = { id: 'w1', user_id: USER, split_day_id: null, date: DAY, notes: null, completed: false, created_at: new Date(NOW.getTime() - 3_600_000).toISOString(), sets: [] } as unknown as Workout;
 const bodies = (): Record<string, unknown> => ({
   program: { splits: [ppl], workoutMode: 'flexible' },
   templates: { templates: [{ id: 'q1', user_id: USER, label: 'Arms', items: [] }] },
@@ -555,7 +555,7 @@ describe('when and how the copy is written', () => {
     expect(saved(storage, 'training')?.body).toEqual({ workout: null, today: seed });
 
     modules.app.setState({ currentWorkout: live });
-    expect(saved(storage, 'training')?.body).toEqual({ workout: { id: 'w1', created_at: '2026-11-04T12:00:00.000Z', date: DAY }, today: null });
+    expect(saved(storage, 'training')?.body).toEqual({ workout: { id: 'w1', created_at: live.created_at, date: DAY }, today: null });
     expect(modules.cache.useLaunchHint.getState().seed).toBeNull();
 
     // A logged set changes the workout, not its id: nothing is written.
