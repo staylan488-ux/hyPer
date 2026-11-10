@@ -77,6 +77,36 @@ delete from public.beta_invites where email = 'friend@example.com';
 
 To remove someone completely, delete the user in Authentication → Users.
 
+## Checks on the hosted database, right after the migration
+
+The migration covers the tables in `supabase/schema.sql`. The hosted database
+may hold things the repo doesn't (the `coach` views and the `coach-data`
+function are not in it), so check there too. Both queries only read.
+
+Any table the policy missed (expect no rows; add a missed table to the
+migration's list and run it again):
+
+```sql
+select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind in ('r', 'p')
+  and c.relname not in ('approved_users', 'beta_invites', 'ai_usage_daily', 'food_analysis_ledger')
+  and not exists (select from pg_policy p where p.polrelid = c.oid
+                  and p.polname = 'Private beta: approved users only');
+```
+
+Functions that skip row-level security (expect only `handle_new_user`,
+`save_split_snapshot` and this migration's own; anything else that reads or
+writes app data needs its own approval check):
+
+```sql
+select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.prosecdef order by 1;
+```
+
+Then ask `coach-data` for one view and confirm it still returns rows: the
+policy applies to every database role without `BYPASSRLS`, so a view that
+reads the tables as its caller would come back empty.
+
 ## Checks on a local database
 
 ```sh

@@ -63,8 +63,11 @@ history keep them (this file at commit b3f61df has the long version).
   Forgot password?: the reset link returns to `<scheme>://auth/callback`
   (the URL email confirmation already uses), signs in on this phone and shows
   the New password screen (`native/src/app/new-password.tsx`) before the app.
-- Not deployed; until then Delete account says it couldn't delete. Deploying
-  it is a coordinated cutover, not one command: follow
+- Live on Hypertrophy-App is `delete-account` version 1, the first version
+  from PR #197 (read from the deployed source on 2026-11-09): Delete account
+  works there, but removing the food analysis records is best-effort, so a
+  failed cleanup can leave them behind. Main's rewrite is not deployed.
+  Deploying it is a coordinated cutover, not one command: follow
   [the ledger notes](../food-analysis-ledger.md) in order. `delete-account`
   answers 503 until `FOOD_ANALYSIS_DATABASE_LEDGER_READY=true` is set, and
   main's `analyze-food-trial` answers 503 for everyone if it is deployed
@@ -74,7 +77,7 @@ history keep them (this file at commit b3f61df has the long version).
 - Not done: revoking the Sign in with Apple token on deletion (needs the
   Apple key and the provider refresh token, which Supabase doesn't keep).
 
-## Invite-only and the daily AI ceiling (branch `t3/c5a566da`)
+## Invite-only and the daily AI ceiling (branch `t3/invite-only-ai-spend-cap`)
 
 - Rebuilds stale PR #143 on current main: sign-up only for emails in
   `beta_invites`, app data only for accounts in `approved_users`, a daily
