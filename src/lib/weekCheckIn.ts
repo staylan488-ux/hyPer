@@ -3,7 +3,7 @@
 // records set. The rules are pure; `readWeekCheckIn` does the reads.
 import { addDays, format, parseISO, startOfWeek, subDays } from 'date-fns';
 
-import { fetchWeeklyNutrition, averageLoggedDays, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
+import { fetchWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { supabase } from '@/lib/supabase';
 import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
@@ -123,9 +123,12 @@ export interface WeekEating {
 
 /** Calories and protein a day over the days logged; null with nothing logged. */
 export function weekEating(days: DailyNutrition[]): WeekEating | null {
-  const logged = days.filter((day) => day.calories > 0 || day.protein > 0).length;
-  if (logged === 0) return null;
-  return { days: logged, calories: averageLoggedDays(days, 'calories'), protein: averageLoggedDays(days, 'protein') };
+  const logged = days.filter((day) => day.calories > 0 || day.protein > 0);
+  if (logged.length === 0) return null;
+  // Both figures over the same days, the ones counted beside them: a day with
+  // calories and no protein (a soda alone) still counts toward protein a day.
+  const average = (key: 'calories' | 'protein') => logged.reduce((sum, day) => sum + day[key], 0) / logged.length;
+  return { days: logged.length, calories: average('calories'), protein: average('protein') };
 }
 
 // ── Records ──────────────────────────────────────────────────────────────

@@ -204,8 +204,9 @@ function GapPicksForDay({ userId, day, visible = true, totals, target, goal, day
   // A held card leaves out what was hidden since; the others stay where they are.
   const picks = (shown?.picks ?? []).filter((pick) => !(hidden[pick.key] >= pick.addedAt));
   if (!visible || !shown || picks.length === 0) return null;
-  // The foods' total, as each meal's header gives its own.
-  const note = shown.aim === 'calories' ? `${formatWhole(shown.kcal)} kcal` : `${formatWhole(shown.protein)} g protein`;
+  // The total of the foods listed (a hidden one is out of it), as each meal's header gives its own.
+  const listed = (key: 'kcal' | 'protein') => picks.reduce((sum, pick) => sum + pick[key], 0);
+  const note = shown.aim === 'calories' ? `${formatWhole(listed('kcal'))} kcal` : `${formatWhole(listed('protein'))} g protein`;
   return (
     <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout}>
       <Section title="Close the gap" note={note} style={{ marginTop: 20 }}>

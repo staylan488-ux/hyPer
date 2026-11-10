@@ -88,6 +88,8 @@ describe('food', () => {
       { date: '2026-11-04', calories: 2600, protein: 160 },
     ];
     expect(weekEating(days)).toEqual({ days: 2, calories: 2800, protein: 180 });
+    // A day with calories and no protein (a soda alone) is a logged day for both figures.
+    expect(weekEating([...days, { date: '2026-11-05', calories: 400, protein: 0 }])).toEqual({ days: 3, calories: 2000, protein: 120 });
     expect(weekEating([{ date: '2026-11-02', calories: 0, protein: 0 }])).toBeNull();
     expect(weekEating([])).toBeNull();
   });

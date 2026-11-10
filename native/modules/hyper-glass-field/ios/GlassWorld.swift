@@ -365,6 +365,11 @@ final class GlassWorld: NSObject {
       stepping = !nowResting
       if nowResting && !resting, stats { NSLog("[glass] world resting") }
       resting = nowResting
+    } else if presence != 1 || resting {
+      // Still glass (Reduce Motion, or a look that does not move) never rests: turned on
+      // after the glass had faded away, it shows whole rather than staying gone.
+      presence = 1
+      resting = false
     }
     let rescale = builtLight != light || builtAmount != look.amount
     var metered = false

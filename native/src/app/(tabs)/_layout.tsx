@@ -36,7 +36,7 @@ import { loadWeights, resetYou, useHealthStore } from '~/lib/you';
 import { dynamicInk } from '~/theme/blanc';
 
 // Sheets that belong to the live workout; the screen stays awake under them too.
-const WORKOUT_SHEETS = new Set(['movement', 'rest', 'swap', 'session-done']);
+const WORKOUT_SHEETS = new Set(['movement', 'rest', 'warm-up', 'swap', 'session-done']);
 
 export default function TabsLayout() {
   const session = useSessionModel();
