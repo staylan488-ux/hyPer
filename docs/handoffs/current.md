@@ -82,8 +82,10 @@ history keep them (this file at commit b3f61df has the long version).
   size, Increase Contrast, Reduce Motion, swipe back, leaving and returning.
   Measured on the phone: 120 fps with no late frames over 40 s, about 1.2 ms
   of GPU a frame.
-- Not measured: a day's battery cost of drawing at 120 fps, and Low Power
-  Mode on the phone (meant to cap it at 60). Not checked: VoiceOver.
+- Battery: the glass draws at 120 fps only while the app is being used; 15 s
+  after the last touch, scroll, press or tab change it eases to a stop and
+  stops drawing. Not measured: what the remaining cost is over a day, and Low
+  Power Mode on the phone (meant to cap it at 60). Not checked: VoiceOver.
 - Known and left as is: in light, a darker line passing behind small grey
   text lowers that text's contrast where they cross; during a swipe back the
   page's content hides until the slide ends; sheets' round close buttons are a

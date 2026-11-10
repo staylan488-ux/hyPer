@@ -37,6 +37,13 @@ struct GlassLook: Equatable {
   }
   /// The warm wave is the one loud moment: it is drawn at least this strongly in every look.
   static let waveGain: Float = 0.9
+  /// Rest: with no touch, scroll, press or tab change for this long the glass eases to a stop
+  /// (over `restEase` seconds) and the display link pauses, so an untended phone (a workout
+  /// keeps the screen on for an hour) costs what a still page costs. Anything wakes it at
+  /// once, easing back in over `wakeEase`.
+  static let restAfter: Double = 15
+  static let restEase: Double = 3
+  static let wakeEase: Double = 0.35
 }
 
 /// The one molten-glass field behind the app. Every tab shows the same simulation, so a tab
@@ -45,8 +52,10 @@ struct GlassLook: Equatable {
 /// It runs on its own thread, off a display link at the screen's full rate (120 Hz on a
 /// ProMotion phone, 60 in Low Power Mode), one simulation step per frame with that frame's
 /// length, so it keeps its pace while the main thread is busy laying out a page. It stops
-/// while no field view is on screen, in the background, and (after one frame) under Reduce
-/// Motion or the "off" look.
+/// while no field view is on screen, in the background, (after one frame) under Reduce
+/// Motion or the "off" look, and whenever nobody has touched the app for a while
+/// (`GlassLook.restAfter`): a display kept at 120 Hz is what costs battery, so the glass
+/// only moves while someone is there to see it.
 ///
 /// Threads: `lock` guards everything below it. The main thread only queues input and changes
 /// settings; all simulation encoding happens on the render thread, except `drawNow`, which
@@ -74,6 +83,12 @@ final class GlassWorld: NSObject {
   private var shown = false
 
   private var simTime: Double = 0
+  /// When the app last gave a sign of someone using it, and how fast the glass moves for it:
+  /// `pace` eases from 1 to 0 once that is `restAfter` ago, and `resting` is true while the
+  /// link is paused for it.
+  private var lastActivity: CFTimeInterval = CACurrentMediaTime()
+  private var pace: Float = 1
+  private var resting = false
   private var lastTarget: CFTimeInterval = 0
   private var pendingVelocity: [GFSplat] = []
   private var pendingDye: [GFSplat] = []
@@ -138,7 +153,19 @@ final class GlassWorld: NSObject {
   }
 
   @objc private func didEnterBackground() { lock.lock(); suspended = true; lock.unlock(); updateLink() }
-  @objc private func willEnterForeground() { lock.lock(); suspended = false; needsDraw = true; lock.unlock(); updateLink() }
+  @objc private func willEnterForeground() {
+    lock.lock(); suspended = false; needsDraw = true; active(); lock.unlock()
+    updateLink()
+  }
+
+  /// Under the lock: someone is using the app. True if the glass was resting and the link
+  /// needs starting (call `updateLink()` after unlocking).
+  @discardableResult private func active() -> Bool {
+    lastActivity = CACurrentMediaTime()
+    let was = resting
+    resting = false
+    return was
+  }
   @objc private func powerChanged() {
     DispatchQueue.main.async {
       self.lock.lock(); self.lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled; self.lock.unlock()
@@ -157,6 +184,7 @@ final class GlassWorld: NSObject {
     targets[id] = Target(layer: layer)
     if wantedAspect == 0 || fluid == nil { wantedAspect = aspect }
     needsDraw = true
+    active()  // a tab came on screen
     lock.unlock()
     startThreadIfNeeded()
     updateLink()
@@ -197,7 +225,9 @@ final class GlassWorld: NSObject {
   // MARK: input (main thread; x and y in 0…1 with y up, as the reference's)
 
   func finger(phase: Int, x: Float, y: Float) {
-    lock.lock(); defer { lock.unlock() }
+    lock.lock()
+    let wake = active()
+    defer { lock.unlock(); if wake { updateLink() } }
     guard !reduceMotion, look.touch > 0 else { lastFinger = nil; return }
     let p = SIMD2(x, y)
     if phase == 1, let last = lastFinger {
@@ -209,7 +239,9 @@ final class GlassWorld: NSObject {
 
   /// A scroll's push, already in the reference's force units.
   func stir(fx: Float, fy: Float) {
-    lock.lock(); defer { lock.unlock() }
+    lock.lock()
+    let wake = active()
+    defer { lock.unlock(); if wake { updateLink() } }
     guard !reduceMotion, look.touch > 0 else { return }
     for x in [Float(0.2), 0.5, 0.8] {
       append(GFSplat(point: SIMD2(x, 0.5), radius: GlassTuning.stirRadius, color: SIMD4(fx * look.touch, fy * look.touch, 0, 0)))
@@ -217,13 +249,17 @@ final class GlassWorld: NSObject {
   }
 
   func wave(x: Float, y: Float) {
-    lock.lock(); defer { lock.unlock() }
+    lock.lock()
+    let wake = active()
+    defer { lock.unlock(); if wake { updateLink() } }
     guard !reduceMotion, look.gain > 0 else { return }
     waves.append((x, y, Double(GlassTuning.waveSteps) / 60))
   }
 
   func splat(x: Float, y: Float, dx: Float, dy: Float, color: SIMD3<Float>, radius: Float) {
-    lock.lock(); defer { lock.unlock() }
+    lock.lock()
+    let wake = active()
+    defer { lock.unlock(); if wake { updateLink() } }
     guard !reduceMotion else { return }
     var vs: [GFSplat] = [], ds: [GFSplat] = []
     GlassFluid.splats(x: x, y: y, dx: dx, dy: dy, color: color == .zero ? nil : color, radius: radius, into: &vs, dye: &ds)
@@ -259,7 +295,7 @@ final class GlassWorld: NSObject {
   /// Any thread: runs the link only while there is something to draw.
   private func updateLink() {
     lock.lock()
-    let moving = !reduceMotion && look.gain > 0
+    let moving = !reduceMotion && look.gain > 0 && !resting
     let run = !suspended && gpu != nil && !targets.isEmpty && (moving || needsDraw)
     let top: Float = lowPower ? 60 : 120
     lock.unlock()
@@ -309,9 +345,23 @@ final class GlassWorld: NSObject {
     let late = dt > link.duration * 1.5
     let rawDt = dt
     dt = min(max(dt, 1.0 / 240), 1.0 / 30)
+    // Rest: ease the pace down once nobody has used the app for a while, and back up at once.
+    var stepping = moving
+    var simDt = dt
+    if moving {
+      let wanted: Float = CACurrentMediaTime() - lastActivity > GlassLook.restAfter ? 0 : 1
+      if wanted < pace { pace = max(0, pace - Float(dt / GlassLook.restEase)) }
+      else if wanted > pace { pace = min(1, pace + Float(dt / GlassLook.wakeEase)) }
+      let eased = pace * pace * (3 - 2 * pace)
+      simDt = dt * Double(eased)
+      stepping = eased > 0.0005
+      let nowResting = wanted == 0 && pace == 0
+      if nowResting && !resting, stats { NSLog("[glass] world resting") }
+      resting = nowResting
+    }
     let rescale = builtLight != light || builtAmount != look.amount
     var metered = false
-    if (moving || rescale), let enc = cb.makeComputeCommandEncoder() {
+    if (stepping || rescale), let enc = cb.makeComputeCommandEncoder() {
       if rescale {
         // The two appearances hold different amounts of dye, and so do the looks; the dye is
         // linear, so scaling it gives the other one's field at once.
@@ -321,10 +371,10 @@ final class GlassWorld: NSObject {
         builtLight = light
         if look.amount > 0 { builtAmount = look.amount }
       }
-      if moving {
-        let k = Float(dt * 60)  // this step, measured in the reference's 60 Hz frames
+      if stepping {
+        let k = Float(simDt * 60)  // this step, measured in the reference's 60 Hz frames
         var vs: [GFSplat] = [], ds: [GFSplat] = []
-        keepCooldown -= dt
+        keepCooldown -= simDt
         let target = (light ? GlassTuning.keepTargetLight : GlassTuning.keepTargetDark) * look.amount
         if keepCooldown <= 0, let showing = meterValue, showing < target {
           keepCooldown = Double(GlassTuning.keepCooldown) / 60
@@ -345,10 +395,10 @@ final class GlassWorld: NSObject {
           waves.removeAll { $0.left <= 0 }
         }
         fluid.encodeSplats(enc, velocity: vs, dye: ds)
-        fluid.encodeStep(enc, dt: Float(dt), velocityDissipation: GlassTuning.velocityDissipation * look.calm,
+        fluid.encodeStep(enc, dt: Float(simDt), velocityDissipation: GlassTuning.velocityDissipation * look.calm,
                          pressureKeep: pow(GlassTuning.pressureKeep, k))
-        simTime += dt
-        meterTimer -= dt
+        simTime += simDt
+        meterTimer -= simDt
         if meterTimer <= 0 {
           meterTimer = Double(GlassTuning.meterEvery) / 60
           metered = fluid.encodeMeter(enc, light: light)
@@ -361,6 +411,7 @@ final class GlassWorld: NSObject {
       cb.present(d)
     }
     needsDraw = false
+    let pauseAfter = !moving || resting
     let first = !shown
     shown = true
     let epoch = meterEpoch
@@ -383,7 +434,7 @@ final class GlassWorld: NSObject {
     }
     cb.commit()
     if first { DispatchQueue.main.async { NotificationCenter.default.post(name: GlassWorld.firstFrame, object: nil) } }
-    if !moving { updateLink() }
+    if pauseAfter { updateLink() }
 
     if wantStats {
       lock.lock()
