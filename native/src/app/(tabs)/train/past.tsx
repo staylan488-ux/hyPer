@@ -1,7 +1,7 @@
 import { format, parseISO } from 'date-fns';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActionSheetIOS, Alert, Pressable, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -33,10 +33,12 @@ import {
   confirmDeleteWorkout,
   detachStats,
   editPastWorkout,
+  loadHistoryMonth,
   loadPlan,
   movePastMovement,
   removePastSet,
   savePastNote,
+  showWorkoutInHistory,
   useHistoryStore,
 } from '~/lib/history';
 import { blockExit, rowEnter, rowExit, rowLayout } from '~/lib/motion';
@@ -54,6 +56,20 @@ export default function PastWorkoutScreen() {
   const activities = useHistoryStore((state) => state.activities);
   // Opened from Today's record while History moves to its month: nothing is said until that month is read.
   const monthLoading = useHistoryStore((state) => state.loading);
+  const monthFailed = useHistoryStore((state) => state.failed);
+
+  // Another session opened over this page (from a movement's history) moves
+  // History to its month, which no longer holds this workout: coming back
+  // moves History to this workout's day again.
+  const shownDay = useRef<string | null>(null);
+  if (stored) shownDay.current = historyDayKey(stored);
+  const deleted = leaving !== null;
+  useFocusEffect(
+    useCallback(() => {
+      if (!id || deleted || !shownDay.current) return;
+      if (!useHistoryStore.getState().workouts.some((entry) => entry.id === id)) showWorkoutInHistory(id, parseISO(shownDay.current));
+    }, [id, deleted]),
+  );
 
   useEffect(() => {
     if (id) void loadPlan(id);
@@ -86,7 +102,12 @@ export default function PastWorkoutScreen() {
         <Stack.Screen options={{ title: '' }} />
         {/* In the screen's scroll view, so it sits below the header as the workout would. */}
         <TabScroll>
-          {monthLoading ? null : (
+          {monthLoading ? null : monthFailed ? (
+            // The month could not be read: that says nothing about the workout.
+            <Label style={{ marginTop: space.gutter }}>
+              <Row title="Couldn't load this workout" detail="Tap to try again" quiet onPress={() => void loadHistoryMonth()} />
+            </Label>
+          ) : (
             <BlancText variant="secondary" tone="graphite" style={{ margin: space.gutter }}>
               This workout is no longer here.
             </BlancText>

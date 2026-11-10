@@ -2,11 +2,13 @@
 // sign-in itself. Kept free of Deno and network imports so tests can run it
 // (index.ts wires in the real services).
 //
-// Order matters. WHOOP is told first, while the stored token still exists;
-// the food analysis records are removed next; the account goes last, and its
-// rows in every table go with it (each one cascades from auth.users through
-// profiles, or directly from auth.users for the food ledger). WHOOP revocation
-// is best-effort; legacy Storage cleanup must succeed while sign-in still works
+// Order matters. The stored WHOOP token is read first, while its row still
+// exists; the food analysis records are removed next; then the account goes,
+// and its rows in every table go with it (each one cascades from auth.users
+// through profiles, or directly from auth.users for the food ledger). WHOOP
+// is told last, only once the account is gone: a deletion that failed leaves
+// WHOOP connected for the account that is still there. WHOOP revocation is
+// best-effort; legacy Storage cleanup must succeed while sign-in still works
 // so a failure can be retried without orphaning the saved analyses.
 
 export const corsHeaders = {
@@ -18,8 +20,10 @@ export const corsHeaders = {
 export interface DeleteAccountServices {
   /** The user id the bearer token belongs to, or null for a bad or expired token. */
   authenticate(token: string): Promise<string | null>;
-  /** Tell WHOOP to drop hyPer's access, if this account connected it. */
-  revokeWhoop(userId: string): Promise<void>;
+  /** The stored WHOOP access token, or null when this account never connected WHOOP. */
+  whoopAccess(userId: string): Promise<string | null>;
+  /** Tell WHOOP to drop hyPer's access. */
+  revokeWhoop(accessToken: string): Promise<void>;
   /** Remove the account's saved food analysis results and quota records. */
   removeFoodRecords(userId: string): Promise<void>;
   /** Delete the auth user; its data cascades. Throws when it fails. */
@@ -56,10 +60,11 @@ export function createDeleteAccountHandler(services: DeleteAccountServices) {
     }
     if (!userId) return json({ error: 'Unauthorized' }, 401);
 
+    let whoopAccess: string | null = null;
     try {
-      await services.revokeWhoop(userId);
+      whoopAccess = await services.whoopAccess(userId);
     } catch (error) {
-      log('delete-account: WHOOP revoke failed (continuing)', error);
+      log('delete-account: WHOOP token not read (continuing)', error);
     }
     try {
       await services.removeFoodRecords(userId);
@@ -73,6 +78,13 @@ export function createDeleteAccountHandler(services: DeleteAccountServices) {
     } catch (error) {
       log('delete-account: account not deleted', error);
       return json({ error: 'Could not delete the account. Try again.' }, 500);
+    }
+    if (whoopAccess) {
+      try {
+        await services.revokeWhoop(whoopAccess);
+      } catch (error) {
+        log('delete-account: WHOOP revoke failed (the account is deleted)', error);
+      }
     }
     return json({ ok: true }, 200);
   };
@@ -109,8 +121,10 @@ export async function listFilesUnder(
 }
 
 /** Legacy writers must be stopped before cleanup. A concurrent deleter can
- * shrink any page while it is being listed, so verify the root again at zero.
- * Never delete auth after an incomplete sweep; the signed-in user can retry.
+ * shrink any page while it is being listed, so walk the folder again and
+ * require no file left (a day folder that still lists with nothing in it is
+ * not a record). Never delete auth after an incomplete sweep; the signed-in
+ * user can retry.
  */
 export async function removeFilesUnder(
   list: (prefix: string, offset: number) => Promise<StorageEntry[]>,
@@ -122,5 +136,5 @@ export async function removeFilesUnder(
   for (let start = 0; start < files.length; start += 100) {
     await remove(files.slice(start, start + 100));
   }
-  if ((await list(prefix.replace(/\/+$/, ''), 0)).length > 0) throw new Error('Food records remain; retry cleanup');
+  if ((await listFilesUnder(list, prefix, pageSize)).length > 0) throw new Error('Food records remain; retry cleanup');
 }

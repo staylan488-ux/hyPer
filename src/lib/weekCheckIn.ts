@@ -3,13 +3,13 @@
 // records set. The rules are pure; `readWeekCheckIn` does the reads.
 import { addDays, format, parseISO, startOfWeek, subDays } from 'date-fns';
 
-import { fetchWeeklyNutrition, averageLoggedDays, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
+import { fetchWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
 import type { NutritionGoal } from '@/lib/nutritionCalculator';
 import { supabase } from '@/lib/supabase';
 import { computeWeeklyVolume, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
 import { dailyMedianWeights, type WeightSampleLike } from '@/lib/weightTrend';
 import {
-  buildMovementHistory, fetchMovementSets, findNewRecords, setFigures,
+  buildMovementHistory, countsAsSession, fetchMovementSets, findNewRecords, setFigures,
   type MovementRecords, type MovementSetRow, type RecordKind, type SetFigures,
 } from '@/lib/movementHistory';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
@@ -123,9 +123,12 @@ export interface WeekEating {
 
 /** Calories and protein a day over the days logged; null with nothing logged. */
 export function weekEating(days: DailyNutrition[]): WeekEating | null {
-  const logged = days.filter((day) => day.calories > 0 || day.protein > 0).length;
-  if (logged === 0) return null;
-  return { days: logged, calories: averageLoggedDays(days, 'calories'), protein: averageLoggedDays(days, 'protein') };
+  const logged = days.filter((day) => day.calories > 0 || day.protein > 0);
+  if (logged.length === 0) return null;
+  // Both figures over the same days, the ones counted beside them: a day with
+  // calories and no protein (a soda alone) still counts toward protein a day.
+  const average = (key: 'calories' | 'protein') => logged.reduce((sum, day) => sum + day[key], 0) / logged.length;
+  return { days: logged.length, calories: average('calories'), protein: average('protein') };
 }
 
 // ── Records ──────────────────────────────────────────────────────────────
@@ -146,7 +149,7 @@ export interface WeekRecord {
   previous: RecordSet;
 }
 
-/** A completed set of the week, from a finished workout. */
+/** A completed set of the week, from a workout that is over. */
 export interface WeekSet {
   exercise_id: string;
   name: string | null;
@@ -188,7 +191,7 @@ export function weekRecords(weekSets: WeekSet[], prior: Readonly<Record<string, 
     .sort((a, b) => b.set.date.localeCompare(a.set.date) || a.name.localeCompare(b.name));
 }
 
-/** Each movement's records from finished workouts before `before`, from its logged sets. */
+/** Each movement's records from workouts before `before`, from its logged sets. */
 export function priorRecords(rows: MovementSetRow[], exerciseIds: string[], before: DayKey): Record<string, MovementRecords> {
   const earlier = rows.filter((row) => row.workout && row.workout.date < before);
   return Object.fromEntries(
@@ -235,7 +238,7 @@ type WeekSetRow = {
   exercise: { name: string | null; muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null } | null;
 };
 
-type WeekWorkoutRow = { id: string; date: string; completed: boolean | null; sets: WeekSetRow[] | null };
+type WeekWorkoutRow = { id: string; date: string; created_at?: string | null; completed: boolean | null; sets: WeekSetRow[] | null };
 
 /** Midnight at the start of a local day, as an ISO time. */
 const dayStartIso = (day: DayKey) => parseISO(day).toISOString();
@@ -255,7 +258,7 @@ export async function readWeekCheckIn(input: {
   const [workoutsRead, weightsRead, nutrition, landmarksRead] = await Promise.all([
     supabase
       .from('workouts')
-      .select('id, date, completed, sets(exercise_id, weight, reps, completed, exercise:exercises(name, muscle_group, muscle_group_secondary))')
+      .select('id, date, created_at, completed, sets(exercise_id, weight, reps, completed, exercise:exercises(name, muscle_group, muscle_group_secondary))')
       .eq('user_id', input.userId)
       .gte('date', week.start)
       .lte('date', week.end),
@@ -283,10 +286,10 @@ export async function readWeekCheckIn(input: {
     sets: workout.sets.map((set) => ({ exercise: set.exercise, completed: true })),
   }));
 
-  // Records come from finished workouts only.
+  // Records come from workouts that are over, as the movement's history counts them.
   const weekSets: WeekSet[] = [];
   for (const workout of workouts) {
-    if (!workout.completed) continue;
+    if (!countsAsSession(workout)) continue;
     for (const row of workout.sets) {
       const figures = setFigures(row);
       if (figures) weekSets.push({ exercise_id: row.exercise_id, name: row.exercise?.name ?? null, ...figures, date: workout.date });

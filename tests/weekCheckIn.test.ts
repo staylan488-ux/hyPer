@@ -88,6 +88,8 @@ describe('food', () => {
       { date: '2026-11-04', calories: 2600, protein: 160 },
     ];
     expect(weekEating(days)).toEqual({ days: 2, calories: 2800, protein: 180 });
+    // A day with calories and no protein (a soda alone) is a logged day for both figures.
+    expect(weekEating([...days, { date: '2026-11-05', calories: 400, protein: 0 }])).toEqual({ days: 3, calories: 2000, protein: 120 });
     expect(weekEating([{ date: '2026-11-02', calories: 0, protein: 0 }])).toBeNull();
     expect(weekEating([])).toBeNull();
   });
@@ -109,8 +111,8 @@ describe('records', () => {
       priorRow('squat', 200, 10, '2026-10-21'),
       priorRow('lever', 0, 6, '2026-10-22'),
       priorRow('row', 150, 10, '2026-10-22'),
-      // Unfinished workouts and the week itself never set the bar.
-      priorRow('bench', 300, 5, '2026-10-23', false),
+      // A workout left unfinished sets the bar too; the week itself never does.
+      priorRow('bench', 202, 5, '2026-10-23', false),
       priorRow('bench', 205, 5, '2026-11-04'),
     ], ids, '2026-11-02');
     const records = weekRecords([
@@ -126,7 +128,7 @@ describe('records', () => {
       ['Front lever', 'reps', 0, 8, '2026-11-05'],
       ['Bench press', 'max', 205, 5, '2026-11-04'],
     ]);
-    expect(records.find((record) => record.name === 'Bench press')?.previous).toEqual({ weight: 200, reps: 5, date: '2026-10-20' });
+    expect(records.find((record) => record.name === 'Bench press')?.previous).toEqual({ weight: 202, reps: 5, date: '2026-10-23' });
   });
 
   it('sets nothing in a movement’s first week, with nothing to beat', () => {
@@ -149,7 +151,7 @@ describe('reading the week', () => {
       exercises,
       workouts: [
         workout('old', '2026-10-20', true),
-        // Unfinished workouts never set the bar to beat.
+        // Left unfinished: its sets still set the bar to beat.
         workout('old-open', '2026-10-21', false),
         workout('w1', '2026-11-03', true),
         workout('w2', '2026-11-05', false),
@@ -159,12 +161,12 @@ describe('reading the week', () => {
       sets: [
         setRow('s01', 'old', 'bench', 200, 5),
         setRow('s02', 'old', 'lever', 0, 10),
-        setRow('s03', 'old-open', 'bench', 300, 5),
+        setRow('s03', 'old-open', 'bench', 202, 5),
         setRow('s04', 'w1', 'bench', 205, 5),
         setRow('s05', 'w1', 'bench', 205, 5),
         setRow('s06', 'w1', 'lever', 0, 12),
         setRow('s07', 'w1', 'bench', 400, 5, false),
-        // Counted as sets, never as records: its workout wasn't finished.
+        // Its workout was never finished: counted as sets, and for records too.
         setRow('s08', 'w2', 'bench', 250, 5),
         setRow('s09', 'now', 'bench', 260, 5),
         setRow('s10', 'theirs', 'bench', 100, 5),
@@ -197,7 +199,7 @@ describe('reading the week', () => {
       ['back', 1, 'below_mev'],
     ]);
     expect(checkIn.records.map((record) => [record.name, record.kind, record.set.weight, record.previous.weight])).toEqual([
-      ['Bench press', 'max', 205, 200],
+      ['Bench press', 'max', 250, 202],
       ['Front lever', 'reps', 0, 0],
     ]);
     expect(hasCheckIn(checkIn)).toBe(true);

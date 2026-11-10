@@ -13,7 +13,8 @@
 // live runs the field as the app does (real time, 30 fps idle) and drives the same script
 // through the public calls (touch, wave, stir) from JavaScript, every 20 s; real touches on
 // the screen stir it too.
-// Release builds show nothing here.
+// Release builds have no such page: the route leads to the app.
+import { Redirect } from 'expo-router';
 import { type ComponentRef, useEffect, useRef, useState } from 'react';
 import { Settings, StyleSheet, View } from 'react-native';
 
@@ -33,7 +34,7 @@ function arg(name: string): string | undefined {
 }
 
 export default function GlassTest() {
-  if (!__DEV__) return null;
+  if (!__DEV__) return <Redirect href="/" />;
   return arg('hyperGlassMode') === 'live' ? <LiveTest /> : <DemoTest />;
 }
 

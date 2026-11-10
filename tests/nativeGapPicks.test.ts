@@ -454,5 +454,7 @@ describe('a pick’s other actions', () => {
     await act(async () => { swipes['Peanut butter toast'].actions[0].onPress(); });
     expect(hideRecentFood).toHaveBeenCalledWith('user-1', recentFoodKey(toast));
     expect(shown()).toEqual(['Protein shake', 'Greek yogurt']);
+    // The header's total is of the foods still listed.
+    expect(section.note).toBe(`${900 - toast.calories} kcal`);
   });
 });

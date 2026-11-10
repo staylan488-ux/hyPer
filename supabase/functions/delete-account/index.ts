@@ -28,12 +28,15 @@ Deno.serve(async (request: Request) => {
       const { data, error } = await service.auth.getUser(token);
       return error ? null : data.user?.id ?? null;
     },
-    async revokeWhoop(userId) {
-      const { data } = await service.from('whoop_tokens').select('access_token').eq('user_id', userId).maybeSingle();
-      if (!data?.access_token) return;
+    async whoopAccess(userId) {
+      const { data, error } = await service.from('whoop_tokens').select('access_token').eq('user_id', userId).maybeSingle();
+      if (error) throw error;
+      return data?.access_token ?? null;
+    },
+    async revokeWhoop(accessToken) {
       await fetch(`${WHOOP_API_BASE}/v2/user/access`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${data.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
         signal: AbortSignal.timeout(10_000),
       });
     },

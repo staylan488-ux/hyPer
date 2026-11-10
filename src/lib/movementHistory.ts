@@ -1,10 +1,10 @@
-// One movement's history across every finished workout: its sessions, its
+// One movement's history across every workout that is over: its sessions, its
 // records and the line that says whether it is going up. Also the records a
 // finished session broke. Pure rules plus one paged read; the native app
 // draws them (Train's movement page and Session complete).
 import { supabase } from '@/lib/supabase';
 import { calculateE1RM, toFiniteNumber } from '@/lib/workoutProgress';
-import { getWorkoutStartDateKey } from '@/lib/workoutSessions';
+import { canResumeWorkout, getWorkoutStartDateKey } from '@/lib/workoutSessions';
 
 /** A logged set as the read returns it, with the workout it belongs to. */
 export interface MovementSetRow {
@@ -135,14 +135,27 @@ function heaviestOf(sets: SetFigures[]): SetFigures | null {
 }
 
 /**
- * Groups one movement's logged sets into sessions (finished workouts only,
- * leaving out `excludeWorkoutId`), newest first, with its records and trend.
- * A record belongs to the first session that reached it.
+ * Whether a workout's logged sets count as a session: it was finished, or it
+ * was left unfinished and can no longer be resumed. History, "last time" and
+ * the week's volume count those sets too, so a record is never called out
+ * over a heavier set the person did log. One that can still be resumed is the
+ * session under way, not a past one.
  */
-export function buildMovementHistory(rows: MovementSetRow[], options: { excludeWorkoutId?: string | null } = {}): MovementHistory {
+export function countsAsSession(workout: { date: string; created_at?: string | null; completed?: boolean | null }, now: Date = new Date()): boolean {
+  if (workout.completed === true) return true;
+  return !canResumeWorkout({ completed: false, created_at: workout.created_at ?? '', date: workout.date }, now);
+}
+
+/**
+ * Groups one movement's logged sets into sessions (workouts that are over,
+ * see `countsAsSession`, leaving out `excludeWorkoutId`), newest first, with
+ * its records and trend. A record belongs to the first session that reached it.
+ */
+export function buildMovementHistory(rows: MovementSetRow[], options: { excludeWorkoutId?: string | null; now?: Date } = {}): MovementHistory {
+  const now = options.now ?? new Date();
   const byWorkout = new Map<string, { row: MovementSetRow; sets: Array<{ number: number; figures: SetFigures }> }>();
   for (const row of rows) {
-    if (!row.workout || row.workout.completed !== true) continue;
+    if (!row.workout || !countsAsSession(row.workout, now)) continue;
     if (row.completed === false) continue;
     if (options.excludeWorkoutId && row.workout_id === options.excludeWorkoutId) continue;
     const figures = setFigures(row);

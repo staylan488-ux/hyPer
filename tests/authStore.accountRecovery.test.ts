@@ -5,6 +5,7 @@ const supabaseMock = vi.hoisted(() => ({
   functions: { invoke: vi.fn() },
   auth: {
     getSession: vi.fn(),
+    getUser: vi.fn(),
     onAuthStateChange: vi.fn(),
     signOut: vi.fn(),
     resetPasswordForEmail: vi.fn(),
@@ -42,6 +43,7 @@ beforeEach(() => {
   supabaseMock.functions.invoke.mockReset();
   for (const fn of Object.values(supabaseMock.auth)) fn.mockReset();
   supabaseMock.auth.signOut.mockResolvedValue({ error: null });
+  supabaseMock.auth.getUser.mockResolvedValue({ data: { user: USER }, error: null });
   useAuthStore.setState({ user: null, session: null, profile: null, loading: false, initialized: false, reconnecting: false, passwordRecovery: false });
 });
 
@@ -137,6 +139,35 @@ describe('delete account', () => {
 
     const { error } = await useAuthStore.getState().deleteAccount();
     expect(error).not.toBeNull();
+    expect(supabaseMock.auth.signOut).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().user?.id).toBe('user-1');
+  });
+
+  it('finishes the deletion when the answer was lost but the server says the account is gone', async () => {
+    await initialize({ user: USER });
+    // The retry after a lost answer: the function refuses the sign-in of an account that no longer exists.
+    supabaseMock.functions.invoke.mockResolvedValue({ data: null, error: { message: 'Edge Function returned a non-2xx status code' } });
+    supabaseMock.auth.getUser.mockResolvedValue({ data: { user: null }, error: { message: 'User from sub claim in JWT does not exist', status: 403, code: 'user_not_found' } });
+
+    const { error } = await useAuthStore.getState().deleteAccount();
+    expect(error).toBeNull();
+    expect(supabaseMock.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(screen()).toBe('sign-in');
+  });
+
+  it('stays signed in when the account could not be checked', async () => {
+    await initialize({ user: USER });
+    supabaseMock.functions.invoke.mockResolvedValue({ data: null, error: { message: 'Failed to send a request to the Edge Function' } });
+    for (const answer of [
+      { data: { user: null }, error: { message: 'Network request failed', status: 0, code: undefined } },
+      { data: { user: null }, error: { message: 'invalid JWT', status: 401, code: 'bad_jwt' } },
+    ]) {
+      supabaseMock.auth.getUser.mockResolvedValue(answer);
+      expect((await useAuthStore.getState().deleteAccount()).error).not.toBeNull();
+    }
+    supabaseMock.auth.getUser.mockRejectedValue(new Error('offline'));
+    expect((await useAuthStore.getState().deleteAccount()).error).not.toBeNull();
     expect(supabaseMock.auth.signOut).not.toHaveBeenCalled();
     expect(useAuthStore.getState().user?.id).toBe('user-1');
   });

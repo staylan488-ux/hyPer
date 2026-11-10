@@ -58,11 +58,20 @@ describe('a movement\'s history', () => {
       ...session('w1', '2026-10-01', [[185, 8], [185, 7]]),
       ...session('w3', '2026-10-15', [[205, 5], [195, 6], [195, 6]]),
       ...session('w2', '2026-10-08', [[195, 6]]),
-      // Still live, or abandoned: not a session yet.
+      // Still open to resume (started within a day): the session under way, not a past one.
       ...session('live', '2026-10-20', [[225, 5]], { completed: false }),
-    ]);
+    ], { now: new Date('2026-10-20T18:00:00') });
     expect(history.sessions.map((entry) => entry.workoutId)).toEqual(['w3', 'w2', 'w1']);
     expect(history.sessions[0].sets).toEqual([{ weight: 205, reps: 5 }, { weight: 195, reps: 6 }, { weight: 195, reps: 6 }]);
+  });
+
+  it('counts a workout left unfinished once it can no longer be resumed, so its sets set the bar', () => {
+    const rows = [...session('w1', '2026-10-01', [[185, 8]]), ...session('left', '2026-10-08', [[235, 5]], { completed: false })];
+    const history = buildMovementHistory(rows, { now: new Date('2026-10-15T18:00:00') });
+    expect(history.sessions.map((entry) => entry.workoutId)).toEqual(['left', 'w1']);
+    expect(history.records.heaviest).toMatchObject({ weight: 235, reps: 5, workoutId: 'left' });
+    // Within the day it can still be resumed, it is not a past session.
+    expect(buildMovementHistory(rows, { now: new Date('2026-10-08T20:00:00') }).sessions.map((entry) => entry.workoutId)).toEqual(['w1']);
   });
 
   it('orders two workouts on one day by when they started', () => {
