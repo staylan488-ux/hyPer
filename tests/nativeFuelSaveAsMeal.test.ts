@@ -19,6 +19,9 @@ import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import { create as zustandCreate } from 'zustand';
 
+// Fuel's folds, on this test's React: the app's own copy of zustand would bring its own.
+const mealFolds = loadNativeModule<typeof import('../native/src/lib/mealFolds')>('lib/mealFolds.ts', { zustand: { create: zustandCreate } });
+
 // the real saved-foods cache runs over this account store
 const auth = vi.hoisted(() => ({ state: { user: { id: 'user-a' } } }));
 vi.mock('@/stores/authStore', () => ({
@@ -103,6 +106,7 @@ async function renderFuel({ compile = false } = {}) {
     },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
+    '~/lib/mealFolds': mealFolds,
     '~/lib/motion': {},
     '~/lib/you': { useYouMealsStore },
     '~/theme/blanc': { useBlanc: () => ({}), space: { gutter: 20 }, figureLead: () => 0 },
