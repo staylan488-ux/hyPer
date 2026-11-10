@@ -13,6 +13,7 @@ import { healthSyncMessage } from '@/lib/healthWeights';
 import { lbsToKg } from '@/lib/nutritionCalculator';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
 import {
+  goalLine,
   initialWizardDraft,
   selectWizardGoal,
   stepWizardRate,
@@ -296,6 +297,20 @@ describe('target calculator draft', () => {
     expect(shown).toMatchObject({ value: 0.5, unit: 'lb' });
     expect(shown.weeklyChange).toBeCloseTo(0.86, 1);
     expect(shown.monthlyChange).toBeCloseTo(shown.weeklyChange * 4.345, 5);
+  });
+
+  it('says the saved goal and its weekly pace in one line', () => {
+    // 0.4% a week of 60.1 kg (132.5 lb) is about half a pound.
+    const bulk = { goal: 'bulk', rate_pct_per_week: 0.4, unit_system: 'imperial' } as const;
+    expect(goalLine(bulk, 60.1)).toBe('Bulk · about 0.5 lb a week');
+    expect(goalLine({ ...bulk, unit_system: 'metric' }, 60.1)).toBe('Bulk · about 0.24 kg a week');
+    // The goal names the direction, so a cut's pace carries no minus.
+    expect(goalLine({ goal: 'cut', rate_pct_per_week: -0.7, unit_system: 'imperial' }, 80)).toBe('Cut · about 1.2 lb a week');
+    expect(goalLine({ goal: 'lean_bulk', rate_pct_per_week: 0.25, unit_system: 'metric' }, 80)).toBe('Lean bulk · about 0.20 kg a week');
+    expect(goalLine({ goal: 'maintain', rate_pct_per_week: 0, unit_system: 'imperial' }, 80)).toBe('Maintain');
+    // With no weigh-in to work from, the pace stays the percent the calculator shows.
+    expect(goalLine(bulk, null)).toBe('Bulk · 0.40% a week');
+    expect(goalLine(bulk, undefined)).toBe('Bulk · 0.40% a week');
   });
 
   it('holds inputs to their limits and builds the profile to save', () => {
