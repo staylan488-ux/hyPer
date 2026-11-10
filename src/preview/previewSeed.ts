@@ -41,7 +41,6 @@ export function maybeSeedPreview(): void {
     weeklyVolume: previewWeeklyVolume,
     // Keep illustrative volume totals. Nutrition, workout and program reads
     // use the real store actions so saved edits survive route remounts.
-    fetchVolumeLandmarks: noop,
     calculateWeeklyVolume: noop,
 
   });

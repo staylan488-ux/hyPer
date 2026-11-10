@@ -36,16 +36,6 @@ export interface NutritionWizardOutcome {
 
 export type WizardOption<T extends string> = { value: T; label: string; hint: string };
 
-export const SEX_OPTIONS: WizardOption<BiologicalSex>[] = [
-  { value: 'male', label: 'Male', hint: 'Biological male metabolism' },
-  { value: 'female', label: 'Female', hint: 'Biological female metabolism' },
-];
-
-export const UNIT_OPTIONS: WizardOption<UnitSystem>[] = [
-  { value: 'imperial', label: 'Imperial', hint: 'lbs, feet & inches' },
-  { value: 'metric', label: 'Metric', hint: 'kg, cm' },
-];
-
 export const ACTIVITY_OPTIONS: WizardOption<ActivityLevel>[] = [
   { value: 'sedentary', label: 'Sedentary', hint: 'Desk job, little walking, no training' },
   { value: 'lightly_active', label: 'Lightly Active', hint: 'Desk job, 1–3 sessions a week' },

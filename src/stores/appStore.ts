@@ -470,7 +470,6 @@ interface AppState {
   refreshAdaptiveTargets: (options?: { force?: boolean }) => Promise<AdaptiveRefreshStatus>;
 
   // Volume
-  fetchVolumeLandmarks: () => Promise<void>;
   calculateWeeklyVolume: () => Promise<void>;
 }
 
@@ -1588,7 +1587,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (members.length >= 2) return;
     }
 
-    const groupId = baseItem.superset_group_id || globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const groupId = baseItem.superset_group_id || randomSupersetGroupId();
 
     const nextItems = items.map((item) => {
       if (item.exercise_id === baseExerciseId) {
@@ -2892,7 +2891,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // A repeated DELETE can succeed with no rows if a prior attempt already
     // removed it. Its requested absence still clears that local ghost.
     const deletedIds = new Set([setId, ...(deletedRows ?? []).map((row) => row.id)]);
-    if (isAccountCurrent() && current?.id === workoutId && deletedIds.size > 0) {
+    if (isAccountCurrent() && current?.id === workoutId) {
       set({ currentWorkout: { ...current, sets: current.sets.filter((row) => row.exercise_id !== exerciseId || !deletedIds.has(row.id)) } });
     }
     if (!isAccountCurrent()) return;
@@ -3791,21 +3790,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (adaptiveRefreshFlights.get(owner) === run) adaptiveRefreshFlights.delete(owner);
     });
     return run;
-  },
-
-  fetchVolumeLandmarks: async () => {
-    const isAccountCurrent = captureAccountScope();
-    const userId = await getSessionUserId();
-    if (!userId || !isAccountCurrent()) return;
-
-    const { data } = await supabase
-      .from('volume_landmarks')
-      .select('*')
-      .eq('user_id', userId);
-
-    if (data && isAccountCurrent()) {
-      set({ volumeLandmarks: data });
-    }
   },
 
   // An earlier read (started before an edit) that answers late would show the

@@ -10,7 +10,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
 import { haptics } from './haptics';
-import { isLiveWorkout, sessionModelCache, type SessionModel } from './sessionModel';
+import { sessionModelCache, type SessionModel } from './sessionModel';
 
 export type { Movement, SessionModel } from './sessionModel';
 
@@ -53,14 +53,6 @@ export function useSessionModel(): SessionModel | null {
   const focused = useFocusStore((state) => state.exerciseId);
   const skips = usePendingSkips((state) => (workout && state.workoutId === workout.id ? state.skips : NO_SKIPS));
   return sharedSessionModel(workout, { split, splits, plan, skips }, focused);
-}
-
-/**
- * Whether a workout is live, for screens that need only that (the space the
- * workout bar takes): they re-render when it starts or ends, not on every set.
- */
-export function useHasLiveSession(): boolean {
-  return useAppStore((state) => isLiveWorkout(state.currentWorkout));
 }
 
 /** The same, outside a component. */
