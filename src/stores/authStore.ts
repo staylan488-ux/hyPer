@@ -71,6 +71,20 @@ interface AuthState {
   initialize: () => Promise<void>;
 }
 
+/**
+ * Whether the server says the signed-in account no longer exists. A failed
+ * or unclear answer (offline, a timeout, any other error) is "still there".
+ */
+async function accountIsGone(): Promise<boolean> {
+  try {
+    const { error } = await supabase.auth.getUser();
+    if (!error) return false;
+    return error.code === 'user_not_found' || /sub claim in JWT does not exist/i.test(error.message ?? '');
+  } catch {
+    return false;
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   session: null,
@@ -269,7 +283,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!get().user) return { error: new Error('User not authenticated') };
     const { data, error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
     if (error || !(data as { ok?: boolean } | null)?.ok) {
-      return { error: new Error(error?.message ?? 'Could not delete the account.') };
+      // The answer can be lost after the server finished (the connection
+      // dropped, the app was left). Every retry is then refused, since the
+      // sign-in is gone, so the server is asked whether the account still
+      // exists; only its own "no such user" counts as deleted.
+      if (!(await accountIsGone())) return { error: new Error(error?.message ?? 'Could not delete the account.') };
     }
     // The account is gone on the server, so only this device's session is
     // left to clear; a global sign-out would be refused.

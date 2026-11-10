@@ -56,9 +56,10 @@ history keep them (this file at commit b3f61df has the long version).
 ## Account deletion and forgot password (branch `claude/project-thread-a2w5po`)
 
 - You › Account has Delete account (one confirm), backed by the new
-  `delete-account` Edge Function: it tells WHOOP, removes the account's food
-  analysis ledger files, then deletes the auth user, and every table's rows go
-  with it (they all cascade from `auth.users` through `profiles`). Sign-in has
+  `delete-account` Edge Function: it removes the account's food analysis
+  ledger files, deletes the auth user (every table's rows go with it: they
+  all cascade from `auth.users` through `profiles`), then tells WHOOP, so a
+  deletion that fails leaves WHOOP connected. Sign-in has
   Forgot password?: the reset link returns to `<scheme>://auth/callback`
   (the URL email confirmation already uses), signs in on this phone and shows
   the New password screen (`native/src/app/new-password.tsx`) before the app.

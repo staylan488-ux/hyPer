@@ -56,7 +56,7 @@ function harness() {
     // PostgreSQL's user FK cascades; real constraint/role checks live in the SQL regression.
     for (const [path, row] of records) if (row.user_id === id) records.delete(path);
   });
-  const remove = createDeleteAccountHandler({ authenticate, revokeWhoop: async () => {}, removeFoodRecords, deleteUser });
+  const remove = createDeleteAccountHandler({ authenticate, whoopAccess: async () => null, revokeWhoop: async () => {}, removeFoodRecords, deleteUser });
   const request = (body: unknown) => gateway(new Request(ROOT, {
     method: 'POST', headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }));

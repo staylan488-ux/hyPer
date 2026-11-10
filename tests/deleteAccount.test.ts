@@ -8,7 +8,8 @@ function services(overrides: Partial<DeleteAccountServices> = {}) {
   const steps: string[] = [];
   const base: DeleteAccountServices = {
     authenticate: vi.fn(async (token: string) => (token === 'good-token' ? USER : null)),
-    revokeWhoop: vi.fn(async (id: string) => { steps.push(`whoop:${id}`); }),
+    whoopAccess: vi.fn(async (id: string) => { steps.push(`whoop-token:${id}`); return 'whoop-access'; }),
+    revokeWhoop: vi.fn(async (access: string) => { steps.push(`whoop:${access}`); }),
     removeFoodRecords: vi.fn(async (id: string) => { steps.push(`food:${id}`); }),
     deleteUser: vi.fn(async (id: string) => { steps.push(`user:${id}`); }),
     log: vi.fn(),
@@ -23,12 +24,31 @@ const post = (token?: string) =>
   });
 
 describe('delete-account function', () => {
-  it('deletes the signed-in account last, after WHOOP and the food records', async () => {
+  it('deletes the signed-in account after the food records, and tells WHOOP only once it is gone', async () => {
     const { steps, services: s } = services();
     const response = await createDeleteAccountHandler(s)(post('good-token'));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
-    expect(steps).toEqual([`whoop:${USER}`, `food:${USER}`, `user:${USER}`]);
+    expect(steps).toEqual([`whoop-token:${USER}`, `food:${USER}`, `user:${USER}`, 'whoop:whoop-access']);
+  });
+
+  it('leaves WHOOP connected when the account was not deleted', async () => {
+    for (const failing of ['removeFoodRecords', 'deleteUser'] as const) {
+      const { services: s } = services({ [failing]: vi.fn(async () => { throw new Error('down'); }) });
+      const response = await createDeleteAccountHandler(s)(post('good-token'));
+      expect(response.status).toBeGreaterThanOrEqual(500);
+      expect(s.revokeWhoop).not.toHaveBeenCalled();
+    }
+  });
+
+  it('tells WHOOP nothing for an account that never connected it, and deletes when the token cannot be read', async () => {
+    const never = services({ whoopAccess: vi.fn(async () => null) });
+    expect((await createDeleteAccountHandler(never.services)(post('good-token'))).status).toBe(200);
+    expect(never.services.revokeWhoop).not.toHaveBeenCalled();
+    const unread = services({ whoopAccess: vi.fn(async () => { throw new Error('read failed'); }) });
+    expect((await createDeleteAccountHandler(unread.services)(post('good-token'))).status).toBe(200);
+    expect(unread.services.deleteUser).toHaveBeenCalledOnce();
+    expect(unread.services.revokeWhoop).not.toHaveBeenCalled();
   });
 
   it('only ever deletes the account the token belongs to', async () => {
@@ -57,7 +77,7 @@ describe('delete-account function', () => {
     s.deleteUser = vi.fn(async (id: string) => { steps.push(`user:${id}`); });
     const response = await createDeleteAccountHandler(s)(post('good-token'));
     expect(response.status).toBe(200);
-    expect(steps).toEqual([`food:${USER}`, `user:${USER}`]);
+    expect(steps).toEqual([`whoop-token:${USER}`, `food:${USER}`, `user:${USER}`]);
     expect(s.log).toHaveBeenCalledTimes(1);
   });
 
@@ -141,6 +161,18 @@ describe('listing the food records to remove', () => {
     expect((await handler(post('good-token'))).status).toBe(200);
     expect(remaining.size).toBe(0);
     expect(s.deleteUser).toHaveBeenCalledOnce();
+  });
+
+  it('counts files, not folders: a day folder still listed with nothing in it does not block deletion', async () => {
+    const prefix = `food-v1/${USER}`;
+    const files = new Set([`${prefix}/2026-11-01/results/a.json`]);
+    const list = async (path: string): Promise<StorageEntry[]> => {
+      if (path === prefix) return [{ name: '2026-11-01', id: null }];
+      if (path === `${prefix}/2026-11-01`) return [{ name: 'results', id: null }];
+      return [...files].filter((file) => file.startsWith(`${path}/`)).map((file) => ({ name: file.slice(path.length + 1), id: file }));
+    };
+    await expect(removeFilesUnder(list, async (paths) => { for (const path of paths) files.delete(path); }, prefix)).resolves.toBeUndefined();
+    expect(files.size).toBe(0);
   });
 
   it('fails closed if the final root read fails, even after every remove succeeded', async () => {
