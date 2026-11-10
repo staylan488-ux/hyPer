@@ -37,13 +37,15 @@ struct GlassLook: Equatable {
   }
   /// The warm wave is the one loud moment: it is drawn at least this strongly in every look.
   static let waveGain: Float = 0.9
-  /// Rest: with no touch, scroll, press or tab change for this long the glass eases to a stop
-  /// (over `restEase` seconds) and the display link pauses, so an untended phone (a workout
-  /// keeps the screen on for an hour) costs what a still page costs. Anything wakes it at
-  /// once, easing back in over `wakeEase`.
+  /// Rest: with no touch, scroll, press or tab change for this long the glass fades away,
+  /// still moving, over `fadeOut` seconds, and only then does the display link pause, on the
+  /// bare page. So an untended phone (a workout keeps the screen on for an hour) costs what a
+  /// still page costs, and the glass is never seen frozen (the owner, of a first version that
+  /// slowed to a stop in place: "it just freezes like a video being paused"). Anything wakes
+  /// it at once, fading back in over `fadeIn`.
   static let restAfter: Double = 15
-  static let restEase: Double = 3
-  static let wakeEase: Double = 0.35
+  static let fadeOut: Double = 2.5
+  static let fadeIn: Double = 0.8
 }
 
 /// The one molten-glass field behind the app. Every tab shows the same simulation, so a tab
@@ -55,7 +57,8 @@ struct GlassLook: Equatable {
 /// while no field view is on screen, in the background, (after one frame) under Reduce
 /// Motion or the "off" look, and whenever nobody has touched the app for a while
 /// (`GlassLook.restAfter`): a display kept at 120 Hz is what costs battery, so the glass
-/// only moves while someone is there to see it.
+/// is only there while someone is using the app. It fades out before it stops and back in
+/// when it wakes; it is never left frozen on screen.
 ///
 /// Threads: `lock` guards everything below it. The main thread only queues input and changes
 /// settings; all simulation encoding happens on the render thread, except `drawNow`, which
@@ -83,12 +86,17 @@ final class GlassWorld: NSObject {
   private var shown = false
 
   private var simTime: Double = 0
-  /// When the app last gave a sign of someone using it, and how fast the glass moves for it:
-  /// `pace` eases from 1 to 0 once that is `restAfter` ago, and `resting` is true while the
-  /// link is paused for it.
+  /// When the app last gave a sign of someone using it, and how much of the glass shows for
+  /// it: `presence` fades from 1 to 0 once that is `restAfter` ago, and `resting` is true
+  /// while the link is paused on the bare page.
   private var lastActivity: CFTimeInterval = CACurrentMediaTime()
-  private var pace: Float = 1
+  private var presence: Float = 1
   private var resting = false
+  /// Under the lock: the look's strengths with the fade applied.
+  private var shownGain: (gain: Float, wave: Float) {
+    let p = presence * presence * (3 - 2 * presence)
+    return ((light ? look.gainLight : look.gain) * p, GlassLook.waveGain * p)
+  }
   private var lastTarget: CFTimeInterval = 0
   private var pendingVelocity: [GFSplat] = []
   private var pendingDye: [GFSplat] = []
@@ -213,7 +221,7 @@ final class GlassWorld: NSObject {
     lock.lock()
     guard let fluid, let gpu, let cb = gpu.queue.makeCommandBuffer() else { lock.unlock(); return false }
     cb.label = "glass first frame"
-    fluid.encodeDisplay(cb, target: drawable.texture, light: light, quiet: quiet, gain: light ? look.gainLight : look.gain, waveGain: GlassLook.waveGain)
+    fluid.encodeDisplay(cb, target: drawable.texture, light: light, quiet: quiet, gain: shownGain.gain, waveGain: shownGain.wave)
     lock.unlock()
     layer.presentsWithTransaction = true
     cb.commit()
@@ -345,17 +353,16 @@ final class GlassWorld: NSObject {
     let late = dt > link.duration * 1.5
     let rawDt = dt
     dt = min(max(dt, 1.0 / 240), 1.0 / 30)
-    // Rest: ease the pace down once nobody has used the app for a while, and back up at once.
+    // Rest: once nobody has used the app for a while the glass fades away, still moving at
+    // its own pace, and the link pauses only when none of it is left; any use fades it back.
     var stepping = moving
-    var simDt = dt
+    let simDt = dt
     if moving {
       let wanted: Float = CACurrentMediaTime() - lastActivity > GlassLook.restAfter ? 0 : 1
-      if wanted < pace { pace = max(0, pace - Float(dt / GlassLook.restEase)) }
-      else if wanted > pace { pace = min(1, pace + Float(dt / GlassLook.wakeEase)) }
-      let eased = pace * pace * (3 - 2 * pace)
-      simDt = dt * Double(eased)
-      stepping = eased > 0.0005
-      let nowResting = wanted == 0 && pace == 0
+      if wanted < presence { presence = max(0, presence - Float(dt / GlassLook.fadeOut)) }
+      else if wanted > presence { presence = min(1, presence + Float(dt / GlassLook.fadeIn)) }
+      let nowResting = wanted == 0 && presence == 0
+      stepping = !nowResting
       if nowResting && !resting, stats { NSLog("[glass] world resting") }
       resting = nowResting
     }
@@ -407,7 +414,7 @@ final class GlassWorld: NSObject {
       enc.endEncoding()
     }
     for d in drawables {
-      fluid.encodeDisplay(cb, target: d.texture, light: light, quiet: quiet, gain: light ? look.gainLight : look.gain, waveGain: GlassLook.waveGain)
+      fluid.encodeDisplay(cb, target: d.texture, light: light, quiet: quiet, gain: shownGain.gain, waveGain: shownGain.wave)
       cb.present(d)
     }
     needsDraw = false

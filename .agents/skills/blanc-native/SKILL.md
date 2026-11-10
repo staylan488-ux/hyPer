@@ -166,9 +166,12 @@ came from; the web app itself was removed on 2026-10-30 (Git history keeps it).
   through it. Reduce Motion holds it still, Increase Contrast draws it
   fainter, Low Power Mode caps it at 60. It rests to save battery (the owner:
   "that's really important"): after 15 s with no touch, scroll, press or tab
-  change it eases to a stop and stops drawing, so the display can idle as on a
-  still page (a workout keeps the screen on for an hour), and anything wakes
-  it at once. Keep anything new behind the app to the same rule. The owner's bar: it must feel
+  change it fades away, still moving, and stops drawing only on the bare
+  page, so the display can idle as on a still page (a workout keeps the
+  screen on for an hour); anything fades it back in at once. It is never left
+  frozen on screen (a version that slowed to a stop in place: "it just
+  freezes like a video being paused"). Keep anything new behind the app to
+  the same rules. The owner's bar: it must feel
   rendered inside the app, never like a video behind it (30 fps and a field
   per tab were rejected as "laggy" and "cheap"), and stay quiet ("something
   you notice", not something that "screams"). Tab pages and their navigation

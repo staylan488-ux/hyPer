@@ -83,8 +83,8 @@ history keep them (this file at commit b3f61df has the long version).
   Measured on the phone: 120 fps with no late frames over 40 s, about 1.2 ms
   of GPU a frame.
 - Battery: the glass draws at 120 fps only while the app is being used; 15 s
-  after the last touch, scroll, press or tab change it eases to a stop and
-  stops drawing. Not measured: what the remaining cost is over a day, and Low
+  after the last touch, scroll, press or tab change it fades away and stops
+  drawing on the bare page, and any use fades it back in. Not measured: what the remaining cost is over a day, and Low
   Power Mode on the phone (meant to cap it at 60). Not checked: VoiceOver.
 - Known and left as is: in light, a darker line passing behind small grey
   text lowers that text's contrast where they cross; during a swipe back the
