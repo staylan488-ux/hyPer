@@ -1,69 +1,39 @@
 # Maintaining agent instructions
 
 AGENTS.md is the shared project policy. CLAUDE.md imports it with @AGENTS.md;
-Codex discovers it directly. Only this small policy belongs in the startup
-context. Procedures are loaded for the task that needs them.
+Codex discovers it directly. Keep it to facts about this project that an agent
+cannot read from the code: what the app is, what must not be touched without
+asking, which checks to run. Leave out advice on how to work in general; each
+new model handles that better than a rule written for an older one.
 
-## One source for each skill
+Before adding a rule or a skill, ask whether a current model would get it wrong
+without it. When a rule's reason is gone, delete the rule.
 
-Canonical sources live in .agents/skills. Each .claude/skills entry is a relative
-symlink to the matching canonical directory, so both tools read the same content.
-Do not maintain a second copy.
+A skill holds the owner's decisions, traps that cost time before and check
+procedures. It does not describe how features work: the code and tests do
+that, and prose copies of them go stale. Do not update a skill just because
+code changed, and do not create a skill unless the owner asks for one.
 
-The directory layout follows [Codex skill discovery](https://learn.chatgpt.com/docs/build-skills)
-and Claude's supported [skill-directory symlinks](https://code.claude.com/docs/en/skills).
-Claude's root adapter uses its documented [memory import syntax](https://code.claude.com/docs/en/memory).
+## Skills
 
-For a skill change, edit the canonical source. Keep its description precise and
-short; put workflow-specific detail in references only when it earns that extra
-file. Link source files using relative Markdown paths. Prefer current scripts,
-configuration and code over copied versions, account claims or machine endpoints.
-When a behavior changes, update the relevant guidance in the same change.
+Sources live in .agents/skills. Each .claude/skills entry is a relative symlink
+to the matching directory, so both tools read the same content. Edit the
+source; do not keep a second copy. A new project skill needs its directory, the
+matching symlink, and its alias allowed in .gitignore.
 
-When a new project skill is justified, add its canonical directory and matching
-relative Claude symlink, then allow that alias in .gitignore. Other local Claude
-skills remain ignored. Do not add a skill merely for a one-off observation.
-Private machine notes belong in ignored CLAUDE.local.md; shared rules must work
-without that file, a production .env or files in someone's home directory.
+Private machine notes belong in the ignored CLAUDE.local.md. Shared rules must
+work without that file, a production .env or files in someone's home directory.
 
-## Verification
+## Checks
 
-Run npm run check:instructions after changing guidance or its links. npm run lint
-also runs that check. It discovers project skills and checks their metadata,
-relative references, Claude imports/aliases and Git ignore visibility. Warnings
-about size prompt a review of relevance; file length alone does not prove a
-problem. The validator does not prove the instructions produce good decisions.
+Run npm run check:instructions after changing guidance or its links (npm run
+lint runs it too). It checks skill metadata, relative links, Claude's import
+and symlinks, and Git ignore visibility. It does not show that the instructions
+lead to good decisions.
 
-For a substantial workflow change, exercise representative requests with an
-independent agent or isolated fixture. Check the resulting action choices, not
-whether the prose matches a preferred phrase. Deployment tests should prepare
-local artifacts and inspect commands unless an actual deployment is requested.
-Useful cases include a UI edit with an already-approved direction, backend
-inspection without a deployment request, and a release whose target is already
-authorized.
+## Handoffs
 
-For changes to discovery or imports, verify a clean checkout/snapshot without
-private files. Check Codex's skill list and resolve Claude's documented imports
-and aliases. New tasks pick up the new policy; an already-running task can retain
-earlier instructions in its conversation. Do not claim a live host reload unless
-it was observed.
-
-## Historical state and managed skills
-
-Use [the current handoff](handoffs/current.md) only when resuming unfinished work.
-Remove superseded sections instead of archiving them; Git history keeps them. Do
-not append task history to AGENTS.md or copy past deployment/merge authorization
-into new policy. The [handoff template](handoffs/README.md) lists the useful
-fields without prescribing branch mutation.
-
-Global personal preferences govern tool choice, relevant verification and
-already-established authorization. Managed skills remain vendor-owned. Current
-host instructions and tool schemas win over obsolete examples; use an available
-equivalent when appropriate rather than treating an unused fallback as required.
-Keep substantive artifact caveats and factual meaning even when a style recipe
-suggests otherwise. Preserve actual security and permission boundaries.
-
-Local overrides can mitigate behavioral conflicts, but cannot shorten a vendor
-entry file or repair its source. Reassess when the vendor updates those skills.
-Avoid personal shadow copies, automatic cache patchers and uninstalling useful
-tools to hide a documentation problem.
+Use [the current handoff](handoffs/current.md) only when resuming unfinished
+work; the [handoff template](handoffs/README.md) lists the useful fields.
+Remove superseded sections instead of archiving them; Git history keeps them.
+Do not add task history to AGENTS.md.
