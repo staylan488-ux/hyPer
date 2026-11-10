@@ -18,7 +18,7 @@ import { selectHistoryDay } from '~/lib/history';
 import { newProgram } from '~/lib/program';
 import { useStartSession } from '~/lib/session';
 import { useFinishedToday, type FinishedToday } from '~/lib/today';
-import { useBlanc } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 import { openTrain } from '~/lib/openTrain';
 
 // Today's training in one card: a title, at most one quiet line, at most one
@@ -38,10 +38,13 @@ export function PlanCard({
   next,
   place,
   seeded = false,
+  top = 18,
 }: {
   hero: HeroState;
   next: string | null;
   place: 'today' | 'train';
+  /** The space above it: 18 under a page's first line, none where a list places it (Today's groups). */
+  top?: number;
   /** The hero comes from the phone's copy (useTodayPlan's seeded). */
   seeded?: boolean;
 }) {
@@ -66,7 +69,7 @@ export function PlanCard({
     case 'loading':
     case 'resume':
       // Holds the card's place so what follows does not jump when the plan arrives.
-      return <View style={{ height: PLAN_CARD_HEIGHT, marginTop: 18 }} />;
+      return <View style={{ height: PLAN_CARD_HEIGHT, marginTop: top }} />;
     case 'planned': {
       const day = hero.day;
       const movements = day.exercises.length;
@@ -93,13 +96,13 @@ export function PlanCard({
       // shown from the phone's copy says "Trained today" from the first frame
       // instead (History is never kept), at the record's height, so the record
       // fills in without the card changing size.
-      if (finished === undefined && !sayDone) return <View style={{ height: RECORD_HEIGHT, marginTop: 18 }} />;
+      if (finished === undefined && !sayDone) return <View style={{ height: RECORD_HEIGHT, marginTop: top }} />;
       if (!finished) {
         title = 'Trained today';
         detail = next ? `Next: ${next}` : null;
         break;
       }
-      return <FinishedCard record={finished} next={next} />;
+      return <FinishedCard record={finished} next={next} top={top} />;
     }
     case 'flexible':
       title = 'Flexible mode';
@@ -127,7 +130,9 @@ export function PlanCard({
   const holdingRecord = hero.kind === 'done' && finished === undefined;
   const face = {
     minHeight: holdingRecord ? RECORD_HEIGHT : PLAN_CARD_HEIGHT,
-    paddingHorizontal: 18,
+    // Text on the gutter; the right edge is the gutter too, as a row's chevron and a rule's end.
+    paddingLeft: space.labelPad,
+    paddingRight: space.gutter,
     paddingVertical: 14,
     flexDirection: large ? ('column' as const) : ('row' as const),
     alignItems: large ? ('stretch' as const) : ('center' as const),
@@ -161,7 +166,7 @@ export function PlanCard({
     <Animated.View key={hero.kind} entering={FadeIn.duration(220)}>
       {place === 'today' ? (
         // On Today the whole card leads to Train, where the day is; its button still acts.
-        <Label style={{ marginTop: 18, overflow: 'hidden' }}>
+        <Label style={{ marginTop: top, overflow: 'hidden' }}>
           <Pressable
             // With a button inside, VoiceOver reaches the button on its own.
             accessible={!action}
@@ -177,7 +182,7 @@ export function PlanCard({
           </Pressable>
         </Label>
       ) : (
-        <Label style={[{ marginTop: 18 }, face]}>{content}</Label>
+        <Label style={[{ marginTop: top }, face]}>{content}</Label>
       )}
     </Animated.View>
   );
@@ -190,7 +195,7 @@ export function PlanCard({
  * No button: the card opens the workout, and says so with a chevron where the
  * live card's button was, as every card that opens a screen does.
  */
-function FinishedCard({ record, next }: { record: FinishedToday; next: string | null }) {
+function FinishedCard({ record, next, top }: { record: FinishedToday; next: string | null; top: number }) {
   const c = useBlanc();
   // At the accessibility sizes the action slot stacks under the words, where a lone chevron would float.
   const large = useLargeText();
@@ -206,6 +211,7 @@ function FinishedCard({ record, next }: { record: FinishedToday; next: string | 
   return (
     <Animated.View key="record" entering={FadeIn.duration(220)}>
       <SessionCard
+        top={top}
         day={record.title}
         aside={
           length ? (
@@ -252,7 +258,10 @@ export function SessionCard({
   spoken,
   hint,
   onPress,
+  top = 18,
 }: {
+  /** The space above it, as PlanCard's. */
+  top?: number;
   day: string;
   /** What VoiceOver hears for the header line, when its parts are read one by one. */
   daySpoken?: string;
@@ -271,7 +280,7 @@ export function SessionCard({
   // At the accessibility text sizes the day wraps, the clock moves under it, and the button under the words.
   const large = useLargeText();
   return (
-    <Label style={{ marginTop: 18, overflow: 'hidden' }}>
+    <Label style={{ marginTop: top, overflow: 'hidden' }}>
       <Pressable
         accessible={spoken !== undefined}
         accessibilityRole="button"
@@ -281,7 +290,7 @@ export function SessionCard({
           haptics.tap();
           onPress();
         }}
-        style={({ pressed }) => ({ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
+        style={({ pressed }) => ({ paddingLeft: space.labelPad, paddingRight: space.gutter, paddingTop: 16, paddingBottom: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
         <View
           accessible
           accessibilityLabel={speak(daySpoken ?? day)}

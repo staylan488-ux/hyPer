@@ -64,7 +64,7 @@ const plan = loadNativeModule<Record<string, (props: never) => ReactNode>>('comp
   '~/lib/session': { useStartSession: () => ({ starting: null, start: async () => false }) },
   '~/lib/today': { useFinishedToday: (done: boolean) => (done ? finished : null) },
   '~/lib/program': { newProgram: () => undefined },
-  '~/theme/blanc': { useBlanc: () => ({ pressed: '#eee' }) },
+  '~/theme/blanc': { space: { gutter: 16, labelPad: 18 }, useBlanc: () => ({ pressed: '#eee' }) },
 });
 
 const set = (id: string, completed: boolean) =>
@@ -95,10 +95,13 @@ async function open() {
     '~/components/PlanCard': { PlanCard: Empty, SessionCard: plan.SessionCard },
     '~/components/RollingText': { RollingText: Wrap },
     '~/components/Row': { Hairline: Empty, Row: Empty },
+    '~/components/DragList': { DragList: ({ items }: { items: { key: string; node: ReactNode }[] }) => createElement(Fragment, null, items.map((item) => createElement(Fragment, { key: item.key }, item.node))) },
+    '~/components/SwipeRow': { closeOpenSwipeRow: () => false },
+    '~/lib/todayOrder': { moveTodaySection: noop, useTodayOrder: () => ['training', 'fuel', 'progress'] },
     '~/components/Section': { Section: Empty },
     '~/components/TabScroll': { TabScroll: Wrap },
     '~/components/Track': { Track: Empty },
-    '~/components/WeekCheckInCard': { WeekCheckInCard: Empty },
+    '~/components/WeekCheckInRow': { WeekCheckInRow: Empty },
     '~/lib/weekCheckInDay': { isCheckInToday: () => false },
     '~/lib/weekCheckIn': { loadWeekCheckIn: noop, useWeekCheckIn: () => ({ checkIn: null, loading: false, failed: false, hidden: false }) },
     '~/lib/accountData': {
@@ -116,7 +119,7 @@ async function open() {
     '~/lib/motion': { figureLayout: {} },
     '~/lib/session': { useNow: () => Date.parse('2026-11-04T18:10:00Z'), useSessionModel: () => session },
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, weekDone: null, weekTarget: null }) },
-    '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => ({}) },
+    '~/theme/blanc': { space: { gutter: 20, labelPad: 18, group: 40 }, useBlanc: () => ({}) },
   });
   await act(async () => { root.render(createElement(TodayScreen)); });
 }

@@ -195,6 +195,11 @@ export const space = {
   labelPad: 18,
   /** Between sections. */
   section: 26,
+  /**
+   * Between the groups of a tab's own page (Section's `page`): with no cards,
+   * space is what groups, so it is clearly more than any gap inside a group.
+   */
+  group: 40,
 } as const;
 
 export const radius = {

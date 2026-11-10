@@ -74,7 +74,31 @@ history keep them (this file at commit b3f61df has the long version).
 - Not done: revoking the Sign in with Apple token on deletion (needs the
   Apple key and the provider refresh token, which Supabase doesn't keep).
 
-## Molten glass and the card-less pages (branch `claude/molten-glass`)
+## Today's groups, and holding one to move it (branch `t3/native-ui-clutter-review`)
+
+- The rules are in the blanc-native skill (Design, and the owner's
+  decisions): a page grouped by space, bold for headings only, a glass
+  capsule for whatever is pressed, and Today cut to training, Fuel and
+  Progress. Train and Fuel follow the same spacing and weights.
+- Holding a group on Today brings glass cards in behind all three; it is
+  dragged into place and the cards fade. The order is kept on the phone, per
+  account, and does not sync. The owner approved it on his phone on
+  2026-11-09 in the test app.
+- A heading's action is now a small glass capsule everywhere a Section has
+  one. Seen: Today and You. Not opened: a meal's Ingredients (Add) and the
+  program editor (Reorder).
+- Checked in the simulator: Today, Train and Fuel in dark and light; Today
+  and Fuel at the largest text size and Today with Increase Contrast, before
+  the reorder was added. Not checked with the reorder: the largest text size,
+  Increase Contrast, Reduce Motion, VoiceOver's Move up and Move down.
+- Left for the owner: Train still has a Start button on every other day
+  (removing them changes how an off-plan day starts).
+- Read in the code, not reproduced: the live workout's reorder trades places
+  by a rule that assumes rows of similar height, so lifting a tall block (a
+  superset) may trade it with its neighbour at once. Today's groups use a
+  rule of their own (DragList's `cards`).
+
+## Molten glass and the card-less pages (merged, PR #210)
 
 - The look and its rules are in the blanc-native skill (Design). The owner
   judged it on his phone on 2026-11-09 in the test app: the first build (a
