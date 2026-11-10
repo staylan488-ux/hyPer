@@ -43,8 +43,9 @@ history keep them (this file at commit b3f61df has the long version).
   native/scripts/build-phone.sh <device-id>`, when the owner asks (the phone
   must be on the Mac's Wi-Fi).
 - Food AI defaults to Gemini through `analyze-food-trial`. On Hypertrophy-App
-  that function is version 5 (2026-11-07, from PR #190, the same files as
-  main): the live steps for the Analysis card (`progress: true`), per-step
+  that function is version 5 (2026-11-07, from PR #190; main has since moved
+  its records to the database ledger, which is not deployed, see Account
+  deletion below): the live steps for the Analysis card (`progress: true`), per-step
   timings in `usage.stepMs`, low thinking for picking search results, and
   main's parallel Tavily searches. Older app builds are unaffected. Planner
   and finalizer stay on medium thinking until a side-by-side test on real
@@ -61,11 +62,14 @@ history keep them (this file at commit b3f61df has the long version).
   Forgot password?: the reset link returns to `<scheme>://auth/callback`
   (the URL email confirmation already uses), signs in on this phone and shows
   the New password screen (`native/src/app/new-password.tsx`) before the app.
-- Not deployed. Deletion needs `supabase functions deploy delete-account
-  --project-ref <ref>` (it reads the existing `SUPABASE_SERVICE_ROLE_KEY` and
-  `FOOD_ANALYSIS_BUCKET` secrets); until then Delete account says it couldn't
-  delete. No migration. Check that the Auth redirect list still names
-  `app.hyper.mobile://auth/callback` (sign-up confirmation needs it too).
+- Not deployed; until then Delete account says it couldn't delete. Deploying
+  it is a coordinated cutover, not one command: follow
+  [the ledger notes](../food-analysis-ledger.md) in order. `delete-account`
+  answers 503 until `FOOD_ANALYSIS_DATABASE_LEDGER_READY=true` is set, and
+  main's `analyze-food-trial` answers 503 for everyone if it is deployed
+  before the `food_analysis_ledger` migration is applied. Check that the Auth
+  redirect list still names `app.hyper.mobile://auth/callback` (sign-up
+  confirmation needs it too).
 - Not done: revoking the Sign in with Apple token on deletion (needs the
   Apple key and the provider refresh token, which Supabase doesn't keep).
 
