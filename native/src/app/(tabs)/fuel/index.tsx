@@ -39,6 +39,7 @@ import { announce, screenReaderRunning, speak, useAnnounce, useLargeText } from 
 import { formatWhole } from '~/lib/format';
 import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { foldHolds, foldMeal, mealFoldKey, unfoldMeal, useMealFold } from '~/lib/mealFolds';
 import { blockExit, figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { useWorkoutBarShown } from '~/lib/workoutBar';
 import { useYouMealsStore } from '~/lib/you';
@@ -558,6 +559,22 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
   // saved meal (Unassigned too).
   const copyable = day !== todayKey && logs.some((log) => log.food);
   const savable = canSaveAsMeal(logs, savedMeals);
+  // A meal with food folds down to its heading, name and calories, and this
+  // phone keeps it so. The fold holds only over the entries it was made
+  // with: food logged or moved in opens the meal, so it never lands out of
+  // sight, and the fold is then let go rather than closing again if that
+  // food is deleted.
+  const userId = useAuthStore((state) => state.user?.id);
+  const foldKey = mealFoldKey(day, group?.id);
+  const entryIds = logs.map((log) => log.id);
+  const fold = useMealFold(userId, foldKey);
+  const holds = foldHolds(fold, entryIds);
+  const folded = holds && logs.length > 0;
+  const outgrown = Boolean(fold) && !holds;
+  useEffect(() => {
+    if (outgrown) unfoldMeal(userId, foldKey);
+  }, [outgrown, userId, foldKey]);
+  const toggleFold = () => (folded ? unfoldMeal(userId, foldKey) : foldMeal(userId, foldKey, entryIds));
 
   const groupMenu = () => {
     const reuse = [
@@ -607,6 +624,7 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
       // A day's meals read as one ledger: closer together than a screen's sections.
       style={{ marginTop: 20 }}
       note={logs.length > 0 ? `${formatWhole(kcal)} kcal` : undefined}
+      fold={logs.length > 0 ? { open: !folded, onToggle: toggleFold } : undefined}
       accessory={
         group || copyable || savable ? (
           <Pressable
@@ -622,18 +640,27 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
           </Pressable>
         ) : undefined
       }>
+      {/* The block clips and follows its height, so a fold closes over the
+          foods as they fade and the meals below slide up with it. */}
       <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
-        {logs.map((log, index) => (
-          <Animated.View key={log.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
-            {index > 0 ? <Hairline /> : null}
-            <EntryRow log={log} groups={groups} lateNight={lateNight} todayKey={todayKey} />
+        {folded ? null : (
+          <Animated.View entering={rowEnter} exiting={blockExit}>
+            {/* Folding takes the foods away together: none slides off as a deleted one does. */}
+            <LayoutAnimationConfig skipEntering skipExiting>
+              {logs.map((log, index) => (
+                <Animated.View key={log.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                  {index > 0 ? <Hairline /> : null}
+                  <EntryRow log={log} groups={groups} lateNight={lateNight} todayKey={todayKey} />
+                </Animated.View>
+              ))}
+              {logs.length === 0 && group ? (
+                <Animated.View entering={rowEnter} layout={rowLayout}>
+                  <Row title="Nothing here yet" quiet onPress={() => logFood(day, group.id)} />
+                </Animated.View>
+              ) : null}
+            </LayoutAnimationConfig>
           </Animated.View>
-        ))}
-        {logs.length === 0 && group ? (
-          <Animated.View entering={rowEnter} layout={rowLayout}>
-            <Row title="Nothing here yet" quiet onPress={() => logFood(day, group.id)} />
-          </Animated.View>
-        ) : null}
+        )}
       </Label>
     </Section>
   );

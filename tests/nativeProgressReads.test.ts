@@ -163,9 +163,6 @@ async function open() {
       default: { View: Wrap },
       FadeIn: { duration: () => undefined },
       LinearTransition: { duration: () => undefined },
-      useAnimatedStyle: () => ({}),
-      useSharedValue: (value: unknown) => ({ value }),
-      withTiming: (value: unknown) => value,
     },
     '@/lib/todayModel': todayModel,
     '@/hooks/useWeeklyNutrition': {
@@ -184,6 +181,7 @@ async function open() {
     '@/types': types,
     '~/components/BlancText': { BlancText: Text },
     '~/components/Capsule': { Capsule: ({ title, onPress }: { title: string; onPress: () => void }) => createElement('button', { onClick: onPress }, title) },
+    '~/components/Disclosure': { Disclosure: Empty },
     '~/components/Label': { Label: Wrap },
     '~/components/MuscleFigure': { MuscleFigure: Empty },
     '~/components/Row': { Hairline: Empty },
