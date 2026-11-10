@@ -114,3 +114,9 @@ start with [AGENTS.md](AGENTS.md).
 
 Report a vulnerability privately, as [SECURITY.md](SECURITY.md) describes,
 not in a public issue.
+
+## License
+
+hyPer's code is under the [MIT License](LICENSE). The Fraunces typeface in
+`native/assets/fonts` keeps its own
+[SIL Open Font License](native/assets/fonts/Fraunces-OFL.txt).
