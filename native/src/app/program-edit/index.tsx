@@ -128,9 +128,9 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
           unstable_headerRightItems: () => [],
         }}
       />
-      <ScrollView style={{ flex: 1, backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }}>
+      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1, backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }}>
         {stored ? (
-          <Label style={{ marginTop: 12, padding: 18, gap: 12 }}>
+          <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: 12 }}>
             <BlancText variant="body">
               Unsaved program{stored.draft.name.trim() ? ` “${stored.draft.name.trim()}”` : ''} · {plural(stored.draft.days.length, 'day')}, from{' '}
               {formatDistanceToNowStrict(stored.savedAt, { addSuffix: true })}.
@@ -185,7 +185,7 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
             <Choice question={SESSION_QUESTION} value={answers.sessionLength} onChange={(value) => answer('sessionLength', value)} />
             <Choice question={EXPERIENCE_QUESTION} value={answers.experience} onChange={(value) => answer('experience', value)} />
           </View>
-          <Label style={{ marginTop: 18, padding: 18, gap: 14 }}>
+          <Label style={{ marginTop: 18, padding: 18, paddingRight: 16, gap: 14 }}>
             <View accessible accessibilityLabel={speak(`${shownName} · ${guidedLine}`)}>
               <BlancText variant="headline">{shownName}</BlancText>
               <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
@@ -240,7 +240,7 @@ function Choice<K extends keyof ProgramDesignAnswers, T extends string>({
       <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: 4 }}>
         {question.label}
       </BlancText>
-      <Host matchContents={{ vertical: true }}>
+      <Host ignoreSafeArea="all" matchContents={{ vertical: true }}>
         <Picker selection={value} onSelectionChange={(next) => onChange(next as T)} modifiers={[pickerStyle('segmented')]}>
           {question.options.map((option) => (
             <SwiftText key={option.value} modifiers={[tag(option.value)]}>
@@ -332,14 +332,14 @@ function Editor({ notice }: { notice: string | null }) {
   return (
     <>
       <Stack.Screen options={options} />
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false}
         style={{ flex: 1, backgroundColor: c.ground }}
         contentContainerStyle={{ paddingBottom: 120 }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets>
         {restorable && !isDirty ? (
-          <Label style={{ marginTop: 12, padding: 18, gap: 12 }}>
+          <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: 12 }}>
             <BlancText variant="body">
               Unsaved edits from {restorableAgo} are on this device.
             </BlancText>
@@ -467,7 +467,6 @@ function TextField({ label, initial, placeholder, maxLength, onChange }: {
 
 /** A day: tap to open it; swipe to remove (Undo brings it back); hold for the menu. */
 function DayRow({ day, index, total }: { day: DraftDay; index: number; total: number }) {
-  const c = useBlanc();
   const label = dayLabel(day, index);
   const store = useSplitEditStore.getState;
   // The live workout's day stays: removing it would drop that session.
@@ -522,7 +521,7 @@ function DayRow({ day, index, total }: { day: DraftDay; index: number; total: nu
 
   return (
     <SwipeRow name={label} actions={[{ label: 'Remove', destructive: true, onPress: remove }]}>
-      <View style={{ backgroundColor: c.label }}>
+      <View>
         <Row title={label} detail={daySummary(day)} chevron onPress={open} menu={menu} />
       </View>
     </SwipeRow>

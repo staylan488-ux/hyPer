@@ -142,7 +142,7 @@ export default function WarmUpSheet() {
   // The sheet fits its content; at the accessibility text sizes, or with a
   // long ramp, it can be taller than the screen, so it scrolls there.
   return large ? (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 36 }}>
+    <ScrollView showsVerticalScrollIndicator={false} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 36 }}>
       {content}
     </ScrollView>
   ) : (

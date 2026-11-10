@@ -185,7 +185,7 @@ export default function WeightScreen() {
         ) : !settled ? (
           <ActivityIndicator style={{ marginTop: 40 }} />
         ) : (
-          <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
+          <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: 14 }}>
             <View style={{ gap: 2 }}>
               {/* Older weigh-ins may be all there is: a failed full read isn't "none yet". */}
               <BlancText variant="headline">{failed || olderMissing ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
@@ -207,7 +207,7 @@ export default function WeightScreen() {
         {trend.observedDayCount >= 2 ? (
           <View style={{ marginTop: 24 }}>
             {/* How far back the chart looks, as Health's own charts choose it. */}
-            <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset }}>
+            <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset }}>
               <Picker
                 selection={rangeKey}
                 onSelectionChange={(next) => {
@@ -223,7 +223,7 @@ export default function WeightScreen() {
                 ))}
               </Picker>
             </Host>
-            <Label style={{ marginTop: 12, padding: 18, paddingBottom: 12 }}>
+            <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, paddingBottom: 12 }}>
               <WeightChart
                 points={line}
                 calendar={calendar}
@@ -293,7 +293,7 @@ function UnitRow({ unit }: { unit: WeightUnit }) {
           it its width (a host that matches its contents both ways shrinks a segmented
           control to its smallest), its segments about as wide as the range's. At the
           accessibility text sizes it spans the row under its label, as the range spans the card. */}
-      <Host matchContents={{ vertical: true }} style={large ? { alignSelf: 'stretch' } : { width: UNIT_CONTROL_WIDTH }}>
+      <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={large ? { alignSelf: 'stretch' } : { width: UNIT_CONTROL_WIDTH }}>
         <Picker
           selection={unit}
           onSelectionChange={(next) => {

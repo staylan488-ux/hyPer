@@ -122,7 +122,7 @@ export default function TargetsScreen() {
       />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         {status === 'error' && !target ? (
-          <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
+          <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: 14 }}>
             <View style={{ gap: 2 }}>
               <BlancText variant="headline">Targets not loaded</BlancText>
               <BlancText variant="secondary" tone="graphite">

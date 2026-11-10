@@ -178,7 +178,7 @@ export function TrendChart({
               {activePoint ? (
                 <>
                   <Line x1={activePoint.x} x2={activePoint.x} y1={0} y2={height} stroke={c.hairline} strokeWidth={1} />
-                  <Circle cx={activePoint.x} cy={activePoint.y} r={4.5} fill={c.ink} stroke={c.label} strokeWidth={2} />
+                  <Circle cx={activePoint.x} cy={activePoint.y} r={4.5} fill={c.ink} stroke={c.ground} strokeWidth={2} />
                 </>
               ) : null}
             </Svg>

@@ -218,7 +218,7 @@ export function FoodRow({ food, state, opening, onOpen, onAdd, onTakeOut, menu, 
   // The same line in words: "150 g · 31 g protein" as "150 grams, 31 grams protein", "+" as Add.
   const spokenLine = state === 'error' ? "Couldn't confirm. Use Add to try again." : speak(line);
   const row = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 16, backgroundColor: pressed ? c.pressed : c.label }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 16, backgroundColor: pressed ? c.pressed : 'transparent' }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={[food.name, spokenLine, speak(`${kcal} kcal`)].filter(Boolean).join(', ')}

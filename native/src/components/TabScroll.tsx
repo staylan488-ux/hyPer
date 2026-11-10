@@ -1,10 +1,12 @@
-import { useEffect, useState, type ComponentRef, type ReactNode, type Ref } from 'react';
+import { useEffect, useRef, useState, type ComponentRef, type ReactNode, type Ref, type RefObject } from 'react';
 import { Platform, ScrollView, Settings, View, type ScrollViewProps } from 'react-native';
 import { initialWindowMetrics } from 'react-native-safe-area-context';
 
 import { scrollRoomExtra } from '~/lib/scrollRoom';
 import { useWorkoutBarShown } from '~/lib/workoutBar';
 
+import { glassDemoOn, useDemoScrollTarget } from './GlassDemo';
+import { makeGlassScrollStir } from './GlassField';
 import { dismissOpenSwipeRow } from './SwipeRow';
 
 const END_SPACE = 48;
@@ -39,7 +41,20 @@ type TabScrollProps = Omit<ScrollViewProps, 'contentContainerStyle'> & {
  * quiet space at the end for iOS to shrink the tab bar reliably
  * ([scroll room](../lib/scrollRoom.ts)); pages that fit are left alone.
  */
-export function TabScroll({ children, onLayout, ...props }: TabScrollProps) {
+export function TabScroll({ children, onLayout, ref, ...props }: TabScrollProps) {
+  // Scrolling stirs the glass behind the page a little (one tracker per scroll view).
+  const [stir] = useState(makeGlassScrollStir);
+  // The caller's ref, plus our own for the debug demo (-hyperDemo glass), which scrolls the page on screen.
+  const own = useRef<ComponentRef<typeof ScrollView> | null>(null);
+  const outer = useRef(ref);
+  outer.current = ref;
+  const [merged] = useState(() => (node: ComponentRef<typeof ScrollView> | null) => {
+    own.current = node;
+    const r = outer.current;
+    if (typeof r === 'function') r(node);
+    else if (r) (r as RefObject<ComponentRef<typeof ScrollView> | null>).current = node;
+  });
+  useDemoScrollTarget(own);
   // The workout bar's height counts only while it is showing (it steps aside on Today and Train).
   const accessory = useWorkoutBarShown((state) => state.shown);
   const [viewport, setViewport] = useState(0);
@@ -63,7 +78,17 @@ export function TabScroll({ children, onLayout, ...props }: TabScrollProps) {
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
       scrollEventThrottle={16}
+      // No scroll bar: on a page with no cards it reads as a web page's (the large title and the
+      // tab bar already answer a scroll). A page that needs one can ask for it.
+      showsVerticalScrollIndicator={false}
       {...props}
+      ref={merged}
+      // The demo scrolls back up under the large title, past React Native's clamp at 0.
+      scrollToOverflowEnabled={glassDemoOn || props.scrollToOverflowEnabled}
+      onScroll={(event) => {
+        stir(event);
+        props.onScroll?.(event);
+      }}
       // Scrolling closes a row left swiped open, as iOS lists do.
       onScrollBeginDrag={(event) => {
         dismissOpenSwipeRow();

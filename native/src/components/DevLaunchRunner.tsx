@@ -21,10 +21,11 @@ import { devScrollTrace, readDevLaunch } from '~/platform/devLaunch';
 export function DevLaunchRunner() {
   useEffect(() => {
     if (!__DEV__) return;
-    const { route, action } = readDevLaunch();
+    const { route, then, action } = readDevLaunch();
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     if (route) timers.push(setTimeout(() => router.navigate(route as never), 400));
+    if (then) timers.push(setTimeout(() => router.push(then as never), 3000));
 
     if (action === 'probeTimeout') {
       // With EXPO_PUBLIC_SUPABASE_URL pointing at a server that never answers,

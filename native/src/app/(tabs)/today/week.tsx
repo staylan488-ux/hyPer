@@ -58,7 +58,7 @@ export default function LastWeekScreen() {
           </View>
         ) : !hasCheckIn(checkIn) ? (
           <Section title={checkInWeekLabel(checkIn.week)} style={{ marginTop: 6 }}>
-            <Label style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
+            <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 16 }}>
               <BlancText variant="secondary" tone="graphite">
                 Nothing was logged that week.
               </BlancText>

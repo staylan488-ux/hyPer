@@ -26,9 +26,10 @@ export function HoldMenu({ actions, enabled = true, backdrop, style, children }:
   actions: MenuAction[];
   enabled?: boolean;
   /**
-   * What shows in the row's place while it is lifted. Give the row's own
-   * colour when something sits behind it (a swipe row's buttons), so the
-   * gap reads as the list, as iOS leaves it.
+   * Kept for callers that once painted the row's colour behind a lifted row
+   * (a swipe row's buttons sat under it). Rows now sit on the page and a
+   * swipe row's buttons wait off its end, so nothing is painted: the gap a
+   * lifted row leaves shows the page, as iOS leaves it.
    */
   backdrop?: ColorValue;
   style?: StyleProp<ViewStyle>;
@@ -42,6 +43,7 @@ export function HoldMenu({ actions, enabled = true, backdrop, style, children }:
       style={backdrop ? undefined : style}
       actions={items}
       enabled={enabled}
+      // The lifted preview is a card of its own, on the lifted surface colour.
       previewColor={c.label}
       previewRadius={radius.label}
       onOpen={() => {
@@ -51,7 +53,7 @@ export function HoldMenu({ actions, enabled = true, backdrop, style, children }:
       {children}
     </HyperMenuView>
   );
-  return backdrop ? <View style={[style, { backgroundColor: backdrop }]}>{menu}</View> : menu;
+  return backdrop ? <View style={style}>{menu}</View> : menu;
 }
 
 /**

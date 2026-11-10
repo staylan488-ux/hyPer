@@ -24,7 +24,7 @@ import { announce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteProgram, editProgram, newProgram, planTarget, renameQuickStart, setActiveProgram, startQuickStart, useDeletingPrograms } from '~/lib/program';
-import { space, useBlanc } from '~/theme/blanc';
+import { space } from '~/theme/blanc';
 
 /**
  * Program: how Train works (program days or flexible sessions), the programs
@@ -99,7 +99,7 @@ export default function ProgramScreen() {
         ) : null}
 
         {live ? null : (
-          <Host matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18 }}>
+          <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ marginHorizontal: space.inset, marginTop: 18 }}>
             <Picker
               selection={mode}
               onSelectionChange={(next) => switchMode(next as 'split' | 'flexible')}
@@ -118,7 +118,7 @@ export default function ProgramScreen() {
             <Label style={{ marginTop: space.section }}>
               <Row title="Training mode" quiet value={mode === 'flexible' ? 'Flexible' : 'Program days'} accessibilityLabel={`Training mode, ${mode === 'flexible' ? 'Flexible' : 'Program days'}, locked during a workout`} />
             </Label>
-            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.inset + 18, marginTop: 8 }}>
+            <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 8 }}>
               Finish the current workout to switch.
             </BlancText>
           </>
@@ -172,7 +172,6 @@ function SchedulingSetting() {
 }
 
 function Programs({ splits }: { splits: Split[] }) {
-  const c = useBlanc();
   // A program being deleted folds away once Delete is chosen, here or on its
   // own screen, and comes back if the delete fails.
   const deleting = useDeletingPrograms((state) => state.ids);
@@ -180,7 +179,7 @@ function Programs({ splits }: { splits: Split[] }) {
 
   if (shown.length === 0) {
     return (
-      <Label style={{ marginTop: space.section, padding: 18, gap: 14 }}>
+      <Label style={{ marginTop: space.section, padding: 18, paddingRight: 16, gap: 14 }}>
         <View style={{ gap: 2 }}>
           <BlancText variant="headline">Build your first program</BlancText>
           <BlancText variant="secondary" tone="graphite">
@@ -222,7 +221,7 @@ function Programs({ splits }: { splits: Split[] }) {
                 { label: 'Edit', onPress: () => editProgram(split) },
                 { label: 'Delete', destructive: true, onPress: () => remove(split) },
               ]}>
-              <View style={{ backgroundColor: c.label }}>
+              <View>
                 <Row
                   title={split.name}
                   detail={[split.is_active ? 'Active' : null, plural(split.days.length, 'day'), plural(exerciseTotal(split), 'exercise')]
@@ -242,7 +241,6 @@ function Programs({ splits }: { splits: Split[] }) {
 }
 
 function QuickStarts() {
-  const c = useBlanc();
   const large = useLargeText();
   const templates = useAppStore((state) => state.flexTemplates);
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
@@ -251,7 +249,7 @@ function QuickStarts() {
 
   if (shown.length === 0) {
     return (
-      <Label style={{ marginTop: space.section, padding: 18, gap: 2 }}>
+      <Label style={{ marginTop: space.section, padding: 18, paddingRight: 16, gap: 2 }}>
         <BlancText variant="headline">No quick starts yet</BlancText>
         <BlancText variant="secondary" tone="graphite">
           Finish a flexible session and keep it as a quick start.
@@ -315,6 +313,7 @@ function QuickStarts() {
             <Capsule
               title="Start"
               variant="quiet"
+              tone="effort"
               busy={starting === template.id}
               disabled={starting !== null}
               accessibilityLabel={`Start ${template.label}`}
@@ -330,7 +329,7 @@ function QuickStarts() {
                   { label: 'Rename', onPress: () => renameQuickStart(template) },
                   { label: 'Delete', destructive: true, onPress: () => remove(template) },
                 ]}>
-                <View style={{ backgroundColor: c.label }}>
+                <View>
                   <Row
                     title={template.label}
                     detail={items.map((item) => item.exercise_name || 'Exercise').join(' · ') || 'No movements'}

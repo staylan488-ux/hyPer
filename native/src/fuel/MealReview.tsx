@@ -265,7 +265,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
               showActionSheet(item.food.name, menu);
             }
       }
-      style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16, backgroundColor: c.label }}>
+      style={{ paddingVertical: 10, paddingLeft: 18, paddingRight: 16 }}>
       {/* At the accessibility sizes the name takes its own line and the amount sits under it. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, ...(large ? { flexWrap: 'wrap' } : null) }}>
         <View

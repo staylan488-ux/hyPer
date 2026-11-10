@@ -51,7 +51,7 @@ export default function MovementHistoryScreen() {
           loading ? (
             <ActivityIndicator color={c.graphite} style={{ marginTop: 40 }} accessibilityLabel="Loading history" />
           ) : (
-            <Label style={{ marginTop: 12, padding: 18, gap: 12, alignItems: 'flex-start' }}>
+            <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: 12, alignItems: 'flex-start' }}>
               <BlancText variant="secondary" tone="graphite">
                 History couldn’t load.
               </BlancText>
@@ -59,7 +59,7 @@ export default function MovementHistoryScreen() {
             </Label>
           )
         ) : sessions.length === 0 ? (
-          <Label style={{ marginTop: 12, padding: 18, gap: 2 }}>
+          <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: 2 }}>
             <BlancText variant="headline">No sessions yet</BlancText>
             <BlancText variant="secondary" tone="graphite">
               Finish a workout with {title} and it shows here, with your best sets and records.
@@ -95,7 +95,7 @@ export default function MovementHistoryScreen() {
 
             {/* Two sessions draw a line. */}
             {history.trend.length >= 2 ? (
-              <Label style={{ marginTop: 24, padding: 18, paddingBottom: 12 }}>
+              <Label style={{ marginTop: 24, padding: 18, paddingRight: 16, paddingBottom: 12 }}>
                 <TrendChart
                   points={history.trend.map((point) => ({ day: point.day, value: point.value, label: trendPointLabel(point, history.mode) }))}
                   height={160}

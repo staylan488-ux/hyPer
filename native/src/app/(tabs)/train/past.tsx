@@ -429,7 +429,6 @@ function SetRow({
   rpeColumn: boolean;
   previous: PreviousWorkoutSetMap;
 }) {
-  const c = useBlanc();
   const name = `${movement.name} set ${number}`;
   const edit = () => router.push({ pathname: '/past-set', params: { workout: workoutId, set: set.id, number: String(number) } });
   // The row leaves at once; a delete that fails brings it back.
@@ -450,7 +449,7 @@ function SetRow({
 
   return (
     <SwipeRow name={name} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
-      <View style={{ backgroundColor: c.label }}>
+      <View>
         <LoggedSetRow number={number} set={set} rpeColumn={rpeColumn} gain={set.completed ? gainOnLastTime(set, previous, movement.sets) : null} onPress={edit} menu={menu} />
       </View>
     </SwipeRow>
@@ -459,7 +458,6 @@ function SetRow({
 
 /** WHOOP strain and heart rate on the workout, or a way to add them from an activity that day. */
 function Stats({ workout, activities }: { workout: HistoryWorkout; activities: Parameters<typeof searchWhoopForWorkout>[1] }) {
-  const c = useBlanc();
   const attached = workoutHasWhoopStats(workout);
   const options = activities.filter(activityHasStats);
   if (!attached && options.length === 0) return null;
@@ -501,7 +499,7 @@ function Stats({ workout, activities }: { workout: HistoryWorkout; activities: P
       <Section title="Stats">
         <Label style={{ overflow: 'hidden' }}>
           <SwipeRow name="WHOOP stats" actions={[{ label: 'Remove', destructive: true, onPress: removeStats }]}>
-            <View style={{ backgroundColor: c.label }}>
+            <View>
               <Row
                 title={workout.strain != null ? `Strain ${workout.strain.toFixed(1)}` : 'WHOOP stats'}
                 detail={detail || undefined}

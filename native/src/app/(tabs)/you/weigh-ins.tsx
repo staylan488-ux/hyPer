@@ -97,7 +97,7 @@ export default function WeighInsScreen() {
           // The first full read; a failed one shows the recent weigh-ins instead.
           <ActivityIndicator style={{ marginTop: 40 }} />
         ) : months.length === 0 ? (
-          <Label style={{ marginTop: 12, padding: 18, gap: 14 }}>
+          <Label style={{ marginTop: 12, padding: 18, paddingRight: 16, gap: 14 }}>
             <View style={{ gap: 2 }}>
               <BlancText variant="headline">{notLoaded ? 'Weight not loaded' : 'No weigh-ins yet'}</BlancText>
               <BlancText variant="secondary" tone="graphite">

@@ -7,6 +7,7 @@ import {
   foregroundStyle,
   lineLimit,
   listRowBackground,
+  listRowSeparatorTint,
   listStyle,
   scrollContentBackground,
 } from '@expo/ui/swift-ui/modifiers';
@@ -87,7 +88,7 @@ export default function ProgramReorderSheet() {
       </View>
 
       <Host style={{ flex: 1, marginTop: 4 }}>
-        <List modifiers={[listStyle('insetGrouped'), scrollContentBackground('hidden'), environment('editMode', 'active')]}>
+        <List modifiers={[listStyle('plain'), scrollContentBackground('hidden'), environment('editMode', 'active')]}>
           <List.ForEach data={items} keyExtractor={(item) => item.id} onMove={move}>
             {({ item }) => (
               // One VoiceOver element per row, in words. The text styles are
@@ -96,7 +97,7 @@ export default function ProgramReorderSheet() {
               <VStack
                 alignment="leading"
                 spacing={2}
-                modifiers={[listRowBackground(c.label), accessibilityElement('ignore'), accessibilityLabel(item.spoken)]}>
+                modifiers={[listRowBackground(c.ground), listRowSeparatorTint(c.hairline), accessibilityElement('ignore'), accessibilityLabel(item.spoken)]}>
                 {/* One line each, as a row elsewhere: a long name ends in "…" (wrapping at the accessibility text sizes). */}
                 <SwiftText modifiers={[font({ textStyle: 'body', weight: 'medium' }), foregroundStyle(c.ink), ...(large ? [] : [lineLimit(1)])]}>{item.title}</SwiftText>
                 <SwiftText modifiers={[font({ textStyle: 'subheadline' }), foregroundStyle(c.graphite), ...(large ? [] : [lineLimit(1)])]}>{item.line}</SwiftText>

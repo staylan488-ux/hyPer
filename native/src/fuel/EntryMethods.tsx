@@ -75,7 +75,7 @@ export function EntryMethods({
               // Actions, not a second segmented control: no fill at rest. The open
               // one is lifted as a chosen Chip is: on chalk, white with only a
               // hairline read as nothing chosen, so it takes the Chip's shadow too.
-              backgroundColor: on ? c.label : pressed ? c.pressed : 'transparent',
+              backgroundColor: on ? c.chosen : pressed ? c.pressed : 'transparent',
               borderWidth: StyleSheet.hairlineWidth,
               borderColor: on ? c.labelEdge : 'transparent',
               ...(on ? LIFTED : null),

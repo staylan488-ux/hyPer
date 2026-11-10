@@ -283,7 +283,7 @@ function AppearanceRow() {
       <BlancText variant="body" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
         Appearance
       </BlancText>
-      <Host matchContents>
+      <Host ignoreSafeArea="all" matchContents>
         <Menu
           label={
             <HStack spacing={10}>

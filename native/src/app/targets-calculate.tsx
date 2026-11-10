@@ -72,7 +72,7 @@ export default function TargetsCalculateSheet() {
 
   if (ready || open) return <Calculator />;
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }}>
+    <ScrollView showsVerticalScrollIndicator={false} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }}>
       <SheetHeader />
       {profileRead.failed ? (
         <>
@@ -179,7 +179,7 @@ function Calculator() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <ScrollView showsVerticalScrollIndicator={false} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <SheetHeader />
 
       <Section title="You">
@@ -439,7 +439,7 @@ function SegmentRow({ label, children }: { label: string; children: ReactNode })
       <BlancText variant="body" style={large ? undefined : { flex: 1 }}>
         {label}
       </BlancText>
-      <Host matchContents={{ vertical: true }} style={{ width: 168 }}>
+      <Host ignoreSafeArea="all" matchContents={{ vertical: true }} style={{ width: 168 }}>
         {children}
       </Host>
     </View>

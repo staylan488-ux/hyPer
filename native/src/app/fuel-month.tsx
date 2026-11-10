@@ -240,7 +240,7 @@ export default function FuelMonthSheet() {
 
   // The sheet fits its content; at the accessibility sizes it scrolls if the content outgrows the screen.
   return large ? (
-    <ScrollView style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }}>
+    <ScrollView showsVerticalScrollIndicator={false} style={{ backgroundColor: c.ground }} contentContainerStyle={{ paddingBottom: 28 }}>
       {content}
     </ScrollView>
   ) : (

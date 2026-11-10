@@ -302,7 +302,7 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
           </BlancText>
         ))}
       </View>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false}
         ref={scroller}
         horizontal
         pagingEnabled
@@ -450,7 +450,7 @@ function DayCell({
           style={{
             fontVariant: ['tabular-nums'],
             // Days to come read in the upcoming grey, still clear to tap (a chosen one stays on its disc).
-            color: selected ? c.label : future ? c.upcoming : c.ink,
+            color: selected ? c.ground : future ? c.upcoming : c.ink,
           }}>
           {number}
         </BlancText>
@@ -568,7 +568,7 @@ function WorkoutRow({ workout, live }: { workout: HistoryWorkout; live: SessionM
 
   return (
     <SwipeRow name={title} actions={[{ label: 'Delete', destructive: true, onPress: remove }]}>
-      <View style={{ backgroundColor: c.label }}>
+      <View>
         <Row
           title={title}
           detail={detail}
@@ -614,7 +614,6 @@ function activityDetail(activity: ActivitySession): string {
 
 /** An activity: tap to open it; swipe to merge or delete (asks first); hold for the menu. */
 function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay: ActivitySession[] }) {
-  const c = useBlanc();
   const title = resolveActivityTitle(activity);
   const others = sameDay.filter((entry) => entry.id !== activity.id);
   const open = () => router.push({ pathname: '/train/activity-view', params: { id: activity.id } });
@@ -651,7 +650,7 @@ function ActivityRow({ activity, sameDay }: { activity: ActivitySession; sameDay
     <SwipeRow
       name={title}
       actions={[...(others.length > 0 ? [{ label: 'Merge', onPress: merge }] : []), { label: 'Delete', destructive: true, onPress: remove }]}>
-      <View style={{ backgroundColor: c.label }}>
+      <View>
         <Row title={title} detail={detail || undefined} chevron onPress={open} menu={menu} />
       </View>
     </SwipeRow>

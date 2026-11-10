@@ -251,11 +251,21 @@ function Actions({ actions, name, translation, fullSwipe, rowWidth, committed, o
     const swiped = Math.max(ACTION_WIDTH, -translation.get() - othersWidth);
     return { width: swiped + (Math.max(swiped, rowWidth.get()) - swiped) * committed.get() };
   });
+  // Rows sit on the page with no card behind them, so nothing may show
+  // through a row at rest: the actions slide in with the row's trailing
+  // edge, filling only the gap it leaves, and wait off the row's end until
+  // then. Once a full swipe commits, the red takes the whole row in place.
+  const actionsWidth = hasDestructive ? othersWidth : actions.length * ACTION_WIDTH;
+  const reveal = useAnimatedStyle(() => {
+    const swiped = -translation.get();
+    const width = hasDestructive ? actionsWidth + Math.max(ACTION_WIDTH, swiped - actionsWidth) : actionsWidth;
+    return { transform: [{ translateX: Math.max(0, width - swiped) * (1 - committed.get()) }] };
+  });
 
   return (
     // Hidden from VoiceOver: under a closed row it would still find them, and
     // its double tap would land on the row. The row offers them as actions.
-    <View style={{ flexDirection: 'row' }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <Animated.View style={[{ flexDirection: 'row' }, reveal]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {actions.map((action) => {
         const face = (
           <Pressable
@@ -286,6 +296,6 @@ function Actions({ actions, name, translation, fullSwipe, rowWidth, committed, o
           </View>
         );
       })}
-    </View>
+    </Animated.View>
   );
 }

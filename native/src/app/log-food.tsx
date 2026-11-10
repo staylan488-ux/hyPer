@@ -865,7 +865,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       {/* The lists to pick from. While an entry method is on screen no
           segment is chosen, so the control never claims a list that
           isn't showing; a tap on one goes back to it. */}
-      <Host matchContents={{ vertical: true }}>
+      <Host ignoreSafeArea="all" matchContents={{ vertical: true }}>
         {/* Keep a save's result visible on its original tab. */}
         <Picker
           selection={isBrowse(tab) ? tab : NO_LIST}
@@ -919,7 +919,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
   return (
     <LoggerContext.Provider value={context}>
-      <KeyboardAwareScrollView
+      <KeyboardAwareScrollView showsVerticalScrollIndicator={false}
         // On Barcode the typed digits' Look up barcode sits under the field:
         // the pad's bar covered it, so the field rises with room for it.
         bottomOffset={tab === 'scan' && !chosen ? 24 + 12 + 54 : 24}

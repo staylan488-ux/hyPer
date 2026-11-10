@@ -10,7 +10,6 @@ import { dayKey } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { deleteWeighIn } from '~/lib/you';
-import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 import type { MenuAction } from './HoldMenu';
@@ -50,7 +49,6 @@ export function WeighInRows({
   todayKey: string;
   footer?: ReactNode;
 }) {
-  const c = useBlanc();
   const large = useLargeText();
   const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
 
@@ -85,7 +83,7 @@ export function WeighInRows({
           ? { menu: [{ title: 'Delete weigh-in', symbol: 'trash', destructive: true, removes: true, run: () => remove(entry) }] }
           : {};
         const row = (
-          <View style={{ backgroundColor: c.label }}>
+          <View>
             {large ? (
               // Stacked at the accessibility sizes, so neither the weight nor when is cut short.
               <Row title={title} detail={when} {...actions} />

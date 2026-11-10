@@ -216,10 +216,10 @@ function SessionLabel({ session }: { session: SessionModel }) {
       line={line}
       action={
         current || empty ? (
-          <Capsule title="Resume" onPress={openWorkout} />
+          <Capsule title="Resume" tone="effort" onPress={openWorkout} />
         ) : (
           // Every set is logged: Finish finishes here, as it does on Train.
-          <Capsule title="Finish" busy={closing} onPress={finish} />
+          <Capsule title="Finish" tone="effort" busy={closing} onPress={finish} />
         )
       }
       onPress={openWorkout}

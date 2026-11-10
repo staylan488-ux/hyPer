@@ -81,14 +81,16 @@ feature works, read its code and tests. Do not add feature descriptions here.
   [blanc.ts](../../../native/src/theme/blanc.ts). Text fields take `field` or
   `fieldLines`, never body: iOS draws a reused field's placeholder with the
   last one's letter spacing otherwise (`tests/nativeTextFields.test.ts`).
-- Colour: chalk ground, white labels, black ink, graphite for secondary text.
+- Colour: chalk ground, black ink, graphite for secondary text.
   No accent colour. Red only for live state, errors, over-limit and the brand
   P, and it is one red. Colours come from `useBlanc()`, never hard-coded.
   Switches are ink, never iOS green.
-- The white [Label](../../../native/src/components/Label.tsx) is the one
-  container. Sections are separated by space, rows by hairlines. Ink capsules
-  are primary actions and quiet fills secondary; a sheet's one filled shape is
-  its main button.
+- No cards. [Label](../../../native/src/components/Label.tsx) only groups:
+  content sits on the page, ordered by type, space, hairlines and the 16 pt
+  gutter. Buttons are Apple's interactive Liquid Glass
+  ([Capsule](../../../native/src/components/Capsule.tsx)), plain frost with an
+  ink title, lit from the fingertip on a press (warm for Log set, Resume,
+  Start and Finish); a sheet's one filled shape is its main button.
 - Data marks are `mark` at full strength; the current period is ink and over
   is red. No opacity tricks: hierarchy comes from size and weight. Every week
   and calendar starts on Monday.
@@ -104,7 +106,8 @@ feature works, read its code and tests. Do not add feature descriptions here.
 - Inspiration, never imitation: do not reproduce another brand's marks, labels,
   layouts or signature details.
 - No costume luxury: no serif type outside the P, no Roman numerals,
-  faux-editorial copy, glow, 3D or particles. Sentence case. Touch targets at
+  faux-editorial copy, glow, 3D or particles (the molten glass and a press's
+  light, below, are the approved exceptions). Sentence case. Touch targets at
   least 44 pt.
 - "This should work, and it does" (the owner): every list item that can be
   removed swipes left for its actions
@@ -158,6 +161,24 @@ Settled; do not reopen or "improve" them without being asked.
   protein never moves.
 - The tab bar shrinks on scroll on every tab
   ([TabScroll](../../../native/src/components/TabScroll.tsx)).
+- No cards: he called them "cheap excuses for a bad UI". No scroll bars
+  either: on a bare page one "makes the app kinda feel like a webapp".
+- Molten glass behind the four tabs
+  ([GlassField](../../../native/src/components/GlassField.tsx),
+  `native/modules/hyper-glass-field`), judged on his phone on 2026-11-09:
+  - It must feel rendered inside the app, never "like a video playing in the
+    background": the display's full rate (120 fps on his phone), and one
+    field shared by all tabs so a tab change never resets it. A field per tab
+    at 30 to 60 fps was rejected as laggy and cheap.
+  - Quiet: "something that you notice", not something that "screams". Out of
+    four strengths he chose "faint" (`GlassLook`); there is no setting.
+  - Battery is "really important": 15 s after the last touch, scroll, press
+    or tab change it fades away, still moving, and stops drawing on the bare
+    page; any use fades it back in. Never leave it frozen on screen ("like a
+    video being paused").
+  - Reduce Motion holds it still, Increase Contrast draws it fainter, Low
+    Power Mode caps it at 60 fps.
+  Hold anything else that moves behind the app to the same rules.
 
 ## Traps
 
@@ -184,6 +205,18 @@ Settled; do not reopen or "improve" them without being asked.
 - `accessibilityLiveRegion` does nothing on iOS, and a test forbids it.
   `onMagicTap` does not fire on React Native 0.88's New Architecture.
 - An animation marked `ReduceMotion.Never` needs its own plain fade.
+- The simulator hides what matters about the glass: its screen is 60 Hz, and
+  its tab bar never switches between light and dark glass. Judge smoothness,
+  tab changes and the tab bar on the phone, early. Frame rate from the phone:
+  `xcrun devicectl device process launch --console --terminate-existing
+  --device <id> app.hyper.native -- -hyperGlassStats YES` (ending that command
+  ends the app, and the owner must keep the app in front).
+- Give a view under the tab bar no native background colour of its own. iOS
+  reads it for the bar's light or dark glass even when something opaque covers
+  it; one left over from the other appearance turned the bar white on one tab
+  until a relaunch.
+- A SwiftUI `Host` sized by `matchContents` takes `ignoreSafeArea="all"`, or
+  a picker sticks under a sheet's header while the sheet scrolls.
 - iOS only shrinks the tab bar on pages that scroll well past the screen; tab
   root pages use TabScroll, which gives any scrolling page enough travel.
   Re-measure its insets if iOS changes its bars.
@@ -207,8 +240,10 @@ Settled; do not reopen or "improve" them without being asked.
   the simulator has no camera, so Snap a meal's camera screen says "The
   camera isn’t available here." with its photo library button still working
   (`-hyperRoute /food-camera` opens that screen alone). `-hyperAction
-  fuelReminder` sets a Fuel reminder a minute ahead and logs what iOS holds. A new local module (such as `hyper-launch`)
-  needs `pod install`, which prebuild runs.
+  fuelReminder` sets a Fuel reminder a minute ahead and logs what iOS holds. A new local module (such as `hyper-launch`),
+  or a new Swift file in one, needs `pod install`, which prebuild runs.
+  `-hyperGlassLevel off|faint|soft|full` compares the glass's strengths and
+  `-hyperGlassStats YES` logs its frame rate.
 - Accessibility: `xcrun simctl ui <udid> content_size accessibility-extra-extra-extra-large`
   shows AX5 (`large` is the default) and `xcrun simctl ui <udid> increase_contrast enabled`
   the contrast palette; check every changed screen at both and at the default.

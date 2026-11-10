@@ -29,9 +29,9 @@ const DARK_SEAM = 1.35;
 const HEAD_ROOM = 6;
 
 /**
- * The body's edge on the light cards, in points as it shows: half the
- * contour's stroke shows outside the body, so the near-white body stands
- * off the white card. On the dark card the contour is set in figure units,
+ * The body's edge in light, in points as it shows: half the contour's
+ * stroke shows outside the body, so the near-white body stands off the
+ * chalk page. In dark the contour is set in figure units,
  * wider (and its tone lighter, in muscleTones), so the edge still reads there.
  */
 const BODY_EDGE = 1;
@@ -43,7 +43,7 @@ const DARK_CONTOUR = 2.8;
  * and on its own light fill without outshouting the red past the ceiling.
  */
 const BELOW_OUTLINE = 1.25;
-/** The key sits in from the figure's edge as far as the card's title above it does (Progress's caption). */
+/** The key sits in from the figure's edge as far as the caption above it does (Progress's caption). */
 const KEY_INSET = 6;
 
 /** Each view's shapes as path data, the back view moved along beside the front. */
@@ -270,7 +270,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 204 }: {
               <G clipPath={`url(#figure-${view.side})`}>
                 {view.regions.map((region, i) =>
                   bare(region.muscle) ? null : (
-                    <Path key={`s${i}`} d={region.seams} fill="none" stroke={c.label} strokeWidth={seam} strokeLinecap="round" strokeLinejoin="round" />
+                    <Path key={`s${i}`} d={region.seams} fill="none" stroke={c.ground} strokeWidth={seam} strokeLinecap="round" strokeLinejoin="round" />
                   ),
                 )}
               </G>

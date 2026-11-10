@@ -1,0 +1,8 @@
+{
+  "name": "hyper-glass-field",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The molten-glass field behind the app: a stable-fluids simulation drawn with Metal.",
+  "main": "index.ts",
+  "license": "UNLICENSED"
+}

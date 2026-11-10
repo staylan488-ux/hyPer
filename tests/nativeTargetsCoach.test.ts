@@ -43,7 +43,7 @@ const { default: TargetsCoachSheet } = loadNativeModule<{ default: () => ReturnT
   '@/stores/appStore': { useAppStore: create(() => ({ nutritionProfile: { goal: 'maintain' }, macroTarget: null })) },
   '~/components/BlancText': { BlancText: Box },
   '~/components/Capsule': { Capsule },
-  '~/components/Form': { FormNote, ToggleRow: () => null },
+  '~/components/Form': { FieldArea: Box, FormNote, ToggleRow: () => null },
   '~/components/GlassButton': { GlassButton: () => null },
   '~/components/Label': { Label: Box },
   '~/components/Row': { Row: () => null },
@@ -52,7 +52,7 @@ const { default: TargetsCoachSheet } = loadNativeModule<{ default: () => ReturnT
   '~/lib/leaveGuard': { useLeaveGuard: () => {} },
   '~/platform/previewFlag': { isPreviewActive: () => false },
   '~/lib/you': { stageTargets: () => {}, useWeightStore: create(() => ({ history: [] })) },
-  '~/theme/blanc': { type: { fieldLines: {} }, useBlanc: () => ({ ink: '#000', upcoming: '#777', ground: '#fff' }) },
+  '~/theme/blanc': { space: { gutter: 16 }, type: { fieldLines: {} }, useBlanc: () => ({ ink: '#000', upcoming: '#777', ground: '#fff' }) },
 });
 
 let root: Root;

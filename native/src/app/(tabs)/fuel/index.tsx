@@ -655,7 +655,6 @@ function entryDetail(log: FoodLog): DetailParts {
 
 /** One entry: tap to edit; swipe for More and Delete (all the way deletes); hold for the menu. */
 function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: NutritionGroup[]; lateNight: boolean; todayKey: string }) {
-  const c = useBlanc();
   const savedMeals = useKnownSavedMeals();
   const name = log.food?.name ?? 'Food';
   const edit = () => router.push({ pathname: '/log-food', params: { entry: log.id } });
@@ -700,7 +699,7 @@ function EntryRow({ log, groups, lateNight, todayKey }: { log: FoodLog; groups: 
         { label: 'More', onPress: () => showActionSheet(name, menu) },
         { label: 'Delete', destructive: true, onPress: remove },
       ]}>
-      <View style={{ backgroundColor: c.label }}>
+      <View>
         <Row
           title={name}
           detail={detail}

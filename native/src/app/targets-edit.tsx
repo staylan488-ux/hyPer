@@ -128,7 +128,7 @@ export default function TargetsEditSheet() {
   };
 
   return (
-    <KeyboardAwareScrollView
+    <KeyboardAwareScrollView showsVerticalScrollIndicator={false}
       bottomOffset={24}
       style={{ flex: 1, backgroundColor: c.ground }}
       contentContainerStyle={{ paddingBottom: 40 }}

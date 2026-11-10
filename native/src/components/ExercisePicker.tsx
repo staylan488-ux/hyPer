@@ -155,7 +155,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
     ));
 
   return (
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false}
         style={{ flex: 1, backgroundColor: c.ground }}
         contentContainerStyle={{ paddingBottom: 40 }}
         stickyHeaderIndices={[0]}
@@ -236,7 +236,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             />
           </Pressable>
 
-          <ScrollView
+          <ScrollView showsVerticalScrollIndicator={false}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}

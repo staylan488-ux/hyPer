@@ -218,7 +218,7 @@ export default function SignIn() {
   };
 
   return (
-    <KeyboardAwareScrollView
+    <KeyboardAwareScrollView showsVerticalScrollIndicator={false}
       bottomOffset={24}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"

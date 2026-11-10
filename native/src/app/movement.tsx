@@ -10,7 +10,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
 import { FigureInput } from '~/components/FigureInput';
-import { FormNote } from '~/components/Form';
+import { FieldArea, FormNote } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { LoggedSetRow } from '~/components/LoggedSetRow';
@@ -51,7 +51,7 @@ export default function MovementSheet() {
   // A native sheet expects its scroll view as the screen's own view, so the
   // header rides in the list as a sticky first item.
   return (
-    <KeyboardAwareScrollView
+    <KeyboardAwareScrollView showsVerticalScrollIndicator={false}
       // Room under a set being corrected for its Cancel and Save.
       bottomOffset={96}
       style={{ flex: 1, backgroundColor: c.ground }}
@@ -266,7 +266,7 @@ function MovementDetail({
       </Section>
 
       <Section title="Note">
-        <Label style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
+        <FieldArea style={{ marginHorizontal: space.gutter }}>
           <TextInput
             value={note.text}
             onChangeText={(text) => editNote(workoutId, movement.exerciseId, text)}
@@ -280,7 +280,7 @@ function MovementDetail({
             accessibilityLabel={`Note for ${movement.name}`}
             style={[typeScale.fieldLines, { color: c.ink, minHeight: 66, padding: 0 }]}
           />
-        </Label>
+        </FieldArea>
         <NoteFooter status={note.status} length={note.text.length} />
         {lastNote ? (
           <FormNote>

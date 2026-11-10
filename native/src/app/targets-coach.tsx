@@ -16,7 +16,7 @@ import { buildWeightTrend } from '@/lib/weightTrend';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
-import { FormNote, ToggleRow } from '~/components/Form';
+import { FieldArea, FormNote, ToggleRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
@@ -24,7 +24,7 @@ import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { stageTargets, useWeightStore } from '~/lib/you';
-import { type as typeScale, useBlanc } from '~/theme/blanc';
+import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 const PREVIEW_SUGGESTION: CoachRecommendation = {
   calories: 2400,
@@ -108,7 +108,7 @@ export default function TargetsCoachSheet() {
   };
 
   return (
-    <ScrollView
+    <ScrollView showsVerticalScrollIndicator={false}
       style={{ backgroundColor: c.ground }}
       contentContainerStyle={{ paddingBottom: 40 }}
       keyboardShouldPersistTaps="handled"
@@ -133,7 +133,7 @@ export default function TargetsCoachSheet() {
         </>
       ) : null}
 
-      <Label style={{ marginTop: 20, padding: 14 }}>
+      <FieldArea style={{ marginHorizontal: space.gutter, marginTop: 20, paddingHorizontal: 10, paddingVertical: 8 }}>
         <TextInput
           selectionColor={c.ink}
           value={goals}
@@ -151,7 +151,7 @@ export default function TargetsCoachSheet() {
           accessibilityLabel="Your goal"
           style={[typeScale.fieldLines, { color: c.ink, minHeight: 120, textAlignVertical: 'top', padding: 4, opacity: asking ? 0.5 : 1 }]}
         />
-      </Label>
+      </FieldArea>
 
       <Label style={{ marginTop: 16 }}>
         <ToggleRow label="Share daily burn and weight trend" value={share} disabled={asking} onChange={setShare} />
