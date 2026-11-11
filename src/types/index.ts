@@ -25,6 +25,11 @@ export interface Exercise {
   is_compound: boolean;
   /** Absent before the category migration; null lets the app decide by name. */
   category?: ExerciseCategory | null;
+  /**
+   * Set when the movement left the everyday list. The row stays, so programs
+   * and history that use it keep working; the picker just stops offering it.
+   */
+  retired_at?: string | null;
 }
 
 export interface Split {

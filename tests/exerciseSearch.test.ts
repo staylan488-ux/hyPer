@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { exerciseCategory, exerciseSearchScore, searchExercises } from '@/lib/exerciseSearch';
+import { exerciseCategory, exerciseSearchScore, offeredInPicker, searchExercises } from '@/lib/exerciseSearch';
 import type { Exercise, MuscleGroup } from '@/types';
 
 function exercise(name: string, muscle: MuscleGroup = 'chest', equipment: string | null = null): Exercise {
@@ -133,5 +133,47 @@ describe('exerciseSearchScore', () => {
     expect(exerciseSearchScore(row, query)).toBe(expected);
     // Again, from the kept fields.
     expect(exerciseSearchScore(row, query)).toBe(expected);
+  });
+});
+
+describe('offeredInPicker', () => {
+  const retired = { ...exercise('Leg Curl', 'hamstrings', 'machine'), retired_at: '2026-11-11T00:00:00Z' };
+
+  it('offers every current row, searched or not', () => {
+    const current = exercise('Lying Leg Curl', 'hamstrings', 'machine');
+    expect(offeredInPicker(current, '')).toBe(true);
+    expect(offeredInPicker({ ...current, retired_at: null }, 'squat')).toBe(true);
+  });
+
+  it('hides a retired row from browsing and partial searches', () => {
+    expect(offeredInPicker(retired, '')).toBe(false);
+    expect(offeredInPicker(retired, 'leg')).toBe(false);
+    expect(offeredInPicker(retired, 'leg cur')).toBe(false);
+  });
+
+  it('shows a retired row when the search spells out its name', () => {
+    expect(offeredInPicker(retired, 'leg curl')).toBe(true);
+    expect(offeredInPicker(retired, '  Leg-Curl ')).toBe(true);
+  });
+});
+
+describe('alternative names', () => {
+  const library = [
+    exercise('Hip Abduction Machine', 'glutes', 'machine'),
+    exercise('Hip Adduction Machine', 'glutes', 'machine'),
+    exercise('Cable Fly', 'chest', 'cable'),
+    exercise('Stiff-Leg Deadlift', 'hamstrings', 'barbell'),
+  ];
+  const names = (query: string) => searchExercises(library, query).map((entry) => entry.name);
+
+  it('finds the hip machines by what people call them', () => {
+    expect(names('abductor')).toEqual(['Hip Abduction Machine']);
+    expect(names('adductors')).toEqual(['Hip Adduction Machine']);
+    expect(names('outer thigh')).toEqual(['Hip Abduction Machine']);
+  });
+
+  it('finds a cable fly as a crossover and a stiff-leg deadlift as sldl', () => {
+    expect(names('cable crossover')).toEqual(['Cable Fly']);
+    expect(names('sldl')).toEqual(['Stiff-Leg Deadlift']);
   });
 });
