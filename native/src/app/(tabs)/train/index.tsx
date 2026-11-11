@@ -38,9 +38,10 @@ import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
 import { restSecondsFor, startRest } from '~/lib/rest';
-import { liveSessionModel, useFocusStore, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { liveSessionModel, useFocusStore, usePreviousHistory, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
+import { sessionTargets, setTargetFor, targetFigures, targetLine, targetMoment, type SessionTargets } from '~/lib/setTargets';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
 import { useBarWeight } from '~/lib/warmup';
 import { devScrollTrace } from '~/platform/devLaunch';
@@ -51,7 +52,7 @@ type Movement = SessionModel['movements'][number];
 /** The numbers for the set about to be logged. `touched` once the person edits them. */
 type Draft = { setId: string; weight: string; reps: string; rpe: number | null; touched: boolean };
 
-/** How long "Beat last time" holds in the card after the set saves. */
+/** How long "Target hit" or "Beat last time" holds in the card after the set saves. */
 const BEAT_MOMENT_MS = 4000;
 /** How long Undo stays after a skip, as in the program editor. */
 const UNDO_MS = 5000;
@@ -76,21 +77,24 @@ async function succeeds(work: () => Promise<void>): Promise<boolean> {
 }
 
 /**
- * The shared src/lib/setAutofill rule: set 1 starts from last workout's set 1,
- * later sets from the latest set logged in this workout.
+ * The set's target when it has one (src/lib/setTargets). Otherwise the shared
+ * src/lib/setAutofill rule: set 1 starts from last workout's set 1, later
+ * sets from the latest set logged in this workout. Numbers already saved on
+ * the set always win.
  */
-function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap): Draft {
+function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap, targets: SessionTargets): Draft {
   const autofill = getSetAutofillValues({
     exerciseId: current.movement.exerciseId,
     setNumber: current.set.set_number,
     currentExerciseSets: current.movement.sets,
     previousWorkoutSetsByExercise: previous,
   });
+  const target = setTargetFor(current.set, current.movement.sets, targets);
   const rpe = current.set.rpe ?? (autofill?.rpe ? Number(autofill.rpe) : null);
   return {
     setId: current.set.id,
-    weight: current.set.weight !== null ? String(current.set.weight) : (autofill?.weight ?? ''),
-    reps: current.set.reps !== null ? String(current.set.reps) : (autofill?.reps ?? ''),
+    weight: current.set.weight !== null ? String(current.set.weight) : target ? String(target.weight) : (autofill?.weight ?? ''),
+    reps: current.set.reps !== null ? String(current.set.reps) : target ? String(target.reps) : (autofill?.reps ?? ''),
     rpe: rpe !== null && Number.isFinite(rpe) ? rpe : null,
     touched: false,
   };
@@ -124,6 +128,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const c = useBlanc();
   const large = useLargeText();
   const previous = usePreviousTargets(session.workoutId);
+  // Each movement's targets today, from the same read as last time.
+  const history = usePreviousHistory(session.workoutId);
+  const targets = sessionTargets(session, history);
   const previousNotes = usePreviousNotes(session);
   const logSet = useAppStore((state) => state.logSet);
   const focus = useFocusStore((state) => state.focus);
@@ -158,16 +165,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     if (currentId) onCurrentChange();
   }, [currentId]);
 
-  const [draft, setDraft] = useState<Draft | null>(() => (current ? suggestedDraft(current, previous) : null));
+  const [draft, setDraft] = useState<Draft | null>(() => (current ? suggestedDraft(current, previous, targets) : null));
   const [saving, setSaving] = useState(false);
   // The set whose save failed: its card says so and offers Retry. Another
   // movement's card never does, so Retry can't log numbers for the wrong set.
   const [failedSetId, setFailedSetId] = useState<string | null>(null);
   const failed = failedSetId !== null && failedSetId === current?.set.id;
   const [editing, setEditing] = useState<'weight' | 'reps' | null>(null);
-  // The last saved set, when it beat last time. Its gain shows in place of
-  // "Last time" for a moment (`fresh`), and stays on "All sets logged".
-  const [beat, setBeat] = useState<{ key: number; gain: string; fresh: boolean } | null>(null);
+  // The last saved set, when it reached its target or, with no target, beat
+  // last time. Its line shows in place of the note for a moment (`fresh`),
+  // and stays on "All sets logged".
+  const [beat, setBeat] = useState<{ key: number; text: string; mark: 'up' | 'check'; fresh: boolean } | null>(null);
   useEffect(() => {
     if (!beat?.fresh) return;
     const timer = setTimeout(() => setBeat((latest) => (latest?.key === beat.key ? { ...latest, fresh: false } : latest)), BEAT_MOMENT_MS);
@@ -195,20 +203,20 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const onSetChange = useEffectEvent(() => {
     setDraft((existing) => {
       if (!current) return null;
-      return existing?.setId === current.set.id ? existing : suggestedDraft(current, previous);
+      return existing?.setId === current.set.id ? existing : suggestedDraft(current, previous, targets);
     });
     setFailedSetId(null);
   });
   useEffect(() => onSetChange(), [currentSetId]);
 
-  // "Last time" arrives after the screen opens: fill it into an untouched set.
+  // "Last time" and the targets arrive after the screen opens: fill them into an untouched set.
   const onPreviousChange = useEffectEvent(() => {
     setDraft((existing) => {
       if (!current || !existing || existing.touched || existing.setId !== current.set.id) return existing;
-      return suggestedDraft(current, previous);
+      return suggestedDraft(current, previous, targets);
     });
   });
-  useEffect(() => onPreviousChange(), [previous]);
+  useEffect(() => onPreviousChange(), [previous, history]);
 
   // On a bodyweight movement an empty weight logs as 0: no "0" to type first.
   const weight = draft ? weightToLog(draft.weight, isBodyweight(current?.set.exercise)) : null;
@@ -216,6 +224,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const ready = weight !== null && reps !== null;
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
+  // The set's target and its one line: the figures join the line once the fields hold something else.
+  const target = current ? setTargetFor(current.set, current.movement.sets, targets) : null;
+  const onTarget = Boolean(target && draft && !differsFromLast(draft.weight, target.weight) && !differsFromLast(draft.reps, target.reps));
+  const targetText = target ? targetLine(target, !onTarget) : null;
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
   const lastLoad = last && typeof last.weight === 'number' && last.weight > 0 ? last.weight : null;
   const lastRepCount = last && typeof last.reps === 'number' && Number.isFinite(last.reps) ? last.reps : null;
@@ -267,16 +279,23 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     setBeat(null);
     const logged = current.set;
     const loggedReps = Math.round(reps);
+    const loggedTarget = setTargetFor(logged, current.movement.sets, targets);
     // One line for VoiceOver per log: focus stays on Log set while the card
     // changes under it, so nothing else says the set saved.
     const spoken = [`Set ${current.setNumber} of ${current.movement.sets.length} logged`];
     const saved = await succeeds(async () => {
       await logSet(logged.id, weight, loggedReps, draft.rpe ?? undefined);
-      // Beating the same set last time gets a firmer haptic and a quiet line.
-      const gain = gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous, current.movement.sets);
-      if (gain) {
+      // Reaching the set's target gets a firmer haptic and a quiet line; a
+      // missed target says nothing. A set with no target compares with last time.
+      const moment = loggedTarget ? targetMoment({ weight, reps: loggedReps }, loggedTarget) : null;
+      const gain = loggedTarget ? null : gainOnLastTime({ ...logged, weight, reps: loggedReps }, previous, current.movement.sets);
+      if (moment) {
         haptics.beat();
-        setBeat({ key: Date.now(), gain, fresh: true });
+        setBeat({ key: Date.now(), text: moment, mark: moment === 'Target hit' ? 'check' : 'up', fresh: true });
+        spoken.push(moment.toLowerCase().replace(' · ', ', '));
+      } else if (gain) {
+        haptics.beat();
+        setBeat({ key: Date.now(), text: `Beat last time · ${gain}`, mark: 'up', fresh: true });
         spoken.push(`beat last time, ${gain}`);
       } else {
         haptics.success();
@@ -485,6 +504,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     const plan = movement.plan;
     const lastSet = previous[movement.exerciseId]?.[1];
     const lastLine = lastSet ? formatSet(lastSet.weight, lastSet.reps, { unit: false }) : '';
+    // The target of its next set, in place of last time when it has one.
+    const nextSet = movement.sets.find((set) => !set.completed);
+    const nextTarget = nextSet ? setTargetFor(nextSet, movement.sets, targets) : null;
     const hasSetsLeft = movement.sets.some((set) => !set.completed);
     // Skipping a movement part way through ends it early.
     const skipLabel = movement.done > 0 ? 'End early' : 'Skip';
@@ -535,7 +557,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               : plan && (plan.target_reps_min || plan.target_reps_max)
                 ? formatTarget(movement.sets.length, plan.target_reps_min, plan.target_reps_max)
                 : null,
-          lastLine ? `last ${lastLine}` : null,
+          nextTarget ? `target ${targetFigures(nextTarget)}` : lastLine ? `last ${lastLine}` : null,
         ]
           .filter(Boolean)
           .join(' · ');
@@ -700,7 +722,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               {/* The name and its line open the movement's sets, note and swap, like ⋯. */}
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={speak([current.movement.name, cardLine, repTarget].filter(Boolean).join(', '))}
+                accessibilityLabel={speak([current.movement.name, cardLine, repTarget, targetText].filter(Boolean).join(', '))}
                 accessibilityHint="Opens its sets, note and swap"
                 onPress={() => {
                   haptics.tap();
@@ -724,6 +746,15 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                     </BlancText>
                   ) : null}
                 </BlancText>
+                {/* The set's target: what the figures below hold, and why, in one quiet line. */}
+                {targetText ? (
+                  <BlancText variant="secondary" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
+                    <BlancText variant="secondary" weight="600">
+                      Target
+                    </BlancText>
+                    {targetText.slice('Target'.length)}
+                  </BlancText>
+                ) : null}
               </Pressable>
               <Pressable
                 accessibilityRole="button"
@@ -745,9 +776,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               </BlancText>
             ) : null}
 
-            {/* Last time's numbers sit under the figures they compare with; here, a fresh gain or last time's note. */}
+            {/* Last time's numbers sit under the figures they compare with; here, a fresh target hit or gain, or last time's note. */}
             {beat?.fresh ? (
-              <BeatLine key={beat.key} gain={beat.gain} style={{ marginTop: 8 }} />
+              <BeatLine key={beat.key} text={beat.text} mark={beat.mark} style={{ marginTop: 8 }} />
             ) : lastNote ? (
               <Animated.View key="note" entering={FadeIn.duration(220)} style={{ marginTop: 4 }}>
                 <BlancText
@@ -880,7 +911,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             <View style={{ gap: 4 }}>
               {/* Everything left was skipped when nothing was logged. */}
               <BlancText variant="headline">{session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log'}</BlancText>
-              {beat ? <BeatLine key={beat.key} gain={beat.gain} /> : null}
+              {beat ? <BeatLine key={beat.key} text={beat.text} mark={beat.mark} /> : null}
             </View>
             <Capsule title="Finish workout" tone="effort" size="large" fill busy={closing} onPress={finish} />
           </Label>
@@ -944,8 +975,8 @@ function Lead({ children }: { children?: ReactNode }) {
   return <View style={{ width: 16, alignItems: 'center' }}>{children}</View>;
 }
 
-/** A saved set beat last time: an up mark and the gain, in ink, for a moment; in the note's place, at its size. */
-function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
+/** A saved set hit or beat its target (or, with none, beat last time): a mark and the line, in ink, for a moment; in the note's place, at its size. */
+function BeatLine({ text, mark, style }: { text: string; mark: 'up' | 'check'; style?: ViewStyle }) {
   const c = useBlanc();
   const large = useLargeText();
   return (
@@ -953,9 +984,9 @@ function BeatLine({ gain, style }: { gain: string; style?: ViewStyle }) {
       entering={FadeIn.duration(180)}
       exiting={FadeOut.duration(220)}
       style={[{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }, style]}>
-      <SymbolView name="arrow.up" size={12} weight="bold" tintColor={c.ink} />
+      <SymbolView name={mark === 'check' ? 'checkmark' : 'arrow.up'} size={12} weight="bold" tintColor={c.ink} />
       <BlancText variant="secondary" numberOfLines={large ? undefined : 1} adjustsFontSizeToFit={!large} minimumFontScale={0.8} style={{ flexShrink: 1, fontVariant: ['tabular-nums'] }}>
-        Beat last time · {gain}
+        {text}
       </BlancText>
     </Animated.View>
   );

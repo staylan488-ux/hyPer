@@ -10,6 +10,7 @@ import * as todayModel from '@/lib/todayModel';
 import * as types from '@/types';
 import type { MacroTarget, MuscleVolume } from '@/types';
 import { todayTotalsShown } from '../native/src/lib/fuel';
+import * as nativeSetTargets from '../native/src/lib/setTargets';
 import { movedTodayOrder, TODAY_SECTIONS, type TodaySection } from '../native/src/lib/todayOrder';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
@@ -142,7 +143,8 @@ async function open() {
     '~/lib/openTrain': { openTrain: () => undefined },
     '~/lib/fuel': { today: () => DAY, todayTotalsShown, useFuelStore: fuelStore },
     '~/lib/motion': { figureLayout: undefined },
-    '~/lib/session': { useNow: () => Date.now(), useSessionModel: () => null },
+    '~/lib/session': { useNow: () => Date.now(), usePreviousHistory: () => ({}), useSessionModel: () => null },
+    '~/lib/setTargets': nativeSetTargets,
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, ...week }) },
     '~/theme/blanc': { space: { gutter: 20, labelPad: 18, group: 40 }, useBlanc: () => ({ pressed: '#E7E6E1', upcoming: '#707069' }), figureLead: () => 0, restingFigure: {} },
   });

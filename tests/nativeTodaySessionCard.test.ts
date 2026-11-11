@@ -9,6 +9,8 @@ import * as fuelSummary from '@/lib/fuelSummary';
 import * as todayModel from '@/lib/todayModel';
 import * as types from '@/types';
 import type { WorkoutSet } from '@/types';
+import type { MovementHistoryMap } from '@/lib/setTargets';
+import * as nativeSetTargets from '../native/src/lib/setTargets';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -72,6 +74,7 @@ const set = (id: string, completed: boolean) =>
 const movement = (sets: WorkoutSet[]) => ({ exerciseId: 'row', name: 'Row', sets });
 
 let session: Record<string, unknown>;
+let history: MovementHistoryMap = {};
 let root: Root;
 let host: HTMLDivElement;
 
@@ -117,7 +120,8 @@ async function open() {
     '~/lib/openTrain': { openTrain },
     '~/lib/fuel': { today: () => '2026-11-04', todayTotalsShown: () => null, useFuelStore: create(() => ({})) },
     '~/lib/motion': { figureLayout: {} },
-    '~/lib/session': { useNow: () => Date.parse('2026-11-04T18:10:00Z'), useSessionModel: () => session },
+    '~/lib/session': { useNow: () => Date.parse('2026-11-04T18:10:00Z'), usePreviousHistory: () => history, useSessionModel: () => session },
+    '~/lib/setTargets': nativeSetTargets,
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, weekDone: null, weekTarget: null }) },
     '~/theme/blanc': { space: { gutter: 20, labelPad: 18, group: 40 }, useBlanc: () => ({}) },
   });
@@ -184,6 +188,17 @@ describe('Today\'s live workout card', () => {
     expect(host.textContent).toContain('Row');
     expect(host.textContent).toContain('Set 1 of 1');
     expect(buttons()).toEqual(['Resume']);
+  });
+
+  it('names the next set\'s target while the set holds no numbers, as Train fills it in', async () => {
+    const open1 = { ...set('s1', false), weight: null, reps: null } as WorkoutSet;
+    const row = { ...movement([open1]), plan: { target_reps_min: 8, target_reps_max: 12 } };
+    session = { ...live([row], { movement: row, set: open1, setNumber: 1, index: 0, blocked: null }), date: '2026-11-04' };
+    history = { row: [{ workoutId: 'w0', date: '2026-11-01', sets: [{ weight: 100, reps: 9 }] }] };
+    await open();
+    history = {};
+
+    expect(host.textContent).toContain('Set 1 of 1 · target 100 × 10');
   });
 
   it('reads as its parts to VoiceOver, the day first, and reaches its button on its own', async () => {

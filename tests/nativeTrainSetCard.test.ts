@@ -12,6 +12,8 @@ import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import * as format from '../native/src/lib/format';
+import * as nativeSetTargets from '../native/src/lib/setTargets';
+import type { MovementHistoryMap } from '@/lib/setTargets';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,6 +59,7 @@ const set = (id: string, setNumber: number, completed: boolean, weight: number |
   ({ id, exercise_id: 'row', set_number: setNumber, weight, reps, rpe: null, completed, exercise: { id: 'row', name: 'Barbell Row', equipment: 'Barbell' } }) as unknown as WorkoutSet;
 
 let previous: setAutofill.PreviousWorkoutSetMap;
+let history: MovementHistoryMap;
 let notes: Record<string, { note: string }>;
 let note: string | null;
 let session: Record<string, unknown>;
@@ -88,6 +91,7 @@ function liveSession(total = 3) {
   };
   return {
     workoutId: 'w1',
+    date: '2026-11-06',
     dayName: 'Upper A',
     flexible: false,
     startedAt: new Date('2026-11-06T00:23:00'),
@@ -191,12 +195,14 @@ async function open() {
         liveSessionModel: () => session,
         useFocusStore: create(() => ({ exerciseId: null, focus: vi.fn() })),
         usePreviousNotes: () => notes,
+        usePreviousHistory: () => history,
         usePreviousTargets: () => previous,
         useSessionModel: () => session,
         useStartSession: () => ({ starting: null, start: vi.fn() }),
       },
       '~/lib/sessionModel': { afterLoggedSet: () => ({ nextExerciseId: null, rest: false }) },
       '~/lib/setEntry': setEntry,
+      '~/lib/setTargets': nativeSetTargets,
       '~/lib/today': { useFinishedToday: () => undefined, useTodayPlan: () => ({}) },
       '~/lib/warmup': { useBarWeight: () => 45 },
       '~/platform/devLaunch': { devScrollTrace: { enabled: false } },
@@ -229,6 +235,7 @@ beforeEach(() => {
   note = null;
   notes = {};
   previous = { row: { 1: { weight: 80, reps: 8, rpe: null }, 2: { weight: 80, reps: 8, rpe: null }, 3: { weight: 80, reps: 8, rpe: null } } };
+  history = {};
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -271,6 +278,45 @@ describe('the "last" captions under Train\'s figures', () => {
     // "80,0" is still 80.
     await type('Weight in pounds', '80,0');
     expect(captions()[0].shown).toBe(false);
+  });
+});
+
+describe('the set card\'s target', () => {
+  const targetLine = () => [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent?.startsWith('Target'));
+
+  beforeEach(() => {
+    fresh = true;
+    previous = { row: { 1: { weight: 80, reps: 9, rpe: null }, 2: { weight: 80, reps: 9, rpe: null }, 3: { weight: 80, reps: 8, rpe: null } } };
+    history = { row: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 80, reps: 9 }, { weight: 80, reps: 9 }, { weight: 80, reps: 8 }] }] };
+  });
+
+  it('fills the fields with the target and says why in one line, beside last time\'s reps', async () => {
+    await open();
+    expect(host.querySelector('[data-field="Weight in pounds"]')?.textContent).toBe('80');
+    expect(host.querySelector('[data-field="Reps"]')?.textContent).toBe('10');
+    expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
+    expect(captions()[1]).toEqual({ text: 'last 9', spoken: 'Last time, 9 reps', shown: true });
+    const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
+    expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
+  });
+
+  it('names its figures once the fields hold something else', async () => {
+    await open();
+    await type('Reps', '12');
+    expect(targetLine()?.textContent).toBe('Target 80 × 10 · one more rep than last time');
+  });
+
+  it('keeps the header block\'s fade with the target line inside it', async () => {
+    await open();
+    const faded = [...host.querySelectorAll<HTMLElement>('[data-fades]')];
+    expect(faded[0].textContent).toContain('Target · one more rep than last time');
+  });
+
+  it('is absent with no history, leaving last time in the fields', async () => {
+    history = {};
+    await open();
+    expect(targetLine()).toBeUndefined();
+    expect(host.querySelector('[data-field="Reps"]')?.textContent).toBe('9');
   });
 });
 

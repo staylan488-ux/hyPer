@@ -162,7 +162,11 @@ Settled; do not reopen or "improve" them without being asked.
   Skip skips a movement for this workout only and stays on the set card.
   Reorder is in place (hold and drag), with no Reorder sheet. Warm-up rows are
   never logged. Corrections never celebrate.
-- Session complete names new records and "N sets beat last time".
+- Set targets (approved 2026-11-11): Train fills each set with its target
+  (one weight for the movement) and one line says why; after a log it says
+  "Target hit" or "Beat target · +1 rep", and a missed target says nothing.
+- Session complete names new records and "N of M targets hit" (approved
+  2026-11-11); with no targets in the session, "N sets beat last time".
 - Editing targets: a new calorie figure carries carbs and fat with it;
   protein never moves.
 - The tab bar shrinks on scroll on every tab
