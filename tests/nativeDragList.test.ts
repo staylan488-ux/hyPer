@@ -116,6 +116,7 @@ const reanimated = {
   },
   withTiming: (to: unknown, _config?: unknown, done?: (finished: boolean) => void): Animation => ({ animation: true, to, done }),
   withSpring: (to: unknown): Animation => ({ animation: true, to }),
+  withDelay: (_ms: number, animation: Animation): Animation => animation,
   runOnJS: (fn: (...args: unknown[]) => void) => (...args: unknown[]) => { jsJobs.push(() => fn(...args)); },
   runOnUI: (fn: (...args: unknown[]) => void) => (...args: unknown[]) => { uiJobs.push(() => fn(...args)); },
 };
@@ -142,11 +143,20 @@ function markerIn(node: ReactNode): string | null {
 
 const rows = new Map<string, { onLayout: (event: unknown) => void; style: unknown[] }>();
 const gestures = new Map<string, Handlers>();
+/** The animated styles of the views drawn behind a group: its card. */
+const cardStyles: { style: () => { opacity?: number } }[] = [];
 
-function AnimatedView({ style, onLayout, children }: { style?: unknown; onLayout?: (event: unknown) => void; children?: ReactNode }) {
+function AnimatedView({ style, onLayout, pointerEvents, children }: { style?: unknown; onLayout?: (event: unknown) => void; pointerEvents?: string; children?: ReactNode }) {
   const id = onLayout ? markerIn(children) : null;
   if (id && onLayout) rows.set(id, { onLayout, style: Array.isArray(style) ? style : [style] });
+  if (pointerEvents === 'none' && Array.isArray(style)) {
+    for (const entry of style) if (entry && typeof entry === 'object' && 'style' in entry) cardStyles.push(entry as (typeof cardStyles)[number]);
+  }
   return createElement('div', null, children);
+}
+/** How present the cards are, from 0 (the bare page) to 1. */
+function cardsShown(): number {
+  return Math.max(0, ...cardStyles.map((entry) => entry.style().opacity ?? 0));
 }
 function GestureDetector({ gesture, children }: { gesture: { handlers: Handlers }; children: ReactNode }) {
   const id = markerIn(children);
@@ -173,21 +183,25 @@ type DragListProps = {
   items: { key: string; node: ReactNode }[];
   enabled: boolean;
   revision?: number;
+  gap?: number;
+  cards?: boolean;
   onMove: (key: string, index: number) => void;
   onHold?: (key: string) => void;
+  onDragging?: (dragging: boolean) => void;
 };
 let DragList: (props: DragListProps) => ReactElement;
 let root: Root;
 let host: HTMLDivElement;
 const onMove = vi.fn();
 
-function render(keys: string[], revision = 0) {
+function render(keys: string[], revision = 0, groups?: { gap: number }) {
   act(() => {
     root.render(createElement(DragList, {
       items: keys.map((key) => ({ key, node: createElement(Marker, { id: key }) })),
       enabled: true,
       revision,
       onMove,
+      ...(groups ? { cards: true, gap: groups.gap } : null),
     }));
   });
 }
@@ -225,6 +239,7 @@ beforeEach(async () => {
   useState = React.useState;
   useEffect = React.useEffect;
   rows.clear();
+  cardStyles.length = 0;
   gestures.clear();
   reactions.clear();
   uiJobs.length = 0;
@@ -232,7 +247,13 @@ beforeEach(async () => {
   settling.length = 0;
   onMove.mockReset();
   ({ DragList } = loadNativeModule<{ DragList: typeof DragList }>('components/DragList.tsx', {
-    'react-native': { StyleSheet: { hairlineWidth: 1 }, View: ({ children }: { children?: ReactNode }) => createElement('div', null, children) },
+    'expo-glass-effect': { GlassView: () => createElement('i', { 'data-glass': '' }), isLiquidGlassAvailable: () => true },
+    'react-native': {
+      StyleSheet: { hairlineWidth: 1, absoluteFill: {} },
+      useColorScheme: () => 'dark',
+      View: ({ children }: { children?: ReactNode }) => createElement('div', null, children),
+    },
+    '~/lib/accessibility': { useReduceMotion: () => false },
     'react-native-gesture-handler': { Gesture, GestureDetector },
     'react-native-reanimated': reanimated,
     '~/lib/haptics': { haptics: { lift: vi.fn(), land: vi.fn(), select: vi.fn() } },
@@ -310,5 +331,109 @@ describe('DragList', () => {
     settle();
     flushUI();
     expect(tops()).toEqual({ a: 100, b: 0, c: 50 });
+  });
+});
+
+// A page's groups (Today's training, Fuel and Progress): unequal heights, set
+// apart by a gap, and glass cards only while one is held.
+describe('DragList as a page’s groups', () => {
+  const GROUPS = { gap: 40 };
+  const heights = { training: 84, fuel: 180, progress: 150 };
+  const glass = () => host.querySelectorAll('[data-glass]').length;
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function open() {
+    render(['training', 'fuel', 'progress'], 0, GROUPS);
+    flushUI();
+    layOutOneByOne(heights);
+  }
+
+  it('sets the groups apart by the gap', () => {
+    open();
+    expect(tops()).toEqual({ training: 0, fuel: 124, progress: 344 });
+  });
+
+  it('keeps every group in its place when a tall one is only lifted', () => {
+    open();
+    drag('fuel', 0);
+    flushJS();
+    settle();
+    flushUI();
+    expect(onMove).not.toHaveBeenCalled();
+    expect(tops()).toEqual({ training: 0, fuel: 124, progress: 344 });
+  });
+
+  it('lets a tall group go above a short first one, once its top passes that group’s middle', () => {
+    open();
+    // Not yet: the top of Fuel is still under the middle of training (42).
+    drag('fuel', -80);
+    flushJS();
+    settle();
+    flushUI();
+    expect(onMove).not.toHaveBeenCalled();
+
+    drag('fuel', -90);
+    flushJS();
+    settle();
+    flushUI();
+    expect(onMove).toHaveBeenCalledWith('fuel', 0);
+    expect(tops()).toEqual({ fuel: 0, training: 220, progress: 344 });
+  });
+
+  it('moves a group down once its lower edge passes the next group’s middle', () => {
+    open();
+    // Fuel's middle is at 214; training's lower edge starts at 84.
+    drag('training', 120);
+    flushJS();
+    settle();
+    flushUI();
+    expect(onMove).not.toHaveBeenCalled();
+
+    drag('training', 140);
+    flushJS();
+    settle();
+    flushUI();
+    expect(onMove).toHaveBeenCalledWith('training', 1);
+    expect(tops()).toEqual({ fuel: 0, training: 220, progress: 344 });
+  });
+
+  it('draws no card at rest, a glass card behind every group while one is held, and none again once they have faded', () => {
+    open();
+    expect(glass()).toBe(0);
+    expect(cardsShown()).toBe(0);
+
+    const pan = gestures.get('progress')!;
+    act(() => ui(() => pan.onStart()));
+    flushJS();
+    expect(cardsShown()).toBe(1);
+    expect(glass()).toBe(3);
+
+    act(() => {
+      ui(() => pan.onEnd({ translationY: 0, translationX: 0 }));
+      ui(() => pan.onFinalize());
+    });
+    flushJS();
+    settle();
+    flushUI();
+    // Faded out; the glass itself leaves once the fade has run.
+    expect(cardsShown()).toBe(0);
+    expect(glass()).toBe(3);
+    act(() => { vi.advanceTimersByTime(2000); });
+    expect(glass()).toBe(0);
+  });
+
+  it('keeps the cards when a group is held again before they have gone', () => {
+    open();
+    drag('fuel', 0);
+    flushJS();
+    act(() => { vi.advanceTimersByTime(600); });
+    const pan = gestures.get('progress')!;
+    act(() => ui(() => pan.onStart()));
+    flushJS();
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(glass()).toBe(3);
+    expect(cardsShown()).toBe(1);
   });
 });

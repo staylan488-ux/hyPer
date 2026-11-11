@@ -1,10 +1,9 @@
 import { format, isSameMonth, parseISO, startOfWeek, subDays } from 'date-fns';
 import { Stack } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { FadeIn, LinearTransition, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import Svg, { Line } from 'react-native-svg';
 
 import { summarizeWeekVolume } from '@/lib/todayModel';
@@ -17,6 +16,7 @@ import { initialAppData, useAppStore } from '@/stores/appStore';
 import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { Disclosure } from '~/components/Disclosure';
 import { Label } from '~/components/Label';
 import { MuscleFigure } from '~/components/MuscleFigure';
 import { Hairline } from '~/components/Row';
@@ -304,22 +304,6 @@ function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: Coach
         </Animated.View>
       ) : null}
     </Pressable>
-  );
-}
-
-/** A row's disclosure chevron: down while closed, turning up as the row opens (Reduce Motion: at once). */
-function Disclosure({ open }: { open: boolean }) {
-  const c = useBlanc();
-  // The turn follows `open` through a shared value: on native, Reanimated ignores a dependency list.
-  const angle = useSharedValue(open ? 180 : 0);
-  useEffect(() => {
-    angle.value = withTiming(open ? 180 : 0, { duration: 200 });
-  }, [open, angle]);
-  const turn = useAnimatedStyle(() => ({ transform: [{ rotate: `${angle.value}deg` }] }));
-  return (
-    <Animated.View style={turn} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-      <SymbolView name="chevron.down" size={11} weight="semibold" tintColor={c.graphite} />
-    </Animated.View>
   );
 }
 

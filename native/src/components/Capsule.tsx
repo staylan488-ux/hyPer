@@ -35,7 +35,8 @@ type CapsuleProps = {
    * blooms a neutral light.
    */
   tone?: BloomTone;
-  size?: 'regular' | 'large';
+  /** `small` sits beside a section's heading (Log food): 36 pt drawn, with a 44 pt target. */
+  size?: 'small' | 'regular' | 'large';
   busy?: boolean;
   disabled?: boolean;
   fill?: boolean;
@@ -79,7 +80,7 @@ export function Capsule({
   const large = useLargeText();
   const reduceMotion = useReduceMotion();
   const scale = useSharedValue(1);
-  const height = size === 'large' ? 54 : 44;
+  const height = size === 'large' ? 54 : size === 'small' ? 36 : 44;
   const primary = variant === 'primary';
   const inactive = disabled || busy;
   // A capsule that cannot be used yet is not glass: it sits back in a flat
@@ -205,6 +206,8 @@ export function Capsule({
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled: !!inactive, busy: !!busy }}
       disabled={inactive}
+      // A small capsule keeps a 44 pt target around its 36 pt shape.
+      hitSlop={size === 'small' ? 4 : undefined}
       onLayout={(event: LayoutChangeEvent) => {
         sizeRef.current = { width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height };
       }}
@@ -218,7 +221,7 @@ export function Capsule({
           ...(large ? { minHeight: height, paddingVertical: 10 } : { height }),
           // A capsule that fills its space only needs room for its round ends,
           // so short titles fit when several share a row.
-          paddingHorizontal: fill ? 12 : size === 'large' ? 26 : 20,
+          paddingHorizontal: fill ? 12 : size === 'large' ? 26 : size === 'small' ? 14 : 20,
           borderRadius: radius,
           borderCurve: 'continuous',
           alignItems: 'center',

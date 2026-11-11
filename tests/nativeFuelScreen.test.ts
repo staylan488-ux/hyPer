@@ -20,6 +20,9 @@ import { silentAccessibility } from './helpers/silentAccessibility';
 import * as meals from '../native/src/lib/meals';
 import { create as zustandCreate } from 'zustand';
 
+// Fuel's folds, on this test's React: the app's own copy of zustand would bring its own.
+const mealFolds = loadNativeModule<typeof import('../native/src/lib/mealFolds')>('lib/mealFolds.ts', { zustand: { create: zustandCreate } });
+
 // Fuel's screen: the date under the large title opens the month (the bar keeps
 // + alone), and a day with food ends on a quiet Log food for that day. A new
 // meal or snack is made in Log food's destination menu instead. The week strip
@@ -39,6 +42,7 @@ type RowProps = { title: string; detail?: string | readonly string[]; value?: st
 type UndoBarProps = { label: string | null; busy?: boolean; onUndo: () => void };
 type AlertButton = { text: string; style?: string; onPress?: () => void };
 type MarkProps = { logged: boolean; kcal?: number; target?: number | null };
+type SectionProps = PropsWithChildren<{ title: string; accessory?: ReactNode; fold?: { open: boolean; onToggle: () => void } }>;
 type Target = { calories: number; protein: number; carbs: number; fat: number };
 
 const oats: Food = {
@@ -56,6 +60,9 @@ const push = vi.fn();
 const pressables: Record<string, Press> = {};
 const capsules: Record<string, CapsuleProps> = {};
 const rows: Record<string, RowProps> = {};
+// Each meal's heading as last drawn, and the shown day's entries, to add to or take from.
+const sections: Record<string, SectionProps> = {};
+const shown: { logs: object[] } = { logs: [] };
 const marks: MarkProps[] = [];
 const undoBar: { props?: UndoBarProps } = {};
 const alert = vi.fn();
@@ -89,6 +96,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   if (logged && milk) logs.push({ id: 'log-milk', date: day, food: milkFood, servings: 1, logged_at: `${day}T09:00:00Z`, group_id: null, sort_order: 1, source });
   const ownMeal = { id: 'g-own', user_id: 'user-a', date: day, kind: 'meal', label: null, sort_order: 0 };
   if (meal) for (const entry of logs) entry.group_id = ownMeal.id;
+  shown.logs = logs;
   const fuel = { selected: day, logs, groups: meal ? [ownMeal] : [], deleteEntry, restoreEntry, deleteGroup, copyToToday: vi.fn(async () => true) };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
     'date-fns': dates,
@@ -136,7 +144,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/components/RollingText': { RollingText: Wrap },
     '~/components/Row': { Row: (props: RowProps) => { rows[props.title] = props; return null; }, Hairline: Empty },
     '~/components/Section': {
-      Section: ({ children, accessory }: PropsWithChildren<{ accessory?: ReactNode }>) => createElement('div', null, accessory, children),
+      Section: (props: SectionProps) => { sections[props.title] = props; return createElement('div', null, props.accessory, props.children); },
     },
     '~/components/SwipeRow': { SwipeRow: Wrap },
     '~/components/TabScroll': { TabScroll: Wrap, tabBarCover: () => 0 },
@@ -156,6 +164,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
+    '~/lib/mealFolds': mealFolds,
     '~/lib/motion': {},
     '~/lib/you': { useYouMealsStore: (select: (state: { meals: Food[] | null }) => unknown) => select({ meals: null }) },
     '~/theme/blanc': { useBlanc: () => ({}), space: { gutter: 16 }, figureLead: () => 0, restingFigure: {} },
@@ -173,7 +182,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(`${TODAY}T10:00:00`));
   push.mockClear();
-  for (const record of [pressables, capsules, rows]) for (const key of Object.keys(record)) delete record[key];
+  for (const record of [pressables, capsules, rows, sections]) for (const key of Object.keys(record)) delete record[key];
   marks.length = 0;
   undoBar.props = undefined;
   alert.mockClear();
@@ -277,6 +286,62 @@ describe("Fuel's day rows", () => {
     expect(rows.Oats.detail).toEqual(['40 g', '5 g protein', time(), 'Estimate']);
     // VoiceOver still hears the whole line.
     expect(rows.Oats.accessibilityLabel).toBe(`Oats, 40 g · 5 g protein · ${time()} · Estimate, 150 kcal`);
+  });
+});
+
+describe("Fuel's meals fold", () => {
+  const milk = { id: 'log-milk', date: TODAY, food: milkFood, servings: 1, logged_at: `${TODAY}T09:00:00Z`, group_id: null, sort_order: 1 };
+  const meal = () => sections[groupsRules.NO_MEAL];
+  const toggle = async () => {
+    for (const key of Object.keys(rows)) delete rows[key];
+    await act(async () => { meal().fold!.onToggle(); });
+  };
+
+  afterEach(() => {
+    mealFolds.unfoldMeal('user-a', mealFolds.mealFoldKey(TODAY));
+  });
+
+  it('down to the heading on a tap, and open again on the next', async () => {
+    await renderFuel();
+    expect(meal().fold!.open).toBe(true);
+    expect(rows.Oats).toBeDefined();
+    await toggle();
+    expect(meal().fold!.open).toBe(false);
+    expect(rows.Oats).toBeUndefined();
+    await toggle();
+    expect(meal().fold!.open).toBe(true);
+    expect(rows.Oats).toBeDefined();
+  });
+
+  it('opens when food is logged into it, and stays open if that food is deleted', async () => {
+    const draw = await renderFuel();
+    await toggle();
+    shown.logs.push(milk);
+    await draw(TODAY);
+    expect(meal().fold!.open).toBe(true);
+    expect(rows.Milk).toBeDefined();
+    expect(rows.Oats).toBeDefined();
+    shown.logs.pop();
+    await draw(TODAY);
+    expect(meal().fold!.open).toBe(true);
+  });
+
+  it('stays folded when one of its foods goes', async () => {
+    const draw = await renderFuel({ milk: true });
+    await toggle();
+    shown.logs.pop();
+    await draw(TODAY);
+    expect(meal().fold!.open).toBe(false);
+  });
+
+  it('is not offered by a meal with nothing in it', async () => {
+    const draw = await renderFuel({ meal: true });
+    shown.logs.length = 0;
+    await draw(TODAY);
+    const headings = Object.values(sections);
+    expect(headings).toHaveLength(1);
+    expect(headings[0].fold).toBeUndefined();
+    expect(rows['Nothing here yet']).toBeDefined();
   });
 });
 

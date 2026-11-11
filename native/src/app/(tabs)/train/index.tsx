@@ -1283,7 +1283,7 @@ function StartPlanned() {
         {otherDays.length > 0 ? (
           // Arrives with the card's fade, once its rows are known.
           <Animated.View entering={FadeIn.duration(220)}>
-            <Section title="Other days">
+            <Section page title="Other days">
               <Label>
                 {otherDays.map((day, index) => {
                   const startButton = (

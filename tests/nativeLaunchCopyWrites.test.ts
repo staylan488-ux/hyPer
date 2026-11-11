@@ -7,6 +7,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
+import * as nutritionWizard from '@/lib/nutritionWizard';
 import type { PlanSchedule } from '@/lib/planSchedule';
 import * as settingsUx from '@/lib/settingsUx';
 import type { HeroState } from '@/lib/todayModel';
@@ -47,7 +48,7 @@ const press = async (title: string) => {
 describe('Resume adaptive targets', () => {
   type Target = { user_id: string; calories: number; protein: number; carbs: number; fat: number; source: 'manual' | 'calculated' };
   const copied: Target = { user_id: USER, calories: 2800, protein: 160, carbs: 350, fat: 80, source: 'manual' };
-  const profile = { user_id: USER, adaptive_enabled: true, expenditure_kcal: null, expenditure_confidence: null };
+  const profile = { user_id: USER, goal: 'bulk', rate_pct_per_week: 0.5, unit_system: 'imperial', adaptive_enabled: true, expenditure_kcal: null, expenditure_confidence: null };
   const updateMacroTarget = vi.fn<(target: unknown) => Promise<void>>(async () => {});
   const refreshAdaptiveTargets = vi.fn<(options?: unknown) => Promise<string>>(async () => 'updated');
   const app = create(() => ({
@@ -77,6 +78,7 @@ describe('Resume adaptive targets', () => {
       'expo-router': { router: { push: vi.fn() }, Stack: { Screen: none } },
       'react-native': { Pressable: box, RefreshControl: none, View: box },
       'react-native-reanimated': { default: { View: box } },
+      '@/lib/nutritionWizard': nutritionWizard,
       '@/lib/photoAnalysis': { getPhotoWorkerSettings: () => ({ url: '' }) },
       '@/lib/settingsUx': settingsUx,
       '@/stores/appStore': { useAppStore: app },
@@ -99,6 +101,7 @@ describe('Resume adaptive targets', () => {
         useAnalysisModeStore: create(() => ({ mode: 'gemini' })),
         usePullRefresh: () => ({ refreshing: false, refresh: async () => {} }),
         useTargetsStore: targets,
+        useWeightStore: create(() => ({ history: [{ kilograms: 60 }] })),
       },
       '~/theme/blanc': { space: { gutter: 20, inset: 16, section: 28 } },
     }));
@@ -137,6 +140,17 @@ describe('Resume adaptive targets', () => {
     expect(updateMacroTarget).not.toHaveBeenCalled();
     expect(refreshAdaptiveTargets).not.toHaveBeenCalled();
     expect(haptics.error).not.toHaveBeenCalled();
+  });
+
+  it('says the goal under targets that follow it, and Set by hand under the rest', async () => {
+    await open();
+    expect(host.textContent).toContain('Set by hand');
+    expect(host.textContent).not.toContain('Bulk');
+    readLands({ ...copied, source: 'calculated' });
+    await press('Resume adaptive targets');
+    // 0.5% a week of 60 kg is about 0.7 lb.
+    expect(host.textContent).toContain('Bulk · about 0.7 lb a week');
+    expect(host.textContent).not.toContain('can adapt');
   });
 
   it('resumes at once from this launch’s own reads, as before', async () => {

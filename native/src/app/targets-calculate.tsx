@@ -12,6 +12,7 @@ import {
   GOAL_OPTIONS,
   initialWizardDraft,
   selectWizardGoal,
+  sentenceLabel,
   stepWizardRate,
   switchWizardUnits,
   learnedBurnLooksLow,
@@ -271,7 +272,7 @@ function Calculator() {
           {ACTIVITY_OPTIONS.map((option, index) => (
             <View key={option.value}>
               {index > 0 ? <Hairline /> : null}
-              <ChoiceRow title={sentence(option.label)} detail={option.hint} checked={draft.activity === option.value} onPress={() => update({ activity: option.value })} />
+              <ChoiceRow title={sentenceLabel(option.label)} detail={option.hint} checked={draft.activity === option.value} onPress={() => update({ activity: option.value })} />
             </View>
           ))}
         </Label>
@@ -284,7 +285,7 @@ function Calculator() {
             <View key={option.value}>
               {index > 0 ? <Hairline /> : null}
               <ChoiceRow
-                title={sentence(option.label)}
+                title={sentenceLabel(option.label)}
                 detail={option.hint}
                 checked={draft.goal === option.value}
                 onPress={() => setDraft((current) => selectWizardGoal(current, option.value))}
@@ -419,11 +420,6 @@ function breakdownLine({ burn, change }: { burn: number; change: number }, goal:
   if (Math.abs(change) < 1) return `${formatWhole(burn)} kcal daily burn`;
   if (goal === 'maintain' && Math.abs(change) < 50) return `${formatWhole(burn)} kcal daily burn, rounded to fit the macros`;
   return `${formatWhole(burn)} burn ${change > 0 ? '+' : '−'} ${formatWhole(Math.abs(change))} to ${change > 0 ? 'gain' : 'lose'}`;
-}
-
-/** "Lean Bulk" → "Lean bulk": Blanc writes in sentence case. */
-function sentence(label: string): string {
-  return label.charAt(0) + label.slice(1).toLowerCase();
 }
 
 function SegmentRow({ label, children }: { label: string; children: ReactNode }) {

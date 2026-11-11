@@ -91,6 +91,12 @@ feature works, read its code and tests. Do not add feature descriptions here.
   ([Capsule](../../../native/src/components/Capsule.tsx)), plain frost with an
   ink title, lit from the fingertip on a press (warm for Log set, Resume,
   Start and Finish); a sheet's one filled shape is its main button.
+- A tab's own page is grouped by space: its groups are `Section page`
+  (`space.group`), clearly further apart than anything inside one. Semibold is
+  for headings; a figure beside its label reads in regular weight. Whatever is
+  pressed is a glass capsule (a heading's action is a small one), and a row
+  that opens a screen ends in a chevron. Every right edge on a page is the
+  16 pt gutter.
 - Data marks are `mark` at full strength; the current period is ink and over
   is red. No opacity tricks: hierarchy comes from size and weight. Every week
   and calendar starts on Monday.
@@ -161,7 +167,18 @@ Settled; do not reopen or "improve" them without being asked.
   protein never moves.
 - The tab bar shrinks on scroll on every tab
   ([TabScroll](../../../native/src/components/TabScroll.tsx)).
-- No cards: he called them "cheap excuses for a bad UI". No scroll bars
+- Today holds the day's training, Fuel and Progress, and fits one screen.
+  Progress is two rows built as You's: This week (the sessions done) and, on
+  Mondays, Last week as one line (its weight change). The five-line recap and
+  the muscles outside their range are one tap away, not on Today.
+- No cards: he called them "cheap excuses for a bad UI". On 2026-11-09 he saw
+  Today with the same content in glass cards beside it without, and kept no
+  cards, "narrowly"; the trimmed content mattered more than the cards. Cards
+  appear in one moment only, his idea: holding a group on Today brings glass
+  cards in behind every group, it is dragged into an order kept on the phone,
+  and the cards fade once it is set down (DragList's `cards`). A hold lifts
+  the group, so a row inside one has no hold menu: Last week hides with a
+  swipe. No scroll bars
   either: on a bare page one "makes the app kinda feel like a webapp".
 - Molten glass behind the four tabs
   ([GlassField](../../../native/src/components/GlassField.tsx),
