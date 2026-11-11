@@ -1,0 +1,25 @@
+Thank you for reviewing hyPer, a workout log and food tracker.
+
+DEMO ACCOUNT
+Use the email and password in the Sign-In Information fields on the sign-in screen (Sign in with email). The account already holds a training program, about two weeks of workouts and food, and weigh-ins, so every screen has content.
+
+WHERE THINGS ARE
+• Today: the day's training and food at a glance.
+• Train: the program, the current workout (tap a set to log it) and history. Runs start from the menu at the top right of Train, under Run.
+• Fuel: log food by search, barcode, saved meals, manual entry or AI (describe or photograph a meal).
+• You: targets, body weight, connections (Apple Health), About (privacy policy, terms, support), and the account (tap the name at the top). Delete account is on the account screen.
+
+AI FOOD ESTIMATES
+Before the first AI request, the app asks permission to send the meal photo or description to Google Gemini, and explains what is sent. The answer can be changed later under You > Food analysis. Each account has a daily AI limit; the demo account has enough requests for review. Results are always shown for the user to review before saving.
+
+APPLE HEALTH
+Optional. The app only reads body weight to show the weight trend and keep calorie targets current. It writes nothing to Health. Turn it on under You > Connections.
+
+BACKGROUND LOCATION AND AUDIO
+Used only by the run tracker, and only while a run the user started is in progress: location measures distance, pace and splits with the screen locked, and audio plays the split and interval tones. Location is not used at any other time, and route coordinates are not uploaded.
+
+ACCOUNTS
+Sign-up is by email (with confirmation), Sign in with Apple or Google. Account deletion is in the app and removes all data.
+
+OTHER
+The app is free with no purchases, for adults 18+ in the United States. It contains no ads or tracking.

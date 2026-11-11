@@ -44,6 +44,7 @@ tests/           Vitest tests
 supabase/        schema, migrations and Edge Functions
 scripts/         ship pipeline and bot, private photo worker, evidence import, instruction checks
 deploy/          systemd units for the private photo worker
+site/            public privacy policy, terms and support pages (GitHub Pages)
 docs/            current handoff and feature notes
 .agents/skills/  guides for coding agents (start with AGENTS.md)
 ```
@@ -56,6 +57,8 @@ Notes in `docs/`:
   into servings.
 - [evidence-pipeline.md](docs/evidence-pipeline.md): where program templates
   come from and how to refresh their research snapshot.
+- [app-store-listing.md](docs/app-store-listing.md): the App Store listing
+  text, reviewer notes, privacy and age-rating answers, and the public pages.
 - [fatsecret-premier-free-application.md](docs/fatsecret-premier-free-application.md):
   the FatSecret Premier Free application and its go/no-go checks.
 - [agent-workflows.md](docs/agent-workflows.md): how the agent instructions
