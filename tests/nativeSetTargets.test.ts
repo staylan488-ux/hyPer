@@ -135,9 +135,11 @@ describe('set targets in a live workout', () => {
 describe('what the card says', () => {
   const target = { weight: 60, reps: 11, why: { kind: 'more_reps' as const, reps: 1 } };
 
-  it('gives the target line, with its figures once the fields hold something else', () => {
-    expect(targetLine(target, false)).toBe('Target · one more rep than last time');
-    expect(targetLine(target, true)).toBe('Target 60 × 11 · one more rep than last time');
+  it('gives the target line, and figures with units for VoiceOver', () => {
+    expect(targetLine(target)).toBe('Target · one more rep than last time');
+    expect(targetFigures(target)).toBe('60 × 11');
+    expect(targetFigures(target, true)).toBe('60 lb × 11 reps');
+    expect(targetFigures({ ...target, weight: 0, reps: 1 }, true)).toBe('1 rep');
   });
 
   it('says hit or beat after a log, and nothing for a miss', () => {

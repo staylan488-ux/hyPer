@@ -165,7 +165,7 @@ Settled; do not reopen or "improve" them without being asked.
 - Set targets (approved 2026-11-11): Train fills each set with its target
   (one weight for the movement) and one line says why; after a log it says
   "Target hit" or "Beat target · +1 rep", and a missed target says nothing.
-- Session complete names new records and "N of M targets hit" (approved
+- Session complete names new records and "N targets hit" (approved
   2026-11-11); with no targets in the session, "N sets beat last time".
 - Editing targets: a new calorie figure carries carbs and fat with it;
   protein never moves.

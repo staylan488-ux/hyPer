@@ -188,7 +188,7 @@ describe('Session complete\'s card', () => {
   it('says how many targets were hit in place of the beats, and nothing when none was', async () => {
     summary = { ...finished(9, 4), targets: { hit: 7, total: 9 } };
     await open();
-    const line = spanNamed('7 of 9 targets hit')!;
+    const line = spanNamed('7 targets hit')!;
     expect({ variant: line.dataset.variant, tone: line.dataset.tone }).toEqual({ variant: 'body', tone: 'ink' });
     expect(host.textContent).not.toContain('beat last time');
     act(() => root.unmount());

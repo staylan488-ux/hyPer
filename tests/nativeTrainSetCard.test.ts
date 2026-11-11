@@ -68,6 +68,8 @@ let total: number;
 let pairing: Record<string, unknown>;
 /** The movement's first set is up, with nothing of it logged yet. */
 let fresh: boolean;
+let largeText = false;
+let laterMovements: Record<string, unknown>[] = [];
 const push = vi.fn();
 
 /** Barbell Row, set 3 of 3 (or of `total`): two logged at 80 × 8, the third filled in from them. */
@@ -97,7 +99,7 @@ function liveSession(total = 3) {
     startedAt: new Date('2026-11-06T00:23:00'),
     sets,
     doneCount: done,
-    movements: [movement],
+    movements: [movement, ...laterMovements],
     current: { movement, set: sets[done], setNumber: done + 1, index: done, blocked: null },
   };
 }
@@ -174,7 +176,7 @@ async function open() {
       '~/components/TabScroll': { scrolledFromRest: (offset: number) => offset + 165, TabScroll: Box, tabBarCover: () => 83 },
       '~/components/Tally': { COMPACT_RISE: 6, Tally: Empty },
       '~/components/UndoBar': { UndoBar: Empty },
-      '~/lib/accessibility': silentAccessibility,
+      '~/lib/accessibility': { ...silentAccessibility, useLargeText: () => largeText },
       '~/lib/accountData': { useAccountDay: () => '2026-11-06', useAccountRefresh: () => ({ refreshing: false, refresh: vi.fn() }) },
       '~/lib/beatLastTime': { gainOnLastTime: () => null },
       '~/lib/barTitle': { headingShown },
@@ -300,16 +302,46 @@ describe('the set card\'s target', () => {
     expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
   });
 
-  it('names its figures once the fields hold something else', async () => {
+  it('shows the target under a field edited away from it, in place of last time', async () => {
     await open();
     await type('Reps', '12');
-    expect(targetLine()?.textContent).toBe('Target 80 × 10 · one more rep than last time');
+    expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
+    expect(captions()[1]).toEqual({ text: 'target 10', spoken: 'Target, 10 reps', shown: true });
   });
 
   it('keeps the header block\'s fade with the target line inside it', async () => {
     await open();
     const faded = [...host.querySelectorAll<HTMLElement>('[data-fades]')];
     expect(faded[0].textContent).toContain('Target · one more rep than last time');
+  });
+
+  it('leaves the reason out at the accessibility sizes, keeping it in the spoken name', async () => {
+    largeText = true;
+    try {
+      await open();
+      expect(targetLine()).toBeUndefined();
+      const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
+      expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
+    } finally {
+      largeText = false;
+    }
+  });
+
+  it('names a later movement\'s target in its row, spoken with units', async () => {
+    const press = { ...set('p1', 1, false), exercise_id: 'press', exercise: { id: 'press', name: 'Overhead Press', equipment: 'Barbell' } } as unknown as WorkoutSet;
+    laterMovements = [{
+      exerciseId: 'press', name: 'Overhead Press', sets: [press], done: 0, plan: { target_reps_min: 8, target_reps_max: 12 },
+      superset: null, substitutesFor: null, note: null, skipped: false, endedEarly: false,
+    }];
+    history = { ...history, press: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 60, reps: 10 }] }] };
+    try {
+      await open();
+      const row = [...host.querySelectorAll<HTMLElement>('[aria-label]')].find((element) => element.getAttribute('aria-label')?.startsWith('Overhead Press'))!;
+      expect(row.textContent).toContain('target 60 × 11');
+      expect(row.getAttribute('aria-label')).toContain('target 60 pounds × 11 reps');
+    } finally {
+      laterMovements = [];
+    }
   });
 
   it('is absent with no history, leaving last time in the fields', async () => {

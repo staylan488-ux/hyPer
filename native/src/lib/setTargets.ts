@@ -82,14 +82,20 @@ export function setTargetFor(
   }
 }
 
-/** "100 × 11": a target's figures; a bodyweight target names its reps alone. */
-export function targetFigures(target: SetTarget): string {
-  return target.weight > 0 ? `${Math.round(target.weight * 100) / 100} × ${target.reps}` : `${target.reps} reps`;
+/**
+ * "100 × 11": a target's figures; a bodyweight target names its reps alone.
+ * With `units`, "100 lb × 11 reps", for VoiceOver.
+ */
+export function targetFigures(target: SetTarget, units = false): string {
+  const reps = `${target.reps} ${target.reps === 1 ? 'rep' : 'reps'}`;
+  if (target.weight <= 0) return reps;
+  const weight = Math.round(target.weight * 100) / 100;
+  return units ? `${weight} lb × ${reps}` : `${weight} × ${target.reps}`;
 }
 
 /** The card's one line: "Target · one more rep than last time". */
-export function targetLine(target: SetTarget, showFigures: boolean): string {
-  return showFigures ? `Target ${targetFigures(target)} · ${describeTarget(target)}` : `Target · ${describeTarget(target)}`;
+export function targetLine(target: SetTarget): string {
+  return `Target · ${describeTarget(target)}`;
 }
 
 /** What the card says once a set is logged against its target, or null when it missed. */

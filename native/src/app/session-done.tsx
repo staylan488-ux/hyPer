@@ -121,12 +121,12 @@ export default function SessionDone() {
       : []),
   ];
   const tally = summary.marks.length > 0;
-  // With set targets, how many were hit; without any, the sets that beat last
-  // time. Only when some did: no zero.
+  // With set targets, how many were hit (the tally already gives the sets, so
+  // no "of"); without any, the sets that beat last time. Only when some did: no zero.
   const targets = summary.targets && summary.targets.total > 0 ? summary.targets : null;
   const beats = targets
     ? targets.hit > 0
-      ? `${targets.hit} of ${targets.total} ${targets.total === 1 ? 'target' : 'targets'} hit`
+      ? `${targets.hit} ${targets.hit === 1 ? 'target' : 'targets'} hit`
       : null
     : summary.beat > 0
       ? `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'} beat last time`

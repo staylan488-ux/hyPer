@@ -198,7 +198,7 @@ describe('Today\'s live workout card', () => {
     await open();
     history = {};
 
-    expect(host.textContent).toContain('Set 1 of 1 · target 100 × 10');
+    expect(host.textContent).toContain('Set 1 of 1 · target 100 lb × 10');
   });
 
   it('reads as its parts to VoiceOver, the day first, and reaches its button on its own', async () => {

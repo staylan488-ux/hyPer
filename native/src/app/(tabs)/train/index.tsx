@@ -224,10 +224,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const ready = weight !== null && reps !== null;
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
-  // The set's target and its one line: the figures join the line once the fields hold something else.
+  // The set's target and its one line saying why. At the accessibility sizes
+  // the line is left out (the figures already hold the target) so the figures
+  // and Log set stay on screen; VoiceOver still hears it with the name.
   const target = current ? setTargetFor(current.set, current.movement.sets, targets) : null;
-  const onTarget = Boolean(target && draft && !differsFromLast(draft.weight, target.weight) && !differsFromLast(draft.reps, target.reps));
-  const targetText = target ? targetLine(target, !onTarget) : null;
+  const targetText = target ? targetLine(target) : null;
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
   const lastLoad = last && typeof last.weight === 'number' && last.weight > 0 ? last.weight : null;
   const lastRepCount = last && typeof last.reps === 'number' && Number.isFinite(last.reps) ? last.reps : null;
@@ -237,6 +238,20 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // and it comes back as soon as the field is edited away from last time's.
   const lastWeight = lastLoad !== null && draft && differsFromLast(draft.weight, lastLoad) ? formatLoad(lastLoad) : null;
   const lastReps = lastRepCount !== null && draft && differsFromLast(draft.reps, lastRepCount) ? lastRepCount : null;
+  // With a target, a field edited away from it shows the target under it in
+  // place of last time, so the card never holds three pairs of figures.
+  const targetWeight = target && target.weight > 0 && draft && differsFromLast(draft.weight, target.weight) ? formatLoad(target.weight) : null;
+  const targetReps = target && draft && differsFromLast(draft.reps, target.reps) ? target.reps : null;
+  const weightCaption = targetWeight
+    ? { text: `target ${targetWeight}`, spoken: `Target, ${targetWeight} pounds` }
+    : lastWeight
+      ? { text: `last ${lastWeight}`, spoken: `Last time, ${lastWeight} pounds` }
+      : null;
+  const repsCaption = targetReps !== null
+    ? { text: `target ${targetReps}`, spoken: `Target, ${targetReps} reps` }
+    : lastReps !== null
+      ? { text: `last ${lastReps}`, spoken: `Last time, ${lastReps} reps` }
+      : null;
   // Ending a movement early with one set to go only skips that set: the quiet action says so.
   const lastSetLeft = current ? current.movement.sets.length - current.movement.done === 1 : false;
   // Beside Add RPE: the warm-up sets before a movement's first set, else the
@@ -561,6 +576,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         ]
           .filter(Boolean)
           .join(' · ');
+    // VoiceOver hears the target with its units: "target 100 pounds × 11 reps".
+    const spokenDetail = nextTarget && !isCurrent ? speak(detail.replace(`target ${targetFigures(nextTarget)}`, `target ${targetFigures(nextTarget, true)}`)) : detail;
     const row = movement.endedEarly ? (
       // Ended early: done with the sets logged, which stay and count. A tap
       // brings the rest back as the one up now.
@@ -598,7 +615,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
         title={movement.name}
         detail={detail || undefined}
         trailing={tally}
-        accessibilityLabel={[movement.name, detail, `${movement.done} of ${movement.sets.length} sets done`].filter(Boolean).join(', ')}
+        accessibilityLabel={[movement.name, spokenDetail, `${movement.done} of ${movement.sets.length} sets done`].filter(Boolean).join(', ')}
         onPress={
           isCurrent
             ? () => openMovement(movement.exerciseId)
@@ -746,9 +763,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                     </BlancText>
                   ) : null}
                 </BlancText>
-                {/* The set's target: what the figures below hold, and why, in one quiet line. */}
-                {targetText ? (
-                  <BlancText variant="secondary" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
+                {/* The set's target: why the figures below hold what they do, in one quiet line. */}
+                {targetText && !large ? (
+                  <BlancText variant="secondary" numberOfLines={2} style={{ marginTop: 6 }}>
                     <BlancText variant="secondary" weight="600">
                       Target
                     </BlancText>
@@ -801,8 +818,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   value={draft.weight}
                   unit="lb"
                   size={figure}
-                  caption={lastWeight ? `last ${lastWeight}` : undefined}
-                  spokenCaption={lastWeight ? `Last time, ${lastWeight} pounds` : undefined}
+                  caption={weightCaption?.text}
+                  spokenCaption={weightCaption?.spoken}
                   accessibilityLabel="Weight in pounds"
                   onChange={(text) => setDraft({ ...draft, weight: text, touched: true })}
                   onFocus={() => setEditing('weight')}
@@ -816,8 +833,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   unit="reps"
                   size={figure}
                   integer
-                  caption={lastReps !== null ? `last ${lastReps}` : undefined}
-                  spokenCaption={lastReps !== null ? `Last time, ${lastReps} reps` : undefined}
+                  caption={repsCaption?.text}
+                  spokenCaption={repsCaption?.spoken}
                   accessibilityLabel="Reps"
                   onChange={(text) => setDraft({ ...draft, reps: text, touched: true })}
                   onFocus={() => setEditing('reps')}

@@ -32,7 +32,7 @@ import { haptics } from '~/lib/haptics';
 import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
 import { useNow, usePreviousHistory, useSessionModel, type SessionModel } from '~/lib/session';
-import { sessionTargets, setTargetFor, targetFigures } from '~/lib/setTargets';
+import { sessionTargets, setTargetFor } from '~/lib/setTargets';
 import { useTodayPlan } from '~/lib/today';
 import { moveTodaySection, useTodayOrder, type TodaySection } from '~/lib/todayOrder';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
@@ -234,7 +234,7 @@ function SessionLabel({ session }: { session: SessionModel }) {
     : null;
   const line = current
     ? target
-      ? `Set ${current.setNumber} of ${current.movement.sets.length} · target ${targetFigures(target)}`
+      ? `Set ${current.setNumber} of ${current.movement.sets.length} · target ${formatSet(target.weight, target.reps)}`
       : setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
     : empty
       ? 'Add your first movement in Train'
