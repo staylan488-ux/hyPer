@@ -39,7 +39,7 @@ export default function AboutScreen() {
           <Hairline />
           <Row
             title="Show tips again"
-            value={tipsBack ? 'On' : undefined}
+            value={tipsBack ? 'Done' : undefined}
             accessibilityLabel={tipsBack ? 'Show tips again. Tips will show again.' : 'Show tips again'}
             onPress={() => {
               resetHints();

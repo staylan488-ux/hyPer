@@ -1,7 +1,8 @@
 // First-use hints: one quiet line under a thing the first times someone
 // meets it, saying what it does that sight alone doesn't (a hold, a swipe,
 // what a mark means). A hint leaves for good once its gesture is used or its
-// point is made, and retires on its own after a few days of being ignored.
+// point is made; one that is in view when its screen opens also retires
+// after a few days of being ignored.
 // Kept on this phone, per account, as Today's order is: it is how this
 // person has learned the app here, not part of the account's data.
 import { createContext, useContext, useEffect } from 'react';
@@ -13,6 +14,13 @@ export type HintKey = (typeof HINTS)[number];
 
 /** A hint seen on this many days without being acted on retires. */
 export const HINT_DAYS = 5;
+
+/**
+ * The hints that retire after HINT_DAYS: those in view when their screen
+ * opens. Fuel's and Train's sit under their lists, often below the fold, so
+ * a day on the screen is no sign they were read: they stay until acted on.
+ */
+const RETIRING: HintKey[] = ['today-order', 'muscles', 'weigh-in'];
 
 /**
  * Accounts made before hints existed already know the app: they start with
@@ -58,9 +66,10 @@ export function wholeHints(kept: unknown, accountCreatedAt: string | null | unde
   return { done: [...new Set(done)], seen };
 }
 
-/** Whether a hint shows today: not done, and not yet ignored on HINT_DAYS other days. */
+/** Whether a hint shows today: not done, and (for one that retires) not yet ignored on HINT_DAYS other days. */
 export function hintShows(memory: HintMemory, key: HintKey, day: string): boolean {
   if (memory.done.includes(key)) return false;
+  if (!RETIRING.includes(key)) return true;
   const days = memory.seen[key] ?? [];
   return days.includes(day) || days.length < HINT_DAYS;
 }

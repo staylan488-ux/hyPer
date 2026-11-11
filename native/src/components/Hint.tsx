@@ -1,7 +1,8 @@
+import { useFocusEffect } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
-import Animated, { Easing, interpolate, ReduceMotion, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, interpolate, ReduceMotion, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { useCurrentDayKey } from '~/lib/accountData';
 import { reduceMotionValue } from '~/lib/accessibility';
@@ -12,17 +13,19 @@ import { BlancText } from './BlancText';
 
 // A hint arrives once the screen has settled, so it never lands with the
 // screen's own motion, and unfolds from the block above it: the space opens
-// on one long glide while the words fade up into it. Leaving, the words fade
-// first and the space closes after them. Under Reduce Motion nothing moves:
-// the words fade in and out in place.
+// on one long glide while the words fade up into it. Leaving, only the words
+// fade: the space stays until the screen is left, so nothing on the page
+// moves under the finger that just swiped or held (a row's Delete stays
+// where it opened). Under Reduce Motion nothing moves: the words fade in and
+// out in place.
 const ARRIVE_AFTER = 450;
 const glide = Easing.bezier(0.22, 1, 0.36, 1);
 const arrive = { duration: 520, easing: glide, reduceMotion: ReduceMotion.Never };
-const leave = { duration: 300, easing: Easing.inOut(Easing.cubic), reduceMotion: ReduceMotion.Never };
+const leave = { duration: 260, easing: Easing.inOut(Easing.cubic), reduceMotion: ReduceMotion.Never };
 
 /**
  * One quiet line under the thing it explains, shown the first times someone
- * meets it (lib/hints.ts) and folded away for good once it's acted on. No
+ * meets it (lib/hints.ts); once it's acted on it fades for good. No
  * card, no button: words on the page in graphite, after a small symbol.
  * `gesture` hints say what a swipe or hold does; VoiceOver users reach the
  * same actions from the row itself, so those are hidden from VoiceOver.
@@ -40,24 +43,36 @@ export function Hint({ name, ready = true, symbol, gesture = false, style, child
   const c = useBlanc();
   const day = useCurrentDayKey();
   const shows = useHint(name, ready, day);
-  // Still drawn while it folds away.
+  // Still drawn, as an empty space, after it fades, until the screen is left.
   const [present, setPresent] = useState(shows);
   useEffect(() => {
     if (shows) setPresent(true);
   }, [shows]);
+  const latest = useRef(shows);
+  useEffect(() => {
+    latest.current = shows;
+  }, [shows]);
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        if (!latest.current) setPresent(false);
+      },
+      [],
+    ),
+  );
   const open = useSharedValue(0);
+  const ink = useSharedValue(1);
   const height = useSharedValue(0);
 
   useEffect(() => {
     if (!present) return;
     if (shows) {
+      ink.value = 1;
       open.value = withDelay(ARRIVE_AFTER, withTiming(1, arrive));
     } else {
-      open.value = withTiming(0, leave, (finished) => {
-        if (finished) runOnJS(setPresent)(false);
-      });
+      ink.value = withTiming(0, leave);
     }
-  }, [shows, present, open]);
+  }, [shows, present, open, ink]);
 
   const fold = useAnimatedStyle(() => {
     const still = reduceMotionValue.value;
@@ -67,7 +82,7 @@ export function Hint({ name, ready = true, symbol, gesture = false, style, child
   const words = useAnimatedStyle(() => {
     const still = reduceMotionValue.value;
     return {
-      opacity: interpolate(open.value, still ? [0, 1] : [0.4, 1], [0, 1], 'clamp'),
+      opacity: interpolate(open.value, still ? [0, 1] : [0.4, 1], [0, 1], 'clamp') * ink.value,
       transform: [{ translateY: still ? 0 : (1 - open.value) * -6 }],
     };
   });

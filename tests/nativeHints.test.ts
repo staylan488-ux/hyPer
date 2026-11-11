@@ -44,6 +44,13 @@ describe('First-use hints', () => {
     // Seeing it again the same day counts once.
     expect(sawHint(memory, 'today-order', days[0])).toBe(memory);
   });
+
+  it('keep the ones under a list (often below the fold) until acted on', () => {
+    let memory = wholeHints(null, NEW_ACCOUNT);
+    for (let index = 1; index <= HINT_DAYS + 2; index += 1) memory = sawHint(memory, 'fuel-rows', `2026-12-0${index}`);
+    expect(hintShows(memory, 'fuel-rows', '2026-12-20')).toBe(true);
+    expect(hintShows(didHint(memory, 'fuel-rows'), 'fuel-rows', '2026-12-20')).toBe(false);
+  });
 });
 
 describe('First-use hints on this phone', () => {
