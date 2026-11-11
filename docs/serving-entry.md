@@ -1,22 +1,28 @@
-# AI serving entry
+# Serving entry in any unit
 
-After choosing a barcode, USDA, or saved food, select **Describe amount** in the
-shared serving editor. Enter an amount such as “I ate 6 pieces,” review the
-calculation and nutrition, then choose **Use this amount** and **Log entry**.
-For a food with five pieces per serving, six pieces becomes 1.2 servings.
+After choosing a barcode, USDA, or saved food, type an amount in the line under
+**Amount** (its placeholder reads “Or type 250 g, 200 ml, 12 oz”) and press
+return or **Convert**. Review the calculation and nutrition, then choose **Use
+this amount** and **Log entry**. Log entry waits while typed text is not yet
+applied; typing in Amount clears the line. For an 8 fl oz serving, 250 ml becomes
+1.06 servings; for a food with five pieces per serving, six pieces becomes 1.2.
 
-Gemini interprets the consumed quantity and selects from units derived from the
-food record. Application code divides by the quantity per serving and multiplies
-the existing nutrition values. The model cannot supply replacement nutrition or
-a serving multiplier. Explicit household labels and fixed metric conversions
+A plain amount (a number and a known unit, such as “250 g”, “1.5 cups” or “half a
+cup”) is worked out on the phone with no AI call. Anything else is sent to
+Gemini.
+
+For the rest, Gemini interprets the consumed quantity and selects from units
+derived from the food record. Application code divides by the quantity per
+serving and multiplies the existing nutrition values. The model cannot supply
+replacement nutrition or a serving multiplier. Explicit household labels and fixed metric conversions
 are supported; unknown piece weights, densities, package sizes and vague amounts
 require clarification. Manual amount entry remains available.
 
 The helper uses the existing `analyze-food-trial` endpoint with action
 `interpret-serving`, regardless of the photo-analysis preference. It shares
 authentication, daily quota and same-day request replay with meal analysis, but
-does not run nutrition research. Closing or changing the helper invalidates
-pending results. No food is saved by analysis or by applying a result.
+does not run nutrition research. Changing or clearing the typed text
+invalidates pending results. No food is saved by analysis or by applying a result.
 
 Serving values are rounded to the existing database precision of two decimals
 before application. The review discloses rounding and uses the rounded amount

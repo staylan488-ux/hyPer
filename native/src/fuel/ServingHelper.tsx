@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
 
 import { interpretFoodServing } from '@/lib/foodTrial';
 import type { Food } from '@/types';
@@ -21,13 +21,18 @@ type Interpretation = Awaited<ReturnType<typeof interpretFoodServing>>;
 const display = (value: number) => new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
 
 /**
- * "Describe amount": Gemini reads how much was eaten against this food's own
- * serving; the arithmetic stays here.
+ * The line under Amount where an amount can be typed in any unit ("250 g",
+ * "200 ml", "1.5 cups"). Plain amounts are worked out on the phone from this
+ * food's own serving; anything else ("6 pieces") is read by Gemini, and the
+ * arithmetic still stays here.
  */
 export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   food: Food;
   disabled: boolean;
-  /** Held by the review, which closes it when the amount is typed by hand. */
+  /**
+   * True while typed text waits to be applied (Log entry waits too). The
+   * review sets it false when Amount is typed by hand, which clears the line.
+   */
   open: boolean;
   onApply: (servings: number) => void;
   onOpenChange: (open: boolean) => void;
@@ -40,7 +45,7 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   const request = useRef(0);
   // match nutrition_logs.servings DECIMAL(10,2)
   const logServings = result?.status === 'resolved' ? Math.round(result.servings * 100) / 100 : 0;
-  // Gemini's answer lands a moment after Interpret amount: VoiceOver hears it (errors announce themselves).
+  // The answer lands after return (a moment later from Gemini): VoiceOver hears it (errors announce themselves).
   useAnnounce(
     result?.status === 'clarification' ? result.message : result?.status === 'resolved' ? `Reads as ${display(result.servings)} servings` : null,
   );
@@ -51,15 +56,17 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
     },
     [onOpenChange],
   );
-  if (!Number.isFinite(food.serving_size) || food.serving_size <= 0 || !food.serving_unit.trim()) return null;
-
-  const toggle = (next: boolean) => {
+  // Set aside by the review (Amount typed by hand): drop what was typed here.
+  useEffect(() => {
+    if (open) return;
     request.current++;
-    setBusy(false);
+    setText('');
     setResult(null);
     setError('');
-    onOpenChange(next);
-  };
+    setBusy(false);
+  }, [open]);
+  if (!Number.isFinite(food.serving_size) || food.serving_size <= 0 || !food.serving_unit.trim()) return null;
+
 
   const interpret = async () => {
     const current = ++request.current;
@@ -80,103 +87,104 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   };
 
   return (
-    <View style={{ marginTop: 12 }}>
+    <View>
       <Label>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: open }}
-          disabled={disabled}
-          onPress={() => {
-            haptics.tap();
-            toggle(!open);
-          }}
-          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 18, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-          <SymbolView name="sparkles" size={16} tintColor={c.ink} />
-          <BlancText variant="body" style={{ flex: 1 }}>
-            {open ? 'Close amount helper' : 'Describe amount'}
-          </BlancText>
-          <SymbolView name={open ? 'chevron.up' : 'chevron.down'} size={12} weight="semibold" tintColor={c.upcoming} />
-        </Pressable>
-        {open ? (
-          <View>
-            <Hairline />
-            <View style={{ paddingVertical: 16, paddingHorizontal: 18, gap: 12 }}>
-              <BlancText variant="footnote" tone="graphite">
-                1 serving = {food.serving_label || `${display(food.serving_size)} ${food.serving_unit}`}. Gemini reads your amount; review it before applying.
+        <Hairline />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 18 }}>
+          <SymbolView name="scalemass" size={16} tintColor={text ? c.ink : c.upcoming} />
+          <TextInput
+            selectionColor={c.ink}
+            value={text}
+            maxLength={500}
+            editable={!disabled}
+            onChangeText={(next) => {
+              request.current++;
+              setText(next);
+              setResult(null);
+              setError('');
+              setBusy(false);
+              onOpenChange(Boolean(next.trim()));
+            }}
+            placeholder="Or type 250 g, 200 ml, 12 oz"
+            placeholderTextColor={c.upcoming}
+            accessibilityLabel="Or type an amount, like 250 g or 200 ml"
+            accessibilityHint="Works it out in servings"
+            autoCorrect={false}
+            returnKeyType="go"
+            onSubmitEditing={() => {
+              if (!disabled && !busy && text.trim()) void interpret();
+            }}
+            lineBreakModeIOS="tail"
+            style={[typeScale.field, { flex: 1, color: c.ink, padding: 0, minHeight: 44 }]}
+          />
+          {busy ? <ActivityIndicator color={c.graphite} /> : null}
+          {!busy && !result && text.trim() ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={disabled}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+              onPress={() => {
+                haptics.tap();
+                void interpret();
+              }}
+              style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.45 : 1 })}>
+              <BlancText variant="bodyStrong" size={15}>
+                Convert
               </BlancText>
-              <TextInput
-                selectionColor={c.ink}
-                value={text}
-                maxLength={500}
-                editable={!disabled}
-                onChangeText={(next) => {
-                  request.current++;
-                  setText(next);
-                  setResult(null);
-                  setError('');
-                  setBusy(false);
-                }}
-                placeholder="e.g. I ate 6 pieces"
-                placeholderTextColor={c.upcoming}
-                accessibilityLabel="How much did you eat?"
-                returnKeyType="go"
-                onSubmitEditing={() => {
-                  if (!disabled && !busy && text.trim()) void interpret();
-                }}
-                lineBreakModeIOS="tail"
-                style={[typeScale.field, { color: c.ink, padding: 0, minHeight: 44 }]}
-              />
-              <Capsule title={busy ? 'Interpreting…' : 'Interpret amount'} variant="quiet" busy={busy} disabled={disabled || !text.trim()} onPress={() => void interpret()} />
-              {result?.status === 'clarification' ? (
-                <BlancText variant="secondary">{result.message} Update your description, or close the helper to enter servings manually.</BlancText>
-              ) : null}
-              {result?.status === 'resolved' ? (
-                <View style={{ gap: 6 }}>
-                  <BlancText
-                    variant="secondary"
-                    // The bold servings are a nested text, which VoiceOver reads raw.
-                    accessibilityLabel={speak(
-                      `${display(result.quantity)} ${result.unit === 'piece' && result.quantity !== 1 ? 'pieces' : result.unit} ÷ ${display(result.basisQuantity)} per serving = ${display(result.servings)} servings`,
-                    )}>
-                    {display(result.quantity)} {result.unit === 'piece' && result.quantity !== 1 ? 'pieces' : result.unit} ÷ {display(result.basisQuantity)} per serving ={' '}
-                    <BlancText variant="secondary" weight="600">
-                      {display(result.servings)} servings
-                    </BlancText>
+            </Pressable>
+          ) : null}
+        </View>
+        {result ? (
+          <View style={{ paddingBottom: 16, paddingHorizontal: 18, gap: 12 }}>
+            {result.status === 'clarification' ? (
+              <BlancText variant="secondary">{result.message} Change what you typed, or enter servings above.</BlancText>
+            ) : null}
+            {result.status === 'resolved' ? (
+              <View style={{ gap: 6 }}>
+                <BlancText
+                  variant="secondary"
+                  // The bold servings are a nested text, which VoiceOver reads raw.
+                  accessibilityLabel={speak(
+                    `${display(result.quantity)} ${result.unit === 'piece' && result.quantity !== 1 ? 'pieces' : result.unit} ÷ ${display(result.basisQuantity)} per serving = ${display(result.servings)} servings`,
+                  )}>
+                  {display(result.quantity)} {result.unit === 'piece' && result.quantity !== 1 ? 'pieces' : result.unit} ÷ {display(result.basisQuantity)} per serving ={' '}
+                  <BlancText variant="secondary" weight="600">
+                    {display(result.servings)} servings
                   </BlancText>
-                  {result.assumption ? (
-                    <BlancText variant="footnote" tone="graphite">
-                      {result.assumption}
-                    </BlancText>
-                  ) : null}
-                  {Math.abs(logServings - result.servings) > 1e-9 ? (
-                    <BlancText variant="footnote" tone="graphite">
-                      {logServings > 0 ? `Will log ${display(logServings)} servings, rounded to two decimals.` : 'This amount is too small to log. Enter at least 0.01 servings.'}
-                    </BlancText>
-                  ) : null}
-                  <BlancText
-                    variant="meta"
-                    tone="graphite"
-                    accessibilityLabel={spokenMacros(
-                      { calories: food.calories * logServings, protein: food.protein * logServings, carbs: food.carbs * logServings, fat: food.fat * logServings },
-                      display,
-                    )}>
-                    {display(food.calories * logServings)} kcal · P {display(food.protein * logServings)} · C {display(food.carbs * logServings)} · F {display(food.fat * logServings)}
+                </BlancText>
+                {result.assumption ? (
+                  <BlancText variant="footnote" tone="graphite">
+                    {result.assumption}
                   </BlancText>
-                  <Capsule
-                    title="Use this amount"
-                    disabled={disabled || logServings <= 0}
-                    onPress={() => {
-                      onApply(logServings);
-                      toggle(false);
-                    }}
-                  />
-                </View>
-              ) : null}
-            </View>
+                ) : null}
+                {Math.abs(logServings - result.servings) > 1e-9 ? (
+                  <BlancText variant="footnote" tone="graphite">
+                    {logServings > 0 ? `Will log ${display(logServings)} servings, rounded to two decimals.` : 'This amount is too small to log. Enter at least 0.01 servings.'}
+                  </BlancText>
+                ) : null}
+                <BlancText
+                  variant="meta"
+                  tone="graphite"
+                  accessibilityLabel={spokenMacros(
+                    { calories: food.calories * logServings, protein: food.protein * logServings, carbs: food.carbs * logServings, fat: food.fat * logServings },
+                    display,
+                  )}>
+                  {display(food.calories * logServings)} kcal · P {display(food.protein * logServings)} · C {display(food.carbs * logServings)} · F {display(food.fat * logServings)}
+                </BlancText>
+                <Capsule
+                  title="Use this amount"
+                  disabled={disabled || logServings <= 0}
+                  onPress={() => {
+                    onApply(logServings);
+                    onOpenChange(false);
+                  }}
+                />
+              </View>
+            ) : null}
           </View>
         ) : null}
       </Label>
-      {open && error ? <FormNote alert>{error}</FormNote> : null}
+      {error ? <FormNote alert>{error}</FormNote> : null}
     </View>
   );
 }

@@ -54,8 +54,8 @@ Notes in `docs/`:
   is still unchecked on a phone and the known open issues.
 - [sign-up-and-limits.md](docs/sign-up-and-limits.md): who can sign up, the
   daily AI budget and the other limits, and the switches for each.
-- [serving-entry.md](docs/serving-entry.md): how Describe amount turns words
-  into servings.
+- [serving-entry.md](docs/serving-entry.md): how an amount typed in any unit
+  (250 g, 200 ml, 6 pieces) turns into servings.
 - [evidence-pipeline.md](docs/evidence-pipeline.md): where program templates
   come from and how to refresh their research snapshot.
 - [fatsecret-premier-free-application.md](docs/fatsecret-premier-free-application.md):

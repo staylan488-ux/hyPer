@@ -56,7 +56,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
   const [amount, setAmount] = useState(initial.amount);
   const [unit, setUnit] = useState<MeasurementUnit>(initial.unit);
   const [saving, setSaving] = useState(false);
-  // the amount helper's answer must be applied or closed before logging
+  // an amount typed in the line under Amount must be applied or cleared before logging
   const [helperOpen, setHelperOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // one retry-safe id until this entry's save is confirmed
@@ -173,7 +173,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
             selectTextOnFocus
             unit={amountUnit}
             invalid={Boolean(invalid)}
-            // Typing the amount by hand sets the helper aside, so Log entry is ready.
+            // Typing the amount by hand clears the line under it, so Log entry is ready.
             onFocus={() => setHelperOpen(false)}
           />
           {units.length > 1 ? (
