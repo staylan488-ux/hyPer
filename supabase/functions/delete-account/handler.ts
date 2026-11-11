@@ -2,14 +2,15 @@
 // sign-in itself. Kept free of Deno and network imports so tests can run it
 // (index.ts wires in the real services).
 //
-// Order matters. The stored WHOOP token is read first, while its row still
-// exists; the food analysis records are removed next; then the account goes,
-// and its rows in every table go with it (each one cascades from auth.users
-// through profiles, or directly from auth.users for the food ledger). WHOOP
-// is told last, only once the account is gone: a deletion that failed leaves
-// WHOOP connected for the account that is still there. WHOOP revocation is
-// best-effort; legacy Storage cleanup must succeed while sign-in still works
-// so a failure can be retried without orphaning the saved analyses.
+// Order matters. The stored WHOOP and Sign in with Apple tokens are read
+// first, while their rows still exist; the food analysis records are removed
+// next; then the account goes, and its rows in every table go with it (each
+// one cascades from auth.users through profiles, or directly from auth.users).
+// WHOOP and Apple are told last, only once the account is gone: a deletion
+// that failed leaves them connected for the account that is still there.
+// Their revocation is best-effort; legacy Storage cleanup must succeed while
+// sign-in still works so a failure can be retried without orphaning the
+// saved analyses.
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +25,10 @@ export interface DeleteAccountServices {
   whoopAccess(userId: string): Promise<string | null>;
   /** Tell WHOOP to drop hyPer's access. */
   revokeWhoop(accessToken: string): Promise<void>;
+  /** The Sign in with Apple refresh token kept for this account, or null. */
+  appleRefreshToken?(userId: string): Promise<string | null>;
+  /** Tell Apple to revoke it, which ends the account's link with hyPer in Apple's settings. */
+  revokeApple?(refreshToken: string): Promise<void>;
   /** Remove the account's saved food analysis results and quota records. */
   removeFoodRecords(userId: string): Promise<void>;
   /** Delete the auth user; its data cascades. Throws when it fails. */
@@ -66,6 +71,12 @@ export function createDeleteAccountHandler(services: DeleteAccountServices) {
     } catch (error) {
       log('delete-account: WHOOP token not read (continuing)', error);
     }
+    let appleToken: string | null = null;
+    try {
+      appleToken = await services.appleRefreshToken?.(userId) ?? null;
+    } catch (error) {
+      log('delete-account: Apple token not read (continuing)', error);
+    }
     try {
       await services.removeFoodRecords(userId);
     } catch (error) {
@@ -84,6 +95,13 @@ export function createDeleteAccountHandler(services: DeleteAccountServices) {
         await services.revokeWhoop(whoopAccess);
       } catch (error) {
         log('delete-account: WHOOP revoke failed (the account is deleted)', error);
+      }
+    }
+    if (appleToken && services.revokeApple) {
+      try {
+        await services.revokeApple(appleToken);
+      } catch (error) {
+        log('delete-account: Apple revoke failed (the account is deleted)', error);
       }
     }
     return json({ ok: true }, 200);

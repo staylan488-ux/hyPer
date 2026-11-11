@@ -12,6 +12,7 @@ vi.mock('@/lib/patientFetch', () => ({ patientPost: vi.fn(async () => { throw ne
 
 import { normalizeCoachInput, suggestTargets } from '../supabase/functions/analyze-food-trial/coach';
 import { createTrialHandler, type TrialLedger } from '../supabase/functions/analyze-food-trial/gateway';
+import { memoryBudget } from './helpers/memoryBudget';
 import { coachSource, requestTargetSuggestion } from '@/lib/nutritionCoach';
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -39,8 +40,8 @@ function harness(maxAttempts = 2) {
     recommendation: { calories: 2500, protein_g: 150, carbs_g: 320, fat_g: 70, rationale: 'More food.', cautions: '', confidence: 0.6 },
   }));
   const handler = createTrialHandler({
-    config: { maxAttempts, allowedOrigins: ['capacitor://localhost'] },
-    ledger, analyze, suggestTargets: suggest,
+    config: { maxAttempts, allowedOrigins: ['http://localhost:8081'] },
+    ledger, analyze, suggestTargets: suggest, access: async () => ({ approved: true, dailyLimit: 40 }), budget: memoryBudget(),
     authenticate: async (token) => (token === 'valid' ? USER : null),
     now: () => Date.parse('2026-10-27T12:00:00Z'),
   });

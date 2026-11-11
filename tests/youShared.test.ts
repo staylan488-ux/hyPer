@@ -379,6 +379,8 @@ describe('short status lines', () => {
     const label = `${hours % 12 === 0 ? 12 : hours % 12}${reset.getMinutes() ? `:${String(reset.getMinutes()).padStart(2, '0')}` : ''} ${hours < 12 ? 'AM' : 'PM'}`;
     expect(foodTrialUsageLine({ date: '2026-10-27', maxAttempts: 24, attemptsUsed: 3, attempts: [] }, now)).toBe(`3 of 24 analyses used. The count starts over at ${label}.`);
     expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 24 }, now)).toBe(`Daily limit reached: 24 of 24 used. It starts over at ${label}.`);
+    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: true }, now)).toBe(`Today’s limit for everyone is reached. It starts over at ${label}.`);
+    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: false }, now)).toBe(`3 of 24 analyses used. The count starts over at ${label}.`);
     expect(foodTrialUsageLine({ preview: true })).toBe('Sample data: no analyses counted.');
     expect(() => foodTrialUsageLine({ maxAttempts: 0, attemptsUsed: 0 })).toThrow();
   });

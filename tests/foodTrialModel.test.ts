@@ -465,6 +465,15 @@ describe('Gemini + independent web food pipeline', () => {
     expect(mealUsage(envelope({}), new Date('2027-01-01'), 0).estimatedTokenUsd).toBe(0.0225);
     expect(mealUsage({}, new Date(), 0)).toMatchObject({ promptTokens: null, thinkingTokens: null, estimatedTokenUsd: null });
   });
+  it('counts a zero Gemini leaves out as zero, as production responses do', () => {
+    // A real production usageMetadata: no cachedContentTokenCount when nothing was cached.
+    const live = { usageMetadata: { promptTokenCount: 2000, candidatesTokenCount: 500, thoughtsTokenCount: 1000, totalTokenCount: 3500 } };
+    expect(mealUsage(live, new Date('2026-09-05'), 0)).toMatchObject({ cachedTokens: 0, estimatedTokenUsd: (2000 * 0.75 + 1500 * 3.75) / 1e6 });
+    // No thinking reported either.
+    expect(mealUsage({ usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 100 } }, new Date('2026-09-05'), 0)).toMatchObject({ thinkingTokens: 0, cachedTokens: 0 });
+    // Without a prompt count the response reported nothing: unknown.
+    expect(mealUsage({ usageMetadata: { candidatesTokenCount: 100 } }, new Date('2026-09-05'), 0).estimatedTokenUsd).toBeNull();
+  });
   it.each([0, -1, NaN, Infinity, '3'])('rejects bad serving basis %s', basisQuantity => expect(() => validateTrialItems([{ ...item, basisQuantity }])).toThrow());
   it('rejects incomplete responses, contradictory clarifications and missing macros', () => {
     expect(() => parseMealResponse(envelope({}, { candidates: [{ finishReason: 'MAX_TOKENS' }] }))).toThrow('incomplete');

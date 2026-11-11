@@ -26,6 +26,8 @@ export function foodTrialUsageLine(value: unknown, now: Date = new Date()): stri
     throw new Error('The analysis usage response was incomplete.');
   }
   const reset = usageResetLabel(now);
+  // The limit shared by every account (a daily spend ceiling) can run out first.
+  if (status.globalLimitReached === true) return `Today’s limit for everyone is reached. It starts over at ${reset}.`;
   return (used as number) >= (max as number)
     ? `Daily limit reached: ${used} of ${max} used. It starts over at ${reset}.`
     : `${used} of ${max} analyses used. The count starts over at ${reset}.`;

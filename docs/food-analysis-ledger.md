@@ -24,9 +24,23 @@ The new deletion function defaults to unavailable until explicitly enabled.
 
 1. Pause access to account deletion and food analysis on the authorized target
    (including old app clients). Keep deletion disabled throughout cutover.
-2. Inspect migration history; apply only
-   `supabase/migrations/20261108220000_add_food_analysis_ledger.sql`. It is a one-time
-   migration, not a replay of `schema.sql` or the entire migrations directory.
+2. Apply the migrations **by hand**, one file at a time, in this order. Don't use
+   `supabase db push`: production's migration history has entries the repo
+   doesn't have and versions recorded under other timestamps, so a push would
+   replay or misorder them. As of 2026-11-11 production has none of these except
+   the exercise list cleanup.
+   1. `supabase/migrations/20261108220000_add_food_analysis_ledger.sql`. A one-time
+      migration, not a replay of `schema.sql` or the migrations directory.
+   2. `20261109120000_private_beta_and_ai_caps.sql`.
+   3. `20261111110000_curate_exercise_library.sql` (already applied in production).
+   4. `20261111120000_public_signup_hardening.sql`.
+
+   The new `analyze-food-trial` checks approval and claims the daily AI budget
+   through the last one's functions, and answers 503 for everyone without them
+   ([sign-up and limits](sign-up-and-limits.md)). It ignores `capacitor:` entries
+   in `FOOD_ANALYSIS_ALLOWED_ORIGINS`; `FOOD_ANALYSIS_MAX_DAILY_REQUESTS` is now an
+   optional ceiling over every account's own limit (default 40). The
+   `APP_BASE_URL` secret is no longer read by anything.
 3. Deploy `analyze-food-trial` with the database adapter. Keep `FOOD_ANALYSIS_BUCKET`
    pointing to the **same original private bucket**; don't create a replacement that
    hides the old records/quota. Do not dual-write or fall back to Storage uploads.
@@ -41,6 +55,9 @@ The new deletion function defaults to unavailable until explicitly enabled.
    `FOOD_ANALYSIS_DATABASE_LEDGER_READY=true`. Set the last flag **only after** the
    migration, new writer and old-write drain are verified. Missing bucket/flag fails
    closed; there is no "skip legacy cleanup" mode.
+   For Sign in with Apple revocation, also the four `APPLE_*` secrets in
+   [sign-up and limits](sign-up-and-limits.md); without them the revoke is skipped
+   and logged, and deletion still succeeds.
 6. On a non-production target, verify replay/quota across the old/new ledger, delay
    an analysis across deletion, and force/retry a cleanup failure. Then re-enable
    access. Even a target without old analyses needs the configured empty private

@@ -12,12 +12,31 @@ def sql(statement):
     return subprocess.check_output(PSQL + ["-c", statement], text=True).strip()
 
 
+def create_user(user):
+    # With the private beta migration, a new account needs an invite.
+    email = f"{user}@ledger.invalid"
+    return f"""DO $$ BEGIN
+  IF to_regclass('public.beta_invites') IS NULL THEN
+    INSERT INTO auth.users(id) VALUES ('{user}');
+  ELSE
+    INSERT INTO public.beta_invites(email) VALUES ('{email}');
+    EXECUTE 'INSERT INTO auth.users(id, email) VALUES (''{user}'', ''{email}'')';
+  END IF;
+END $$;"""
+
+
+def drop_invite(user):
+    return f"""DO $$ BEGIN
+  IF to_regclass('public.beta_invites') IS NOT NULL THEN DELETE FROM public.beta_invites WHERE email = '{user}@ledger.invalid'; END IF;
+END $$;"""
+
+
 def race(delete_first, rollback=False):
     user = str(uuid.uuid4())
     name = "ledger_race_" + uuid.uuid4().hex
     insert = f"INSERT INTO public.food_analysis_ledger VALUES ('food-v1/{user}/2026-11-08/results/0.json', '{user}', '{{}}');"
     delete = f"DELETE FROM auth.users WHERE id = '{user}';"
-    sql(f"INSERT INTO auth.users(id) VALUES ('{user}');")
+    sql(create_user(user))
     first = subprocess.Popen(PSQL, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     second = None
     try:
@@ -55,6 +74,7 @@ def race(delete_first, rollback=False):
             second.terminate()
             second.communicate(timeout=10)
         sql(delete)
+        sql(drop_invite(user))
 
 
 race(delete_first=False)

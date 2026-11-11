@@ -27,7 +27,9 @@ vi.mock('@/lib/supabase', () => {
   return { supabase: { from } };
 });
 
-import { insertOneServingFood, persistExternalFood } from '@/lib/foodPersistence';
+vi.mock('@/lib/sessionUser', () => ({ getSessionUserId: vi.fn(async () => 'user-1') }));
+
+import { ensureFoodRow, insertOneServingFood, persistExternalFood } from '@/lib/foodPersistence';
 import {
   SAVED_MEAL_FETCH_LIMIT,
   SAVED_MEAL_SOURCES,
@@ -350,5 +352,24 @@ describe('barcode provider foods', () => {
     expect(mocks.chains[1][1][1]).toMatchObject({ serving_size: 45, serving_unit: 'g' });
     expect(console.error).toHaveBeenCalledWith('Error looking up FatSecret food:', { message: 'lookup failed' });
     expect(console.error).toHaveBeenCalledWith('Error creating FatSecret food:', { message: 'insert failed' });
+  });
+});
+
+describe('USDA foods', () => {
+  const usda = { id: 'usda-171287', name: 'Egg, whole, raw', calories: 143, protein: 12.6, carbs: 0.7, fat: 9.5, serving_size: 50, serving_unit: 'g', source: 'usda', fdc_id: '171287' } as never;
+
+  it('reuses only the user\'s own row for the same food and serving', async () => {
+    mocks.results.push({ data: { id: 'mine' } });
+    expect(await ensureFoodRow(usda)).toBe('mine');
+    expect(mocks.chains[0]).toContainEqual(['eq', 'user_id', 'user-1']);
+    expect(mocks.chains[0]).toContainEqual(['eq', 'fdc_id', '171287']);
+    expect(mocks.chains).toHaveLength(1);
+  });
+
+  it('inserts a row owned by the user, never a shared one', async () => {
+    mocks.results.push({ data: null }, { data: { id: 'new-row' } });
+    expect(await ensureFoodRow(usda)).toBe('new-row');
+    const insert = mocks.chains[1].find(([method]) => method === 'insert');
+    expect(insert?.[1]).toMatchObject({ user_id: 'user-1', source: 'usda', fdc_id: '171287', serving_size: 50, serving_unit: 'g' });
   });
 });

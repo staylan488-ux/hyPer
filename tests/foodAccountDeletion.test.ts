@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createTrialHandler } from '../supabase/functions/analyze-food-trial/gateway';
+import { memoryBudget } from './helpers/memoryBudget';
 import { createDatabaseLedger } from '../supabase/functions/analyze-food-trial/databaseLedger';
 import { createStorageLedger } from '../supabase/functions/analyze-food-trial/storageLedger';
 import { createDeleteAccountHandler } from '../supabase/functions/delete-account/handler';
@@ -47,7 +48,7 @@ function harness() {
   const authenticate = async () => users.has(USER) ? USER : null;
   const gateway = createTrialHandler({
     config: { maxAttempts: 2, allowedOrigins: ['https://app.example.com'] },
-    ledger, authenticate, analyze, waitUntil: (task) => { work.push(task); },
+    ledger, authenticate, access: async () => ({ approved: true, dailyLimit: 40 }), budget: memoryBudget(), analyze, waitUntil: (task) => { work.push(task); },
     now: () => Date.parse('2026-11-08T20:00:00Z'),
   });
   const removeFoodRecords = vi.fn(async () => { legacy.clear(); });

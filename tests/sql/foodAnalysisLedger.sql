@@ -2,7 +2,16 @@
 -- applying 20261108220000_add_food_analysis_ledger.sql. All fixtures roll back.
 BEGIN;
 
-INSERT INTO auth.users(id) VALUES ('11111111-1111-4111-8111-111111111111');
+-- With the private beta migration, a new account needs an invite (rolled back).
+DO $$
+BEGIN
+  IF to_regclass('public.beta_invites') IS NULL THEN
+    INSERT INTO auth.users(id) VALUES ('11111111-1111-4111-8111-111111111111');
+  ELSE
+    INSERT INTO public.beta_invites(email) VALUES ('ledger.fixture@example.invalid');
+    EXECUTE 'INSERT INTO auth.users(id, email) VALUES (''11111111-1111-4111-8111-111111111111'', ''ledger.fixture@example.invalid'')';
+  END IF;
+END $$;
 
 DO $$
 DECLARE role_name TEXT;

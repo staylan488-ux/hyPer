@@ -2,7 +2,9 @@
 // Function secrets and is never shipped in the browser bundle.
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { approvalRefusal } from '../_shared/approval.ts';
 import { corsHeaders, jsonResponse } from '../_shared/oauth.ts';
+import { LOOKUP_LIMITED, cachedBarcodeAnswer, type LookupStore, type ProviderAnswer } from './guard.ts';
 
 type FoodLookupRequest =
   | { action: 'search'; query?: string }
@@ -128,6 +130,17 @@ serve(async (req) => {
   );
   const { data: authData, error: authError } = await authed.auth.getUser();
   if (authError || !authData.user) return jsonResponse({ error: 'Unauthorized' }, 401);
+  // Only approved accounts may spend the USDA/FatSecret/Open Food Facts quotas.
+  const service = serviceClient();
+  const refusal = await approvalRefusal(service, authData.user.id, 'Food search is temporarily unavailable.');
+  if (refusal) return jsonResponse(refusal.body, refusal.status);
+
+  // Each account's lookups per minute and per day (app_config). Fails closed.
+  const store = lookupStore(service);
+  let allowed = false;
+  try { allowed = await store.claimLookup(authData.user.id); }
+  catch { return jsonResponse({ error: 'Food search is temporarily unavailable.' }, 503); }
+  if (!allowed) return jsonResponse(LOOKUP_LIMITED, 429);
 
   const body = await req.json().catch(() => ({})) as FoodLookupRequest;
 
@@ -135,30 +148,36 @@ serve(async (req) => {
     const barcode = normalizeFoodBarcode(body.barcode ?? '');
     if (!barcode) return jsonResponse({ error: 'Invalid barcode' }, 400);
 
-    const url = new URL(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
-    url.searchParams.set('fields', 'code,status,product_name,generic_name,brands,serving_size,serving_quantity,serving_quantity_unit,nutrition_data_per,nutriments');
-    try {
-      const response = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'hyPer/0.1 (https://github.com/staylan488-ux/hyPer)',
-        },
-        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-      });
-      const payload = await response.json().catch(() => ({ error: 'Invalid Open Food Facts response' }));
-      if (!response.ok) {
-        // OFF v2 returns 404 with {status:0} for an unknown product — a clean
-        // "not found", not an error. Pass it through so the client maps it to
-        // null and reaches the create-a-product miss path.
-        if (response.status === 404) return jsonResponse({ status: 0 });
-        console.error('Open Food Facts lookup failed:', response.status);
-        return jsonResponse({ error: 'Open Food Facts lookup failed', status: response.status }, 502);
+    // Every account's calls leave from the same functions, and Open Food Facts
+    // allows 15 a minute per address: share a smaller allowance, and answer
+    // from the cache when another person scanned the product recently.
+    const answer = await cachedBarcodeAnswer(store, `open_food_facts:${barcode}`, async (): Promise<ProviderAnswer> => {
+      const url = new URL(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+      url.searchParams.set('fields', 'code,status,product_name,generic_name,brands,serving_size,serving_quantity,serving_quantity_unit,nutrition_data_per,nutriments');
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'hyPer/0.1 (https://github.com/staylan488-ux/hyPer)',
+          },
+          signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+        });
+        const payload = await response.json().catch(() => ({ error: 'Invalid Open Food Facts response' }));
+        if (!response.ok) {
+          // OFF v2 returns 404 with {status:0} for an unknown product — a clean
+          // "not found", not an error. Pass it through so the client maps it to
+          // null and reaches the create-a-product miss path.
+          if (response.status === 404) return { kind: 'missing', payload: { status: 0 } };
+          console.error('Open Food Facts lookup failed:', response.status);
+          return { kind: 'error', status: 502, payload: { error: 'Open Food Facts lookup failed', status: response.status } };
+        }
+        return { kind: 'found', payload };
+      } catch (error) {
+        console.error('Open Food Facts lookup failed:', error instanceof Error ? error.message : error);
+        return { kind: 'error', status: 502, payload: { error: 'Open Food Facts lookup failed' } };
       }
-      return jsonResponse(payload);
-    } catch (error) {
-      console.error('Open Food Facts lookup failed:', error instanceof Error ? error.message : error);
-      return jsonResponse({ error: 'Open Food Facts lookup failed' }, 502);
-    }
+    }, () => store.claimOpenFoodFacts().catch(() => false));
+    return jsonResponse(answer.payload, answer.status);
   }
 
   if (body.action === 'fatsecret-barcode') {
@@ -172,25 +191,27 @@ serve(async (req) => {
     // Not configured (no credentials/scope): tell the client to skip this
     // provider rather than surface an error.
     if (!token) return jsonResponse({ configured: false });
-    try {
-      const idResult = await fatSecretCall(token, { method: 'food.find_id_for_barcode', barcode: gtin }) as
-        { food_id?: { value?: string | number }; error?: { code?: number; message?: string } };
-      // Surface FatSecret API-level errors (returned with HTTP 200) instead of
-      // masking them as "not found".
-      if (idResult?.error) {
-        console.error('FatSecret find_id_for_barcode error:', idResult.error);
-        return jsonResponse({ error: 'FatSecret error', detail: idResult.error }, 502);
+    const answer = await cachedBarcodeAnswer(store, `fatsecret:${gtin}`, async (): Promise<ProviderAnswer> => {
+      try {
+        const idResult = await fatSecretCall(token, { method: 'food.find_id_for_barcode', barcode: gtin }) as
+          { food_id?: { value?: string | number }; error?: { code?: number; message?: string } };
+        // Surface FatSecret API-level errors (returned with HTTP 200) instead of
+        // masking them as "not found".
+        if (idResult?.error) {
+          console.error('FatSecret find_id_for_barcode error:', idResult.error);
+          return { kind: 'error', status: 502, payload: { error: 'FatSecret error', detail: idResult.error } };
+        }
+        const foodId = String(idResult?.food_id?.value ?? '').trim();
+        if (!foodId || foodId === '0') return { kind: 'missing', payload: { food: null } };
+        // food.get.v2 returns the full food object (name, brand, servings) that
+        // the client maps via mapFatSecretBarcodeFood.
+        return { kind: 'found', payload: await fatSecretCall(token, { method: 'food.get.v2', food_id: foodId }) };
+      } catch (error) {
+        console.error('FatSecret barcode lookup failed:', error instanceof Error ? error.message : error);
+        return { kind: 'error', status: 502, payload: { error: 'FatSecret lookup failed' } };
       }
-      const foodId = String(idResult?.food_id?.value ?? '').trim();
-      if (!foodId || foodId === '0') return jsonResponse({ food: null });
-      // food.get.v2 returns the full food object (name, brand, servings) that
-      // the client maps via mapFatSecretBarcodeFood.
-      const foodResult = await fatSecretCall(token, { method: 'food.get.v2', food_id: foodId });
-      return jsonResponse(foodResult);
-    } catch (error) {
-      console.error('FatSecret barcode lookup failed:', error instanceof Error ? error.message : error);
-      return jsonResponse({ error: 'FatSecret lookup failed' }, 502);
-    }
+    });
+    return jsonResponse(answer.payload, answer.status);
   }
 
   const apiKey = Deno.env.get('USDA_API_KEY') ?? '';
@@ -220,14 +241,59 @@ serve(async (req) => {
   }
 
   url.searchParams.set('api_key', apiKey);
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-  });
-  const payload = await response.json().catch(() => ({ error: 'Invalid USDA response' }));
-  if (!response.ok) {
-    console.error('USDA lookup failed:', response.status);
-    return jsonResponse({ error: 'USDA lookup failed', status: response.status }, 502);
+  const fetchUsda = async (): Promise<ProviderAnswer> => {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    });
+    const payload = await response.json().catch(() => ({ error: 'Invalid USDA response' }));
+    if (!response.ok) {
+      console.error('USDA lookup failed:', response.status);
+      return { kind: 'error', status: 502, payload: { error: 'USDA lookup failed', status: response.status } };
+    }
+    return { kind: 'found', payload };
+  };
+  try {
+    const answer = body.action === 'barcode'
+      ? await cachedBarcodeAnswer(store, `usda:${normalizeFoodBarcode(body.barcode ?? '')}`, fetchUsda)
+      : await fetchUsda().then(result => ({ status: result.kind === 'error' ? result.status : 200, payload: result.payload }));
+    return jsonResponse(answer.payload, answer.status);
+  } catch (error) {
+    console.error('USDA lookup failed:', error instanceof Error ? error.message : error);
+    return jsonResponse({ error: 'USDA lookup failed' }, 502);
   }
-  return jsonResponse(payload);
 });
+
+function serviceClient() {
+  return createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+}
+
+/** The database side of the limits and the cache (service role only). */
+function lookupStore(service: ReturnType<typeof serviceClient>): LookupStore {
+  return {
+    async claimLookup(userId) {
+      const { data, error } = await service.rpc('claim_food_lookup', { p_user_id: userId });
+      if (error || typeof data !== 'boolean') throw new Error('Lookup limit unavailable');
+      return data;
+    },
+    async claimOpenFoodFacts() {
+      const { data, error } = await service.rpc('claim_open_food_facts_call');
+      if (error || typeof data !== 'boolean') throw new Error('Lookup limit unavailable');
+      return data;
+    },
+    async cacheGet(key) {
+      const { data, error } = await service.from('food_lookup_cache').select('payload')
+        .eq('cache_key', key).gt('expires_at', new Date().toISOString()).maybeSingle();
+      if (error) throw new Error('Cache unavailable');
+      return (data as { payload?: unknown } | null)?.payload ?? null;
+    },
+    async cachePut(key, payload, ttlSeconds) {
+      const { error } = await service.from('food_lookup_cache').upsert({
+        cache_key: key, payload, expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      });
+      if (error) throw new Error('Cache not saved');
+      // Clear out old answers now and then; nothing reads them after they expire.
+      if (Math.random() < 0.01) await service.from('food_lookup_cache').delete().lt('expires_at', new Date().toISOString());
+    },
+  };
+}
