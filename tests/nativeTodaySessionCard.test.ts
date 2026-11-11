@@ -11,6 +11,7 @@ import * as types from '@/types';
 import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import { hintImports } from './helpers/hintStubs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -77,6 +78,7 @@ let host: HTMLDivElement;
 
 async function open() {
   const { default: TodayScreen } = loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/today/index.tsx', {
+    ...hintImports,
     'date-fns': dates,
     'expo-router': { router: { navigate, push: noop }, Stack: { Screen: Empty } },
     'expo-symbols': { SymbolView: Empty },

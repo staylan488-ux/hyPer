@@ -16,6 +16,7 @@ import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Chip } from '~/components/Chip';
 import { DragList } from '~/components/DragList';
+import { Hint } from '~/components/Hint';
 import { FigureInput } from '~/components/FigureInput';
 import { FormNote, type TextField } from '~/components/Form';
 import { Label } from '~/components/Label';
@@ -27,6 +28,7 @@ import { SwipeRow, type SwipeAction } from '~/components/SwipeRow';
 import { scrolledFromRest, TabScroll, tabBarCover } from '~/components/TabScroll';
 import { COMPACT_RISE, Tally } from '~/components/Tally';
 import { UndoBar } from '~/components/UndoBar';
+import { HintScope, markHintDone } from '~/lib/hints';
 import { announce, screenReaderRunning, speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { useAccountDay, useAccountRefresh } from '~/lib/accountData';
 import { gainOnLastTime } from '~/lib/beatLastTime';
@@ -582,6 +584,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             ? () => openMovement(movement.exerciseId)
             : () => {
                 focus(movement.exerciseId);
+                markHintDone('train-rows');
                 // The card above changes; VoiceOver stays on this row.
                 announce(`${movement.name}, up now`);
               }
@@ -604,7 +607,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     session.movements.length > 0 ? (
       <Section title="Movements">
         {/* Hold a movement to lift it and drag it into place; hold and let
-            go for its sets, note and swap. */}
+            go for its sets, note and swap. A swipe here is what the hint below teaches. */}
+        <HintScope.Provider value="train-rows">
         <Label>
           <DragList
             items={blocks.map((block) => ({
@@ -625,7 +629,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             ruleInset={18}
             onMove={(key, index) => void moveBlock(key, index)}
             onHold={(key) => openMovement(heldMovement(blocks, key, touchedMovement.current))}
-            onDragging={setDragging}
+            onDragging={(lifted) => {
+              setDragging(lifted);
+              if (lifted) markHintDone('train-rows');
+            }}
           />
           {session.flexible ? (
             <Animated.View layout={rowLayout}>
@@ -642,6 +649,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             </Animated.View>
           ) : null}
         </Label>
+        </HintScope.Provider>
+        {/* The first workouts: any movement can come next, and a swipe swaps or skips it. */}
+        <Hint name="train-rows" ready={session.movements.length > 1} symbol="hand.point.up.left" gesture>
+          Tap a movement to do it next. Swipe it left to swap or skip it.
+        </Hint>
       </Section>
     ) : null;
 

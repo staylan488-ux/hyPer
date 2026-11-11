@@ -22,6 +22,7 @@ import * as weightRate from '../native/src/lib/weightRate';
 import * as weightTrendLine from '../native/src/lib/weightTrendLine';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import { hintImports } from './helpers/hintStubs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -744,6 +745,7 @@ function weightScreenImports(you: YouModule, seen: Seen) {
     '~/lib/menu': menu,
     '~/theme/blanc': { radius: { label: 12 }, useBlanc: () => ({ label: '#fff' }) },
     './SwipeRow': { dismissOpenSwipeRow: () => {} },
+    '~/lib/hints': hintImports['~/lib/hints'],
   });
   return {
     '@expo/ui/swift-ui': {
@@ -853,7 +855,7 @@ function loadYouScreen(you: YouModule, seen: Seen, harness: ReturnType<typeof yo
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd') },
   };
-  return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/index.tsx', imports, options).default;
+  return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/index.tsx', { ...hintImports, ...imports }, options).default;
 }
 
 function loadWeighInsScreen(you: YouModule, seen: Seen) {

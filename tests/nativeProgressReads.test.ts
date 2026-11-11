@@ -15,6 +15,7 @@ import type { MuscleVolume } from '@/types';
 import { formatMinutes } from '../native/src/lib/format';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import { hintImports } from './helpers/hintStubs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -145,6 +146,7 @@ const shown = () => host.textContent ?? '';
 
 async function open() {
   const { default: ProgressScreen } = loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/today/progress.tsx', {
+    ...hintImports,
     'date-fns': dates,
     'expo-router': { router: { navigate: noop }, Stack: { Screen: Empty } },
     'expo-symbols': { SymbolView: Empty },

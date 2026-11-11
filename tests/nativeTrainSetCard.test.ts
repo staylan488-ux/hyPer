@@ -12,6 +12,7 @@ import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import * as format from '../native/src/lib/format';
+import { hintImports } from './helpers/hintStubs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -124,6 +125,7 @@ async function open() {
   const { default: TrainScreen } = loadNativeModule<{ default: () => ReactNode }>(
     'app/(tabs)/train/index.tsx',
     {
+      ...hintImports,
       'expo-router': { router: { push }, Stack: { Screen: Empty } },
       'expo-symbols': { SymbolView: Empty },
       'date-fns': dates,

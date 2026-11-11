@@ -6,6 +6,7 @@ import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValu
 
 import { useIncreaseContrast } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
+import { markHintDone, useHintScope } from '~/lib/hints';
 import { palettes, useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
@@ -113,6 +114,7 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
   const committed = useSharedValue(0);
   const face = useAnimatedStyle(() => ({ opacity: 1 - committed.get() }));
   const destructive = actions.find((action) => action.destructive);
+  const hint = useHintScope();
 
   useEffect(
     () => () => {
@@ -191,6 +193,8 @@ export function SwipeRow({ actions, name, children }: { actions: SwipeAction[]; 
         // tick when it armed was the feedback; the action reports its result.
         onSwipeableWillOpen={() => {
           endDrag();
+          // The swipe its block's hint taught has been found.
+          if (hint) markHintDone(hint);
           if (armed.current && destructive) {
             armed.current = false;
             runFull(destructive);

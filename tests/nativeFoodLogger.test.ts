@@ -30,6 +30,7 @@ import type { Food, NutritionGroup } from '@/types';
 import type * as LaunchActions from '../native/src/lib/launchActions';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { nativeFuelStore } from './helpers/nativeFuelStore';
+import { hintImports } from './helpers/hintStubs';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -440,6 +441,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
       '~/lib/menu': loadNativeModule('lib/menu.ts', {}),
       '~/theme/blanc': { radius: {}, useBlanc: () => ({}) },
       './SwipeRow': swipeRow,
+      '~/lib/hints': hintImports['~/lib/hints'],
     });
   }
   const manualModule = loadNativeModule<NativeModule>('fuel/ManualTab.tsx', imports);
