@@ -86,7 +86,7 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
     trialItemFood: noop,
     trialLogSource: noop,
   },
-  '@/lib/foodTrialUsage': { usageResetLabel: () => '5 PM' },
+  '@/lib/foodTrialUsage': { usageResetLabel: () => 'at 5 PM' },
   '@/lib/mealComposition': { createMealIngredient: noop },
   '@/lib/pendingEntryId': pendingEntry,
   '~/components/BlancText': { BlancText: Wrap },

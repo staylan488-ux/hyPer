@@ -505,7 +505,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
       ...imports,
       '@/lib/foodTrial': { ...foodTrial, getFoodAnalysisMode: () => 'gemini' },
       '@/lib/foodTrialReview': foodTrialReview,
-      '@/lib/foodTrialUsage': { usageResetLabel: () => '5 PM' },
+      '@/lib/foodTrialUsage': { usageResetLabel: () => 'at 5 PM' },
       '~/lib/aiConsent': { askAiConsent: async () => true },
       '~/lib/appConfig': { useAiPaused: () => false },
       '@/lib/analysisProgress': analysisProgress,

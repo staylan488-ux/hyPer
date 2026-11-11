@@ -82,8 +82,8 @@ type AiLimit = NonNullable<ReturnType<typeof aiLimitOf>>;
 function limitWords(kind: AiLimit): { title: string; line: string } {
   if (kind === 'paused') return { title: 'AI estimates are paused', line: 'You can still enter this meal yourself.' };
   const reset = usageResetLabel();
-  if (kind === 'daily') return { title: 'You’ve used today’s AI estimates', line: `They start again at ${reset}. You can enter this meal yourself.` };
-  return { title: 'AI estimates are off until later', line: `hyPer reached today’s limit for everyone. It starts again at ${reset}. You can enter this meal yourself.` };
+  if (kind === 'daily') return { title: 'You’ve used today’s AI estimates', line: `They start again ${reset}. You can enter this meal yourself.` };
+  return { title: 'AI estimates are off until later', line: `hyPer reached today’s limit for everyone. It starts again ${reset}. You can enter this meal yourself.` };
 }
 
 const round1 = (value: number) => Math.round(value * 10) / 10;

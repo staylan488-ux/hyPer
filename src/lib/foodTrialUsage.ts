@@ -2,14 +2,22 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-/** When the server's daily count starts over (midnight UTC), in local time: "5 PM". */
+/**
+ * When the server's daily count starts over (midnight UTC), in local time and
+ * ready to follow a verb: "at 5 PM", "tomorrow at 4 PM" or "at midnight".
+ * West of UTC an evening's reset falls on the next local day, so a bare
+ * "at 4 PM" late at night would read as a time already gone.
+ */
 export function usageResetLabel(now: Date = new Date()): string {
   const reset = new Date(now.getTime());
   reset.setUTCHours(24, 0, 0, 0);
   const hours = reset.getHours();
   const minutes = reset.getMinutes();
+  // Local midnight is the start of the next day, which "at midnight" already says.
+  if (hours === 0 && minutes === 0) return 'at midnight';
   const hour12 = hours % 12 === 0 ? 12 : hours % 12;
-  return `${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''} ${hours < 12 ? 'AM' : 'PM'}`;
+  const time = `${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''} ${hours < 12 ? 'AM' : 'PM'}`;
+  return reset.toDateString() === now.toDateString() ? `at ${time}` : `tomorrow at ${time}`;
 }
 
 /**
@@ -29,8 +37,8 @@ export function foodTrialUsageLine(value: unknown, now: Date = new Date()): stri
   // Switched off for everyone by the owner.
   if (status.aiEnabled === false) return 'AI estimates are paused for now.';
   // The limit shared by every account (a daily spend ceiling) can run out first.
-  if (status.globalLimitReached === true) return `Today’s limit for everyone is reached. It starts over at ${reset}.`;
+  if (status.globalLimitReached === true) return `Today’s limit for everyone is reached. It starts over ${reset}.`;
   return (used as number) >= (max as number)
-    ? `Daily limit reached: ${used} of ${max} used. It starts over at ${reset}.`
-    : `${used} of ${max} analyses used. The count starts over at ${reset}.`;
+    ? `Daily limit reached: ${used} of ${max} used. It starts over ${reset}.`
+    : `${used} of ${max} analyses used. The count starts over ${reset}.`;
 }
