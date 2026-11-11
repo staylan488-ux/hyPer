@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS exercises (
   is_compound BOOLEAN DEFAULT false,
   -- 'gym' or 'calisthenics'; NULL lets the app decide from the name
   category TEXT CONSTRAINT exercises_category_check CHECK (category IS NULL OR category IN ('gym', 'calisthenics')),
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  -- set when the movement left the picker; the row stays for history and programs
+  retired_at TIMESTAMPTZ
 );
 
 -- Workout Splits

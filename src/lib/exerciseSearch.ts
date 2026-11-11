@@ -55,6 +55,19 @@ export function exerciseCategory(
 }
 
 /**
+ * Whether the picker offers a library row for this search. Retired rows (niche
+ * or duplicate movements taken off the everyday list) stay in the table so
+ * programs and history that use them keep working; the picker shows one only
+ * when the search spells out its whole name, so it can still be found and
+ * reused instead of hitting a dead end.
+ */
+export function offeredInPicker(exercise: Pick<Exercise, 'name'> & { retired_at?: string | null }, query: string): boolean {
+  if (!exercise.retired_at) return true;
+  const typed = normalize(query);
+  return typed.length > 0 && typed === normalize(exercise.name);
+}
+
+/**
  * Extra words a name answers to, so common gym shorthand and alternative names
  * find it ("rdl", "db", "hyperextension" ↔ "back extension").
  */
@@ -73,6 +86,10 @@ const NAME_ALIASES: Array<[RegExp, string]> = [
   [/\bpull[- ]?ups?\b/, 'pullup'],
   [/\bchin[- ]?ups?\b/, 'chinup'],
   [/\bpush[- ]?ups?\b/, 'pushup press up'],
+  [/\babduction\b/, 'abductor abductors outer thigh'],
+  [/\badduction\b/, 'adductor adductors inner thigh'],
+  [/\bcable fly\b/, 'crossover'],
+  [/\bstiff leg\b/, 'sldl'],
 ];
 
 /** Words a muscle answers to beyond its label: "abs" still finds core work. */

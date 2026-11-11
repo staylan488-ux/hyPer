@@ -5,7 +5,7 @@ import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, TextInput, Vi
 
 import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
-import { exerciseCategory, searchExercises } from '@/lib/exerciseSearch';
+import { exerciseCategory, offeredInPicker, searchExercises } from '@/lib/exerciseSearch';
 import { MUSCLE_GROUP_LABELS, type Exercise, type MuscleGroup } from '@/types';
 import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -84,7 +84,9 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
     const allowed = rows.filter(
       (exercise) =>
         (!exclude.has(exercise.id) || selected?.has(exercise.id)) &&
-        (muscle === 'all' || exercise.muscle_group === muscle || exercise.muscle_group_secondary === muscle),
+        (muscle === 'all' || exercise.muscle_group === muscle || exercise.muscle_group_secondary === muscle) &&
+        // a ticked row stays, even one taken off the everyday list
+        (offeredInPicker(exercise, search) || (selected?.has(exercise.id) ?? false)),
     );
     const ranked = searchExercises(allowed, search);
     return {
