@@ -370,10 +370,12 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
       // Fuel knows them.
       const { nutrition_profiles, body_weight_measurements } = buildYouFixtures('populated');
       // Adaptive on, so the calculator offers the learned burn beside the formula.
-      // This morning's update raised the target by 100 kcal, so Targets (and
+      // This morning's update raised the adaptive target by 100 kcal (the
+      // weight slipped while the goal is to hold steady), so Targets (and
       // Last week on a Monday) show the change and its Undo.
       const changedAt = new Date();
       changedAt.setHours(6, 0, 0, 0);
+      for (const row of previewTables.macro_targets) row.source = 'adaptive';
       Object.assign(previewTables, {
         nutrition_profiles: nutrition_profiles.map((row) => ({ ...row, adaptive_enabled: true })),
         body_weight_measurements,
@@ -383,7 +385,7 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
           old_carbs: previewMacroTarget.carbs - 25, old_fat: previewMacroTarget.fat,
           new_calories: previewMacroTarget.calories, new_protein: previewMacroTarget.protein,
           new_carbs: previewMacroTarget.carbs, new_fat: previewMacroTarget.fat,
-          expenditure_kcal: 2600, expenditure_confidence: 'learning', kg_per_week: 0.09, goal_kg_per_week: 0,
+          expenditure_kcal: 2600, expenditure_confidence: 'learning', old_expenditure_kcal: 2500, kg_per_week: -0.09, goal_kg_per_week: 0,
           mean_intake_kcal: 2550, logged_days: 17, weigh_in_days: 15, undone_at: null,
         }],
       });

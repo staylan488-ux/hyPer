@@ -26,6 +26,7 @@ function change(overrides: Partial<MacroTargetChange> = {}): MacroTargetChange {
     new_fat: 80,
     expenditure_kcal: 2650,
     expenditure_confidence: 'measured',
+    old_expenditure_kcal: 2550,
     // 0.2 lb and 0.5 lb a week.
     kg_per_week: 0.0907,
     goal_kg_per_week: 0.2268,
@@ -42,73 +43,87 @@ const NEW = { calories: 2900, protein: 160, carbs: 375, fat: 80 };
 const OLD = { calories: 2800, protein: 160, carbs: 350, fat: 80 };
 
 describe('describeTargetChange', () => {
-  it('says the new target, the move and why, in pounds', () => {
-    expect(describeTargetChange({ change: change(), undone: false }, 'lb')).toEqual({
-      title: 'Target now 2,900 kcal',
-      line: 'Up 100. You gained 0.2 lb a week and the goal is 0.5.',
+  const words = (overrides: Partial<MacroTargetChange>, unit: 'lb' | 'kg' = 'lb') =>
+    describeTargetChange({ change: change(overrides), undone: false }, unit);
+
+  it('says the move, and the weight behind it, in pounds', () => {
+    expect(words({})).toEqual({
+      title: 'Target up 100 kcal',
+      line: 'Over three weeks you gained 0.2 lb a week and the goal is 0.5.',
     });
   });
 
   it('uses the person’s unit', () => {
-    expect(describeTargetChange({ change: change(), undone: false }, 'kg').line).toBe(
-      'Up 100. You gained 0.1 kg a week and the goal is 0.2.',
-    );
+    expect(words({}, 'kg').line).toBe('Over three weeks you gained 0.1 kg a week and the goal is 0.2.');
   });
 
-  it('says a lower target plainly', () => {
-    const lower = change({ new_calories: 2700, new_carbs: 325, kg_per_week: 0.363 });
-    expect(describeTargetChange({ change: lower, undone: false }, 'lb')).toEqual({
-      title: 'Target now 2,700 kcal',
-      line: 'Down 100. You gained 0.8 lb a week and the goal is 0.5.',
+  it('says a lower target plainly, when the weight ran ahead of the goal', () => {
+    expect(words({ new_calories: 2700, new_carbs: 325, kg_per_week: 0.363 })).toEqual({
+      title: 'Target down 100 kcal',
+      line: 'Over three weeks you gained 0.8 lb a week and the goal is 0.5.',
     });
   });
 
   it('names the goal’s direction when the weight went the other way', () => {
-    const lost = change({ kg_per_week: -0.0907 });
-    expect(describeTargetChange({ change: lost, undone: false }, 'lb').line).toBe(
-      'Up 100. You lost 0.2 lb a week and the goal is to gain 0.5.',
+    expect(words({ kg_per_week: -0.0907 }).line).toBe(
+      'Over three weeks you lost 0.2 lb a week and the goal is to gain 0.5.',
     );
-    const cutting = change({ new_calories: 2700, kg_per_week: 0.0907, goal_kg_per_week: -0.2268 });
-    expect(describeTargetChange({ change: cutting, undone: false }, 'lb').line).toBe(
-      'Down 100. You gained 0.2 lb a week and the goal is to lose 0.5.',
+    expect(words({ new_calories: 2700, kg_per_week: 0.0907, goal_kg_per_week: -0.2268 }).line).toBe(
+      'Over three weeks you gained 0.2 lb a week and the goal is to lose 0.5.',
     );
   });
 
   it('says when the weight held steady, and a maintenance goal', () => {
-    const steady = change({ kg_per_week: 0.01 });
-    expect(describeTargetChange({ change: steady, undone: false }, 'lb').line).toBe(
-      'Up 100. Your weight held steady and the goal is to gain 0.5 lb a week.',
+    expect(words({ kg_per_week: 0.01 }).line).toBe(
+      'Over three weeks your weight held steady and the goal is to gain 0.5 lb a week.',
     );
-    const maintain = change({ goal_kg_per_week: 0 });
-    expect(describeTargetChange({ change: maintain, undone: false }, 'lb').line).toBe(
-      'Up 100. You gained 0.2 lb a week and the goal is to hold steady.',
+    expect(words({ goal_kg_per_week: 0, kg_per_week: -0.0907 }).line).toBe(
+      'Over three weeks you lost 0.2 lb a week and the goal is to hold steady.',
+    );
+  });
+
+  it('never tells a weight story that contradicts the move', () => {
+    // Gained more than a hold-steady goal, yet raised: the burn moved it.
+    const raisedAhead = words({ kg_per_week: 0.0907, goal_kg_per_week: 0, expenditure_kcal: 2650, old_expenditure_kcal: 2550 });
+    expect(raisedAhead).toEqual({ title: 'Target up 100 kcal', line: 'Your daily burn now reads 2,650 kcal, up from 2,550.' });
+    // Right on the goal's pace: the weight alone doesn't explain it either.
+    expect(words({ kg_per_week: 0.22, expenditure_kcal: 2650, old_expenditure_kcal: 2550 }).line).toBe(
+      'Your daily burn now reads 2,650 kcal, up from 2,550.',
+    );
+    // Lowered while behind a gain goal: the burn fell.
+    expect(words({ new_calories: 2700, kg_per_week: 0, expenditure_kcal: 2500, old_expenditure_kcal: 2600 }).line).toBe(
+      'Your daily burn now reads 2,500 kcal, down from 2,600.',
     );
   });
 
   it('falls back to the burn when the weight change is unknown', () => {
-    expect(describeTargetChange({ change: change({ kg_per_week: null }), undone: false }, 'lb').line).toBe(
-      'Up 100. Your daily burn is now about 2,650 kcal.',
+    expect(words({ kg_per_week: null, old_expenditure_kcal: null }).line).toBe('Your daily burn now reads about 2,650 kcal.');
+    expect(words({ kg_per_week: null, old_expenditure_kcal: 2550 }).line).toBe('Your daily burn now reads 2,650 kcal, up from 2,550.');
+  });
+
+  it('never names a burn that moved the other way', () => {
+    expect(words({ kg_per_week: 0.3, expenditure_kcal: 2500, old_expenditure_kcal: 2550 }).line).toBe(
+      'Recalculated from your latest weight and food logs.',
     );
   });
 
-  it('leaves out the move when only the macros changed', () => {
-    const macrosOnly = change({ new_calories: 2800, new_protein: 165, new_carbs: 345 });
-    expect(describeTargetChange({ change: macrosOnly, undone: false }, 'lb')).toEqual({
-      title: 'Target now 2,800 kcal',
-      line: 'You gained 0.2 lb a week and the goal is 0.5.',
+  it('says when only the macros changed', () => {
+    expect(words({ new_calories: 2800, new_protein: 165, new_carbs: 345, old_expenditure_kcal: 2650 })).toEqual({
+      title: 'Macros adjusted',
+      line: 'Recalculated from your latest weight and food logs.',
     });
   });
 
-  it('says the old target is back after Undo', () => {
+  it('says the previous target is back after Undo', () => {
     expect(describeTargetChange({ change: change({ undone_at: MONDAY.toISOString() }), undone: true }, 'lb')).toEqual({
-      title: 'Target back to 2,800 kcal',
-      line: 'Until next Monday’s update.',
+      title: 'Change undone',
+      line: 'Your previous target stays until next Monday’s update.',
     });
   });
 
   it('never uses warning words for a raise', () => {
-    const { title, line } = describeTargetChange({ change: change({ new_calories: 3400 }), undone: false }, 'lb');
-    expect(`${title} ${line}`).not.toMatch(/over|too|warning|careful|exceed/i);
+    const { title, line } = words({ new_calories: 3400 });
+    expect(`${title} ${line}`).not.toMatch(/over (target|limit)|too (much|high)|warning|careful|exceed/i);
   });
 });
 
@@ -124,8 +139,10 @@ describe('shownTargetChange', () => {
     expect(shownTargetChange(change(), target(NEW), new Date(2026, 10, 22, 22, 0))).not.toBeNull();
   });
 
-  it('hides it once the target was typed by hand or moved on', () => {
+  it('hides it once the target was typed by hand, is not adaptive, or moved on', () => {
     expect(shownTargetChange(change(), target(NEW, 'manual'), MONDAY)).toBeNull();
+    expect(shownTargetChange(change(), target(NEW, 'calculated'), MONDAY)).toBeNull();
+    expect(shownTargetChange(change(), { ...NEW, source: undefined }, MONDAY)).toBeNull();
     expect(shownTargetChange(change(), target({ ...NEW, calories: 3000 }), MONDAY)).toBeNull();
   });
 
@@ -150,15 +167,19 @@ describe('normalizeTargetChange', () => {
 });
 
 describe('burnProgressLine', () => {
-  it('counts toward the gates the estimate uses', () => {
+  it('says what is still needed, in one sentence', () => {
     expect(burnProgressLine({ loggedDays: 9, weighInDays: 6 })).toBe(
-      'Learning your burn: 9 of 14 logged days, 6 of 10 weigh-ins.',
+      'Log food on 5 more days and weigh in 4 more times, and your burn shows here.',
     );
   });
 
-  it('never counts past a gate', () => {
-    expect(burnProgressLine({ loggedDays: 17, weighInDays: 4 })).toBe(
-      'Learning your burn: 14 of 14 logged days, 4 of 10 weigh-ins.',
-    );
+  it('leaves out a gate already met', () => {
+    expect(burnProgressLine({ loggedDays: 5, weighInDays: 10 })).toBe('Log food on 9 more days and your burn shows here.');
+    expect(burnProgressLine({ loggedDays: 17, weighInDays: 9 })).toBe('Weigh in 1 more time and your burn shows here.');
+    expect(burnProgressLine({ loggedDays: 13, weighInDays: 12 })).toBe('Log food on 1 more day and your burn shows here.');
+  });
+
+  it('says nothing once both are met', () => {
+    expect(burnProgressLine({ loggedDays: 14, weighInDays: 10 })).toBeNull();
   });
 });

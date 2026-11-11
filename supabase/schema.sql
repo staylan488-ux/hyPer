@@ -353,6 +353,7 @@ CREATE TABLE IF NOT EXISTS public.macro_target_changes (
   new_fat INTEGER NOT NULL CHECK (new_fat BETWEEN 0 AND 2000),
   expenditure_kcal INTEGER NOT NULL CHECK (expenditure_kcal BETWEEN 500 AND 10000),
   expenditure_confidence TEXT NOT NULL CHECK (expenditure_confidence IN ('learning', 'measured')),
+  old_expenditure_kcal INTEGER CHECK (old_expenditure_kcal IS NULL OR old_expenditure_kcal BETWEEN 500 AND 10000),
   kg_per_week NUMERIC(6, 3) CHECK (kg_per_week IS NULL OR kg_per_week BETWEEN -10 AND 10),
   goal_kg_per_week NUMERIC(6, 3) CHECK (goal_kg_per_week IS NULL OR goal_kg_per_week BETWEEN -10 AND 10),
   mean_intake_kcal INTEGER CHECK (mean_intake_kcal IS NULL OR mean_intake_kcal BETWEEN 0 AND 20000),

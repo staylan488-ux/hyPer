@@ -3,13 +3,13 @@ import { Alert, View } from 'react-native';
 
 import { describeTargetChange, shownTargetChange } from '@/lib/targetChanges';
 import { useAppStore } from '@/stores/appStore';
-import { announce, useLargeText } from '~/lib/accessibility';
+import { announce, speak, useLargeText } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { haptics } from '~/lib/haptics';
 import { useWeightStore } from '~/lib/you';
 
+import { BlancText } from './BlancText';
 import { Capsule } from './Capsule';
-import { Row } from './Row';
 
 /** Noon of a day key ("2026-11-16"), so the week it falls in never depends on the hour. */
 function dayFromKey(key: string): Date {
@@ -48,7 +48,10 @@ export function TargetChangeRow({ after }: { after?: ReactNode }) {
       if (done) {
         haptics.success();
         const back = useAppStore.getState().targetChange;
-        if (back) announce(describeTargetChange({ change: back, undone: true }, unit).title);
+        if (back) {
+          const words = describeTargetChange({ change: back, undone: true }, unit);
+          announce(`${words.title}. ${words.line}`);
+        }
       }
     } catch {
       haptics.error();
@@ -62,11 +65,19 @@ export function TargetChangeRow({ after }: { after?: ReactNode }) {
     <Capsule title="Undo" variant="quiet" size="small" busy={undoing} accessibilityLabel="Undo target change" onPress={() => void undo()} />
   );
 
+  // Laid out as a list row, but the reason wraps in full (it is what Undo
+  // rests on), and VoiceOver reads the title and reason as one, then Undo.
   return (
     <View>
-      <Row title={title} detail={line} trailing={large ? undefined : button} />
-      {/* At the accessibility text sizes the button would squeeze the words: it goes under them. */}
-      {large && button ? <View style={{ paddingLeft: 18, paddingRight: 16, paddingBottom: 12 }}>{button}</View> : null}
+      <View style={{ flexDirection: large ? 'column' : 'row', alignItems: large ? 'flex-start' : 'center', gap: 12, minHeight: 60, paddingVertical: 10, paddingLeft: 18, paddingRight: 16 }}>
+        <View accessible accessibilityLabel={speak(`${title}. ${line}`)} style={{ flex: large ? undefined : 1, minWidth: 0, gap: 1 }}>
+          <BlancText variant="bodyStrong">{title}</BlancText>
+          <BlancText variant="secondary" tone="graphite">
+            {line}
+          </BlancText>
+        </View>
+        {button}
+      </View>
       {after}
     </View>
   );

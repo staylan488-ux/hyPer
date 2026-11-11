@@ -131,6 +131,7 @@ const change: MacroTargetChange = {
   new_fat: 70,
   expenditure_kcal: 2450,
   expenditure_confidence: 'measured',
+  old_expenditure_kcal: 2400,
   kg_per_week: 0.07,
   goal_kg_per_week: 0.163,
   mean_intake_kcal: 2900,
@@ -181,6 +182,9 @@ describe('recording a target change', () => {
       weigh_in_days: expect.any(Number),
     });
     expect(row.expenditure_kcal).toBe(useAppStore.getState().nutritionProfile?.expenditure_kcal);
+    // Nothing was learned before, so the old target stood on the profile's estimate.
+    expect(row.old_expenditure_kcal).toEqual(expect.any(Number));
+    expect(row.old_expenditure_kcal).not.toBe(row.expenditure_kcal);
     // 0.25% of 65 kg a week.
     expect(row.goal_kg_per_week).toBeCloseTo(0.163, 3);
     expect(row.kg_per_week).toBeGreaterThan(0);
@@ -268,7 +272,7 @@ describe('undoTargetChange', () => {
     await expect(useAppStore.getState().undoTargetChange(change)).resolves.toBe(true);
 
     expect(targets.update).toHaveBeenCalledWith(expect.objectContaining({ calories: 2500, protein: 150, carbs: 300, fat: 70, source: 'adaptive' }));
-    expect(targets.neq).toHaveBeenCalledWith('source', 'manual');
+    expect(targets.eq).toHaveBeenCalledWith('source', 'adaptive');
     expect(targets.eq).toHaveBeenCalledWith('calories', 2600);
     expect(targets.eq).toHaveBeenCalledWith('carbs', 325);
     expect(useAppStore.getState().macroTarget?.calories).toBe(2500);

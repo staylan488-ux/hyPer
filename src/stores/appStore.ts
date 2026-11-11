@@ -110,6 +110,7 @@ function sameData(stored: unknown, fresh: unknown): boolean {
 async function estimateFromLogs(userId: string, profile: NutritionProfile, now: Date, isCurrent: () => boolean): Promise<{
   estimate: ExpenditureEstimate;
   weightKg: number;
+  predictedTdee: number;
 } | null> {
   const latest = await getLatestBodyWeight(userId);
   if (!latest || !isCurrent()) return null;
@@ -138,7 +139,7 @@ async function estimateFromLogs(userId: string, profile: NutritionProfile, now: 
     previousConfidence: profile.expenditure_confidence,
     through: now,
   });
-  return { estimate, weightKg };
+  return { estimate, weightKg, predictedTdee: predicted.tdee };
 }
 
 /**
@@ -3767,7 +3768,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const now = new Date();
         const learned = await estimateFromLogs(userId, profile, now, isAccountCurrent);
         if (!learned || !isAccountCurrent()) return 'skipped';
-        const { estimate, weightKg } = learned;
+        const { estimate, weightKg, predictedTdee } = learned;
 
         // The user changed their goal or saved a target while this ran: the
         // result is for inputs they replaced. Write nothing; the unchanged
@@ -3818,6 +3819,13 @@ export const useAppStore = create<AppState>((set, get) => ({
                 new_fat: savedTarget.fat,
                 expenditure_kcal: estimate.expenditureKcal,
                 expenditure_confidence: estimate.confidence === 'measured' ? 'measured' : 'learning',
+                // What the old target was built on: the burn learned before, else the profile's estimate.
+                old_expenditure_kcal: Math.round(
+                  profile.expenditure_kcal != null
+                    && (profile.expenditure_confidence === 'learning' || profile.expenditure_confidence === 'measured')
+                    ? profile.expenditure_kcal
+                    : predictedTdee
+                ),
                 kg_per_week: estimate.kgPerWeek == null ? null : Math.round(estimate.kgPerWeek * 1000) / 1000,
                 goal_kg_per_week: Math.round(next.requestedRatePctPerWeek * weightKg * 10) / 1000,
                 mean_intake_kcal: estimate.meanIntakeKcal == null ? null : Math.round(estimate.meanIntakeKcal),
@@ -3881,14 +3889,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!isAccountCurrent() || change.user_id !== userId) return false;
 
     // Back to the old figures, still adaptive so next Monday's update can move
-    // them again. Only while the target is still the one this change set: a
-    // target typed by hand, or a newer one, is never overwritten.
+    // them again. Only while the target is still the adaptive one this change
+    // set: a target typed by hand (or any other kind), or a newer one, is
+    // never overwritten.
     const next = newMacros(change);
     const { data, error } = await supabase
       .from('macro_targets')
       .update({ ...oldMacros(change), source: 'adaptive', updated_at: new Date().toISOString() })
       .eq('user_id', userId)
-      .neq('source', 'manual')
+      .eq('source', 'adaptive')
       .eq('calories', next.calories)
       .eq('protein', next.protein)
       .eq('carbs', next.carbs)
