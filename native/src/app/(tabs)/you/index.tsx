@@ -13,6 +13,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { FuelReminderSetting } from '~/components/FuelReminderSetting';
+import { Hint } from '~/components/Hint';
 import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
@@ -180,6 +181,14 @@ function WeightCard() {
     [trendLine, todayKey, unit],
   );
   const latest = entries[0] ?? null;
+  // Targets that will adapt but haven't learned yet: they learn from weigh-ins.
+  const target = useAppStore((state) => state.macroTarget);
+  const profile = useAppStore((state) => state.nutritionProfile);
+  const learning =
+    target !== null &&
+    Boolean(profile?.adaptive_enabled) &&
+    (target.source ?? 'manual') !== 'manual' &&
+    (profile?.expenditure_confidence ?? 'predicted') === 'predicted';
   const latestDate = latest ? new Date(latest.measured_at) : null;
   // Under two weeks there's no rate yet: the change says enough ("+0.8 lb since Oct 27").
   const line = rate && since
@@ -255,6 +264,10 @@ function WeightCard() {
           )}
         </Pressable>
       </Label>
+      {/* Until the targets have learned anything: what they learn from. */}
+      <Hint name="weigh-in" ready={learning && !loading && !failed} symbol="info.circle">
+        Log food and weigh in a few mornings a week. In about three weeks your targets learn what you really burn.
+      </Hint>
     </Section>
   );
 }

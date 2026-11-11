@@ -13,6 +13,7 @@ import { BlancText } from '~/components/BlancText';
 import { BrandMark, HEADER_MARK_SIZE, headerMarkSlot } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { DragList } from '~/components/DragList';
+import { Hint } from '~/components/Hint';
 import { Label } from '~/components/Label';
 import { LiveClock } from '~/components/LiveClock';
 import { PlanCard, SessionCard } from '~/components/PlanCard';
@@ -29,6 +30,7 @@ import { markAtRest, useIntroRise } from '~/lib/brand';
 import { useFinishWorkout } from '~/lib/finishWorkout';
 import { formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
+import { markHintDone } from '~/lib/hints';
 import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
 import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
@@ -209,8 +211,15 @@ export default function TodayScreen() {
               items={order.map((key) => ({ key, node: groups[key] }))}
               enabled
               onMove={(key, index) => moveTodaySection(userId, key as TodaySection, index)}
-              onDragging={setDragging}
+              onDragging={(lifted) => {
+                setDragging(lifted);
+                if (lifted) markHintDone('today-order');
+              }}
             />
+            {/* Once there is something of the person's on Today, how to put it in their order. */}
+            <Hint name="today-order" ready={target !== null || !['loading', 'schedule-error', 'first-run'].includes(plan.hero.kind)} symbol="hand.point.up.left" gesture style={{ paddingTop: 20 }}>
+              Hold any group to move it. Today keeps your order.
+            </Hint>
           </View>
         </Animated.View>
       </TabScroll>

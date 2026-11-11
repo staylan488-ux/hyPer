@@ -13,6 +13,7 @@ import { todayTotalsShown } from '../native/src/lib/fuel';
 import { movedTodayOrder, TODAY_SECTIONS, type TodaySection } from '../native/src/lib/todayOrder';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
+import { hintImports } from './helpers/hintStubs';
 
 // Fuel's store module is loaded for its real totals rule; nothing reaches the backend.
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
@@ -97,6 +98,7 @@ const shown = () => host.textContent ?? '';
 
 async function open() {
   const { default: TodayScreen } = loadNativeModule<{ default: () => ReactNode }>('app/(tabs)/today/index.tsx', {
+    ...hintImports,
     'date-fns': dates,
     'expo-router': { router, Stack: { Screen: Empty } },
     'expo-symbols': { SymbolView },

@@ -17,6 +17,7 @@ import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/type
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Disclosure } from '~/components/Disclosure';
+import { Hint } from '~/components/Hint';
 import { Label } from '~/components/Label';
 import { MuscleFigure } from '~/components/MuscleFigure';
 import { Hairline } from '~/components/Row';
@@ -26,6 +27,7 @@ import { useAccountDay, useCurrentDayKey } from '~/lib/accountData';
 import { speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
+import { markHintDone } from '~/lib/hints';
 import { useBlanc } from '~/theme/blanc';
 import { useMuscleTones } from '~/theme/useMuscleTones';
 import { openTrain } from '~/lib/openTrain';
@@ -121,6 +123,8 @@ export default function ProgressScreen() {
   // A tapped delt with no row of its own opens the general shoulders row.
   const pick = (muscle: MuscleGroup | null) => {
     haptics.select();
+    // Opening a muscle is where its numbers are: the hint has done its job.
+    if (muscle) markHintDone('muscles');
     if (!muscle) return setOpen(null);
     setOpen(rows.has(muscle) ? muscle : DELTS.includes(muscle) && rows.has('shoulders') ? 'shoulders' : muscle);
   };
@@ -178,6 +182,11 @@ export default function ProgressScreen() {
                 </BlancText>
                 <MuscleFigure volume={volume} selected={open} onPick={pick} />
               </Label>
+
+              {/* The first weeks: what the lines below mean. */}
+              <Hint name="muscles" ready={coached.some(({ mv }) => mv.landmark)} symbol="info.circle" style={{ paddingTop: 14, paddingBottom: 2 }}>
+                Each line is a muscle’s sets this week. In range is enough to grow, and no more than you can recover from.
+              </Hint>
 
               {/* Each muscle's sets against its range, under the rails' key; a tap opens its landmarks. */}
               <Label style={{ overflow: 'hidden', marginTop: 12 }}>

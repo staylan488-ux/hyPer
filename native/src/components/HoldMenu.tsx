@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { ActionSheetIOS, View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 
 import { HyperMenuView, hasHyperMenu } from '../../modules/hyper-menu';
+import { markHintDone, useHintScope } from '~/lib/hints';
 import { menuItems, sheetChoices, type MenuAction } from '~/lib/menu';
 import { radius, useBlanc } from '~/theme/blanc';
 
@@ -36,6 +37,7 @@ export function HoldMenu({ actions, enabled = true, backdrop, style, children }:
   children: ReactNode;
 }) {
   const c = useBlanc();
+  const hint = useHintScope();
   if (!HyperMenuView || actions.length === 0) return <View style={style}>{children}</View>;
   const { items, runs } = menuItems(actions);
   const menu = (
@@ -48,6 +50,8 @@ export function HoldMenu({ actions, enabled = true, backdrop, style, children }:
       previewRadius={radius.label}
       onOpen={() => {
         dismissOpenSwipeRow();
+        // The hold its block's hint taught has been found.
+        if (hint) markHintDone(hint);
       }}
       onAction={(event) => runs.get(event.nativeEvent.id)?.()}>
       {children}

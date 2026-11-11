@@ -29,12 +29,14 @@ import { showActionSheet, type MenuAction } from '~/components/HoldMenu';
 import { RollingText } from '~/components/RollingText';
 import { Hairline, Row, type DetailParts } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { Hint } from '~/components/Hint';
 import { SwipeRow } from '~/components/SwipeRow';
 import { tabBarCover, TabScroll } from '~/components/TabScroll';
 import { UndoBar } from '~/components/UndoBar';
 import { Track } from '~/components/Track';
 import { DayMark } from '~/fuel/DayMark';
 import { GapPicks } from '~/fuel/GapPicks';
+import { HintScope } from '~/lib/hints';
 import { announce, screenReaderRunning, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
@@ -404,6 +406,8 @@ export default function FuelScreen() {
         {/* One day's list: rows and meals fold away and close up when removed.
             Moving to another day swaps the whole list without that motion. */}
         <LayoutAnimationConfig key={selected} skipEntering skipExiting>
+          {/* A swipe or hold on any food here is what the hint below teaches. */}
+          <HintScope.Provider value="fuel-rows">
           <View>
             {unassigned.length > 0 ? (
               <Animated.View key="unassigned" entering={rowEnter} exiting={blockExit} layout={rowLayout}>
@@ -423,6 +427,11 @@ export default function FuelScreen() {
               </Animated.View>
             ) : null}
 
+            {/* The first days with food: what a swipe and a hold on a food do. */}
+            <Hint name="fuel-rows" ready={live && loaded && logs.length > 0} symbol="hand.point.up.left" gesture style={{ paddingTop: 16 }}>
+              Swipe a food left to delete it. Hold it to edit, move or save it.
+            </Hint>
+
             {/* More food for a day that has begun; a new meal or snack is made in Log food's destination menu. */}
             {loaded && logs.length > 0 ? (
               <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ alignItems: 'center', marginTop: 28 }}>
@@ -430,6 +439,7 @@ export default function FuelScreen() {
               </Animated.View>
             ) : null}
           </View>
+          </HintScope.Provider>
         </LayoutAnimationConfig>
 
         {loadFailed ? (

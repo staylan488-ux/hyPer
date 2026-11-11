@@ -18,6 +18,7 @@ import type { Food } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import { create as zustandCreate } from 'zustand';
+import { hintImports } from './helpers/hintStubs';
 
 // Fuel's folds, on this test's React: the app's own copy of zustand would bring its own.
 const mealFolds = loadNativeModule<typeof import('../native/src/lib/mealFolds')>('lib/mealFolds.ts', { zustand: { create: zustandCreate } });
@@ -58,6 +59,7 @@ async function renderFuel({ compile = false } = {}) {
   // the same lists on every render, as the store keeps them while nothing changes
   const fuel = { logs: [log], groups: [] };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
+    ...hintImports,
     'date-fns': dates,
     'expo-router': { router: { push: noop }, Stack: { Screen: Empty } },
     'expo-symbols': { SymbolView: Empty },

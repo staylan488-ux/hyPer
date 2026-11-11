@@ -19,6 +19,7 @@ import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import * as meals from '../native/src/lib/meals';
 import { create as zustandCreate } from 'zustand';
+import { hintImports } from './helpers/hintStubs';
 
 // Fuel's folds, on this test's React: the app's own copy of zustand would bring its own.
 const mealFolds = loadNativeModule<typeof import('../native/src/lib/mealFolds')>('lib/mealFolds.ts', { zustand: { create: zustandCreate } });
@@ -99,6 +100,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   shown.logs = logs;
   const fuel = { selected: day, logs, groups: meal ? [ownMeal] : [], deleteEntry, restoreEntry, deleteGroup, copyToToday: vi.fn(async () => true) };
   const Fuel = loadNativeModule<{ default: ComponentType }>('app/(tabs)/fuel/index.tsx', {
+    ...hintImports,
     'date-fns': dates,
     'expo-router': {
       router: { push },

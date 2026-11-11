@@ -17,6 +17,7 @@ import { useReduceMotionOverride } from '~/lib/accessibility';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
 import { followReminderTaps } from '~/lib/fuelReminder';
+import { setHintAccount } from '~/lib/hints';
 import { installLaunchCache } from '~/lib/launchCache';
 import { backendOf } from '~/lib/launchSnapshot';
 import { launchWaiting, takeNativeLaunch, useLaunchActions } from '~/lib/launch';
@@ -79,6 +80,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (introDone && screen !== 'boot') void SplashScreen.hideAsync().catch(() => {});
   }, [introDone, screen]);
+
+  // First-use hints follow the signed-in account; the sample account counts as new.
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const createdAt = useAuthStore((state) => state.user?.created_at ?? null);
+  useEffect(() => {
+    setHintAccount(screen === 'app' && userId ? { id: userId, createdAt: isPreviewActive() ? null : createdAt } : null);
+  }, [screen, userId, createdAt]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
