@@ -4,7 +4,7 @@
 // previewTables until the app restarts, so preview flows (add -> navigate ->
 // re-fetch) behave like the real database; a relaunch re-seeds from scratch.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { previewTables, PREVIEW_USER_ID } from './previewData';
+import { previewMacroTarget, previewTables, PREVIEW_USER_ID } from './previewData';
 import { buildYouFixtures } from './youFixtures';
 
 let youFixturesApplied = false;
@@ -370,9 +370,22 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
       // Fuel knows them.
       const { nutrition_profiles, body_weight_measurements } = buildYouFixtures('populated');
       // Adaptive on, so the calculator offers the learned burn beside the formula.
+      // This morning's update raised the target by 100 kcal, so Targets (and
+      // Last week on a Monday) show the change and its Undo.
+      const changedAt = new Date();
+      changedAt.setHours(6, 0, 0, 0);
       Object.assign(previewTables, {
         nutrition_profiles: nutrition_profiles.map((row) => ({ ...row, adaptive_enabled: true })),
         body_weight_measurements,
+        macro_target_changes: [{
+          id: 'mtc1', user_id: PREVIEW_USER_ID, changed_at: changedAt.toISOString(),
+          old_calories: previewMacroTarget.calories - 100, old_protein: previewMacroTarget.protein,
+          old_carbs: previewMacroTarget.carbs - 25, old_fat: previewMacroTarget.fat,
+          new_calories: previewMacroTarget.calories, new_protein: previewMacroTarget.protein,
+          new_carbs: previewMacroTarget.carbs, new_fat: previewMacroTarget.fat,
+          expenditure_kcal: 2600, expenditure_confidence: 'learning', kg_per_week: 0.09, goal_kg_per_week: 0,
+          mean_intake_kcal: 2550, logged_days: 17, weigh_in_days: 15, undone_at: null,
+        }],
       });
     }
   }

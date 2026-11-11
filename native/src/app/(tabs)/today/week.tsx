@@ -12,6 +12,7 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { TargetChangeRow, useShownTargetChange } from '~/components/TargetChangeRow';
 import { useAnnounce } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { formatSet, formatWhole } from '~/lib/format';
@@ -22,8 +23,9 @@ import { space, useBlanc } from '~/theme/blanc';
 /**
  * Last week (from Monday's card on Today): the training week before this one,
  * Monday to Sunday. Body weight against the goal's pace, calories and protein
- * a day, sets per muscle and the records set. Each section shows only when the
- * week holds it.
+ * a day (led by this week's calorie target change, when there is one), sets
+ * per muscle and the records set. Each section shows only when the week
+ * holds it.
  */
 export default function LastWeekScreen() {
   const todayKey = useCurrentDayKey();
@@ -31,6 +33,7 @@ export default function LastWeekScreen() {
   const unit = useWeightStore((state) => state.unit);
   const target = useAppStore((state) => state.macroTarget);
   const profile = useAppStore((state) => state.nutritionProfile);
+  const targetChange = useShownTargetChange();
   const [refreshing, setRefreshing] = useState(false);
 
   // Read again on opening, so an edit made in History since shows.
@@ -93,13 +96,19 @@ export default function LastWeekScreen() {
               </Section>
             ) : null}
 
-            {checkIn.eating ? (
-              // Past target is never red here: averages say how the week went, not a warning.
-              <Section title="Fuel" note={`${checkIn.eating.days} of 7 days logged`}>
+            {checkIn.eating || targetChange ? (
+              // Past target is never red here: averages say how the week went,
+              // not a warning. Monday's target change leads, as plain news.
+              <Section title="Fuel" note={checkIn.eating ? `${checkIn.eating.days} of 7 days logged` : undefined}>
                 <Label style={{ overflow: 'hidden' }}>
-                  <Row title="Calories a day" value={target ? `${formatWhole(checkIn.eating.calories)} of ${formatWhole(target.calories)} kcal` : `${formatWhole(checkIn.eating.calories)} kcal`} />
-                  <Hairline />
-                  <Row title="Protein a day" value={target ? `${formatWhole(checkIn.eating.protein)} of ${formatWhole(target.protein)} g` : `${formatWhole(checkIn.eating.protein)} g`} />
+                  <TargetChangeRow after={checkIn.eating ? <Hairline /> : null} />
+                  {checkIn.eating ? (
+                    <>
+                      <Row title="Calories a day" value={target ? `${formatWhole(checkIn.eating.calories)} of ${formatWhole(target.calories)} kcal` : `${formatWhole(checkIn.eating.calories)} kcal`} />
+                      <Hairline />
+                      <Row title="Protein a day" value={target ? `${formatWhole(checkIn.eating.protein)} of ${formatWhole(target.protein)} g` : `${formatWhole(checkIn.eating.protein)} g`} />
+                    </>
+                  ) : null}
                 </Label>
               </Section>
             ) : null}

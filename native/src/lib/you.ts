@@ -290,6 +290,8 @@ export async function loadTargets(): Promise<boolean> {
   const targetBeforeSaves = macroTargetSaves.begin();
   const profileBeforeSaves = nutritionProfileSaves.begin();
   useTargetsStore.setState({ status: 'loading' });
+  // The last change's line: its own quiet read, which never fails the targets.
+  void useAppStore.getState().fetchTargetChange();
   try {
     const [target, profile] = await Promise.all([
       supabase.from('macro_targets').select('*').eq('user_id', userId).maybeSingle(),
