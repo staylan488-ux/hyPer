@@ -44,7 +44,7 @@ export type TargetWhy =
   /** Match what was done last time: after two short sessions, or a break. */
   | { kind: 'match'; cause: 'missed_twice' | 'break' }
   /** Moved during the session: to the weight in use today, or with how an earlier set went. */
-  | { kind: 'moved'; cause: 'weight' | 'reps' };
+  | { kind: 'moved'; cause: 'weight' | 'reps'; off: number };
 
 export type TargetFigures = { weight: number; reps: number };
 export type SetTarget = TargetFigures & { why: TargetWhy };
@@ -327,14 +327,14 @@ function sessionLevel(session: PastSession): number | null {
 
 /**
  * Whether a session was done at a different weight altogether from its
- * target: more than two steps and more than a tenth away.
+ * target: two steps or more, and a tenth or more away.
  */
 function movedWeight(done: Base, given: ReadonlyArray<SetTarget | null>, step: number): boolean {
   const doneWeight = done.find((set) => set !== null)?.weight;
   const targetWeight = given.find((set) => set !== null)?.weight;
   if (doneWeight === undefined || targetWeight === undefined) return false;
   const gap = Math.abs(doneWeight - targetWeight);
-  return gap > 2 * step + WEIGHT_TOLERANCE && gap > 0.1 * Math.max(doneWeight, targetWeight);
+  return gap >= 2 * step - WEIGHT_TOLERANCE && gap >= 0.1 * Math.max(doneWeight, targetWeight) - WEIGHT_TOLERANCE;
 }
 
 type Walk = {
@@ -492,16 +492,16 @@ export function liveSetTarget(
   if (!anchor) return planned;
   const off = anchor.set.reps - anchor.target.reps;
   if (Math.abs(anchor.set.weight - anchor.target.weight) > WEIGHT_TOLERANCE) {
-    return { weight: anchor.set.weight, reps: Math.max(1, planned.reps + off), why: { kind: 'moved', cause: 'weight' } };
+    return { weight: anchor.set.weight, reps: Math.max(1, planned.reps + off), why: { kind: 'moved', cause: 'weight', off } };
   }
   if (Math.abs(off) >= 2) {
-    return { weight: planned.weight, reps: Math.max(1, planned.reps + off), why: { kind: 'moved', cause: 'reps' } };
+    return { weight: planned.weight, reps: Math.max(1, planned.reps + off), why: { kind: 'moved', cause: 'reps', off } };
   }
   return planned;
 }
 
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five'];
-const count = (value: number, noun: string) => `${NUMBER_WORDS[value] ?? value} ${noun}${value === 1 ? '' : 's'}`;
+const count = (value: number, noun: string, digits = false) => `${digits ? value : (NUMBER_WORDS[value] ?? value)} ${noun}${value === 1 ? '' : 's'}`;
 const pounds = (value: number) => `${round2(value)} lb`;
 
 /** The one quiet line under the set: "one more rep than last time". */
@@ -521,11 +521,13 @@ export function describeTarget(target: SetTarget): string {
         ? `${count(why.reps, 'more rep')}, ${pounds(why.nextWeight)} is too big a jump yet`
         : `${count(why.reps, 'more rep')} than last time`;
     case 'repeat':
-      return 'same target as last time';
+      return 'same target, last time fell short';
     case 'match':
       return why.cause === 'break' ? 'match last time after a break' : 'match last time';
     case 'moved':
-      return why.cause === 'weight' ? 'at the weight you are using' : 'moved with how set 1 went';
+      // A concrete aim, not a condition: the weight in use and the reps to reach.
+      if (why.cause === 'weight') return target.weight > 0 ? `keep ${pounds(target.weight)}, aim for ${count(target.reps, 'rep', true)}` : `aim for ${count(target.reps, 'rep', true)}`;
+      return `set 1 came in ${Math.abs(why.off)} ${why.off < 0 ? 'under' : 'over'}, aim for ${count(target.reps, 'rep', true)}`;
   }
 }
 

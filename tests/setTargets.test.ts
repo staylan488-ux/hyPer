@@ -63,7 +63,7 @@ describe('set targets: bad days, breaks and stalls', () => {
     const history = newestFirst(session('2026-10-01', 100, [10, 9, 8]), session('2026-10-04', 100, [10, 8, 8]));
     const result = planMovementTargets({ history, today: '2026-10-07', setCount: 3, range: RANGE });
     expect(figures(result)).toEqual(['100×11', '100×9', '100×8']);
-    expect(describeTarget(result!.sets[0]!)).toBe('same target as last time');
+    expect(describeTarget(result!.sets[0]!)).toBe('same target, last time fell short');
   });
 
   it('two sessions below target in a row match what was done, with no extra rep', () => {
@@ -91,6 +91,12 @@ describe('set targets: bad days, breaks and stalls', () => {
   it('starts afresh from a session at a different weight altogether, rather than repeating a stale target', () => {
     const history = newestFirst(session('2026-10-01', 135, [7, 5]), session('2026-10-04', 40, [8, 8]));
     expect(figures(planMovementTargets({ history, today: '2026-10-07', setCount: 2, range: RANGE }))).toEqual(['40×9', '40×8']);
+  });
+
+  it('starts afresh two weight steps down, rather than repeating the heavier target', () => {
+    // Step 10 learned from 100, 110 and 120; last time came in at 100, two steps under the 120 target.
+    const history = newestFirst(session('2026-10-01', 110, [12, 12]), session('2026-10-04', 120, [9, 8]), session('2026-10-07', 100, [10, 9]));
+    expect(figures(planMovementTargets({ history, today: '2026-10-10', setCount: 2, range: RANGE }))).toEqual(['100×11', '100×9']);
   });
 
   it('marks a movement stalled after three sessions with no gain, and the targets still come', () => {
@@ -273,7 +279,7 @@ describe('set targets during a session', () => {
   it('moves later sets with set 1 when it lands two or more reps off', () => {
     const later = liveSetTarget(targets, [{ weight: 100, reps: 8 }], 2);
     expect(later).toMatchObject({ weight: 100, reps: 6, why: { kind: 'moved', cause: 'reps' } });
-    expect(describeTarget(later!)).toBe('moved with how set 1 went');
+    expect(describeTarget(later!)).toBe('set 1 came in 3 under, aim for 6 reps');
     expect(liveSetTarget(targets, [{ weight: 100, reps: 14 }, { weight: 100, reps: 12 }], 3)).toMatchObject({ reps: 11 });
     // Set 1 leads; set 2 beating its target does not move set 3.
     expect(liveSetTarget(targets, [{ weight: 100, reps: 11 }, { weight: 100, reps: 12 }], 3)).toMatchObject({ reps: 8, why: { kind: 'hold' } });
@@ -285,7 +291,7 @@ describe('set targets during a session', () => {
     // Set 1 at 110 × 8 is three under its 11: set 2 keeps the planned drop (9 after 11) at 110.
     const later = liveSetTarget(targets, [{ weight: 110, reps: 8 }], 2);
     expect(later).toMatchObject({ weight: 110, reps: 6, why: { kind: 'moved', cause: 'weight' } });
-    expect(describeTarget(later!)).toBe('at the weight you are using');
+    expect(describeTarget(later!)).toBe('keep 110 lb, aim for 6 reps');
     // A much lighter weight never asks for silly reps.
     expect(liveSetTarget(targets, [{ weight: 45, reps: 9 }], 2)).toMatchObject({ weight: 45, reps: 7 });
   });
