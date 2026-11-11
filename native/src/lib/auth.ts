@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { authScreen, type AuthScreen } from '@/lib/authScreen';
 import { isInviteRefusal } from '@/lib/betaAccess';
 import { useAuthStore } from '@/stores/authStore';
+import { useAppConfigStore, useUpdateRequired } from '~/lib/appConfig';
 
 /**
  * "Sign in instead" on the offline screen. Kept for this launch only, and it
@@ -15,6 +16,8 @@ export const useSignInInstead = create<{ chosen: boolean; choose: () => void }>(
 
 /** A sign-up (email, Google or Apple) the invite list refused. */
 export const INVITE_ONLY_WORDS = 'hyPer is invite-only for now. Use the email your invite was sent to.';
+/** The same refusal while sign-up is open to everyone: this email is blocked. */
+export const SIGNUP_REFUSED_WORDS = 'This email can’t sign up for hyPer. If that seems wrong, contact support.';
 
 /** Which top-level screen the auth state calls for (the shared src/lib/authScreen rule). */
 export function useAuthScreen(): AuthScreen {
@@ -24,7 +27,8 @@ export function useAuthScreen(): AuthScreen {
   const passwordRecovery = useAuthStore((state) => state.passwordRecovery);
   const betaAccess = useAuthStore((state) => state.betaAccess);
   const signInInstead = useSignInInstead((state) => state.chosen);
-  return authScreen({ initialized, user, reconnecting, passwordRecovery, betaAccess }, signInInstead);
+  const updateRequired = useUpdateRequired();
+  return authScreen({ initialized, user, reconnecting, passwordRecovery, betaAccess, updateRequired }, signInInstead);
 }
 
 /**
@@ -33,7 +37,7 @@ export function useAuthScreen(): AuthScreen {
  * shows as the server wrote it.
  */
 export function authErrorWords(message: string): string {
-  if (isInviteRefusal(message)) return INVITE_ONLY_WORDS;
+  if (isInviteRefusal(message)) return useAppConfigStore.getState().config?.signupMode === 'open' ? SIGNUP_REFUSED_WORDS : INVITE_ONLY_WORDS;
   if (/invalid login credentials/i.test(message)) return 'That email and password don’t match. Check them and try again.';
   if (/rate limit|only request this after|too many requests/i.test(message)) return 'Too many tries for now. Wait a minute, then try again.';
   if (/should be different from the old password/i.test(message)) return 'That’s your current password. Choose a new one.';

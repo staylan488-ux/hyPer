@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import { ActivityIndicator, Keyboard, Pressable, ScrollView, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { parseDecimal } from '@/lib/decimalText';
 import { recordManualBodyWeight } from '@/lib/healthWeights';
 import { macroCaloriePercentages } from '@/lib/nutritionCalculator';
 import {
@@ -17,6 +18,7 @@ import {
   switchWizardUnits,
   learnedBurnLooksLow,
   wizardBodyReady,
+  MIN_AGE,
   wizardBreakdown,
   wizardBurns,
   wizardMethodNote,
@@ -133,6 +135,9 @@ function Calculator() {
   const rateBounds = wizardRateBounds(draft);
   const burns = wizardBurns(draft, profile);
   const ready = wizardBodyReady(draft);
+  // A typed age under 18 says why nothing is calculated (a blank one doesn't).
+  const typedAge = parseDecimal(draft.age);
+  const underAge = draft.age.trim() !== '' && Number.isFinite(typedAge) && typedAge > 0 && typedAge < MIN_AGE;
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
 
   useLeaveGuard(dirty && !done, { title: 'Discard these changes?' }, { busy: saving });
@@ -264,7 +269,11 @@ function Calculator() {
           <Hairline />
           <FieldRow ref={bodyFatField} label="Body fat" unit={draft.bodyFat.trim() ? '%' : undefined} value={draft.bodyFat} placeholder="Optional" keyboardType="decimal-pad" maxLength={4} onChangeText={(bodyFat) => update({ bodyFat })} />
         </Label>
-        <FormNote>{openedKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
+        {underAge ? (
+          <FormNote alert>hyPer is for people 18 and over.</FormNote>
+        ) : (
+          <FormNote>{openedKg != null ? 'Weight is from your latest weigh-in. ' : ''}Body fat, if you know it, bases calories and protein on lean mass.</FormNote>
+        )}
       </Section>
 
       <Section title="Activity">

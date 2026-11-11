@@ -8,6 +8,7 @@ import { advanceTrail, startTrail, type AnalysisTrail } from '@/lib/analysisProg
 import { buildClarifiedMealHint, isValidTrialReview } from '@/lib/foodTrialReview';
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import {
+  aiLimitOf,
   analyzeFoodTrial,
   trialFoodTotals,
   trialIngredientFood,
@@ -16,6 +17,7 @@ import {
   type FoodTrialResult,
   type TrialFoodItem,
 } from '@/lib/foodTrial';
+import { usageResetLabel } from '@/lib/foodTrialUsage';
 import { createMealIngredient } from '@/lib/mealComposition';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { BlancText } from '~/components/BlancText';
@@ -28,6 +30,8 @@ import { Hairline } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
 import { announce, speak, useLargeText } from '~/lib/accessibility';
+import { askAiConsent } from '~/lib/aiConsent';
+import { useAiPaused } from '~/lib/appConfig';
 import { formatWhole } from '~/lib/format';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
@@ -72,6 +76,16 @@ const MAX_PHOTOS = 2;
 /** The AI tab can take a photo now: no estimate yet and room for one more (Snap a meal). */
 export const aiTakesPhoto = (draft: AiDraft) => draft.result === null && !draft.saveStarted && draft.photos.length < MAX_PHOTOS;
 const LIMIT = 1500;
+
+type AiLimit = NonNullable<ReturnType<typeof aiLimitOf>>;
+/** Why no estimate can be made today, in the person's terms; each offers Manual instead. */
+function limitWords(kind: AiLimit): { title: string; line: string } {
+  if (kind === 'paused') return { title: 'AI estimates are paused', line: 'You can still enter this meal yourself.' };
+  const reset = usageResetLabel();
+  if (kind === 'daily') return { title: 'You’ve used today’s AI estimates', line: `They start again at ${reset}. You can enter this meal yourself.` };
+  return { title: 'AI estimates are off until later', line: `hyPer reached today’s limit for everyone. It starts again at ${reset}. You can enter this meal yourself.` };
+}
+
 const round1 = (value: number) => Math.round(value * 10) / 10;
 
 /**
@@ -94,6 +108,10 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
   const logger = useLogger();
   const [busy, setBusyState] = useState<'analysis' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The AI said no for today (this account's limit, everyone's, or switched off).
+  const [limit, setLimit] = useState<AiLimit | null>(null);
+  // Switched off on the server: said before anyone types, not after Analyze.
+  const paused = useAiPaused();
   // What the analysis is doing, step by step, and when Analyze was tapped.
   const [trail, setTrail] = useState<{ steps: AnalysisTrail; startedAt: number } | null>(null);
   // the food opened for adjusting, by its key
@@ -142,8 +160,11 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
   // Snap a meal passes the photos it just added; every other call uses the draft's.
   const analyze = async ({ clarify = false, photos = draft.photos }: { clarify?: boolean; photos?: PickedPhoto[] } = {}) => {
     if (busy || (!clarify && !draft.hint.trim() && photos.length === 0)) return;
+    // Nothing leaves the phone before the person allows it, once.
+    if (!(await askAiConsent()) || !live.current) return;
     setBusyState('analysis');
     setError(null);
+    setLimit(null);
     // The steps show where the button was; the keyboard would cover them.
     Keyboard.dismiss();
     const meal = { photos: photos.length, hint: draft.hint };
@@ -180,7 +201,13 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
     } catch (cause) {
       if (!live.current) return;
       haptics.error();
-      setError(cause instanceof Error ? cause.message : 'Could not analyze the meal.');
+      const kind = aiLimitOf(cause);
+      if (kind) {
+        setLimit(kind);
+        announce(limitWords(kind).title);
+      } else {
+        setError(cause instanceof Error ? cause.message : 'Could not analyze the meal.');
+      }
     } finally {
       setBusyState(null);
       setTrail(null);
@@ -191,7 +218,8 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
   // then the analysis without a tap. Cancelling leaves the tab as it was.
   const seenCamera = useRef(cameraRequest);
   const snap = useEffectEvent(async () => {
-    if (busy !== null || foodPickerUp() || !aiTakesPhoto(draft)) return;
+    // No estimate can be made today: the tab says so instead of opening the camera.
+    if (busy !== null || foodPickerUp() || !aiTakesPhoto(draft) || limit !== null || paused) return;
     setError(null);
     try {
       const photo = await pickFoodPhoto('camera');
@@ -236,6 +264,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
 
   const clearEstimate = () => {
     setError(null);
+    setLimit(null);
     setOpen(null);
     setDraft((current) => ({ ...current, result: null, items: [], answer: '', clarificationUsed: false, saveAsReusable: false, saveStarted: false }));
   };
@@ -418,6 +447,30 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
     </>
   ) : null;
 
+  // No estimate today: say why, and offer Manual with the meal's words as its name.
+  const limitKind = limit ?? (paused ? 'paused' : null);
+  const limitNote = limitKind ? (
+    <View style={{ marginTop: 18 }}>
+      <View style={{ paddingHorizontal: space.gutter, gap: 4 }}>
+        <BlancText variant="headline">{limitWords(limitKind).title}</BlancText>
+        <BlancText variant="secondary" tone="graphite">
+          {limitWords(limitKind).line}
+        </BlancText>
+      </View>
+      {logger.enterManually ? (
+        <View style={{ paddingHorizontal: space.inset, marginTop: 14 }}>
+          <Capsule
+            title="Enter it yourself"
+            variant="quiet"
+            size="large"
+            fill
+            onPress={() => logger.enterManually?.(draft.hint.trim().split('\n')[0] ?? '')}
+          />
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+
   // ── Describe and photos ──
   if (!result) {
     return (
@@ -447,6 +500,8 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
         {errorNote}
         {trail ? (
           <AnalysisProgress trail={trail.steps} startedAt={trail.startedAt} />
+        ) : limitNote ? (
+          limitNote
         ) : (
           <View style={{ paddingHorizontal: space.inset, marginTop: 22 }}>
             <Capsule
@@ -497,6 +552,7 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
         {photoControls}
         <FormNote>Add a meal or nutrition label photo. Up to two photos. Remove a photo to replace it.</FormNote>
         {errorNote}
+        {limit ? limitNote : null}
         {trail ? (
           <AnalysisProgress trail={trail.steps} startedAt={trail.startedAt} />
         ) : (
@@ -550,11 +606,10 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
               P {round1(totals.protein)} g · C {round1(totals.carbs)} g · F {round1(totals.fat)} g
             </BlancText>
           </View>
-          {result.summary ? (
-            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 8 }}>
-              {result.summary}
-            </BlancText>
-          ) : null}
+          {/* Gemini's own summary, then where the numbers came from: an AI estimate to check. */}
+          <BlancText variant="footnote" tone="graphite" style={{ marginTop: 8 }}>
+            {result.summary ? `${result.summary} ` : ''}Estimated by Google Gemini. Check it before you log.
+          </BlancText>
         </View>
         {editing && items.length > 1 ? <FormNote>Keep one food to replace this entry. Add other foods separately.</FormNote> : null}
 

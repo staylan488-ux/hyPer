@@ -3,7 +3,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 /** When the server's daily count starts over (midnight UTC), in local time: "5 PM". */
-function usageResetLabel(now: Date): string {
+export function usageResetLabel(now: Date = new Date()): string {
   const reset = new Date(now.getTime());
   reset.setUTCHours(24, 0, 0, 0);
   const hours = reset.getHours();
@@ -26,6 +26,8 @@ export function foodTrialUsageLine(value: unknown, now: Date = new Date()): stri
     throw new Error('The analysis usage response was incomplete.');
   }
   const reset = usageResetLabel(now);
+  // Switched off for everyone by the owner.
+  if (status.aiEnabled === false) return 'AI estimates are paused for now.';
   // The limit shared by every account (a daily spend ceiling) can run out first.
   if (status.globalLimitReached === true) return `Today’s limit for everyone is reached. It starts over at ${reset}.`;
   return (used as number) >= (max as number)

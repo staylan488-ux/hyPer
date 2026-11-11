@@ -9,7 +9,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/authStore';
 import {
   AuthField as Field,
+  MIN_NEW_PASSWORD_LENGTH,
   MIN_PASSWORD_LENGTH,
+  SHORT_NEW_PASSWORD_MESSAGE,
   SHORT_PASSWORD_MESSAGE,
   TextLink,
   type AuthInputRef as InputRef,
@@ -25,6 +27,7 @@ import { clearFuelReminders } from '~/lib/fuelReminder';
 import { authErrorWords } from '~/lib/auth';
 import { useAuthLinkError } from '~/lib/authLink';
 import { haptics } from '~/lib/haptics';
+import { openPage, PRIVACY_URL, TERMS_URL } from '~/lib/links';
 import { clearWidgetSnapshot } from '~/lib/widgets';
 import { SIGN_IN_CANCELLED } from '~/platform/nativeAuth';
 import { space, useBlanc } from '~/theme/blanc';
@@ -71,7 +74,10 @@ export default function SignIn() {
   const passwordRef = useRef<InputRef>(null);
 
   const trimmedEmail = email.trim();
-  const canSubmit = trimmedEmail.length > 0 && password.length >= MIN_PASSWORD_LENGTH;
+  // Sign-in takes an older account's six characters; a new password needs eight.
+  const minLength = isLogin ? MIN_PASSWORD_LENGTH : MIN_NEW_PASSWORD_LENGTH;
+  const shortMessage = isLogin ? SHORT_PASSWORD_MESSAGE : SHORT_NEW_PASSWORD_MESSAGE;
+  const canSubmit = trimmedEmail.length > 0 && password.length >= minLength;
   const busy = loading || provider !== null;
   const resetNote = resetSentTo
     ? `If ${resetSentTo} has a hyPer account, a link to choose a new password is on its way. Open it on this iPhone.`
@@ -159,9 +165,9 @@ export default function SignIn() {
       emailRef.current?.focus();
       return;
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
+    if (password.length < minLength) {
       haptics.error();
-      setError(SHORT_PASSWORD_MESSAGE);
+      setError(shortMessage);
       return;
     }
     void submit();
@@ -289,7 +295,7 @@ export default function SignIn() {
             ref={passwordRef}
             value={password}
             onChangeText={(next) => {
-              if (error === SHORT_PASSWORD_MESSAGE && next.length >= MIN_PASSWORD_LENGTH) setError(null);
+              if (error === shortMessage && next.length >= minLength) setError(null);
               setPassword(next);
             }}
             placeholder="Password"
@@ -297,7 +303,7 @@ export default function SignIn() {
             secureTextEntry
             textContentType={isLogin ? 'password' : 'newPassword'}
             autoComplete={isLogin ? 'current-password' : 'new-password'}
-            passwordRules={`minlength: ${MIN_PASSWORD_LENGTH};`}
+            passwordRules={`minlength: ${minLength};`}
             enablesReturnKeyAutomatically
             returnKeyType="go"
             onSubmitEditing={submitFromKeyboard}
@@ -392,6 +398,19 @@ export default function SignIn() {
           </BlancText>
           <TextLink title={isLogin ? 'Sign up' : 'Sign in'} onPress={() => switchMode(!isLogin)} />
         </View>
+
+        {/* Apple and Google can create an account from either mode, so the terms show in both. */}
+        <BlancText variant="footnote" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 22, textAlign: 'center' }}>
+          {'By continuing, you confirm you’re 18 or older and agree to the '}
+          <BlancText variant="footnote" tone="graphite" accessibilityRole="link" style={{ textDecorationLine: 'underline' }} onPress={() => void openPage(TERMS_URL)}>
+            Terms
+          </BlancText>
+          {' and '}
+          <BlancText variant="footnote" tone="graphite" accessibilityRole="link" style={{ textDecorationLine: 'underline' }} onPress={() => void openPage(PRIVACY_URL)}>
+            Privacy Policy
+          </BlancText>
+          .
+        </BlancText>
       </Animated.View>
     </KeyboardAwareScrollView>
   );

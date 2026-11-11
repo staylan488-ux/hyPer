@@ -40,7 +40,7 @@ echo "==> Building main at $(git rev-parse --short HEAD)"
 # The archive stays in Xcode's Archives folder for crash symbols.
 trap 'rm -rf "$BUILD_REPO/native/build" "$BUILD_REPO/native/ios"' EXIT
 
-# The build clone needs the prod .env (Supabase keys + photo worker URL). It is
+# The build clone needs the prod .env (Supabase keys, crash reporting). It is
 # gitignored so it survives reset --hard, but seed/refresh it from the stash.
 [ -f "$ENV_SEED" ] && cp "$ENV_SEED" "$BUILD_REPO/.env"
 
@@ -65,9 +65,18 @@ read_env() {
 }
 EXPO_PUBLIC_SUPABASE_URL="$(read_env VITE_SUPABASE_URL)"
 EXPO_PUBLIC_SUPABASE_ANON_KEY="$(read_env VITE_SUPABASE_ANON_KEY)"
-EXPO_PUBLIC_PHOTO_WORKER_URL="$(read_env VITE_PHOTO_WORKER_URL || true)"
 [ -n "$EXPO_PUBLIC_SUPABASE_URL" ] && [ -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ] || { echo "FATAL: missing Supabase settings in .env"; exit 1; }
-export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_PHOTO_WORKER_URL
+export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY
+# Store builds carry no private Mac worker address: the early accounts that use
+# one keep it in their account settings (You › Food analysis › Mac worker).
+unset EXPO_PUBLIC_PHOTO_WORKER_URL
+# Crash reporting (Sentry), all optional: without SENTRY_DSN the app reports
+# nothing; without SENTRY_AUTH_TOKEN the build uploads no source maps.
+EXPO_PUBLIC_SENTRY_DSN="$(read_env SENTRY_DSN || true)"
+SENTRY_AUTH_TOKEN="$(read_env SENTRY_AUTH_TOKEN || true)"
+SENTRY_ORG="$(read_env SENTRY_ORG || true)"
+SENTRY_PROJECT="$(read_env SENTRY_PROJECT || true)"
+export EXPO_PUBLIC_SENTRY_DSN SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT
 export EXPO_PUBLIC_HYPER_PREVIEW=0 HYPER_APP=release LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 echo "==> Archiving, checking + uploading the native app to TestFlight"

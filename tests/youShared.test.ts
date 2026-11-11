@@ -318,6 +318,9 @@ describe('target calculator draft', () => {
     expect(wizardBodyFatPct(draft)).toBe(60);
     expect(wizardBodyFatPct({ ...draft, bodyFat: ' ' })).toBeNull();
     expect(wizardBodyReady(draft)).toBe(false);
+    // hyPer is for adults: 17 isn't enough, 18 is.
+    expect(wizardBodyReady({ ...draft, age: '17' })).toBe(false);
+    expect(wizardBodyReady({ ...draft, age: '18' })).toBe(true);
     const outcome = wizardOutcome({ ...draft, age: '34' }, profile, now);
     expect(outcome.profile).toMatchObject({ birth_year: 1992, height_cm: 177.8, adaptive_enabled: true, phase_started_on: '2026-09-01' });
     expect(outcome.targets.calories).toBe(outcome.computed.calories);
@@ -381,6 +384,8 @@ describe('short status lines', () => {
     expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 24 }, now)).toBe(`Daily limit reached: 24 of 24 used. It starts over at ${label}.`);
     expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: true }, now)).toBe(`Today’s limit for everyone is reached. It starts over at ${label}.`);
     expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: false }, now)).toBe(`3 of 24 analyses used. The count starts over at ${label}.`);
+    // Switched off for everyone: said before any count.
+    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, aiEnabled: false, globalLimitReached: false }, now)).toBe('AI estimates are paused for now.');
     expect(foodTrialUsageLine({ preview: true })).toBe('Sample data: no analyses counted.');
     expect(() => foodTrialUsageLine({ maxAttempts: 0, attemptsUsed: 0 })).toThrow();
   });

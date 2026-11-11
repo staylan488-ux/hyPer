@@ -48,7 +48,16 @@ const announce = vi.fn();
 // The steps the progress card is showing, by their running words.
 let shownTrail: string[] | null = null;
 const openSettings = vi.fn();
-const logger = { purpose: 'log', editing: null, beginBusy: () => noop, beginSave: () => noop, when: {}, groups: [], reloadSavedMeals: noop, complete: noop, addIngredients: noop };
+const enterManually = vi.fn();
+const logger = { purpose: 'log', editing: null, beginBusy: () => noop, beginSave: () => noop, when: {}, groups: [], reloadSavedMeals: noop, complete: noop, addIngredients: noop, enterManually };
+// The answer to "Send this to Google Gemini?": allowed unless a test says otherwise.
+let allowed = true;
+const askAiConsent = vi.fn(async () => allowed);
+// A refusal the service gave a reason for ("daily", "everyone", "paused").
+class Refusal extends Error {
+  readonly limit: string;
+  constructor(limit: string) { super('Refused.'); this.limit = limit; }
+}
 
 const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; emptyAi: (hint?: string) => Draft }>('fuel/AiTab.tsx', {
   'expo-image': { Image: Empty },
@@ -70,12 +79,14 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
   '@/lib/foodTrialReview': foodTrialReview,
   '@/lib/foodPersistence': {},
   '@/lib/foodTrial': {
+    aiLimitOf: (error: unknown) => (error instanceof Refusal ? error.limit : null),
     analyzeFoodTrial: analyze,
     trialFoodTotals: () => ({ calories: 0, protein: 0, carbs: 0, fat: 0 }),
     trialIngredientFood: noop,
     trialItemFood: noop,
     trialLogSource: noop,
   },
+  '@/lib/foodTrialUsage': { usageResetLabel: () => '5 PM' },
   '@/lib/mealComposition': { createMealIngredient: noop },
   '@/lib/pendingEntryId': pendingEntry,
   '~/components/BlancText': { BlancText: Wrap },
@@ -100,6 +111,9 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
   '~/components/SwipeRow': { closeOpenSwipeRow: () => false, SwipeRow: Wrap },
   // VoiceOver is off in a test; what the tab announces is recorded.
   '~/lib/accessibility': { ...silentAccessibility, announce },
+  // Sending was allowed before, and food analysis is on.
+  '~/lib/aiConsent': { askAiConsent },
+  '~/lib/appConfig': { useAiPaused: () => false },
   '~/lib/format': { formatWhole: String },
   '~/lib/foodLogger': { saveFoodEntry: vi.fn(), workerAccessToken: async () => 'token' },
   '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
@@ -144,6 +158,7 @@ const hasCapsule = (title: string) => host.querySelector(`button[data-title="${t
 
 beforeEach(() => {
   up = false;
+  allowed = true;
   shownTrail = null;
   sheet = undefined;
   sheetOptions = undefined;
@@ -321,5 +336,53 @@ describe('AI tab: a photo added', () => {
     await act(async () => { await sheet!(0); });
     expect(current.photos).toEqual([]);
     expect(host.querySelector('[data-label="Meal photo 1"]')).toBeNull();
+  });
+});
+
+describe('AI tab: permission and limits', () => {
+  it('sends nothing until sending to Gemini is allowed, and keeps the photo', async () => {
+    allowed = false;
+    pick.mockResolvedValueOnce(shot);
+    await render(0);
+    await render(1);
+    await settle();
+    expect(askAiConsent).toHaveBeenCalledOnce();
+    expect(analyze).not.toHaveBeenCalled();
+    expect(current.photos).toEqual([shot]);
+    expect(hasCapsule('Analyze meal')).toBe(true);
+  });
+
+  it('says the daily limit is reached and offers Manual with the meal’s words', async () => {
+    await render(0, { ...emptyAi('Six samosas\nwith chutney') });
+    await act(async () => { capsules['Analyze meal'].onPress(); });
+    await settle();
+    await act(async () => { analysis.reject(new Refusal('daily')); });
+    await settle();
+    expect(host.textContent).toContain('You’ve used today’s AI estimates');
+    expect(host.textContent).toContain('They start again at 5 PM.');
+    expect(announce).toHaveBeenCalledWith('You’ve used today’s AI estimates');
+    // The limit replaces Analyze meal: tapping it again would only be refused.
+    expect(hasCapsule('Analyze meal')).toBe(false);
+    expect(alertText()).toBeNull();
+    capsules['Enter it yourself'].onPress();
+    expect(enterManually).toHaveBeenCalledWith('Six samosas');
+  });
+
+  it('says when the limit for everyone is reached, or analysis is paused', async () => {
+    await render(0, { ...emptyAi('Six samosas') });
+    await act(async () => { capsules['Analyze meal'].onPress(); });
+    await settle();
+    await act(async () => { analysis.reject(new Refusal('everyone')); });
+    await settle();
+    expect(host.textContent).toContain('hyPer reached today’s limit for everyone.');
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    analysis = deferred();
+    await render(0, { ...emptyAi('Six samosas') });
+    await act(async () => { capsules['Analyze meal'].onPress(); });
+    await settle();
+    await act(async () => { analysis.reject(new Refusal('paused')); });
+    await settle();
+    expect(host.textContent).toContain('AI estimates are paused');
   });
 });

@@ -24,21 +24,40 @@ const NO_GATE_CODES = new Set(['PGRST202', '42883']);
 const CHECK_TIMEOUT_MS = 15_000;
 
 /**
- * Asks the server whether `userId` is approved. `ask` calls the
- * my_beta_access() function, e.g. `() => supabase.rpc('my_beta_access')`.
+ * The account's answer in full: approval, and whether it keeps the early
+ * features (WHOOP and the Mac food worker), which only the accounts from
+ * before public sign-up have. `earlyAccess` is null when the answer is
+ * unclear. A server from before public sign-up (no early_access field, or no
+ * gate at all) only ever had the owner's own people, so they keep them.
  */
-export async function fetchBetaAccess(userId: string, ask: () => PromiseLike<AccessAnswer>): Promise<BetaAccess> {
+export interface AccountAccess {
+  access: BetaAccess;
+  earlyAccess: boolean | null;
+}
+
+/**
+ * Asks the server about `userId`. `ask` calls the my_beta_access() function,
+ * e.g. `() => supabase.rpc('my_beta_access')`.
+ */
+export async function fetchAccountAccess(userId: string, ask: () => PromiseLike<AccessAnswer>): Promise<AccountAccess> {
+  const unknown: AccountAccess = { access: 'unknown', earlyAccess: null };
   try {
     const { data, error } = await withTimeout(Promise.resolve(ask()), CHECK_TIMEOUT_MS, 'Approval check timed out');
-    if (error) return error.code && NO_GATE_CODES.has(error.code) ? 'approved' : 'unknown';
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return 'unknown';
-    const answer = data as { user_id?: unknown; approved?: unknown };
+    if (error) return error.code && NO_GATE_CODES.has(error.code) ? { access: 'approved', earlyAccess: true } : unknown;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return unknown;
+    const answer = data as { user_id?: unknown; approved?: unknown; early_access?: unknown };
     // An answer for someone else, or for a request without the sign-in, says nothing about this account.
-    if (answer.user_id !== userId || typeof answer.approved !== 'boolean') return 'unknown';
-    return answer.approved ? 'approved' : 'not-approved';
+    if (answer.user_id !== userId || typeof answer.approved !== 'boolean') return unknown;
+    if (!answer.approved) return { access: 'not-approved', earlyAccess: false };
+    return { access: 'approved', earlyAccess: typeof answer.early_access === 'boolean' ? answer.early_access : true };
   } catch {
-    return 'unknown';
+    return unknown;
   }
+}
+
+/** Approval alone (see fetchAccountAccess). */
+export async function fetchBetaAccess(userId: string, ask: () => PromiseLike<AccessAnswer>): Promise<BetaAccess> {
+  return (await fetchAccountAccess(userId, ask)).access;
 }
 
 /** Sign-ups the invite list refused, in any of the ways Supabase Auth reports them. */

@@ -8,6 +8,8 @@ import { BlancText } from '~/components/BlancText';
 import { BrandMark, EMBLEM_MARK_SIZE } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
 import { announce } from '~/lib/accessibility';
+import { useAppConfigStore } from '~/lib/appConfig';
+import { openPage, SUPPORT_URL } from '~/lib/links';
 import { haptics } from '~/lib/haptics';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -23,6 +25,8 @@ export default function NotApproved() {
   const email = useAuthStore((state) => state.user?.email ?? '');
   const [checking, setChecking] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // With sign-up open to everyone, an account here was suspended, not left uninvited.
+  const open = useAppConfigStore((state) => state.config?.signupMode === 'open');
 
   const checkAgain = async () => {
     if (checking) return;
@@ -76,10 +80,12 @@ export default function NotApproved() {
       </View>
       <View style={{ paddingHorizontal: space.gutter, gap: 10, marginTop: 18, marginBottom: 24 }}>
         <BlancText variant="title" size={34} weight="700" accessibilityRole="header">
-          Not on the list yet
+          {open ? 'Account paused' : 'Not on the list yet'}
         </BlancText>
         <BlancText variant="secondary" tone="graphite">
-          {`hyPer is invite-only for now. Ask for an invite for ${email || 'this email'}, then check again.`}
+          {open
+            ? `${email || 'This account'} can’t use hyPer right now. If that seems wrong, contact support.`
+            : `hyPer is invite-only for now. Ask for an invite for ${email || 'this email'}, then check again.`}
         </BlancText>
       </View>
 
@@ -87,7 +93,8 @@ export default function NotApproved() {
         <Capsule title="Check again" size="large" fill busy={checking} disabled={deleting} onPress={() => void checkAgain()} />
       </View>
 
-      <View style={{ alignItems: 'center', marginTop: 22 }}>
+      <View style={{ alignItems: 'center', marginTop: 22, gap: 8 }}>
+        {open ? <TextLink title="Contact support" onPress={() => void openPage(SUPPORT_URL)} /> : null}
         <TextLink
           title={deleting ? 'Deleting account…' : 'Sign out'}
           accessibilityHint="Sign out, or delete this account"

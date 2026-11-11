@@ -3,8 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { isInviteRefusal } from '@/lib/betaAccess';
 import { loadNativeModule } from './helpers/loadNativeModule';
 
+let signupMode: 'open' | 'invite_only' | null = null;
 const { authErrorWords } = loadNativeModule<{ authErrorWords: (message: string) => string }>('lib/auth.ts', {
   zustand: { create: () => () => ({}) },
+  '~/lib/appConfig': {
+    useAppConfigStore: { getState: () => ({ config: signupMode ? { signupMode, aiEnabled: true, minAppVersion: null } : null }) },
+    useUpdateRequired: () => false,
+  },
   '@/lib/authScreen': { authScreen: () => 'app' },
   '@/lib/betaAccess': { isInviteRefusal },
   '@/stores/authStore': { useAuthStore: () => null },
@@ -31,6 +36,21 @@ describe('sign-in errors in plain words', () => {
     expect(authErrorWords('hyPer is invite-only: this email is not invited')).toBe(invite);
     expect(authErrorWords('Signups not allowed for this instance')).toBe(invite);
     expect(authErrorWords('signup_disabled')).toBe(invite);
+  });
+
+  it('says a refused sign-up without mentioning invites while sign-up is open', () => {
+    signupMode = 'open';
+    try {
+      expect(authErrorWords('Database error saving new user')).toBe('This email can’t sign up for hyPer. If that seems wrong, contact support.');
+    } finally {
+      signupMode = null;
+    }
+    signupMode = 'invite_only';
+    try {
+      expect(authErrorWords('Database error saving new user')).toBe('hyPer is invite-only for now. Use the email your invite was sent to.');
+    } finally {
+      signupMode = null;
+    }
   });
 
   it('says a reused password plainly', () => {

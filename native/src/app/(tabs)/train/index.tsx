@@ -43,6 +43,7 @@ import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
 import { useBarWeight } from '~/lib/warmup';
+import { useEarlyAccess } from '~/lib/earlyAccess';
 import { devScrollTrace } from '~/platform/devLaunch';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
@@ -1178,6 +1179,7 @@ function StartWorkout() {
 function useStartHeader(title: string) {
   const mode = useAppStore((state) => state.workoutMode);
   const hasSplit = useAppStore((state) => Boolean(state.activeSplit));
+  const early = useEarlyAccess();
   // Built once per mode, so typing on the screen never re-sends the header.
   const options = useMemo(
     () => ({
@@ -1221,21 +1223,26 @@ function useStartHeader(title: string) {
                     router.push('/train/program');
                   },
                 },
-                {
-                  type: 'action',
-                  label: 'Run',
-                  icon: { type: 'sfSymbol', name: 'figure.run' },
-                  onPress: () => {
-                    haptics.tap();
-                    router.push('/run');
-                  },
-                },
+                // GPS runs are an early feature until a real run is checked on the release build.
+                ...(early
+                  ? [
+                      {
+                        type: 'action' as const,
+                        label: 'Run',
+                        icon: { type: 'sfSymbol' as const, name: 'figure.run' as const },
+                        onPress: () => {
+                          haptics.tap();
+                          router.push('/run');
+                        },
+                      },
+                    ]
+                  : []),
               ],
             },
           },
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    [title, mode, hasSplit],
+    [title, mode, hasSplit, early],
   );
   return <Stack.Screen options={options} />;
 }

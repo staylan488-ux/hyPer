@@ -11,6 +11,7 @@ import { createSaveGate } from '@/lib/requestGate';
 import * as bodyWeightSummary from '@/lib/bodyWeightSummary';
 import * as nutritionCalculator from '@/lib/nutritionCalculator';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
+import * as decimalText from '@/lib/decimalText';
 import * as nutritionWizard from '@/lib/nutritionWizard';
 import * as settingsUx from '@/lib/settingsUx';
 import * as weightDisplayCore from '@/lib/weightDisplayCore';
@@ -393,6 +394,7 @@ describe('Calculate targets opened before the profile is read', () => {
         View: Wrap,
       },
       'react-native-reanimated': { default: { View: Wrap } },
+      '@/lib/decimalText': decimalText,
       '@/lib/healthWeights': { recordManualBodyWeight },
       '@/lib/nutritionCalculator': nutritionCalculator,
       '@/lib/nutritionWizard': nutritionWizard,
@@ -662,11 +664,14 @@ describe('Food analysis after the Mac worker is saved', () => {
       '@/lib/foodTrialUsage': { foodTrialUsageLine: vi.fn() },
       '@/lib/photoAnalysis': { getPhotoWorkerSettings: () => ({ ...settings }) },
       '@/lib/supabase': { supabase: {} },
-      '~/components/Form': { ChoiceRow: () => null, FormNote: text },
+      '~/components/Form': { ChoiceRow: () => null, FormNote: text, ToggleRow: () => null },
       '~/components/Label': { Label: Wrap },
       '~/components/Row': { Hairline: () => null, Row: (props: RowProps) => { rows[props.title] = props; return null; } },
       '~/components/TabScroll': { TabScroll: Wrap },
       '~/lib/accessibility': silentAccessibility,
+      '~/lib/aiConsent': { askAiConsent: vi.fn(), setAiConsent: vi.fn(), useAiConsentStore: create(() => ({ granted: true })) },
+      // The Mac worker is an early feature: this account has it.
+      '~/lib/earlyAccess': { useEarlyAccess: () => true },
       '~/lib/you': { chooseAnalysisMode: vi.fn(), useAnalysisModeStore: create(() => ({ mode: 'worker' })) },
       '~/theme/blanc': { space: { section: 32 } },
     }).default;
@@ -850,6 +855,7 @@ function loadYouScreen(you: YouModule, seen: Seen, harness: ReturnType<typeof yo
     '@/stores/appStore': { useAppStore: harness.useAppStore },
     '@/stores/authStore': { useAuthStore: harness.useAuthStore },
     '~/components/FuelReminderSetting': { FuelReminderSetting: () => null },
+    '~/lib/earlyAccess': { useEarlyAccess: () => false },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd') },
   };

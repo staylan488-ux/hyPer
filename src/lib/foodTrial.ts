@@ -25,6 +25,31 @@ const endpoint = () => {
   return `${url.replace(/\/+$/, '')}/functions/v1/analyze-food-trial`;
 };
 
+/** A refusal from the service, with its code ("daily_quota_exhausted", ...) when it sent one. */
+export class FoodAnalysisRefusal extends Error {
+  readonly code: string | null;
+  readonly status: number;
+  constructor(message: string, code: string | null, status: number) {
+    super(message);
+    this.name = 'FoodAnalysisRefusal';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+/**
+ * Why the AI can't take a request today, if that's the reason: this account's
+ * daily requests are used up, the day's budget for everyone is, or the owner
+ * switched food analysis off. Anything else is null (an ordinary failure).
+ */
+export function aiLimitOf(error: unknown): 'daily' | 'everyone' | 'paused' | null {
+  if (!(error instanceof FoodAnalysisRefusal)) return null;
+  if (error.code === 'daily_quota_exhausted') return 'daily';
+  if (error.code === 'global_quota_exhausted') return 'everyone';
+  if (error.code === 'analysis_paused') return 'paused';
+  return null;
+}
+
 /** The stream of steps closed before the outcome arrived: the analysis may still be running. */
 class FollowInterrupted extends Error {}
 
@@ -33,8 +58,9 @@ function outcome(status: number, payload: unknown): Record<string, unknown> {
   // The service's own words when it gives some; otherwise plain ones (no
   // internal names or bare status codes on the person's screen).
   if (status < 200 || status > 299) {
-    if (typeof body?.error === 'string' && body.error) throw new Error(body.error);
-    throw new Error(status >= 500 ? 'Food analysis isn’t available right now. Try again in a moment.' : `Couldn’t analyze this meal (error ${status}). Try again.`);
+    const code = typeof body?.code === 'string' ? body.code : null;
+    if (typeof body?.error === 'string' && body.error) throw new FoodAnalysisRefusal(body.error, code, status);
+    throw new FoodAnalysisRefusal(status >= 500 ? 'Food analysis isn’t available right now. Try again in a moment.' : `Couldn’t analyze this meal (error ${status}). Try again.`, code, status);
   }
   if (!body) throw new Error('Food analysis sent back an answer it couldn’t read. Try again.');
   return body;
@@ -162,6 +188,17 @@ export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hi
       throw new Error('Connection interrupted. Your analysis may still be running. Retry the same input on the same UTC date to check it without starting another paid analysis.');
     }
     throw error;
+  }
+}
+
+/** Whether reading this amount needs the AI ("8 oz" and other plain conversions don't). */
+export function servingNeedsAi(food: ServingFood, text: string): boolean {
+  try {
+    const input = normalizeServingInput({ action: 'interpret-serving', food, text });
+    return !resolveServingLocally(input.food, input.text);
+  } catch {
+    // An amount the service would refuse anyway: no reason to ask first.
+    return false;
   }
 }
 
