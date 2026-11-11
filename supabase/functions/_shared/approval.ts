@@ -1,10 +1,12 @@
-// Private beta gate for the Edge Functions that spend hyPer's API keys or hold
+// Approval gate for the Edge Functions that spend hyPer's API keys or hold
 // third-party tokens. An account may use them only with a row in
-// public.approved_users (supabase/migrations/20261109120000_private_beta_and_ai_caps.sql).
-// delete-account and WHOOP disconnect deliberately skip it, so an account that
-// is not approved can still leave and revoke its tokens.
+// public.approved_users: every new account gets one in open sign-up, only
+// invited ones in invite-only mode, and removing the row suspends an account
+// (docs/sign-up-and-limits.md). delete-account and WHOOP disconnect
+// deliberately skip it, so an account that is not approved can still leave
+// and revoke its tokens.
 
-export const NOT_APPROVED_MESSAGE = 'hyPer is invite-only, and this account isn’t on the list yet.';
+export const NOT_APPROVED_MESSAGE = 'This account can’t use hyPer right now.';
 
 /** The 403 body every gated function sends. The app keys off `code`. */
 export const NOT_APPROVED = { code: 'not_approved', error: NOT_APPROVED_MESSAGE } as const;

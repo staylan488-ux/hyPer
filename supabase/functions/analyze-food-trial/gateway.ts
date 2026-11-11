@@ -1,6 +1,7 @@
 import { normalizeCoachInput, type CoachInput } from './coach.ts';
 import { normalizeServingInput, type ServingInput } from './serving.ts';
 import { sseEvent, type ProgressListener } from './progress.ts';
+import { NOT_APPROVED_MESSAGE } from '../_shared/approval.ts';
 
 export interface MealInput {
   images: { angle: 'top' | 'side'; imageBase64: string; mimeType: string }[];
@@ -9,19 +10,69 @@ export interface MealInput {
 }
 
 export interface TrialConfig {
-  /** Paid requests per account per UTC date (1–40). */
+  /** The most paid requests any account may make per UTC date (1–40). Each
+   * account's own limit comes from `access` and is capped by this. */
   maxAttempts: number;
-  /** Paid requests for all accounts together per UTC date (1–1000): the daily spend ceiling. */
-  maxGlobalAttempts: number;
+  /** Browser origins allowed to call. The app sends none; may be empty. */
   allowedOrigins: string[];
 }
 
-/** One daily counter across all accounts (public.ai_usage_daily). */
-export interface GlobalQuota {
-  /** Paid requests already counted for this UTC date. */
-  used(date: string): Promise<number>;
-  /** Counts one paid request, atomically; false once the date's ceiling is reached. */
-  claim(date: string, max: number): Promise<boolean>;
+/** Who may use paid analysis, and how much (public.ai_access). */
+export interface AiAccess {
+  approved: boolean;
+  /** Paid requests this account may make per UTC date; 0 means none. */
+  dailyLimit: number;
+}
+
+export type AiFeature = 'food-analysis' | 'interpret-serving' | 'suggest-targets';
+
+/** The daily dollar budget across all accounts and the AI off-switch
+ * (public.app_config, ai_spend_daily and ai_spend_claims). */
+export interface SpendBudget {
+  /** Today's switch, budget and what is already reserved or spent. Free to ask. */
+  status(date: string): Promise<{ enabled: boolean; budgetUsd: number; committedUsd: number }>;
+  /** Reserves `reserveUsd` of today's budget for one paid request, atomically. */
+  claim(request: { key: string; userId: string; date: string; feature: AiFeature; reserveUsd: number }): Promise<'claimed' | 'exhausted' | 'disabled' | 'duplicate'>;
+  /** Replaces the reservation with what the request cost, once it is known. */
+  settle(key: string, costUsd: number): Promise<void>;
+}
+
+/**
+ * What each paid request reserves of the daily budget before it runs: more
+ * than it can cost, worked out from the limits in model.ts, serving.ts,
+ * coach.ts and tavily.ts at the prices model.ts uses from 2027-01-01 (the
+ * higher ones). A meal analysis makes at most three Gemini calls of at most
+ * 8,192 output tokens each, under 30,000 input tokens each (two photos, two
+ * 16,000-character pages and ten search snippets), and at most 2 searches and
+ * 2 page reads: about $0.34. A serving interpretation is one call of 2,048
+ * output tokens, a target suggestion one call of 4,096. This assumes thinking
+ * tokens count within the output limit; if Gemini bills more, the recorded
+ * cost says so. The real cost replaces the reservation as soon as the request
+ * ends, so the budget can only be passed if one request costs more than its
+ * reservation, and ai_spend_claims shows any that did.
+ */
+export const RESERVE_USD: Record<AiFeature, number> = {
+  'food-analysis': 0.40,
+  'interpret-serving': 0.05,
+  'suggest-targets': 0.10,
+};
+
+/** Whether reserving `reserveUsd` more would pass the budget, compared in
+ * millionths of a dollar as the database does. */
+function wouldPassBudget(today: { budgetUsd: number; committedUsd: number }, reserveUsd: number): boolean {
+  return Math.round(today.committedUsd * 1e6) + Math.ceil(reserveUsd * 1e6) > Math.round(today.budgetUsd * 1e6);
+}
+
+/** The recorded cost of a finished request in dollars, or null when any part
+ * of it is unknown (the reservation then stands). */
+export function recordedCostUsd(usage: unknown): number | null {
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null;
+  const { estimatedTokenUsd, webResearch } = usage as { estimatedTokenUsd?: unknown; webResearch?: unknown };
+  if (typeof estimatedTokenUsd !== 'number' || !Number.isFinite(estimatedTokenUsd) || estimatedTokenUsd < 0) return null;
+  if (webResearch === undefined) return estimatedTokenUsd;
+  const web = webResearch && typeof webResearch === 'object' ? (webResearch as { estimatedUsd?: unknown }).estimatedUsd : undefined;
+  if (typeof web !== 'number' || !Number.isFinite(web) || web < 0) return null;
+  return estimatedTokenUsd + web;
 }
 
 export interface TrialLedger {
@@ -33,9 +84,9 @@ export interface TrialLedger {
 interface Dependencies {
   config: TrialConfig;
   authenticate(token: string): Promise<string | null>;
-  /** Private beta: only approved accounts may use paid analysis. Throws when it cannot tell. */
-  isApproved(userId: string): Promise<boolean>;
-  globalQuota: GlobalQuota;
+  /** Approval and the account's daily limit. Throws when it cannot tell. */
+  access(userId: string): Promise<AiAccess>;
+  budget: SpendBudget;
   ledger: TrialLedger;
   /** Runs the meal analysis; `onProgress` hears its steps when the app asked to follow them. */
   analyze(input: MealInput, onProgress?: ProgressListener): Promise<unknown>;
@@ -53,16 +104,16 @@ const HASH = /^[0-9a-f]{64}$/;
 // Change the content namespace when the analysis pipeline changes, while retaining
 // the same daily quota objects. A provider change must never refresh the quota.
 export const ANALYSIS_VERSION = 'gemini-tavily-v3';
-export const NOT_APPROVED_MESSAGE = 'hyPer is invite-only, and this account isn’t on the list yet.';
+export { NOT_APPROVED_MESSAGE };
 export const GLOBAL_QUOTA_MESSAGE = 'Food analysis has reached today’s limit for everyone. It starts over at midnight UTC. You can still enter the meal yourself.';
+export const PAUSED_MESSAGE = 'Food analysis is switched off for now. You can still enter the meal yourself.';
 
 export function validateConfig(config: TrialConfig): void {
   if (!Number.isInteger(config.maxAttempts) || config.maxAttempts < 1 || config.maxAttempts > 40
-    || !Number.isInteger(config.maxGlobalAttempts) || config.maxGlobalAttempts < 1 || config.maxGlobalAttempts > 1000
-    || !config.allowedOrigins.length || config.allowedOrigins.some(origin => {
+    || config.allowedOrigins.some(origin => {
       try {
         const url = new URL(origin);
-        return !['http:', 'https:', 'capacitor:'].includes(url.protocol) || `${url.protocol}//${url.host}` !== origin;
+        return !['http:', 'https:'].includes(url.protocol) || `${url.protocol}//${url.host}` !== origin;
       } catch { return true; }
     })) throw new Error('Invalid food analysis configuration');
 }
@@ -167,7 +218,9 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       const userId = await deps.authenticate(auth.slice(7));
       if (!userId || !UUID.test(userId)) return respond(401, { code: 'unauthorized', error: 'Sign in to analyze a meal.' });
       // Before anything is read or claimed. A failed check lands in the 503 below.
-      if (!await deps.isApproved(userId)) return respond(403, { code: 'not_approved', error: NOT_APPROVED_MESSAGE });
+      const access = await deps.access(userId);
+      if (!access.approved) return respond(403, { code: 'not_approved', error: NOT_APPROVED_MESSAGE });
+      const dailyLimit = Number.isInteger(access.dailyLimit) ? Math.max(0, Math.min(access.dailyLimit, config.maxAttempts)) : 0;
       const body = await boundedJson(request);
       if (body.action !== undefined && body.action !== 'analyze' && body.action !== 'status' && body.action !== 'interpret-serving' && body.action !== 'suggest-targets') throw new RequestError(400, 'invalid_request', 'Unknown food analysis action.');
       // `progress: true` follows a meal analysis step by step (streamAnalysis).
@@ -186,22 +239,27 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
           const claim = await ledger.read(`${base}/claims/${body.requestId}.json`);
           return claim ? pending(body.requestId) : respond(404, { code: 'analysis_not_found', error: 'Analysis not found.' });
         }
-        const slots = await Promise.all(Array.from({ length: config.maxAttempts }, (_, index) => ledger.read(`${base}/slots/${index}.json`)));
+        const slots = await Promise.all(Array.from({ length: dailyLimit }, (_, index) => ledger.read(`${base}/slots/${index}.json`)));
         const attempts = await Promise.all(slots.filter(Boolean).map(async raw => {
           const claim = raw as { requestId: string; createdAt: string; analysisVersion?: string };
           const result = await ledger.read(`${base}/results/${claim.requestId}.json`) as SavedResponse | null;
           return { ...claim, analysisVersion: result?.body.analysisVersion ?? claim.analysisVersion ?? 'legacy-google', status: result?.status ?? null, usage: result?.body.usage ?? null, code: result?.body.code ?? null };
         }));
-        // Free to ask; the everyone-limit is left out when it cannot be read.
-        let globalLimitReached: boolean | undefined;
-        try { globalLimitReached = await deps.globalQuota.used(date) >= config.maxGlobalAttempts; } catch { /* unknown */ }
-        return respond(200, { date, maxAttempts: config.maxAttempts, attemptsUsed: attempts.length, attempts, ...(globalLimitReached === undefined ? {} : { globalLimitReached }) });
+        // Free to ask; the everyone-limit and the switch are left out when they cannot be read.
+        let shared: { globalLimitReached: boolean; aiEnabled: boolean } | undefined;
+        try {
+          const today = await deps.budget.status(date);
+          shared = { aiEnabled: today.enabled, globalLimitReached: wouldPassBudget(today, RESERVE_USD['food-analysis']) };
+        } catch { /* unknown */ }
+        return respond(200, { date, maxAttempts: dailyLimit, attemptsUsed: attempts.length, attempts, ...shared });
       }
       let input: MealInput | ServingInput | CoachInput;
       const isServing = body.action === 'interpret-serving';
       const isCoach = body.action === 'suggest-targets';
       // Target suggestions share the daily request limit with meal analysis.
       const analysisVersion = isServing ? 'gemini-serving-v1' : isCoach ? 'gemini-coach-v1' : ANALYSIS_VERSION;
+      const feature: AiFeature = isServing ? 'interpret-serving' : isCoach ? 'suggest-targets' : 'food-analysis';
+      const reserveUsd = RESERVE_USD[feature];
       if (isServing) {
         try { input = normalizeServingInput(body); }
         catch { throw new RequestError(400, 'invalid_request', 'Describe an amount using a food with a valid serving definition.'); }
@@ -216,9 +274,12 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
       // Same user's identical input replays within this UTC date.
       const saved = await ledger.read(resultPath) as SavedResponse | null;
       if (saved) return respond(saved.status, { ...saved.body, replayed: true });
-      // Everyone's limit is spent: refuse before claiming anything, so this
-      // account's own count is untouched and the same meal can run tomorrow.
-      if (await deps.globalQuota.used(date) >= config.maxGlobalAttempts) {
+      // Switched off, no allowance, or everyone's budget spent: refuse before
+      // claiming anything, so nothing is counted and the same meal can run later.
+      const today = await deps.budget.status(date);
+      if (!today.enabled) return respond(503, { code: 'analysis_paused', error: PAUSED_MESSAGE, requestId, analysisVersion });
+      if (!dailyLimit) return respond(429, { code: 'daily_quota_exhausted', error: DAILY_QUOTA_MESSAGE, requestId, analysisVersion });
+      if (wouldPassBudget(today, reserveUsd)) {
         return respond(429, { code: 'global_quota_exhausted', error: GLOBAL_QUOTA_MESSAGE, requestId, analysisVersion });
       }
       const claim = { requestId, createdAt: new Date(now()).toISOString(), analysisVersion };
@@ -227,7 +288,7 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
         return result ? respond(result.status, { ...result.body, replayed: true }) : pending(requestId);
       }
       let reserved = false;
-      for (let index = 0; index < config.maxAttempts; index++) {
+      for (let index = 0; index < dailyLimit; index++) {
         if (await ledger.insert(`${base}/slots/${index}.json`, claim)) { reserved = true; break; }
       }
       // Runs the reserved request and saves its outcome, success or failure.
@@ -244,25 +305,29 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
           for (const field of ['provider', 'model', 'modelVersion', 'responseId', 'researchProvider', 'summary', 'clarification', 'items', 'sources', 'originalText', 'usage', ...(isServing ? ['interpretation'] : []), ...(isCoach ? ['recommendation'] : [])]) {
             if (field in result) normalized[field] = (result as Record<string, unknown>)[field];
           }
-          response = { status: 200, body: { ...normalized, searchSuggestionsHtml: null, requestId, analysisVersion, limits: { date, maxAttempts: config.maxAttempts } } };
+          response = { status: 200, body: { ...normalized, searchSuggestionsHtml: null, requestId, analysisVersion, limits: { date, maxAttempts: dailyLimit } } };
         } catch (error) {
           // Never leak upstream response text, credentials or prompts. Preserve structured usage on failures.
           const usage = error && typeof error === 'object' && 'usage' in error ? error.usage : undefined;
           response = { status: 502, body: { code: 'analysis_failed', error: 'Analysis did not finish successfully. This attempt remains counted; review or enter the meal manually.', requestId, analysisVersion, ...(usage ? { usage } : {}) } };
         }
         if (!await ledger.insert(resultPath, response)) throw new Error('Result already exists');
+        // The reservation stands when the cost is unknown or cannot be recorded.
+        const cost = recordedCostUsd(response.body.usage);
+        if (cost !== null) await deps.budget.settle(resultPath, cost).catch(() => {});
         return response;
       };
-      // Then one unit of everyone's limit, counted atomically after the
-      // account's own slot, so concurrent requests can never make more paid
-      // calls than maxGlobalAttempts. An unreadable counter refuses (no paid call).
+      // Then this request's reservation of everyone's budget, claimed
+      // atomically after the account's own slot, so concurrent requests can
+      // never reserve more than the budget. An unreadable budget refuses (no paid call).
       let refusal: SavedResponse | null = null;
-      if (!reserved) refusal = { status: 429, body: { code: 'daily_quota_exhausted', error: 'Today’s food analysis request limit has been reached. It resets at midnight UTC.', requestId, analysisVersion } };
+      if (!reserved) refusal = { status: 429, body: { code: 'daily_quota_exhausted', error: DAILY_QUOTA_MESSAGE, requestId, analysisVersion } };
       else {
-        let globalReserved = false;
-        try { globalReserved = await deps.globalQuota.claim(date, config.maxGlobalAttempts); }
-        catch { refusal = { status: 503, body: { code: 'analysis_unavailable', error: UNAVAILABLE, requestId, analysisVersion } }; }
-        if (!refusal && !globalReserved) refusal = { status: 429, body: { code: 'global_quota_exhausted', error: GLOBAL_QUOTA_MESSAGE, requestId, analysisVersion } };
+        let outcome: Awaited<ReturnType<SpendBudget['claim']>> | null = null;
+        try { outcome = await deps.budget.claim({ key: resultPath, userId, date, feature, reserveUsd }); } catch { /* refused below */ }
+        if (outcome === 'exhausted') refusal = { status: 429, body: { code: 'global_quota_exhausted', error: GLOBAL_QUOTA_MESSAGE, requestId, analysisVersion } };
+        else if (outcome === 'disabled') refusal = { status: 503, body: { code: 'analysis_paused', error: PAUSED_MESSAGE, requestId, analysisVersion } };
+        else if (outcome !== 'claimed') refusal = { status: 503, body: { code: 'analysis_unavailable', error: UNAVAILABLE, requestId, analysisVersion } };
       }
       // A refusal after a claim is saved like any outcome: asking again replays
       // it instead of starting a paid call.
@@ -311,3 +376,4 @@ export function createTrialHandler(deps: Dependencies): (request: Request) => Pr
 }
 
 const UNAVAILABLE = 'Food analysis is temporarily unavailable. No automatic paid retry will run.';
+const DAILY_QUOTA_MESSAGE = 'Today’s food analysis request limit has been reached. It resets at midnight UTC.';

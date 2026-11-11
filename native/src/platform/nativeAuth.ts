@@ -6,6 +6,7 @@
 import type { Provider } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 
+import { rememberAppleRefreshToken } from '@/lib/appleSignIn';
 import { parseNativeOAuthCallback } from '@/lib/nativeOAuthCallback';
 import { supabase } from '@/lib/supabase';
 
@@ -43,7 +44,8 @@ export async function signInWithOAuthProvider(
     if (result.type !== 'success') return { error: new Error('Unable to complete sign-in.') };
 
     const { code } = parseNativeOAuthCallback(result.url);
-    const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    const { data: exchanged, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+    if (!exchangeError) void rememberAppleRefreshToken(provider, exchanged?.session);
     return { error: exchangeError ? new Error(exchangeError.message) : null };
   } catch (signInError) {
     return {

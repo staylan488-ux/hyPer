@@ -85,7 +85,12 @@ function record(value: unknown): Record<string, unknown> { return value !== null
 function token(value: unknown): number | null { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null; }
 export function mealUsage(payload: unknown, now: Date, elapsedMs: number): TrialUsage {
   const raw = record(record(payload).usageMetadata);
-  const promptTokens = token(raw.promptTokenCount), outputTokens = token(raw.candidatesTokenCount), thinkingTokens = token(raw.thoughtsTokenCount), cachedTokens = token(raw.cachedContentTokenCount);
+  // Gemini's JSON leaves out a count that is zero (no cached input, no
+  // thinking), so once a response reports its prompt, a missing count is 0,
+  // not unknown. Before this, no production result had a token cost.
+  const reported = token(raw.promptTokenCount) !== null;
+  const count = (value: unknown) => value === undefined && reported ? 0 : token(value);
+  const promptTokens = token(raw.promptTokenCount), outputTokens = count(raw.candidatesTokenCount), thinkingTokens = count(raw.thoughtsTokenCount), cachedTokens = count(raw.cachedContentTokenCount);
   const intro = now.getTime() < Date.UTC(2027, 0, 1);
   const estimatedTokenUsd = promptTokens !== null && outputTokens !== null && thinkingTokens !== null && cachedTokens !== null && cachedTokens <= promptTokens
     ? ((promptTokens - cachedTokens) * (intro ? 0.75 : 1.5) + cachedTokens * (intro ? 0.075 : 0.15) + (outputTokens + thinkingTokens) * (intro ? 3.75 : 7.5)) / 1e6 : null;

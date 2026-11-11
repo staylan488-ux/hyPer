@@ -13,7 +13,7 @@
 --    FOOD_ANALYSIS_MAX_GLOBAL_DAILY_REQUESTS function secret.
 --
 -- Every account that exists when this runs is approved, so current users keep
--- working. Review the list afterwards (docs/private-beta.md):
+-- working. Review the list afterwards (docs/sign-up-and-limits.md):
 --   select email, note, approved_at from public.approved_users order by approved_at;
 --
 -- Safe to run more than once. Changes no existing data.

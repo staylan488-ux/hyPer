@@ -4,6 +4,7 @@
 // analyze-food-trial. The service role never reaches the app.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.115.0';
 import { WHOOP_API_BASE } from '../_shared/whoop.ts';
+import { appleConfigFrom, revokeAppleRefreshToken } from '../_shared/apple.ts';
 import { createDeleteAccountHandler, removeFilesUnder } from './handler.ts';
 
 Deno.serve(async (request: Request) => {
@@ -18,6 +19,9 @@ Deno.serve(async (request: Request) => {
       status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
   }
+  // Optional: without these secrets an Apple account is still deleted, and
+  // only the revoke is skipped (logged).
+  const apple = appleConfigFrom(name => Deno.env.get(name));
   const service = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, { ...init, signal: AbortSignal.timeout(15_000) }) },
@@ -39,6 +43,15 @@ Deno.serve(async (request: Request) => {
         headers: { Authorization: `Bearer ${accessToken}` },
         signal: AbortSignal.timeout(10_000),
       });
+    },
+    async appleRefreshToken(userId) {
+      const { data, error } = await service.from('apple_sign_in_tokens').select('refresh_token').eq('user_id', userId).maybeSingle();
+      if (error) throw error;
+      return data?.refresh_token ?? null;
+    },
+    async revokeApple(refreshToken) {
+      if (!apple) throw new Error('Apple revoke is not configured (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY)');
+      await revokeAppleRefreshToken(refreshToken, apple);
     },
     async removeFoodRecords(userId) {
       const bucket = service.storage.from(foodBucket);

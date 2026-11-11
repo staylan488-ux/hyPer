@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ANALYSIS_VERSION, createTrialHandler, normalizeInput, validateConfig } from '../supabase/functions/analyze-food-trial/gateway';
-import type { MealInput, TrialConfig, TrialLedger } from '../supabase/functions/analyze-food-trial/gateway';
-import { memoryGlobalQuota } from './helpers/globalQuota';
+import { ANALYSIS_VERSION, RESERVE_USD, createTrialHandler, normalizeInput, recordedCostUsd, validateConfig } from '../supabase/functions/analyze-food-trial/gateway';
+import type { AiAccess, MealInput, TrialConfig, TrialLedger } from '../supabase/functions/analyze-food-trial/gateway';
+import { memoryBudget } from './helpers/memoryBudget';
 import { createStorageLedger } from '../supabase/functions/analyze-food-trial/storageLedger';
 import type { ProgressListener } from '../supabase/functions/analyze-food-trial/progress';
 
@@ -9,11 +9,11 @@ const USER = '11111111-1111-4111-8111-111111111111';
 const FRIEND = '22222222-2222-4222-8222-222222222222';
 const NOW = Date.parse('2026-09-05T12:00:00Z');
 const config: TrialConfig = {
-  maxAttempts: 3, maxGlobalAttempts: 50, allowedOrigins: ['http://localhost:5173', 'capacitor://localhost'],
+  maxAttempts: 3, allowedOrigins: ['http://localhost:5173', 'http://localhost:8081'],
 };
 const photo = { angle: 'top', mimeType: 'image/jpeg', imageBase64: btoa('\xff\xd8\xffmeal') };
 
-function harness(overrides: Partial<TrialConfig> = {}) {
+function harness(overrides: Partial<TrialConfig> = {}, budgetUsd = 5) {
   const objects = new Map<string, unknown>();
   const ledger: TrialLedger = {
     assertPrivate: vi.fn(async () => {}),
@@ -30,16 +30,17 @@ function harness(overrides: Partial<TrialConfig> = {}) {
   let time = NOW;
   // Followed analyses the runtime is asked to keep alive.
   const work: Promise<unknown>[] = [];
-  // Approved unless a test says otherwise; FRIEND is approved too.
-  const isApproved = vi.fn<(userId: string) => Promise<boolean>>(async () => true);
-  const globalQuota = memoryGlobalQuota();
-  vi.spyOn(globalQuota, 'used');
-  vi.spyOn(globalQuota, 'claim');
-  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, interpretServing, authenticate, isApproved, globalQuota, now: () => time, waitUntil: promise => { work.push(promise); } });
-  const request = (body: unknown, token = 'valid', origin = 'capacitor://localhost') => handler(new Request('http://trial', {
+  // Approved unless a test says otherwise, with room up to config.maxAttempts.
+  const access = vi.fn<(userId: string) => Promise<AiAccess>>(async () => ({ approved: true, dailyLimit: 40 }));
+  const budget = memoryBudget(budgetUsd);
+  vi.spyOn(budget, 'status');
+  vi.spyOn(budget, 'claim');
+  vi.spyOn(budget, 'settle');
+  const handler = createTrialHandler({ config: { ...config, ...overrides }, ledger, analyze, interpretServing, authenticate, access, budget, now: () => time, waitUntil: promise => { work.push(promise); } });
+  const request = (body: unknown, token = 'valid', origin = 'http://localhost:8081') => handler(new Request('http://trial', {
     method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', origin }, body: JSON.stringify(body),
   }));
-  return { objects, ledger, analyze, interpretServing, authenticate, isApproved, globalQuota, handler, request, work, setTime: (value: number) => { time = value; } };
+  return { objects, ledger, analyze, interpretServing, authenticate, access, budget, handler, request, work, setTime: (value: number) => { time = value; } };
 }
 
 /** The data of each server-sent event in a followed response. */
@@ -59,7 +60,7 @@ describe('a followed meal analysis', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/event-stream');
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(response.headers.get('access-control-allow-origin')).toBe('capacitor://localhost');
+    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:8081');
     const events = await streamed(response);
     expect(events.slice(0, 2)).toEqual([{ type: 'progress', step: 'look' }, { type: 'progress', step: 'search', products: ['Fixture samosas'] }]);
     expect(events[2]).toMatchObject({ type: 'result', status: 200, body: { items: [{ name: 'Samosas' }], usage: { thinkingTokens: 7 }, analysisVersion: ANALYSIS_VERSION } });
@@ -111,10 +112,12 @@ describe('a followed meal analysis', () => {
 
 describe('authenticated food analysis gateway', () => {
   it('fails closed on broad origins or excessive daily request limits', () => {
-    for (const override of [{ maxAttempts: 41 }, { maxAttempts: 0 }, { maxAttempts: 1.5 }, { maxGlobalAttempts: 0 }, { maxGlobalAttempts: 1001 }, { maxGlobalAttempts: Number.NaN }, { allowedOrigins: ['*'] }]) {
+    for (const override of [{ maxAttempts: 41 }, { maxAttempts: 0 }, { maxAttempts: 1.5 }, { allowedOrigins: ['*'] }, { allowedOrigins: ['capacitor://localhost'] }]) {
       expect(() => validateConfig({ ...config, ...override })).toThrow();
     }
     expect(() => validateConfig(config)).not.toThrow();
+    // The app sends no Origin, so no browser origin at all is fine.
+    expect(() => validateConfig({ ...config, allowedOrigins: [] })).not.toThrow();
   });
 
   it('accepts any normally authenticated user and rejects unsigned requests/origins before storage or model access', async () => {
@@ -125,7 +128,7 @@ describe('authenticated food analysis gateway', () => {
     for (const token of ['valid', 'friend', 'other']) {
       const response = await h.request({ hint: 'six samosas' }, token);
       expect(response.status).toBe(200);
-      expect(response.headers.get('access-control-allow-origin')).toBe('capacitor://localhost');
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:8081');
       expect(response.headers.get('cache-control')).toBe('no-store');
     }
     expect(h.analyze).toHaveBeenCalledTimes(3);
@@ -196,7 +199,7 @@ describe('authenticated food analysis gateway', () => {
     expect((await h.handler(huge)).status).toBe(413);
     expect((await h.handler(new Request('http://trial', { method: 'POST', headers, body: '{bad' }))).status).toBe(400);
     expect((await h.handler(new Request('http://trial'))).status).toBe(405);
-    expect((await h.handler(new Request('http://trial', { method: 'OPTIONS', headers: { origin: 'capacitor://localhost' } }))).status).toBe(204);
+    expect((await h.handler(new Request('http://trial', { method: 'OPTIONS', headers: { origin: 'http://localhost:8081' } }))).status).toBe(204);
     expect(h.analyze).not.toHaveBeenCalled();
   });
 
@@ -386,28 +389,31 @@ describe('serving interpretation through the shared gateway', () => {
   });
 });
 
-describe('private beta and the daily limit for everyone', () => {
+describe('approval, each account’s limit, the daily budget and the off-switch', () => {
+  const serving = { action: 'interpret-serving', text: 'I ate 6 pieces', food: { name: 'Samosas', serving_size: 5, serving_unit: 'pieces' } };
+  const slots = (h: ReturnType<typeof harness>, user = USER) => [...h.objects.keys()].filter(path => path.startsWith(`food-v1/${user}/2026-09-05/slots/`));
+
   it('refuses an account that is not approved before reading, claiming or paying for anything', async () => {
     const h = harness();
-    h.isApproved.mockResolvedValue(false);
-    for (const body of [{ hint: 'six samosas' }, { hint: 'six samosas', progress: true }, { action: 'status' }, { action: 'interpret-serving', text: 'I ate 6', food: { name: 'Samosas', serving_size: 5, serving_unit: 'pieces' } }]) {
+    h.access.mockResolvedValue({ approved: false, dailyLimit: 0 });
+    for (const body of [{ hint: 'six samosas' }, { hint: 'six samosas', progress: true }, { action: 'status' }, serving]) {
       const response = await h.request(body);
       expect(response.status).toBe(403);
       expect(response.headers.get('content-type')).toBe('application/json');
       expect(await response.json()).toMatchObject({ code: 'not_approved' });
     }
-    expect(h.isApproved).toHaveBeenCalledWith(USER);
+    expect(h.access).toHaveBeenCalledWith(USER);
     expect(h.ledger.assertPrivate).not.toHaveBeenCalled();
     expect(h.ledger.read).not.toHaveBeenCalled();
     expect(h.ledger.insert).not.toHaveBeenCalled();
-    expect(h.globalQuota.claim).not.toHaveBeenCalled();
+    expect(h.budget.claim).not.toHaveBeenCalled();
     expect(h.analyze).not.toHaveBeenCalled();
     expect(h.interpretServing).not.toHaveBeenCalled();
   });
 
   it('fails closed when approval cannot be checked', async () => {
     const h = harness();
-    h.isApproved.mockRejectedValue(new Error('database down'));
+    h.access.mockRejectedValue(new Error('database down'));
     const response = await h.request({ hint: 'six samosas' });
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ code: 'analysis_unavailable' });
@@ -415,20 +421,49 @@ describe('private beta and the daily limit for everyone', () => {
     expect(h.analyze).not.toHaveBeenCalled();
   });
 
-  it('counts every paid action once, and never a replay or a status check', async () => {
-    const h = harness();
-    await h.request({ hint: 'six samosas' });
-    await h.request({ hint: 'six samosas' });
-    await h.request({ hint: 'six samosas', progress: true }).then(response => response.text());
-    await h.request({ action: 'interpret-serving', text: 'I ate 6 pieces', food: { name: 'Samosas', serving_size: 5, serving_unit: 'pieces' } });
-    const status = await (await h.request({ action: 'status' })).json();
-    expect(status).toMatchObject({ attemptsUsed: 2, globalLimitReached: false });
-    expect(h.globalQuota.counts.get('2026-09-05')).toBe(2);
+  it('uses each account’s own daily limit, capped by the configured ceiling', async () => {
+    const h = harness({ maxAttempts: 3 });
+    h.access.mockResolvedValue({ approved: true, dailyLimit: 1 });
+    expect((await h.request({ hint: 'first meal' })).status).toBe(200);
+    const limited = await h.request({ hint: 'second meal' });
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toMatchObject({ code: 'daily_quota_exhausted' });
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ maxAttempts: 1, attemptsUsed: 1 });
+    // A raised limit (the owner's 24) still stops at the ceiling.
+    h.access.mockResolvedValue({ approved: true, dailyLimit: 24 });
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ maxAttempts: 3 });
     expect(h.analyze).toHaveBeenCalledOnce();
   });
 
-  it('stops paid calls for everyone at the ceiling, without using up anyone’s own count', async () => {
-    const h = harness({ maxGlobalAttempts: 2 });
+  it('refuses an account with no allowance before claiming anything', async () => {
+    const h = harness();
+    h.access.mockResolvedValue({ approved: true, dailyLimit: 0 });
+    const response = await h.request({ hint: 'first meal' });
+    expect(response.status).toBe(429);
+    expect(await response.json()).toMatchObject({ code: 'daily_quota_exhausted' });
+    expect(h.ledger.insert).not.toHaveBeenCalled();
+    expect(h.budget.claim).not.toHaveBeenCalled();
+  });
+
+  it('reserves once per paid action, settles to the recorded cost, and never charges a replay or a status check', async () => {
+    const h = harness();
+    h.analyze.mockResolvedValueOnce({ items: [{ name: 'Samosas' }], usage: { estimatedTokenUsd: 0.02, webResearch: { estimatedUsd: 0.016 } } });
+    await h.request({ hint: 'six samosas' });
+    await h.request({ hint: 'six samosas' });
+    await h.request({ hint: 'six samosas', progress: true }).then(response => response.text());
+    // The serving fake reports no cost, so its reservation stands.
+    await h.request(serving);
+    const status = await (await h.request({ action: 'status' })).json();
+    expect(status).toMatchObject({ attemptsUsed: 2, globalLimitReached: false, aiEnabled: true });
+    expect(h.budget.claim).toHaveBeenCalledTimes(2);
+    expect(h.budget.claims.size).toBe(2);
+    expect(h.budget.committedUsd('2026-09-05')).toBeCloseTo(0.036 + RESERVE_USD['interpret-serving'], 5);
+    expect(h.analyze).toHaveBeenCalledOnce();
+  });
+
+  it('stops paid calls for everyone at the budget, without using up anyone’s own count', async () => {
+    // Room for two meal reservations, not three.
+    const h = harness({}, 0.85);
     expect((await h.request({ hint: 'first meal' })).status).toBe(200);
     expect((await h.request({ hint: 'friend meal' }, 'friend')).status).toBe(200);
     const refused = await h.request({ hint: 'second meal' });
@@ -436,52 +471,117 @@ describe('private beta and the daily limit for everyone', () => {
     expect(await refused.json()).toMatchObject({ code: 'global_quota_exhausted', error: expect.stringContaining('everyone') });
     expect(h.analyze).toHaveBeenCalledTimes(2);
     // Refused before any claim: this account still has two of its three left.
-    expect([...h.objects.keys()].filter(path => path.startsWith(`food-v1/${USER}/2026-09-05/slots/`))).toHaveLength(1);
-    expect([...h.objects.keys()].filter(path => path.startsWith(`food-v1/${USER}/2026-09-05/claims/`))).toHaveLength(1);
+    expect(slots(h)).toHaveLength(1);
+    // A cheaper action still fits.
+    expect((await h.request(serving)).status).toBe(200);
     // An earlier result still replays at the ceiling, free.
     expect(await (await h.request({ hint: 'first meal' })).json()).toMatchObject({ replayed: true });
-    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ attemptsUsed: 1, globalLimitReached: true });
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ globalLimitReached: true });
     // The next UTC date starts over.
     h.setTime(Date.parse('2026-09-06T00:00:01Z'));
     expect((await h.request({ hint: 'second meal' })).status).toBe(200);
     expect(h.analyze).toHaveBeenCalledTimes(3);
   });
 
-  it('never makes more paid calls than the ceiling under concurrent requests from many accounts', async () => {
-    const h = harness({ maxGlobalAttempts: 3 });
+  it('frees the unused part of a reservation for the next request', async () => {
+    const h = harness({}, 0.85);
+    h.analyze.mockResolvedValue({ items: [{ name: 'Meal' }], usage: { estimatedTokenUsd: 0.05, webResearch: { estimatedUsd: 0 } } });
+    for (const meal of ['one', 'two', 'three', 'four']) expect((await h.request({ hint: `meal ${meal}` }, meal === 'one' ? 'valid' : 'friend')).status).toBe(200);
+    expect(h.budget.committedUsd('2026-09-05')).toBeCloseTo(0.2, 6);
+  });
+
+  it('never reserves past the budget under concurrent requests from many accounts', async () => {
+    const h = harness({}, 1);
     // Every request passes the up-front check before any claim lands.
-    h.globalQuota.used = vi.fn(async () => 0);
+    h.budget.status = vi.fn(async () => ({ enabled: true, budgetUsd: 1, committedUsd: 0 }));
     const tokens = ['valid', 'friend', 'other'];
     const responses = await Promise.all(Array.from({ length: 9 }, (_, index) => h.request({ hint: `meal number ${index}` }, tokens[index % 3])));
     const statuses = responses.map(response => response.status);
-    expect(statuses.filter(status => status === 200)).toHaveLength(3);
-    expect(statuses.filter(status => status === 429)).toHaveLength(6);
-    expect(h.analyze).toHaveBeenCalledTimes(3);
+    // $0.40 each: two fit in $1.00, a third would not.
+    expect(statuses.filter(status => status === 200)).toHaveLength(2);
+    expect(statuses.filter(status => status === 429)).toHaveLength(7);
+    expect(h.analyze).toHaveBeenCalledTimes(2);
+    expect(h.budget.committedUsd('2026-09-05')).toBeLessThanOrEqual(1);
     // A refusal after a claim is saved and replays, never becoming a paid call.
     const refusedIndex = statuses.findIndex(status => status === 429);
     const again = await h.request({ hint: `meal number ${refusedIndex}` }, tokens[refusedIndex % 3]);
     expect(again.status).toBe(429);
     expect(await again.json()).toMatchObject({ replayed: true });
-    expect(h.analyze).toHaveBeenCalledTimes(3);
+    expect(h.analyze).toHaveBeenCalledTimes(2);
   });
 
-  it('fails closed, without a paid call, when the shared counter cannot be read or claimed', async () => {
+  it('keeps spending within the budget when every request costs up to its reservation', async () => {
+    const h = harness({ maxAttempts: 40 }, 2);
+    h.budget.status = vi.fn(async () => ({ enabled: true, budgetUsd: 2, committedUsd: 0 }));
+    let spent = 0;
+    let call = 0;
+    h.analyze.mockImplementation(async () => {
+      // Spread from free to the full reservation, the same on every run.
+      const cost = ((call++ * 37) % 101) / 100 * RESERVE_USD['food-analysis'];
+      spent += cost;
+      return { items: [{ name: 'Meal' }], usage: { estimatedTokenUsd: cost } };
+    });
+    const tokens = ['valid', 'friend', 'other'];
+    await Promise.all(Array.from({ length: 60 }, (_, index) => h.request({ hint: `meal number ${index}` }, tokens[index % 3])));
+    expect(spent).toBeLessThanOrEqual(2);
+    // Recorded in whole millionths of a dollar, rounded up.
+    expect(h.budget.committedUsd('2026-09-05')).toBeCloseTo(spent, 3);
+  });
+
+  it('stops every paid call at once when AI is switched off, and still replays saved results', async () => {
     const h = harness();
-    h.globalQuota.used = vi.fn(async () => { throw new Error('rpc down'); });
+    expect((await h.request({ hint: 'first meal' })).status).toBe(200);
+    h.budget.setEnabled(false);
+    const paused = await h.request({ hint: 'second meal' });
+    expect(paused.status).toBe(503);
+    expect(await paused.json()).toMatchObject({ code: 'analysis_paused' });
+    expect((await h.request(serving)).status).toBe(503);
+    expect(slots(h)).toHaveLength(1);
+    expect(await (await h.request({ hint: 'first meal' })).json()).toMatchObject({ replayed: true });
+    expect(await (await h.request({ action: 'status' })).json()).toMatchObject({ aiEnabled: false });
+    // Switched back on: the refused meal was never counted, so it runs.
+    h.budget.setEnabled(true);
+    expect((await h.request({ hint: 'second meal' })).status).toBe(200);
+    expect(h.analyze).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed, without a paid call, when the budget cannot be read or claimed', async () => {
+    const h = harness();
+    h.budget.status = vi.fn(async () => { throw new Error('rpc down'); });
     expect((await h.request({ hint: 'first meal' })).status).toBe(503);
     expect(h.ledger.insert).not.toHaveBeenCalled();
-    // The status check still answers; it just leaves the shared limit out.
+    // The status check still answers; it just leaves the shared parts out.
     const status = await (await h.request({ action: 'status' })).json();
     expect(status).toMatchObject({ attemptsUsed: 0 });
     expect(status).not.toHaveProperty('globalLimitReached');
+    expect(status).not.toHaveProperty('aiEnabled');
 
     const g = harness();
-    g.globalQuota.claim = vi.fn(async () => { throw new Error('rpc down'); });
+    g.budget.claim = vi.fn(async () => { throw new Error('rpc down'); });
     const failed = await g.request({ hint: 'first meal', progress: true });
     expect(failed.status).toBe(503);
     expect(failed.headers.get('content-type')).toBe('application/json');
     // The claimed attempt stays counted and replays its outcome; no paid call ever ran.
     expect(await (await g.request({ hint: 'first meal' })).json()).toMatchObject({ code: 'analysis_unavailable', replayed: true });
     expect(g.analyze).not.toHaveBeenCalled();
+  });
+
+  it('keeps the reservation when settling fails', async () => {
+    const h = harness();
+    h.budget.settle = vi.fn(async () => { throw new Error('rpc down'); });
+    h.analyze.mockResolvedValueOnce({ items: [{ name: 'Meal' }], usage: { estimatedTokenUsd: 0.01 } });
+    expect((await h.request({ hint: 'first meal' })).status).toBe(200);
+    expect(h.budget.committedUsd('2026-09-05')).toBeCloseTo(RESERVE_USD['food-analysis'], 6);
+  });
+});
+
+describe('recorded cost of a request', () => {
+  it('adds model and web research cost, and is unknown when any part is', () => {
+    expect(recordedCostUsd({ estimatedTokenUsd: 0.02, webResearch: { estimatedUsd: 0.016 } })).toBeCloseTo(0.036, 9);
+    expect(recordedCostUsd({ estimatedTokenUsd: 0.001 })).toBe(0.001);
+    expect(recordedCostUsd({ estimatedTokenUsd: null, knownEstimatedTokenUsd: 0.01 })).toBeNull();
+    expect(recordedCostUsd({ estimatedTokenUsd: 0.02, webResearch: {} })).toBeNull();
+    expect(recordedCostUsd({ estimatedTokenUsd: -1 })).toBeNull();
+    expect(recordedCostUsd(undefined)).toBeNull();
   });
 });

@@ -122,9 +122,11 @@ export async function persistExternalFood(
  * The foods row a chosen food logs against, found or created per source.
  * Returns null when it could not be saved.
  *
- * - USDA: reuse a row only when its fdc_id and serving basis (default 100 g)
- *   both match, otherwise insert a shared row. Existing rows are never changed,
- *   because past logs point at them.
+ * - USDA: reuse the user's own row only when its fdc_id and serving basis
+ *   (default 100 g) both match, otherwise insert one for the user. Rows are
+ *   per person so nobody can plant numbers that someone else then logs; the
+ *   server refuses shared rows. Existing rows are never changed, because past
+ *   logs point at them (older shared rows still read for those logs).
  * - Open Food Facts / FatSecret: the user's row for that product identity.
  * - custom / saved_meal / manual_entry: reuse by id; a temporary id ('' or
  *   photo-…) inserts a new row for the user.
@@ -136,6 +138,11 @@ export async function ensureFoodRow(food: Food): Promise<string | null> {
   if (food.source === 'usda' && food.fdc_id) {
     const servingSize = food.serving_size || 100;
     const servingUnit = food.serving_unit || 'g';
+    const userId = await getSessionUserId();
+    if (!userId) {
+      console.error('No user found while saving USDA food');
+      return null;
+    }
 
     // Match on the serving basis too: a food cached before portions existed has a
     // 100 g basis and is tied to historical logs. Reuse only a same-basis row;
@@ -143,6 +150,7 @@ export async function ensureFoodRow(food: Food): Promise<string | null> {
     const { data: existingFood, error: lookupError } = await supabase
       .from('foods')
       .select('id')
+      .eq('user_id', userId)
       .eq('fdc_id', food.fdc_id)
       .eq('serving_size', servingSize)
       .eq('serving_unit', servingUnit)
@@ -157,6 +165,7 @@ export async function ensureFoodRow(food: Food): Promise<string | null> {
       const { data: newFood, error: insertError } = await supabase
         .from('foods')
         .insert({
+          user_id: userId,
           name: food.name,
           calories: food.calories,
           protein: food.protein,

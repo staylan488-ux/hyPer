@@ -1,5 +1,7 @@
 -- Reference snapshot of the public schema, rebuilt from supabase/migrations
--- through 20261109120000 on 2026-11-09 (not checked against a production dump).
+-- through 20261111120000 on 2026-11-11. A read-only production check that day
+-- found production's public schema matching this file before 20261108220000
+-- (see docs/sign-up-and-limits.md for what production holds outside it).
 -- The migrations are the source of truth. This file is for reading: it is not
 -- meant to be replayed on top of the migrations or against production.
 
@@ -44,7 +46,7 @@ CREATE TABLE IF NOT EXISTS body_weight_measurements (
 -- Exercises library
 CREATE TABLE IF NOT EXISTS exercises (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
   muscle_group TEXT NOT NULL,
   muscle_group_secondary TEXT,
   equipment TEXT,
@@ -53,6 +55,10 @@ CREATE TABLE IF NOT EXISTS exercises (
   category TEXT CONSTRAINT exercises_category_check CHECK (category IS NULL OR category IN ('gym', 'calisthenics')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Shared rows have no owner; a custom exercise belongs to its maker.
+ALTER TABLE exercises ADD COLUMN IF NOT EXISTS user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE;
+CREATE UNIQUE INDEX IF NOT EXISTS exercises_shared_name_key ON exercises(name) WHERE user_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS exercises_owner_name_key ON exercises(user_id, name) WHERE user_id IS NOT NULL;
 
 -- Workout Splits
 CREATE TABLE IF NOT EXISTS splits (
@@ -78,7 +84,7 @@ CREATE TABLE IF NOT EXISTS split_days (
 CREATE TABLE IF NOT EXISTS split_exercises (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   split_day_id UUID NOT NULL REFERENCES split_days(id) ON DELETE CASCADE,
-  exercise_id UUID NOT NULL REFERENCES exercises(id),
+  exercise_id UUID NOT NULL REFERENCES exercises(id) DEFERRABLE INITIALLY DEFERRED,
   target_sets INTEGER NOT NULL DEFAULT 3,
   target_reps_min INTEGER NOT NULL DEFAULT 8,
   target_reps_max INTEGER NOT NULL DEFAULT 12,
@@ -111,7 +117,7 @@ CREATE TABLE IF NOT EXISTS workouts (
 CREATE TABLE IF NOT EXISTS sets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   workout_id UUID NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
-  exercise_id UUID NOT NULL REFERENCES exercises(id),
+  exercise_id UUID NOT NULL REFERENCES exercises(id) DEFERRABLE INITIALLY DEFERRED,
   set_number INTEGER NOT NULL,
   weight DECIMAL(10,2),
   reps INTEGER,
@@ -221,7 +227,7 @@ CREATE TABLE IF NOT EXISTS whoop_tokens (
 -- Foods database (custom + USDA)
 CREATE TABLE IF NOT EXISTS foods (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  user_id UUID DEFAULT auth.uid() REFERENCES profiles(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   calories DECIMAL(10,1) NOT NULL,
   protein DECIMAL(10,1) NOT NULL,
@@ -270,7 +276,8 @@ CREATE TABLE IF NOT EXISTS nutrition_logs (
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   logged_at TIMESTAMPTZ,
-  food_id UUID NOT NULL REFERENCES foods(id),
+  -- Checked at commit: account deletion removes the food and the logs together.
+  food_id UUID NOT NULL REFERENCES foods(id) DEFERRABLE INITIALLY DEFERRED,
   servings DECIMAL(10,2) NOT NULL DEFAULT 1,
   meal_type TEXT DEFAULT 'snack',
   group_id UUID,
@@ -453,8 +460,9 @@ CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.
 CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 -- Exercises policies
-CREATE POLICY "Authenticated users can view exercises" ON exercises FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert exercises" ON exercises FOR INSERT TO authenticated WITH CHECK (true);
+-- Shared rows and your own; you add only your own (no client update/delete).
+CREATE POLICY "Users can view shared and own exercises" ON exercises FOR SELECT TO authenticated USING (user_id IS NULL OR user_id = (SELECT auth.uid()));
+CREATE POLICY "Users can insert own exercises" ON exercises FOR INSERT TO authenticated WITH CHECK (user_id = (SELECT auth.uid()));
 
 -- Splits policies
 CREATE POLICY "Users can view own splits" ON splits FOR SELECT USING (auth.uid() = user_id);
@@ -533,8 +541,9 @@ CREATE POLICY "Users can delete own activity segments" ON activity_segments FOR 
 CREATE POLICY "Users can view own whoop connection" ON whoop_connections FOR SELECT USING (auth.uid() = user_id);
 -- Foods policies
 -- user_id NULL: a shared food (such as a USDA one), for signed-in accounts only
-CREATE POLICY "Users can view own foods" ON foods FOR SELECT TO authenticated USING (auth.uid() = user_id OR user_id IS NULL);
-CREATE POLICY "Users can insert own foods" ON foods FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+-- Existing shared rows (user_id NULL) stay readable for old logs; nobody adds new ones.
+CREATE POLICY "Users can view own foods" ON foods FOR SELECT TO authenticated USING (user_id = (SELECT auth.uid()) OR user_id IS NULL);
+CREATE POLICY "Users can insert own foods" ON foods FOR INSERT TO authenticated WITH CHECK (user_id = (SELECT auth.uid()));
 CREATE POLICY "Users can update own foods" ON foods FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own foods" ON foods FOR DELETE USING (auth.uid() = user_id);
 
@@ -607,15 +616,69 @@ CREATE POLICY "Users can update own rest preferences" ON exercise_rest_preferenc
 CREATE POLICY "Users can delete own rest preferences" ON exercise_rest_preferences FOR DELETE USING (auth.uid() = user_id);
 
 -- ─── Private beta (20261109120000) ───────────────────────────────────────
+-- Server-side switches (20261111120000): one row the SQL editor changes at once.
+
+CREATE TABLE IF NOT EXISTS public.app_config (
+  id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+  -- 'open': anyone with a confirmed email. 'invite_only': only beta_invites.
+  signup_mode TEXT NOT NULL DEFAULT 'open' CHECK (signup_mode IN ('open', 'invite_only')),
+  -- Off: every paid AI call is refused at once; replays of saved results still work.
+  ai_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  -- All accounts together, per UTC day.
+  ai_daily_budget_usd NUMERIC(8, 2) NOT NULL DEFAULT 5 CHECK (ai_daily_budget_usd >= 0 AND ai_daily_budget_usd <= 500),
+  -- Each account per UTC day, unless approved_users.ai_daily_limit says otherwise.
+  ai_daily_requests_per_user INTEGER NOT NULL DEFAULT 8 CHECK (ai_daily_requests_per_user BETWEEN 0 AND 40),
+  -- Food search, details and barcode lookups, per account.
+  lookups_per_minute INTEGER NOT NULL DEFAULT 30 CHECK (lookups_per_minute BETWEEN 1 AND 600),
+  lookups_per_day INTEGER NOT NULL DEFAULT 600 CHECK (lookups_per_day BETWEEN 1 AND 100000),
+  -- Open Food Facts allows 15 product lookups a minute per address, and every
+  -- account's lookups leave from the same functions.
+  open_food_facts_per_minute INTEGER NOT NULL DEFAULT 12 CHECK (open_food_facts_per_minute BETWEEN 1 AND 100),
+  -- Builds older than this should ask to be updated (the app reads it; piece 3).
+  min_app_version TEXT CHECK (min_app_version IS NULL OR min_app_version ~ '^[0-9]+(\.[0-9]+){0,2}$'),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO public.app_config (id) VALUES (TRUE) ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE public.app_config ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.app_config FROM PUBLIC, anon, authenticated;
+GRANT SELECT, UPDATE ON public.app_config TO service_role;
+
+-- What the app may know before and after sign-in. Nothing else in app_config is exposed.
+CREATE OR REPLACE FUNCTION public.app_public_config()
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT jsonb_build_object(
+    'signup_mode', c.signup_mode,
+    'ai_enabled', c.ai_enabled,
+    'min_app_version', c.min_app_version
+  )
+  FROM public.app_config c
+  WHERE c.id;
+$$;
+
+REVOKE ALL ON FUNCTION public.app_public_config() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.app_public_config() TO anon, authenticated, service_role;
+
 -- Only accounts in approved_users may read or write app data (a RESTRICTIVE
--- policy on every table below), and only emails in beta_invites may create an
--- account. The migration also approved every account that existed when it ran.
+-- policy on every table below). Sign-up follows app_config.signup_mode: open
+-- (every new account approved) or invite-only (emails in beta_invites).
+-- 20261109120000 approved every account that existed when it ran.
 
 CREATE TABLE IF NOT EXISTS public.approved_users (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT,
   note TEXT,
-  approved_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  approved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- NULL: app_config.ai_daily_requests_per_user. Existing accounts got 24.
+  ai_daily_limit INTEGER CHECK (ai_daily_limit IS NULL OR ai_daily_limit BETWEEN 0 AND 40),
+  -- WHOOP and the Mac food worker (accounts from before public sign-up).
+  early_access BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- Only the SQL editor and the service role (Edge Functions) touch this table.
@@ -651,8 +714,13 @@ SET search_path = ''
 AS $$
   SELECT jsonb_build_object(
     'user_id', auth.uid(),
-    'approved', EXISTS (SELECT 1 FROM public.approved_users WHERE user_id = auth.uid())
-  );
+    'approved', a.user_id IS NOT NULL,
+    'early_access', coalesce(a.early_access, FALSE),
+    'ai_daily_limit', CASE WHEN a.user_id IS NULL THEN 0
+                           ELSE coalesce(a.ai_daily_limit, (SELECT c.ai_daily_requests_per_user FROM public.app_config c WHERE c.id), 0) END
+  )
+  FROM (SELECT 1) AS one
+  LEFT JOIN public.approved_users a ON a.user_id = auth.uid();
 $$;
 
 REVOKE ALL ON FUNCTION public.my_beta_access() FROM PUBLIC, anon;
@@ -675,14 +743,22 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  v_email TEXT := lower(btrim(coalesce(NEW.email, '')));
+  v_mode TEXT;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM public.beta_invites
-    WHERE email = lower(btrim(coalesce(NEW.email, '')))
-  ) THEN
-    -- Supabase Auth reports this to the app as "Database error saving new user".
-    RAISE EXCEPTION 'hyPer is invite-only: this email is not invited'
-      USING ERRCODE = 'P0001';
+  -- Supabase Auth reports any of these to the app as "Database error saving new user".
+  IF v_email = '' THEN
+    RAISE EXCEPTION 'hyPer sign-up needs an email address' USING ERRCODE = 'P0001';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.blocked_emails WHERE email = v_email) THEN
+    RAISE EXCEPTION 'hyPer sign-up is not available for this email' USING ERRCODE = 'P0001';
+  END IF;
+  -- A missing config row counts as invite-only: fail closed.
+  SELECT signup_mode INTO v_mode FROM public.app_config WHERE id;
+  IF coalesce(v_mode, 'invite_only') <> 'open'
+     AND NOT EXISTS (SELECT 1 FROM public.beta_invites WHERE email = v_email) THEN
+    RAISE EXCEPTION 'hyPer is invite-only: this email is not invited' USING ERRCODE = 'P0001';
   END IF;
   RETURN NEW;
 END;
@@ -694,14 +770,17 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
+DECLARE
+  v_email TEXT := lower(btrim(coalesce(NEW.email, '')));
+  v_invited BOOLEAN;
 BEGIN
-  INSERT INTO public.approved_users (user_id, email, note)
-  VALUES (NEW.id, lower(btrim(NEW.email)), 'joined from invite')
-  ON CONFLICT (user_id) DO NOTHING;
+  UPDATE public.beta_invites SET used_at = now()
+  WHERE email = v_email AND used_at IS NULL;
+  v_invited := EXISTS (SELECT 1 FROM public.beta_invites WHERE email = v_email);
 
-  UPDATE public.beta_invites
-  SET used_at = now()
-  WHERE email = lower(btrim(coalesce(NEW.email, ''))) AND used_at IS NULL;
+  INSERT INTO public.approved_users (user_id, email, note)
+  VALUES (NEW.id, v_email, CASE WHEN v_invited THEN 'joined from invite' ELSE 'open sign-up' END)
+  ON CONFLICT (user_id) DO NOTHING;
 
   RETURN NEW;
 END;
@@ -749,64 +828,409 @@ END
 $$;
 
 
--- One daily counter across all accounts for paid food analysis
--- (FOOD_ANALYSIS_MAX_GLOBAL_DAILY_REQUESTS caps it in analyze-food-trial).
-CREATE TABLE IF NOT EXISTS public.ai_usage_daily (
-  usage_date DATE NOT NULL,
-  feature TEXT NOT NULL,
-  requests INTEGER NOT NULL DEFAULT 0 CHECK (requests >= 0),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (usage_date, feature)
+CREATE TABLE IF NOT EXISTS public.blocked_emails (
+  email TEXT PRIMARY KEY CHECK (email = lower(btrim(email)) AND email <> ''),
+  note TEXT,
+  blocked_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-ALTER TABLE public.ai_usage_daily ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.ai_usage_daily FROM PUBLIC, anon, authenticated;
-GRANT SELECT ON public.ai_usage_daily TO service_role;
+ALTER TABLE public.blocked_emails ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.blocked_emails FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.blocked_emails TO service_role;
 
--- Counts one request unless the day's ceiling is already reached, atomically
--- (the row lock serializes concurrent claims). Never refunds: a counted
--- request may already have been billed.
-CREATE OR REPLACE FUNCTION public.claim_ai_request(p_feature TEXT, p_usage_date DATE, p_max INTEGER)
+-- Only your own private exercises and foods can be referenced.
+CREATE OR REPLACE FUNCTION public.guard_private_exercise_reference()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.exercises e
+    WHERE e.id = NEW.exercise_id AND e.user_id IS NOT NULL AND e.user_id <> auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Exercise not found' USING ERRCODE = '23503';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.guard_private_food_reference()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.foods f
+    WHERE f.id = NEW.food_id AND f.user_id IS NOT NULL AND f.user_id <> auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Food not found' USING ERRCODE = '23503';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.guard_private_exercise_reference() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.guard_private_food_reference() FROM PUBLIC, anon, authenticated;
+
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['sets', 'split_exercises', 'exercise_rest_preferences'] LOOP
+    IF to_regclass(format('public.%I', t)) IS NULL THEN CONTINUE; END IF;
+    EXECUTE format('DROP TRIGGER IF EXISTS guard_private_exercise_reference ON public.%I', t);
+    EXECUTE format(
+      'CREATE TRIGGER guard_private_exercise_reference BEFORE INSERT OR UPDATE OF exercise_id ON public.%I '
+      'FOR EACH ROW EXECUTE FUNCTION public.guard_private_exercise_reference()', t);
+  END LOOP;
+END
+$$;
+
+DROP TRIGGER IF EXISTS guard_private_food_reference ON public.nutrition_logs;
+CREATE TRIGGER guard_private_food_reference
+  BEFORE INSERT OR UPDATE OF food_id ON public.nutrition_logs
+  FOR EACH ROW EXECUTE FUNCTION public.guard_private_food_reference();
+
+-- AI: daily dollar budget across everyone, per-account limit, off-switch.
+-- One row per UTC day: what has been reserved or spent, in millionths of a dollar.
+CREATE TABLE IF NOT EXISTS public.ai_spend_daily (
+  usage_date DATE PRIMARY KEY,
+  committed_micros BIGINT NOT NULL DEFAULT 0 CHECK (committed_micros >= 0),
+  requests INTEGER NOT NULL DEFAULT 0 CHECK (requests >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One row per paid request. The reservation stands until the real cost is
+-- known; a request that never settles (a crash, an unknown cost) stays charged
+-- at its reservation. Kept when the account is deleted: the money was spent.
+CREATE TABLE IF NOT EXISTS public.ai_spend_claims (
+  claim_key TEXT PRIMARY KEY CHECK (char_length(claim_key) BETWEEN 1 AND 300),
+  usage_date DATE NOT NULL REFERENCES public.ai_spend_daily(usage_date),
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  feature TEXT NOT NULL CHECK (char_length(feature) BETWEEN 1 AND 40),
+  reserved_micros BIGINT NOT NULL CHECK (reserved_micros > 0),
+  cost_micros BIGINT CHECK (cost_micros IS NULL OR cost_micros >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  settled_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ai_spend_claims_user_id_idx ON public.ai_spend_claims(user_id);
+CREATE INDEX IF NOT EXISTS ai_spend_claims_usage_date_idx ON public.ai_spend_claims(usage_date);
+
+ALTER TABLE public.ai_spend_daily ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_spend_claims ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.ai_spend_daily FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.ai_spend_claims FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.ai_spend_daily, public.ai_spend_claims TO service_role;
+
+-- Whether an account may use AI and how many requests a day it gets.
+CREATE OR REPLACE FUNCTION public.ai_access(p_user_id UUID)
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT jsonb_build_object(
+    'approved', a.user_id IS NOT NULL,
+    'daily_limit', CASE WHEN a.user_id IS NULL THEN 0
+                        ELSE coalesce(a.ai_daily_limit, c.ai_daily_requests_per_user, 0) END
+  )
+  FROM (SELECT 1) AS one
+  LEFT JOIN public.approved_users a ON a.user_id = p_user_id
+  LEFT JOIN public.app_config c ON c.id;
+$$;
+
+-- Today's switch and budget, for the up-front check and the app's status line.
+CREATE OR REPLACE FUNCTION public.ai_budget_status(p_usage_date DATE)
+RETURNS JSONB
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT jsonb_build_object(
+    'enabled', coalesce(c.ai_enabled, FALSE),
+    'budget_micros', coalesce((c.ai_daily_budget_usd * 1000000)::BIGINT, 0),
+    'committed_micros', coalesce(d.committed_micros, 0)
+  )
+  FROM (SELECT 1) AS one
+  LEFT JOIN public.app_config c ON c.id
+  LEFT JOIN public.ai_spend_daily d ON d.usage_date = p_usage_date;
+$$;
+
+-- Reserves p_reserve_micros of the day's budget for one paid request, or
+-- refuses. The day row's lock serializes concurrent claims, so the committed
+-- total (settled costs plus open reservations) never passes the budget.
+-- Returns 'claimed', 'exhausted', 'disabled' or 'duplicate'.
+CREATE OR REPLACE FUNCTION public.claim_ai_spend(
+  p_claim_key TEXT,
+  p_user_id UUID,
+  p_feature TEXT,
+  p_usage_date DATE,
+  p_reserve_micros BIGINT
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_enabled BOOLEAN;
+  v_budget BIGINT;
+  v_committed BIGINT;
+BEGIN
+  IF p_claim_key IS NULL OR p_feature IS NULL OR p_usage_date IS NULL
+     OR p_reserve_micros IS NULL OR p_reserve_micros <= 0 THEN
+    RETURN 'disabled';
+  END IF;
+
+  SELECT ai_enabled, (ai_daily_budget_usd * 1000000)::BIGINT INTO v_enabled, v_budget
+  FROM public.app_config WHERE id;
+  IF NOT coalesce(v_enabled, FALSE) THEN
+    RETURN 'disabled';
+  END IF;
+
+  INSERT INTO public.ai_spend_daily (usage_date) VALUES (p_usage_date)
+  ON CONFLICT (usage_date) DO NOTHING;
+  SELECT committed_micros INTO v_committed
+  FROM public.ai_spend_daily WHERE usage_date = p_usage_date
+  FOR UPDATE;
+
+  IF EXISTS (SELECT 1 FROM public.ai_spend_claims WHERE claim_key = p_claim_key) THEN
+    RETURN 'duplicate';
+  END IF;
+  IF v_committed + p_reserve_micros > coalesce(v_budget, 0) THEN
+    RETURN 'exhausted';
+  END IF;
+
+  INSERT INTO public.ai_spend_claims (claim_key, usage_date, user_id, feature, reserved_micros)
+  VALUES (p_claim_key, p_usage_date, p_user_id, p_feature, p_reserve_micros);
+  UPDATE public.ai_spend_daily
+  SET committed_micros = committed_micros + p_reserve_micros,
+      requests = requests + 1,
+      updated_at = now()
+  WHERE usage_date = p_usage_date;
+  RETURN 'claimed';
+END;
+$$;
+
+-- Replaces a reservation with the request's recorded cost, once. A cost above
+-- the reservation is charged in full (the money is spent) and closes the day
+-- sooner; ai_spend_claims shows any such request.
+CREATE OR REPLACE FUNCTION public.settle_ai_spend(p_claim_key TEXT, p_cost_micros BIGINT)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  v_requests INTEGER;
+  v_date DATE;
+  v_reserved BIGINT;
 BEGIN
-  IF p_max IS NULL OR p_max < 1 OR p_feature IS NULL OR p_usage_date IS NULL THEN
+  IF p_claim_key IS NULL OR p_cost_micros IS NULL OR p_cost_micros < 0 THEN
+    RETURN FALSE;
+  END IF;
+  -- Lock the day first, in the same order as claim_ai_spend.
+  SELECT usage_date INTO v_date FROM public.ai_spend_claims WHERE claim_key = p_claim_key;
+  IF v_date IS NULL THEN
+    RETURN FALSE;
+  END IF;
+  PERFORM 1 FROM public.ai_spend_daily WHERE usage_date = v_date FOR UPDATE;
+
+  UPDATE public.ai_spend_claims
+  SET cost_micros = p_cost_micros, settled_at = now()
+  WHERE claim_key = p_claim_key AND cost_micros IS NULL
+  RETURNING reserved_micros INTO v_reserved;
+  IF v_reserved IS NULL THEN
     RETURN FALSE;
   END IF;
 
-  INSERT INTO public.ai_usage_daily AS u (usage_date, feature, requests)
-  VALUES (p_usage_date, p_feature, 1)
-  ON CONFLICT (usage_date, feature) DO UPDATE
-    SET requests = u.requests + 1, updated_at = now()
-    WHERE u.requests < p_max
-  RETURNING u.requests INTO v_requests;
-
-  RETURN v_requests IS NOT NULL;
+  UPDATE public.ai_spend_daily
+  SET committed_micros = greatest(0, committed_micros - v_reserved + p_cost_micros),
+      updated_at = now()
+  WHERE usage_date = v_date;
+  RETURN TRUE;
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.ai_usage_count(p_feature TEXT, p_usage_date DATE)
-RETURNS INTEGER
-LANGUAGE sql
-STABLE
+REVOKE ALL ON FUNCTION public.ai_access(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.ai_budget_status(DATE) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.claim_ai_spend(TEXT, UUID, TEXT, DATE, BIGINT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.settle_ai_spend(TEXT, BIGINT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ai_access(UUID) TO service_role;
+GRANT EXECUTE ON FUNCTION public.ai_budget_status(DATE) TO service_role;
+GRANT EXECUTE ON FUNCTION public.claim_ai_spend(TEXT, UUID, TEXT, DATE, BIGINT) TO service_role;
+GRANT EXECUTE ON FUNCTION public.settle_ai_spend(TEXT, BIGINT) TO service_role;
+
+-- Fixed-window counters. Rows older than two days are pruned as new ones arrive.
+CREATE TABLE IF NOT EXISTS public.rate_limit_windows (
+  bucket TEXT NOT NULL CHECK (char_length(bucket) BETWEEN 1 AND 200),
+  window_start TIMESTAMPTZ NOT NULL,
+  hits INTEGER NOT NULL DEFAULT 0 CHECK (hits >= 0),
+  PRIMARY KEY (bucket, window_start)
+);
+
+CREATE INDEX IF NOT EXISTS rate_limit_windows_window_start_idx ON public.rate_limit_windows(window_start);
+
+ALTER TABLE public.rate_limit_windows ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.rate_limit_windows FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.rate_limit_windows TO service_role;
+
+-- Counts one hit in the current window unless it already holds p_max.
+CREATE OR REPLACE FUNCTION public.claim_rate_limit(p_bucket TEXT, p_window_seconds INTEGER, p_max INTEGER)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-  SELECT coalesce(
-    (SELECT requests FROM public.ai_usage_daily WHERE feature = p_feature AND usage_date = p_usage_date),
-    0
+DECLARE
+  v_start TIMESTAMPTZ;
+  v_hits INTEGER;
+BEGIN
+  IF p_bucket IS NULL OR p_window_seconds IS NULL OR p_window_seconds < 1 OR p_max IS NULL OR p_max < 1 THEN
+    RETURN FALSE;
+  END IF;
+  v_start := to_timestamp(floor(extract(epoch FROM now()) / p_window_seconds) * p_window_seconds);
+
+  INSERT INTO public.rate_limit_windows AS w (bucket, window_start, hits)
+  VALUES (p_bucket, v_start, 1)
+  ON CONFLICT (bucket, window_start) DO UPDATE
+    SET hits = w.hits + 1
+    WHERE w.hits < p_max
+  RETURNING w.hits INTO v_hits;
+
+  -- Occasional pruning keeps the table small without a scheduled job.
+  IF random() < 0.01 THEN
+    DELETE FROM public.rate_limit_windows WHERE window_start < now() - interval '2 days';
+  END IF;
+
+  RETURN v_hits IS NOT NULL;
+END;
+$$;
+
+-- One food lookup by one account: both its per-minute and per-day limits.
+CREATE OR REPLACE FUNCTION public.claim_food_lookup(p_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_minute INTEGER;
+  v_day INTEGER;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+  SELECT lookups_per_minute, lookups_per_day INTO v_minute, v_day FROM public.app_config WHERE id;
+  RETURN public.claim_rate_limit('lookup:' || p_user_id || ':minute', 60, coalesce(v_minute, 1))
+     AND public.claim_rate_limit('lookup:' || p_user_id || ':day', 86400, coalesce(v_day, 1));
+END;
+$$;
+
+-- One call to Open Food Facts from any account.
+CREATE OR REPLACE FUNCTION public.claim_open_food_facts_call()
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+  SELECT public.claim_rate_limit(
+    'provider:open_food_facts:minute', 60,
+    coalesce((SELECT open_food_facts_per_minute FROM public.app_config WHERE id), 1)
   );
 $$;
 
-REVOKE ALL ON FUNCTION public.claim_ai_request(TEXT, DATE, INTEGER) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.ai_usage_count(TEXT, DATE) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.claim_ai_request(TEXT, DATE, INTEGER) TO service_role;
-GRANT EXECUTE ON FUNCTION public.ai_usage_count(TEXT, DATE) TO service_role;
+REVOKE ALL ON FUNCTION public.claim_rate_limit(TEXT, INTEGER, INTEGER) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.claim_food_lookup(UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.claim_open_food_facts_call() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_rate_limit(TEXT, INTEGER, INTEGER) TO service_role;
+GRANT EXECUTE ON FUNCTION public.claim_food_lookup(UUID) TO service_role;
+GRANT EXECUTE ON FUNCTION public.claim_open_food_facts_call() TO service_role;
+
+-- Barcode answers from the food data providers, kept briefly so a popular
+-- product is fetched once rather than once per person. Not personal data.
+CREATE TABLE IF NOT EXISTS public.food_lookup_cache (
+  cache_key TEXT PRIMARY KEY CHECK (char_length(cache_key) BETWEEN 1 AND 200),
+  payload JSONB NOT NULL CHECK (octet_length(payload::TEXT) <= 262144),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS food_lookup_cache_expires_at_idx ON public.food_lookup_cache(expires_at);
+
+ALTER TABLE public.food_lookup_cache ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.food_lookup_cache FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.food_lookup_cache TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.apple_sign_in_tokens (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  refresh_token TEXT NOT NULL CHECK (char_length(refresh_token) BETWEEN 1 AND 2000),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.apple_sign_in_tokens ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.apple_sign_in_tokens FROM PUBLIC, anon, authenticated;
+GRANT SELECT, DELETE ON public.apple_sign_in_tokens TO service_role;
+
+-- The app hands over Apple's refresh token right after a Sign in with Apple
+-- (Supabase passes it back once, as provider_refresh_token). Only an account
+-- that really has an Apple sign-in can store one, and only for itself. Open to
+-- accounts that are not approved too, so anyone can leave cleanly.
+CREATE OR REPLACE FUNCTION public.save_apple_refresh_token(p_refresh_token TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_token TEXT := btrim(coalesce(p_refresh_token, ''));
+BEGIN
+  IF auth.uid() IS NULL OR v_token = '' OR char_length(v_token) > 2000 THEN
+    RETURN FALSE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM auth.identities WHERE user_id = auth.uid() AND provider = 'apple') THEN
+    RETURN FALSE;
+  END IF;
+  INSERT INTO public.apple_sign_in_tokens (user_id, refresh_token)
+  VALUES (auth.uid(), v_token)
+  ON CONFLICT (user_id) DO UPDATE SET refresh_token = EXCLUDED.refresh_token, updated_at = now();
+  RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.save_apple_refresh_token(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.save_apple_refresh_token(TEXT) TO authenticated;
+
+-- ─── 10. Table grants ────────────────────────────────────────────────────
+-- Supabase's defaults give anon and authenticated every privilege on every
+-- public table, TRUNCATE included (TRUNCATE ignores row-level security). The
+-- app reaches tables only through the API, which never truncates, so this is
+-- defence in depth: no TRUNCATE, TRIGGER or REFERENCES for clients, and no
+-- table access at all while signed out (the app reads nothing before sign-in;
+-- app_public_config() is a function). Tables added later get the same.
+-- The service-only tables above already have no client grants.
+
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOR t IN
+    SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+  LOOP
+    EXECUTE format('REVOKE TRUNCATE, TRIGGER, REFERENCES ON public.%I FROM anon, authenticated', t);
+    EXECUTE format('REVOKE ALL ON public.%I FROM anon', t);
+  END LOOP;
+END
+$$;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE TRUNCATE, TRIGGER, REFERENCES ON TABLES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM anon;
 
 -- Function to create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -1025,7 +1449,7 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('Cable Crunch', 'core', NULL, 'cable', false),
 ('Hanging Leg Raise', 'core', NULL, 'bodyweight', false),
 ('Russian Twist', 'core', NULL, 'bodyweight', false)
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (name) WHERE user_id IS NULL DO NOTHING;
 
 -- Default volume landmarks based on Beardsley research
 -- These are starting points; users can customize
@@ -1058,3 +1482,64 @@ CROSS JOIN (
 WHERE NOT EXISTS (
   SELECT 1 FROM volume_landmarks vl WHERE vl.user_id = p.id AND vl.muscle_group = v.muscle_group
 );
+
+-- Size limits on free text (20261111120000)
+-- NOT VALID: checked on every new or changed row, never on rows already there,
+-- so nothing existing breaks. Limits are well above anything the app writes.
+
+DO $$
+DECLARE
+  c RECORD;
+BEGIN
+  FOR c IN
+    SELECT * FROM (VALUES
+      ('activity_sessions', 'title', 200), ('activity_sessions', 'notes', 4000),
+      ('activity_segments', 'sport', 100), ('activity_segments', 'external_id', 200),
+      ('body_weight_measurements', 'external_id', 200), ('body_weight_measurements', 'source_name', 200),
+      ('body_weight_measurements', 'source_bundle', 200),
+      ('exercises', 'name', 120), ('exercises', 'muscle_group', 60),
+      ('exercises', 'muscle_group_secondary', 60), ('exercises', 'equipment', 80),
+      ('flex_day_templates', 'label', 120),
+      ('foods', 'name', 300), ('foods', 'serving_unit', 60), ('foods', 'description', 4000),
+      ('foods', 'fdc_id', 40), ('foods', 'external_id', 200), ('foods', 'external_source', 40), ('foods', 'source', 40),
+      ('nutrition_import_batches', 'file_name', 300), ('nutrition_import_batches', 'file_hash', 200),
+      ('nutrition_logs', 'external_id', 200), ('nutrition_logs', 'meal_type', 40), ('nutrition_logs', 'source', 40),
+      ('profiles', 'display_name', 100),
+      ('split_days', 'day_name', 120), ('split_exercises', 'notes', 2000),
+      ('splits', 'name', 120), ('splits', 'description', 2000),
+      ('workout_day_plans', 'day_label', 120),
+      ('workouts', 'notes', 4000)
+    ) AS limits(tbl, col, max_chars)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = c.tbl AND column_name = c.col
+    ) THEN
+      RAISE NOTICE 'size limits: public.%.% does not exist here, skipped', c.tbl, c.col;
+      CONTINUE;
+    END IF;
+    EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT IF EXISTS %I', c.tbl, c.tbl || '_' || c.col || '_size');
+    EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I CHECK (char_length(%I) <= %s) NOT VALID',
+      c.tbl, c.tbl || '_' || c.col || '_size', c.col, c.max_chars);
+  END LOOP;
+
+  FOR c IN
+    SELECT * FROM (VALUES
+      ('activity_segments', 'raw', 262144),
+      ('flex_day_templates', 'items', 65536),
+      ('workout_day_plans', 'items', 65536)
+    ) AS limits(tbl, col, max_bytes)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = c.tbl AND column_name = c.col
+    ) THEN
+      RAISE NOTICE 'size limits: public.%.% does not exist here, skipped', c.tbl, c.col;
+      CONTINUE;
+    END IF;
+    EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT IF EXISTS %I', c.tbl, c.tbl || '_' || c.col || '_size');
+    EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I CHECK (octet_length(%I::TEXT) <= %s) NOT VALID',
+      c.tbl, c.tbl || '_' || c.col || '_size', c.col, c.max_bytes);
+  END LOOP;
+END
+$$;

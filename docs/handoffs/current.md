@@ -20,12 +20,10 @@ history keep them (this file at commit b3f61df has the long version).
   `--project-ref`, or run `supabase link` again. An older checkout may still
   hold an untracked `ios/` folder from the Capacitor app; it can be deleted.
 - Left on purpose (runtime config, change only as a planned deploy): the
-  `analyze-food-trial` gateway still accepts a `capacitor:` origin, which the
-  function's `FOOD_ANALYSIS_ALLOWED_ORIGINS` secret may name; `whoop-oauth`
-  still falls back to `APP_BASE_URL/settings` (the web app) when no return
-  address is sent, though the app always sends `app.hyper.mobile://settings`.
-  The Supabase dashboard's Auth site URL and redirect list may still name the
-  web app. The `.env` names keep their `VITE_` prefix.
+  Supabase dashboard's Auth site URL and redirect list may still name the web
+  app. The `.env` names keep their `VITE_` prefix. (The `capacitor:` origin and
+  `whoop-oauth`'s `APP_BASE_URL` fallback are gone on the public sign-up
+  branch below; the `APP_BASE_URL` secret is then unused.)
 - Merged since the last TestFlight upload recorded here: #181–#190, among
   them the full weigh-in history (#185), the design council's Blanc
   refinements with a custom camera (`expo-camera`, #186) and a quicker launch
@@ -74,18 +72,24 @@ history keep them (this file at commit b3f61df has the long version).
   before the `food_analysis_ledger` migration is applied. Check that the Auth
   redirect list still names `app.hyper.mobile://auth/callback` (sign-up
   confirmation needs it too).
-- Not done: revoking the Sign in with Apple token on deletion (needs the
-  Apple key and the provider refresh token, which Supabase doesn't keep).
+- Revoking the Sign in with Apple token on deletion is on the public sign-up
+  branch below (the app now hands the server Apple's refresh token).
 
-## Invite-only and the daily AI ceiling (branch `t3/invite-only-ai-spend-cap`)
+## Public sign-up with brakes (branch `claude/project-thread-4fczbz`)
 
-- Rebuilds stale PR #143 on current main: sign-up only for emails in
-  `beta_invites`, app data only for accounts in `approved_users`, a daily
-  ceiling on paid food analysis across all accounts, and the "Not on the list
-  yet" screen. How it works, inviting and the ceiling:
-  [private-beta.md](../private-beta.md). Not deployed; the PR lists the
-  ordered deploy steps. Deploying `analyze-food-trial` from main is the ledger
-  cutover above, so both migrations go first.
+- Built on #219 (`t3/invite-only-ai-spend-cap`, which rebuilt stale PR #143):
+  the approved list and the "Not on the list yet" screen stay, and migration
+  `20261111120000_public_signup_hardening.sql` adds open sign-up with
+  invite-only as the emergency switch, private custom exercises, per-person
+  USDA foods, a $5/day AI budget across everyone with per-account limits and
+  an off-switch, food lookup limits, Sign in with Apple revocation on
+  deletion, size limits and no table access for signed-out callers. How it
+  works and every switch: [sign-up-and-limits.md](../sign-up-and-limits.md).
+- Not deployed. Production lacks the ledger migration, and its migration
+  history has drifted from the repo, so the cutover applies the migrations by
+  hand in the order in [the ledger notes](../food-analysis-ledger.md).
+- Also fixes the recorded cost of a meal analysis (it was always empty, so no
+  real cost was ever logged).
 
 ## Today's groups, and holding one to move it (branch `t3/native-ui-clutter-review`)
 

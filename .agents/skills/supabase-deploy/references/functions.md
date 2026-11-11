@@ -19,11 +19,11 @@ authority, and `SUPABASE_*` values are provided by the platform):
 
 | Function | Required | Optional |
 |---|---|---|
-| `whoop-oauth` | `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `WHOOP_STATE_SECRET`, `APP_BASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | |
+| `whoop-oauth` | `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `WHOOP_STATE_SECRET`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | |
 | `whoop-sync` | `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | |
-| `food-lookup` | `USDA_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY` | `FATSECRET_ENABLED` (`1` turns the provider on), `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `FATSECRET_SCOPE` |
-| `analyze-food-trial` | `GEMINI_API_KEY`, `TAVILY_API_KEY`, `FOOD_ANALYSIS_ALLOWED_ORIGINS`, `FOOD_ANALYSIS_BUCKET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `FOOD_ANALYSIS_MAX_DAILY_REQUESTS` |
-| `delete-account` | `FOOD_ANALYSIS_BUCKET`, `FOOD_ANALYSIS_DATABASE_LEDGER_READY` (must be `true`; see [the ledger notes](../../../../docs/food-analysis-ledger.md)), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | |
+| `food-lookup` | `USDA_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (approval, lookup limits and the barcode cache) | `FATSECRET_ENABLED` (`1` turns the provider on), `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`, `FATSECRET_SCOPE` |
+| `analyze-food-trial` | `GEMINI_API_KEY`, `TAVILY_API_KEY`, `FOOD_ANALYSIS_BUCKET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `FOOD_ANALYSIS_ALLOWED_ORIGINS` (browser origins; the app sends none), `FOOD_ANALYSIS_MAX_DAILY_REQUESTS` (ceiling over every account's own limit, default 40) |
+| `delete-account` | `FOOD_ANALYSIS_BUCKET`, `FOOD_ANALYSIS_DATABASE_LEDGER_READY` (must be `true`; see [the ledger notes](../../../../docs/food-analysis-ledger.md)), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_CLIENT_ID`, `APPLE_PRIVATE_KEY` (Sign in with Apple revocation; see [sign-up and limits](../../../../docs/sign-up-and-limits.md)) |
 
 The app's client ([native/src/platform/supabase.ts](../../../../native/src/platform/supabase.ts))
 requires `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` unless

@@ -5,11 +5,13 @@ import { createDatabaseLedger } from './databaseLedger.ts';
 import { analyzeMeal } from './model.ts';
 import { interpretServing } from './serving.ts';
 import { suggestTargets } from './coach.ts';
-import { isApprovedUser } from '../_shared/approval.ts';
 
-// Meal analysis, serving interpretation and target suggestions share one
-// counter across all accounts (public.ai_usage_daily).
-const GLOBAL_FEATURE = 'food-analysis';
+const MICROS = 1_000_000;
+const usd = (micros: unknown) => {
+  const value = Number(micros);
+  if (!Number.isFinite(value)) throw new Error('Budget unavailable');
+  return value / MICROS;
+};
 
 // No client-provided API key, provider, model, URL or user ID is trusted.
 // The operator applies the ledger migration and keeps the legacy bucket private.
@@ -30,10 +32,13 @@ Deno.serve(async (request: Request) => {
     });
     const handler = createTrialHandler({
       config: {
-        maxAttempts: Number(Deno.env.get('FOOD_ANALYSIS_MAX_DAILY_REQUESTS') ?? '24'),
-        // All accounts together. An out-of-range value fails closed (validateConfig).
-        maxGlobalAttempts: Number(Deno.env.get('FOOD_ANALYSIS_MAX_GLOBAL_DAILY_REQUESTS') ?? '50'),
-        allowedOrigins: required('FOOD_ANALYSIS_ALLOWED_ORIGINS').split(',').map(value => value.trim()),
+        // The ceiling for any one account; each account's own limit comes from
+        // the database (app_config and approved_users). Out of range fails closed.
+        maxAttempts: Number(Deno.env.get('FOOD_ANALYSIS_MAX_DAILY_REQUESTS') ?? '40'),
+        // Browser origins only; the app sends none. The retired Capacitor
+        // shell's capacitor:// origin is ignored if the secret still names it.
+        allowedOrigins: (Deno.env.get('FOOD_ANALYSIS_ALLOWED_ORIGINS') ?? '').split(',').map(value => value.trim())
+          .filter(value => value && !value.startsWith('capacitor:')),
       },
       ledger: createDatabaseLedger({
         url, serviceRoleKey: key,
@@ -43,17 +48,30 @@ Deno.serve(async (request: Request) => {
         const { data, error } = await authClient.auth.getUser(token);
         return error ? null : data.user?.id ?? null;
       },
-      isApproved: userId => isApprovedUser(authClient, userId),
-      globalQuota: {
-        async used(date) {
-          const { data, error } = await authClient.rpc('ai_usage_count', { p_feature: GLOBAL_FEATURE, p_usage_date: date });
-          if (error || typeof data !== 'number') throw new Error('Global quota unavailable');
-          return data;
+      async access(userId) {
+        const { data, error } = await authClient.rpc('ai_access', { p_user_id: userId });
+        const answer = data as { approved?: unknown; daily_limit?: unknown } | null;
+        if (error || !answer || typeof answer.approved !== 'boolean' || typeof answer.daily_limit !== 'number') throw new Error('Access unavailable');
+        return { approved: answer.approved, dailyLimit: answer.daily_limit };
+      },
+      budget: {
+        async status(date) {
+          const { data, error } = await authClient.rpc('ai_budget_status', { p_usage_date: date });
+          const answer = data as { enabled?: unknown; budget_micros?: unknown; committed_micros?: unknown } | null;
+          if (error || !answer || typeof answer.enabled !== 'boolean') throw new Error('Budget unavailable');
+          return { enabled: answer.enabled, budgetUsd: usd(answer.budget_micros), committedUsd: usd(answer.committed_micros) };
         },
-        async claim(date, max) {
-          const { data, error } = await authClient.rpc('claim_ai_request', { p_feature: GLOBAL_FEATURE, p_usage_date: date, p_max: max });
-          if (error || typeof data !== 'boolean') throw new Error('Global quota unavailable');
-          return data;
+        async claim({ key, userId, date, feature, reserveUsd }) {
+          const { data, error } = await authClient.rpc('claim_ai_spend', {
+            p_claim_key: key, p_user_id: userId, p_feature: feature, p_usage_date: date,
+            p_reserve_micros: Math.ceil(reserveUsd * MICROS),
+          });
+          if (error || !['claimed', 'exhausted', 'disabled', 'duplicate'].includes(data as string)) throw new Error('Budget unavailable');
+          return data as 'claimed' | 'exhausted' | 'disabled' | 'duplicate';
+        },
+        async settle(key, costUsd) {
+          const { error } = await authClient.rpc('settle_ai_spend', { p_claim_key: key, p_cost_micros: Math.ceil(costUsd * MICROS) });
+          if (error) throw new Error('Budget not settled');
         },
       },
       analyze: (input, onProgress) => analyzeMeal(input, apiKey, tavilyKey, onProgress),

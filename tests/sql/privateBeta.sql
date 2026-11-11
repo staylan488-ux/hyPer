@@ -1,8 +1,13 @@
 -- Private beta regression. Run with psql -X -v ON_ERROR_STOP=1 against a
 -- disposable LOCAL Supabase database (it needs auth.uid() and the Supabase
--- roles) after applying 20261109120000_private_beta_and_ai_caps.sql.
+-- roles) after applying 20261109120000_private_beta_and_ai_caps.sql and
+-- 20261111120000_public_signup_hardening.sql. Covers invite-only mode and the
+-- approval gate; tests/sql/publicSignup.sql covers open sign-up and the limits.
 -- All fixtures roll back.
 BEGIN;
+
+-- The emergency switch: invite-only for this file.
+UPDATE public.app_config SET signup_mode = 'invite_only';
 
 -- Every public table is either service-only or carries the approval policy,
 -- so a table added later without it fails here.
@@ -12,7 +17,7 @@ BEGIN
   SELECT string_agg(c.relname, ', ') INTO missing
   FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
   WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
-    AND c.relname NOT IN ('approved_users', 'beta_invites', 'ai_usage_daily', 'food_analysis_ledger')
+    AND c.relname NOT IN ('approved_users', 'beta_invites', 'food_analysis_ledger', 'app_config', 'blocked_emails', 'ai_spend_daily', 'ai_spend_claims', 'rate_limit_windows', 'food_lookup_cache', 'apple_sign_in_tokens')
     AND NOT (c.relrowsecurity AND EXISTS (
       SELECT FROM pg_policy p
       WHERE p.polrelid = c.oid AND p.polname = 'Private beta: approved users only'
@@ -22,8 +27,6 @@ BEGIN
   ASSERT NOT has_table_privilege('authenticated', 'public.approved_users', 'SELECT,INSERT,UPDATE,DELETE'), 'Clients cannot touch approved_users';
   ASSERT NOT has_table_privilege('anon', 'public.approved_users', 'SELECT,INSERT,UPDATE,DELETE'), 'Signed-out callers cannot touch approved_users';
   ASSERT NOT has_table_privilege('authenticated', 'public.beta_invites', 'SELECT,INSERT,UPDATE,DELETE'), 'Clients cannot touch beta_invites';
-  ASSERT NOT has_table_privilege('authenticated', 'public.ai_usage_daily', 'SELECT,INSERT,UPDATE,DELETE'), 'Clients cannot touch the AI counter';
-  ASSERT NOT has_function_privilege('authenticated', 'public.claim_ai_request(text, date, integer)', 'EXECUTE'), 'Clients cannot claim AI requests';
   ASSERT NOT has_function_privilege('anon', 'public.my_beta_access()', 'EXECUTE'), 'Signed-out callers do not get an approval answer';
 END $$;
 
@@ -63,7 +66,9 @@ BEGIN
   ASSERT (SELECT count(*) = 1 FROM public.workouts), 'Approved account reads its workout';
   ASSERT (SELECT count(*) >= 1 FROM public.foods WHERE user_id IS NULL), 'Approved account reads shared foods';
   INSERT INTO public.exercises (name, muscle_group) VALUES ('Fixture approved move', 'chest');
+  -- A USDA food is the account's own now (the default fills in the owner).
   INSERT INTO public.foods (name, calories, protein, carbs, fat, source) VALUES ('Fixture approved USDA', 1, 0, 0, 0, 'usda');
+  ASSERT (SELECT user_id FROM public.foods WHERE name = 'Fixture approved USDA') = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'USDA food is owned';
   INSERT INTO public.workouts (user_id) VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 END $$;
 
@@ -75,7 +80,7 @@ BEGIN
   ASSERT NOT (SELECT (public.my_beta_access()->>'approved')::boolean), 'Removed account reads not approved';
   FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
            WHERE ns.nspname = 'public' AND c.relkind = 'r'
-             AND c.relname NOT IN ('approved_users', 'beta_invites', 'ai_usage_daily', 'food_analysis_ledger', 'whoop_tokens')
+             AND c.relname NOT IN ('approved_users', 'beta_invites', 'food_analysis_ledger', 'whoop_tokens', 'app_config', 'blocked_emails', 'ai_spend_daily', 'ai_spend_claims', 'rate_limit_windows', 'food_lookup_cache', 'apple_sign_in_tokens')
   LOOP
     EXECUTE format('SELECT count(*) FROM public.%I', t) INTO n;
     ASSERT n = 0, format('Unapproved account read %s rows from %s', n, t);
@@ -109,14 +114,23 @@ BEGIN
   ASSERT n = 0, 'Unapproved account cannot delete workouts';
 END $$;
 
--- Signed out: reads nothing, writes nothing.
+-- Signed out: reads nothing, writes nothing (20261111120000 also takes away
+-- every table grant from anon, so each attempt is refused outright).
 SET LOCAL ROLE anon;
 SELECT set_config('request.jwt.claims', '{"role":"anon"}', true);
 DO $$
 DECLARE n BIGINT;
 BEGIN
-  ASSERT (SELECT count(*) = 0 FROM public.foods), 'Signed-out caller reads no foods, shared ones included';
-  ASSERT (SELECT count(*) = 0 FROM public.exercises), 'Signed-out caller reads no exercises';
+  BEGIN
+    PERFORM count(*) FROM public.foods;
+    RAISE EXCEPTION 'Signed-out caller read foods';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    PERFORM count(*) FROM public.exercises;
+    RAISE EXCEPTION 'Signed-out caller read exercises';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   BEGIN
     INSERT INTO public.foods (name, calories, protein, carbs, fat) VALUES ('Fixture anon junk', 1, 0, 0, 0);
     RAISE EXCEPTION 'Signed-out ownerless food insert accepted';
@@ -127,19 +141,6 @@ BEGIN
     RAISE EXCEPTION 'Signed-out exercise insert accepted';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-END $$;
-RESET ROLE;
-
--- The daily AI ceiling.
-SET LOCAL ROLE service_role;
-DO $$
-BEGIN
-  ASSERT public.claim_ai_request('fixture', '2001-01-01', 2), 'First claim';
-  ASSERT public.claim_ai_request('fixture', '2001-01-01', 2), 'Second claim';
-  ASSERT NOT public.claim_ai_request('fixture', '2001-01-01', 2), 'Third claim refused at the ceiling';
-  ASSERT public.ai_usage_count('fixture', '2001-01-01') = 2, 'Counter stops at the ceiling';
-  ASSERT public.claim_ai_request('fixture', '2001-01-02', 2), 'A new date starts over';
-  ASSERT NOT public.claim_ai_request('fixture', '2001-01-03', 0), 'A ceiling below 1 refuses';
 END $$;
 RESET ROLE;
 

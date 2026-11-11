@@ -29,7 +29,6 @@ function getEnv() {
     clientId: Deno.env.get('WHOOP_CLIENT_ID') ?? '',
     clientSecret: Deno.env.get('WHOOP_CLIENT_SECRET') ?? '',
     stateSecret: Deno.env.get('WHOOP_STATE_SECRET') ?? '',
-    appBaseUrl: (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, ''),
     supabaseUrl: Deno.env.get('SUPABASE_URL') ?? '',
     anonKey: Deno.env.get('SUPABASE_ANON_KEY') ?? '',
     serviceRoleKey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -44,21 +43,9 @@ function callbackUrl(supabaseUrl: string): string {
   return `${supabaseUrl}/functions/v1/whoop-oauth/callback`;
 }
 
-function allowedReturnTo(value: string | undefined, appBaseUrl: string): string {
-  const webDefault = `${appBaseUrl}/settings`;
-  if (!value) return webDefault;
-  if (value === 'app.hyper.mobile://settings') return value;
-  try {
-    const requested = new URL(value);
-    const configured = new URL(appBaseUrl);
-    if (requested.origin === configured.origin && requested.pathname === '/settings') {
-      return requested.toString().replace(/[?&]whoop=[^&]*/g, '');
-    }
-  } catch {
-    // Invalid return destinations fall back to the configured web app.
-  }
-  return webDefault;
-}
+// The only place WHOOP's consent screen sends people back to: the app. The
+// retired web app's address (APP_BASE_URL) is no longer a destination.
+const APP_RETURN = 'app.hyper.mobile://settings';
 
 function withWhoopStatus(returnTo: string, status: 'connected' | 'error'): string {
   const url = new URL(returnTo);
@@ -105,13 +92,12 @@ serve(async (req) => {
 
   /* ── GET /callback — browser redirect from WHOOP consent ── */
   if (req.method === 'GET' && url.pathname.endsWith('/callback')) {
-    const redirectTo = (status: 'connected' | 'error', returnTo = `${env.appBaseUrl}/settings`) =>
+    const redirectTo = (status: 'connected' | 'error') =>
       new Response(null, {
         status: 302,
-        headers: { ...corsHeaders, Location: withWhoopStatus(returnTo, status) },
+        headers: { ...corsHeaders, Location: withWhoopStatus(APP_RETURN, status) },
       });
 
-    let callbackReturnTo = `${env.appBaseUrl}/settings`;
     try {
       const code = url.searchParams.get('code');
       const state = url.searchParams.get('state');
@@ -119,12 +105,11 @@ serve(async (req) => {
 
       const payload = await verifyOAuthState(env.stateSecret, state);
       if (!payload) return redirectTo('error');
-      callbackReturnTo = allowedReturnTo(payload.returnTo, env.appBaseUrl);
-      if (!code) return redirectTo('error', callbackReturnTo);
+      if (!code) return redirectTo('error');
       const service = createClient(env.supabaseUrl, env.serviceRoleKey);
       // Approved when the connection started; check again before taking WHOOP's
       // tokens (a failed check throws and lands in the error redirect below).
-      if (!await isApprovedUser(service, payload.userId)) return redirectTo('error', callbackReturnTo);
+      if (!await isApprovedUser(service, payload.userId)) return redirectTo('error');
 
       const tokens = await exchangeAuthorizationCode({
         code,
@@ -155,10 +140,10 @@ serve(async (req) => {
       });
       if (connectionError) throw connectionError;
 
-      return redirectTo('connected', callbackReturnTo);
+      return redirectTo('connected');
     } catch (error) {
       console.error('whoop-oauth callback failed:', error);
-      return redirectTo('error', callbackReturnTo);
+      return redirectTo('error');
     }
   }
 
@@ -181,8 +166,7 @@ serve(async (req) => {
       'WHOOP connection is temporarily unavailable.',
     );
     if (refusal) return jsonResponse(refusal.body, refusal.status);
-    const returnTo = allowedReturnTo(body.returnTo, env.appBaseUrl);
-    const state = await signOAuthState(env.stateSecret, userId, 10 * 60 * 1000, returnTo);
+    const state = await signOAuthState(env.stateSecret, userId, 10 * 60 * 1000, APP_RETURN);
     const authorize = new URL(WHOOP_AUTH_URL);
     authorize.searchParams.set('response_type', 'code');
     authorize.searchParams.set('client_id', env.clientId);
