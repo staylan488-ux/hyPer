@@ -292,12 +292,12 @@ describe('the set card\'s target', () => {
     history = { row: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 80, reps: 9 }, { weight: 80, reps: 9 }, { weight: 80, reps: 8 }] }] };
   });
 
-  it('fills the fields with the target and says why in one line, beside last time\'s reps', async () => {
+  it('fills the fields with the target and says why in one line, with no last-time captions', async () => {
     await open();
     expect(host.querySelector('[data-field="Weight in pounds"]')?.textContent).toBe('80');
     expect(host.querySelector('[data-field="Reps"]')?.textContent).toBe('10');
     expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
-    expect(captions()[1]).toEqual({ text: 'last 9', spoken: 'Last time, 9 reps', shown: true });
+    expect(captions().map((caption) => caption.shown)).toEqual([false, false]);
     const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
     expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
   });

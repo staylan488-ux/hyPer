@@ -238,20 +238,17 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // and it comes back as soon as the field is edited away from last time's.
   const lastWeight = lastLoad !== null && draft && differsFromLast(draft.weight, lastLoad) ? formatLoad(lastLoad) : null;
   const lastReps = lastRepCount !== null && draft && differsFromLast(draft.reps, lastRepCount) ? lastRepCount : null;
-  // With a target, a field edited away from it shows the target under it in
-  // place of last time, so the card never holds three pairs of figures.
+  // With a target the figures show the target or last time, never both: the
+  // fields hold the target (its line already says how it relates to last
+  // time), and a field edited away from it shows the target under it.
   const targetWeight = target && target.weight > 0 && draft && differsFromLast(draft.weight, target.weight) ? formatLoad(target.weight) : null;
   const targetReps = target && draft && differsFromLast(draft.reps, target.reps) ? target.reps : null;
-  const weightCaption = targetWeight
-    ? { text: `target ${targetWeight}`, spoken: `Target, ${targetWeight} pounds` }
-    : lastWeight
-      ? { text: `last ${lastWeight}`, spoken: `Last time, ${lastWeight} pounds` }
-      : null;
-  const repsCaption = targetReps !== null
-    ? { text: `target ${targetReps}`, spoken: `Target, ${targetReps} reps` }
-    : lastReps !== null
-      ? { text: `last ${lastReps}`, spoken: `Last time, ${lastReps} reps` }
-      : null;
+  const weightCaption = target
+    ? targetWeight ? { text: `target ${targetWeight}`, spoken: `Target, ${targetWeight} pounds` } : null
+    : lastWeight ? { text: `last ${lastWeight}`, spoken: `Last time, ${lastWeight} pounds` } : null;
+  const repsCaption = target
+    ? targetReps !== null ? { text: `target ${targetReps}`, spoken: `Target, ${targetReps} reps` } : null
+    : lastReps !== null ? { text: `last ${lastReps}`, spoken: `Last time, ${lastReps} reps` } : null;
   // Ending a movement early with one set to go only skips that set: the quiet action says so.
   const lastSetLeft = current ? current.movement.sets.length - current.movement.done === 1 : false;
   // Beside Add RPE: the warm-up sets before a movement's first set, else the
