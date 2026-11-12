@@ -1,4 +1,5 @@
-import type { SplitTemplate } from '@/types';
+import type { MuscleGroup, SplitTemplate } from '@/types';
+import { DESIGNER_MOVEMENTS } from '@/lib/designerMovements';
 import { beardsleyEvidenceSnapshot } from '@/lib/evidence/snapshot';
 import type { ExerciseProfile } from '@/lib/evidence/types';
 
@@ -126,6 +127,17 @@ function isExerciseCompatible(exerciseName: string, equipment: EquipmentProfile)
 function getExerciseProfile(exerciseName: string): ExerciseProfile | undefined {
   const normalized = normalizeExerciseName(exerciseName);
   return exerciseProfileByName.get(normalized);
+}
+
+/**
+ * What a movement the designer emits trains, as the seeded library files it:
+ * its main and second muscle and whether it is a compound. Null for any other
+ * name.
+ */
+export function designerMovementMuscles(exerciseName: string): { muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null; is_compound: boolean } | null {
+  const normalized = normalizeExerciseName(exerciseName);
+  const row = Object.entries(DESIGNER_MOVEMENTS).find(([name]) => normalizeExerciseName(name) === normalized)?.[1];
+  return row ? { muscle_group: row[0] as MuscleGroup, muscle_group_secondary: row[1] as MuscleGroup | null, is_compound: row[2] } : null;
 }
 
 function resolveExerciseForEquipment(

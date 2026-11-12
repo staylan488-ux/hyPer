@@ -6,6 +6,7 @@
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import {
   buildGuidedTemplate,
+  designerMovementMuscles,
   recommendProgramTemplate,
   type EquipmentProfile,
   type ExperienceLevel,
@@ -13,7 +14,7 @@ import {
   type ProgramFocus,
   type SessionLength,
 } from '@/lib/programDesigner';
-import { SESSION_SET_CAPS, fillByMuscle, fitToLibrary, keepCurrentMovements, thinLine, thinMuscles } from '@/lib/programFill';
+import { SESSION_SET_CAPS, STAND_IN_PREFIX, fillByMuscle, fitToLibrary, keepCurrentMovements, thinLine, thinMuscles } from '@/lib/programFill';
 import { templateSplitDraft } from '@/lib/splitDraftSeed';
 import { splitTemplates } from '@/lib/splitTemplates';
 import type { DraftSplit } from '@/lib/splitDraft';
@@ -90,14 +91,22 @@ export function guidedDraft(
   template: SplitTemplate = guidedTemplate(answers),
 ): GuidedDraft {
   const equipment = answers.equipment === 'full_gym' ? 'full_gym' : 'dumbbell_only';
-  const { draft: seeded, missing } = templateSplitDraft(template, library);
+  // A name the library lacks holds its slot as a stand-in, so the person's own
+  // movement or a library one for the same muscle can take it.
+  const { draft: seeded, missing } = templateSplitDraft(template, library, (name) => {
+    const muscles = designerMovementMuscles(name);
+    return muscles ? { id: `${STAND_IN_PREFIX}${name}`, name, equipment: null, ...muscles } : null;
+  });
   const maxDaySets = SESSION_SET_CAPS[answers.sessionLength];
   const kept = current?.days.length ? keepCurrentMovements(seeded, current, { equipment, maxDaySets }) : seeded;
-  const filled = fillByMuscle(fitToLibrary(kept, library, equipment), library, { ...answers, equipment });
+  const dropped: string[] = [];
+  const fitted = fitToLibrary(kept, library, equipment, dropped);
+  const left = [...new Set([...missing, ...dropped])];
+  const filled = fillByMuscle(fitted, library, { ...answers, equipment });
   const thin = thinLine(thinMuscles(filled), filled.days.length, answers.sessionLength);
   return {
     draft: { ...filled, description: [filled.description, thin].filter(Boolean).join(' ') || null },
-    notice: missing.length > 0 ? `Not in your exercise library, so left out: ${missing.join(', ')}.` : null,
+    notice: left.length > 0 ? `Not in your exercise library, so left out: ${left.join(', ')}.` : null,
   };
 }
 

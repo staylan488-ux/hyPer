@@ -254,13 +254,21 @@ export function fitsDumbbellsOnly(exercise: Pick<Exercise, 'equipment'>): boolea
   return equipment === 'dumbbells' || equipment === 'bodyweight';
 }
 
+/** Id prefix of a stand-in row: a template movement the library lacks, held in its slot until it is filled. */
+export const STAND_IN_PREFIX = 'stand-in:';
+
+export function isStandIn(exercise: Pick<Exercise, 'id'>): boolean {
+  return exercise.id.startsWith(STAND_IN_PREFIX);
+}
+
 /**
- * A movement the plan's equipment rules out, or a second copy of one in a
- * day, becomes another library movement for the same muscle (the same role
- * first, the suggestions' staples before the rest) that the day lacks; with
- * none, it leaves the day and the fill makes up its sets.
+ * A movement the plan's equipment rules out, a stand-in for a movement the
+ * library lacks, or a second copy of one in a day, becomes another library
+ * movement for the same muscle (the same role first, the suggestions'
+ * staples before the rest) that the day lacks; with none, it leaves the day,
+ * its name goes into `dropped`, and the fill makes up its sets.
  */
-export function fitToLibrary(draft: DraftSplit, library: readonly Exercise[], equipment: EquipmentProfile): DraftSplit {
+export function fitToLibrary(draft: DraftSplit, library: readonly Exercise[], equipment: EquipmentProfile, dropped: string[] = []): DraftSplit {
   const offered = builderLibrary(library, equipment);
   const staples = new Map<string, number>();
   for (const names of Object.values(SUGGESTED_MOVEMENTS)) names.forEach((name, index) => staples.set(name.toLowerCase(), index));
@@ -270,7 +278,7 @@ export function fitToLibrary(draft: DraftSplit, library: readonly Exercise[], eq
   const days = draft.days.map((day) => {
     const inDay = new Set<string>();
     const exercises = day.exercises.flatMap((slot): DraftExercise[] => {
-      const fits = equipment === 'full_gym' || fitsDumbbellsOnly(slot.exercise);
+      const fits = !isStandIn(slot.exercise) && (equipment === 'full_gym' || fitsDumbbellsOnly(slot.exercise));
       if (fits && !inDay.has(slot.exercise_id)) {
         inDay.add(slot.exercise_id);
         return [slot];
@@ -283,7 +291,10 @@ export function fitToLibrary(draft: DraftSplit, library: readonly Exercise[], eq
         .sort((a, b) => Number(a.is_compound !== slot.exercise.is_compound) - Number(b.is_compound !== slot.exercise.is_compound)
           || rank(a) - rank(b) || a.name.localeCompare(b.name));
       const swap = options[0];
-      if (!swap) return [];
+      if (!swap) {
+        if (isStandIn(slot.exercise)) dropped.push(slot.exercise.name);
+        return [];
+      }
       inDay.add(swap.id);
       return [{ ...slot, exercise_id: swap.id, exercise: swap }];
     });
@@ -320,7 +331,26 @@ export function fillByMuscle(draft: DraftSplit, library: readonly Exercise[], an
     if (!next) break;
     current = next;
   }
-  return current;
+  return keepFixedSets(draft, current);
+}
+
+/**
+ * A row that had no set range before the fill has none after it: a raise
+ * makes "3 sets" into "4 sets", not "3 to 4 sets". The person's own ranges stay.
+ */
+function keepFixedSets(before: DraftSplit, after: DraftSplit): DraftSplit {
+  const fixed = new Set(before.days.flatMap((day) => day.exercises.filter((exercise) => exercise.target_sets_min === exercise.target_sets_max).map((exercise) => exercise.id)));
+  let changed = false;
+  const days = after.days.map((day) => {
+    const exercises = day.exercises.map((exercise) => {
+      const loose = exercise.target_sets_min !== exercise.target_sets || exercise.target_sets_max !== exercise.target_sets;
+      if (!loose || (!fixed.has(exercise.id) && before.days.some((entry) => entry.exercises.some((row) => row.id === exercise.id)))) return exercise;
+      changed = true;
+      return { ...exercise, target_sets_min: exercise.target_sets, target_sets_max: exercise.target_sets };
+    });
+    return exercises.some((exercise, index) => exercise !== day.exercises[index]) ? { ...day, exercises } : day;
+  });
+  return changed ? { ...after, days } : after;
 }
 
 /** Main muscles still under solid, in the order screens list them. */

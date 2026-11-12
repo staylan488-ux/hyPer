@@ -161,6 +161,15 @@ describe('names the builder can emit', () => {
     expect(missing).toEqual([]);
   });
 
+  it('each have a row of muscles that matches the seed', async () => {
+    const { DESIGNER_MOVEMENTS } = await import('@/lib/designerMovements');
+    const rows = new Map(Object.entries(DESIGNER_MOVEMENTS).map(([name, row]) => [normalizeExerciseName(name), row]));
+    for (const name of designerMovementNames(splitTemplates)) {
+      const seeded = library.find((exercise) => normalizeExerciseName(exercise.name) === normalizeExerciseName(name))!;
+      expect(rows.get(normalizeExerciseName(name)), name).toEqual([seeded.muscle_group, seeded.muscle_group_secondary, seeded.is_compound, seeded.equipment]);
+    }
+  });
+
   it('never match a retired row', () => {
     const retired = { ...lib('Lunge'), id: 'retired-lunge', retired_at: '2026-11-11T00:00:00Z' };
     const { draft, missing } = templateSplitDraft(
@@ -182,6 +191,19 @@ describe('the fill', () => {
     // Back had 10 sets, far past solid; it gave up the most.
     expect(sets(filled, 'back')).toBeLessThan(10);
     expect(thinMuscles(filled)).toEqual([]);
+  });
+
+  it('raises a movement without a set range to a plain count, and keeps a set range it had', () => {
+    const lower: [string, Array<[string, number]>] = ['Lower', [['Leg Press', 4], ['Lying Leg Curl', 4], ['Hip Thrust', 4]]];
+    const draft = draftOf([['Upper', [['Flat Dumbbell Bench Press', 4], ['Seated Cable Row', 4], ['Lateral Raise', 2], ['Tricep Pushdown', 3], ['Dumbbell Curl', 3]]], lower]);
+    draft.days[0].exercises[2] = { ...draft.days[0].exercises[2], target_sets_min: 2, target_sets_max: 3 };
+    const filled = fillByMuscle(draft, library, { focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' });
+    const lateral = filled.days[0].exercises[2];
+    expect(lateral.target_sets).toBe(4);
+    expect([lateral.target_sets_min, lateral.target_sets_max]).toEqual([2, 4]);
+    const plain = fillByMuscle(draftOf([['Upper', [['Flat Dumbbell Bench Press', 4], ['Lateral Raise', 2]]], lower]), library, { focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' });
+    expect(plain.days[0].exercises.find((exercise) => exercise.exercise.name === 'Lateral Raise')!.target_sets).toBe(4);
+    for (const exercise of plain.days[0].exercises) expect([exercise.target_sets_min, exercise.target_sets_max]).toEqual([exercise.target_sets, exercise.target_sets]);
   });
 
   it('lets the Emphasis answer decide who gets the last room, and names what stays low', () => {
@@ -360,4 +382,25 @@ describe('template choice', () => {
     }
   });
 
+});
+
+describe('a template movement the library lacks', () => {
+  const answers: ProgramDesignAnswers = { daysPerWeek: 4, focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' };
+  const without = (names: string[]) => library.filter((exercise) => !names.includes(exercise.name));
+
+  it('keeps its slot for a library movement of the same muscle, and only names what had none', () => {
+    const { draft, notice } = guidedDraft(answers, without(['Flat Barbell Bench Press', 'Lateral Raise']));
+    const names = draft.days.flatMap((day) => day.exercises.map((exercise) => exercise.exercise.name));
+    expect(names).not.toContain('Flat Barbell Bench Press');
+    expect(draft.days.flatMap((day) => day.exercises).some((exercise) => exercise.exercise.id.startsWith('stand-in:'))).toBe(false);
+    expect(draft.days.find((day) => day.day_name === 'Upper A')!.exercises[0].exercise.muscle_group).toBe('chest');
+    expect(notice).toBeNull();
+    expect(thinMuscles(draft)).toEqual([]);
+  });
+
+  it('gives its slot to the current program’s movement for that muscle', () => {
+    const mine = draftOf([['Push', [['Machine Chest Press', 3]]]]);
+    const { draft } = guidedDraft(answers, without(['Flat Barbell Bench Press']), mine);
+    expect(draft.days.find((day) => day.day_name === 'Upper A')!.exercises[0].exercise.name).toBe('Machine Chest Press');
+  });
 });
