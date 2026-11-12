@@ -63,7 +63,7 @@ describe('set targets: bad days, breaks and stalls', () => {
     const history = newestFirst(session('2026-10-01', 100, [10, 9, 8]), session('2026-10-04', 100, [10, 8, 8]));
     const result = planMovementTargets({ history, today: '2026-10-07', setCount: 3, range: RANGE });
     expect(figures(result)).toEqual(['100×11', '100×9', '100×8']);
-    expect(describeTarget(result!.sets[0]!)).toBe('same target, last time fell short');
+    expect(describeTarget(result!.sets[0]!)).toBe('last time fell short, try again');
   });
 
   it('two sessions below target in a row match what was done, with no extra rep', () => {
@@ -279,7 +279,7 @@ describe('set targets during a session', () => {
   it('moves later sets with set 1 when it lands two or more reps off', () => {
     const later = liveSetTarget(targets, [{ weight: 100, reps: 8 }], 2);
     expect(later).toMatchObject({ weight: 100, reps: 6, why: { kind: 'moved', cause: 'reps' } });
-    expect(describeTarget(later!)).toBe('set 1 came in 3 under, aim for 6 reps');
+    expect(describeTarget(later!)).toBe('set 1 came in 3 reps under');
     expect(liveSetTarget(targets, [{ weight: 100, reps: 14 }, { weight: 100, reps: 12 }], 3)).toMatchObject({ reps: 11 });
     // Set 1 leads; set 2 beating its target does not move set 3.
     expect(liveSetTarget(targets, [{ weight: 100, reps: 11 }, { weight: 100, reps: 12 }], 3)).toMatchObject({ reps: 8, why: { kind: 'hold' } });
@@ -291,7 +291,7 @@ describe('set targets during a session', () => {
     // Set 1 at 110 × 8 is three under its 11: set 2 keeps the planned drop (9 after 11) at 110.
     const later = liveSetTarget(targets, [{ weight: 110, reps: 8 }], 2);
     expect(later).toMatchObject({ weight: 110, reps: 6, why: { kind: 'moved', cause: 'weight' } });
-    expect(describeTarget(later!)).toBe('keep 110 lb, aim for 6 reps');
+    expect(describeTarget(later!)).toBe('set 1 went 10 lb heavier');
     // A much lighter weight never asks for silly reps.
     expect(liveSetTarget(targets, [{ weight: 45, reps: 9 }], 2)).toMatchObject({ weight: 45, reps: 7 });
   });
