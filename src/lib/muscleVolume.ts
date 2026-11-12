@@ -285,8 +285,13 @@ export interface WeekProgress {
   done: MuscleSets;
 }
 
-/** The program days expected this training week: a fixed schedule's days, or a rotation's done days plus the next ones in turn. */
-export function plannedWeekDays(input: Omit<WeekProgressInput, 'workoutMode'>): SplitDay[] {
+/**
+ * The program days expected this training week: a fixed schedule's days, or a
+ * rotation's days done this week, then the next ones in turn until the week's
+ * count is met. A rotation with a schedule takes its done days from the
+ * schedule's own completions; without one, from the finished sessions.
+ */
+export function plannedWeekDays(input: Omit<WeekProgressInput, 'workoutMode' | 'sessions'> & { sessions?: readonly VolumeSession[] }): SplitDay[] {
   const days = [...(input.splitDays ?? [])];
   if (!days.length) return [];
   const weekStart = parseISO(trainingWeekStart(input.dayKey));
@@ -299,13 +304,19 @@ export function plannedWeekDays(input: Omit<WeekProgressInput, 'workoutMode'>): 
     )).filter((day): day is SplitDay => day !== null);
   }
 
-  // A rotation: what is done this week, then the next days in turn until the week's count is met.
   const target = Math.max(1, Math.round(input.daysPerWeek || days.length));
   const weekKey = format(weekStart, 'yyyy-MM-dd');
-  const done = input.sessions
-    .filter((session) => isFinishedSession(session) && trainingWeekStart(session.date) === weekKey)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .flatMap((session) => days.filter((day) => day.id === session.split_day_id));
+  const inWeek = (date: string) => trainingWeekStart(date) === weekKey && date <= input.dayKey;
+  const doneIds = input.schedule
+    ? history
+      .filter((workout) => workout.completed && inWeek(workout.date))
+      .sort((a, b) => a.date.localeCompare(b.date) || Date.parse(a.created_at) - Date.parse(b.created_at))
+      .map((workout) => workout.split_day_id)
+    : (input.sessions ?? [])
+      .filter((session) => isFinishedSession(session) && inWeek(session.date))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((session) => session.split_day_id);
+  const done = doneIds.flatMap((id) => days.filter((day) => day.id === id));
 
   let next: number;
   const last = done.at(-1);
