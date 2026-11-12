@@ -6,11 +6,13 @@ import { getFoodTrialStatus } from '@/lib/foodTrial';
 import { foodTrialUsageLine } from '@/lib/foodTrialUsage';
 import { getPhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { supabase } from '@/lib/supabase';
-import { ChoiceRow, FormNote } from '~/components/Form';
+import { ChoiceRow, FormNote, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { TabScroll } from '~/components/TabScroll';
 import { announce } from '~/lib/accessibility';
+import { askAiConsent, setAiConsent, useAiConsentStore } from '~/lib/aiConsent';
+import { useEarlyAccess } from '~/lib/earlyAccess';
 import { chooseAnalysisMode, useAnalysisModeStore, type AnalysisMode } from '~/lib/you';
 import { space } from '~/theme/blanc';
 
@@ -19,9 +21,18 @@ const MODES: { mode: AnalysisMode; title: string; detail: string }[] = [
   { mode: 'worker', title: 'Your Mac', detail: 'Your Codex or Claude worker' },
 ];
 
-/** How Log food's AI reads a meal, today's hosted usage, and the Mac worker. */
+/**
+ * How Log food's AI reads a meal, today's hosted usage, and whether food may
+ * go to Gemini at all. The Mac worker is an early feature (the accounts from
+ * before public sign-up); everyone else has Gemini only.
+ */
 export default function AnalysisScreen() {
-  const mode = useAnalysisModeStore((state) => state.mode);
+  const early = useEarlyAccess();
+  const chosen = useAnalysisModeStore((state) => state.mode);
+  const mode = early ? chosen : 'gemini';
+  const allowed = useAiConsentStore((state) => state.granted);
+  // The permission alert is up: the switch waits for its answer.
+  const [asking, setAsking] = useState(false);
   const [usage, setUsage] = useState<{ text: string; failed?: boolean } | null>(null);
   const [worker, setWorker] = useState(() => getPhotoWorkerSettings().url);
 
@@ -34,7 +45,8 @@ export default function AnalysisScreen() {
   );
 
   useEffect(() => {
-    if (mode !== 'gemini') return;
+    // The count is only shown once sending is allowed.
+    if (mode !== 'gemini' || !allowed) return;
     let current = true;
     setUsage(null);
     void (async () => {
@@ -56,30 +68,60 @@ export default function AnalysisScreen() {
     return () => {
       current = false;
     };
-  }, [mode]);
+  }, [mode, allowed]);
 
   return (
     <>
       <Stack.Screen options={{ title: 'Food analysis' }} />
       <TabScroll>
-        <Label style={{ marginTop: 12 }}>
-          {MODES.map((option, index) => (
-            <View key={option.mode}>
-              {index > 0 ? <Hairline /> : null}
-              <ChoiceRow {...option} checked={mode === option.mode} onPress={() => chooseAnalysisMode(option.mode)} />
-            </View>
-          ))}
-        </Label>
+        {early ? (
+          <Label style={{ marginTop: 12 }}>
+            {MODES.map((option, index) => (
+              <View key={option.mode}>
+                {index > 0 ? <Hairline /> : null}
+                <ChoiceRow {...option} checked={mode === option.mode} onPress={() => chooseAnalysisMode(option.mode)} />
+              </View>
+            ))}
+          </Label>
+        ) : null}
         {mode === 'gemini' ? (
-          <FormNote alert={usage?.failed}>{usage ? usage.text : 'Checking today’s usage…'}</FormNote>
+          <>
+            {/* The permission asked before the first analysis, and the way to take it back. */}
+            <Label style={{ marginTop: 12 }}>
+              <ToggleRow
+                list
+                label="Send food to Gemini"
+                detail="Google’s AI, for meal estimates and suggested targets"
+                value={allowed}
+                disabled={asking}
+                onChange={(next) => {
+                  if (!next) {
+                    setAiConsent(false);
+                    return;
+                  }
+                  setAsking(true);
+                  void askAiConsent().finally(() => setAsking(false));
+                }}
+              />
+            </Label>
+            {allowed ? (
+              <FormNote alert={usage?.failed}>{usage ? usage.text : 'Checking today’s usage…'}</FormNote>
+            ) : (
+              <FormNote>Nothing is sent. Analyze meal and Suggest targets ask first.</FormNote>
+            )}
+          </>
         ) : (
           <FormNote>Photos go to your Mac worker, which needs to be running.</FormNote>
         )}
 
-        <Label style={{ marginTop: space.section }}>
-          <Row title="Mac worker" value={worker ? hostOf(worker) : 'Not set'} chevron onPress={() => router.push('/you/worker')} />
-        </Label>
-        <FormNote>Suggest targets in Targets uses the same choice.</FormNote>
+        {early ? (
+          <>
+            <Label style={{ marginTop: space.section }}>
+              <Row title="Mac worker" value={worker ? hostOf(worker) : 'Not set'} chevron onPress={() => router.push('/you/worker')} />
+            </Label>
+            <FormNote>Suggest targets in Targets uses the same choice.</FormNote>
+          </>
+        ) : null}
       </TabScroll>
     </>
   );

@@ -36,6 +36,7 @@ Food AI defaults to the hosted `analyze-food-trial` edge function (Gemini). A
 device set to the worker uses [photoAnalysis.ts](../../../../src/lib/photoAnalysis.ts)
 and [the private worker](../../../../scripts/photo-food-worker.mjs) instead. The
 worker URL comes from You → Food analysis → Mac worker, else `EXPO_PUBLIC_PHOTO_WORKER_URL`
-at build time; a build can launch without one and asks for it when analysis is
+at build time (phone builds only; App Store builds carry none, and only
+early-access accounts see the worker); a build can launch without one and asks for it when analysis is
 used. No particular host or tailnet is a universal build prerequisite. Inspect
 the configured endpoint and reachability when troubleshooting that feature.

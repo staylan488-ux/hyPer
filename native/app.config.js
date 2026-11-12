@@ -10,6 +10,17 @@
 // (native/fastlane): HYPER_APP_VERSION the version people see, raised on every
 // upload (2.0.1, 2.0.2...), and HYPER_BUILD_NUMBER the build number (TestFlight
 // needs a new one each upload).
+// Crash reporting (Sentry). The app reports only with EXPO_PUBLIC_SENTRY_DSN
+// set (native/src/lib/crashReporting.ts). A Release build uploads source maps and
+// debug symbols only with SENTRY_AUTH_TOKEN (and SENTRY_ORG, SENTRY_PROJECT)
+// set; without them it builds as before. scripts/ship.sh reads all four from .env.
+function sentryPlugin() {
+  const options = { disableAutoUpload: !process.env.SENTRY_AUTH_TOKEN };
+  if (process.env.SENTRY_ORG) options.organization = process.env.SENTRY_ORG;
+  if (process.env.SENTRY_PROJECT) options.project = process.env.SENTRY_PROJECT;
+  return ['@sentry/react-native/expo', options];
+}
+
 module.exports = ({ config }) => {
   const version = process.env.HYPER_APP_VERSION;
   if (version && !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)) {
@@ -21,6 +32,7 @@ module.exports = ({ config }) => {
     ...config,
     ...(version ? { version } : {}),
     ios: { ...config.ios, ...(buildNumber ? { buildNumber } : {}) },
+    plugins: [...(config.plugins ?? []), sentryPlugin()],
   };
   if (process.env.HYPER_APP !== 'release') return base;
   return {

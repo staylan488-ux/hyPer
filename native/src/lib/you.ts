@@ -375,6 +375,25 @@ export function chooseAnalysisMode(mode: AnalysisMode) {
   useAnalysisModeStore.setState({ mode });
 }
 
+// ── Early features ───────────────────────────────────────────────────────
+
+let followingEarlyAccess = false;
+/**
+ * A phone left on the Mac worker by an early account goes back to Gemini once
+ * the server clearly says the signed-in account has no early features. Once per launch.
+ */
+export function followEarlyAccess(): void {
+  if (followingEarlyAccess) return;
+  followingEarlyAccess = true;
+  const settle = (state: ReturnType<typeof useAuthStore.getState>) => {
+    if (state.user && state.betaAccess === 'approved' && !state.earlyAccess && useAnalysisModeStore.getState().mode === 'worker') {
+      chooseAnalysisMode('gemini');
+    }
+  };
+  settle(useAuthStore.getState());
+  useAuthStore.subscribe(settle);
+}
+
 /** Opens a saved meal for editing: its numbers, or the meal builder for a built meal. */
 export function editSavedMeal(meal: Food) {
   if (decodeMealComposition(meal.description)) router.push({ pathname: '/log-food', params: { savedMeal: meal.id } });

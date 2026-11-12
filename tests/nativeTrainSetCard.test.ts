@@ -199,6 +199,7 @@ async function open() {
       '~/lib/setEntry': setEntry,
       '~/lib/today': { useFinishedToday: () => undefined, useTodayPlan: () => ({}) },
       '~/lib/warmup': { useBarWeight: () => 45 },
+      '~/lib/earlyAccess': { useEarlyAccess: () => false },
       '~/platform/devLaunch': { devScrollTrace: { enabled: false } },
       '~/theme/blanc': { space: { gutter: 16, inset: 16, section: 26 }, type: { field: {} }, useBlanc: () => ({}) },
     },

@@ -6,9 +6,12 @@ import { type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 
-/** The shortest password the app sends (the project's Supabase minimum). */
+/** The shortest password sign-in sends (the project's Supabase minimum, which older accounts may use). */
 export const MIN_PASSWORD_LENGTH = 6;
 export const SHORT_PASSWORD_MESSAGE = `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
+/** The shortest new password: a new account, or a reset. */
+export const MIN_NEW_PASSWORD_LENGTH = 8;
+export const SHORT_NEW_PASSWORD_MESSAGE = `Use at least ${MIN_NEW_PASSWORD_LENGTH} characters.`;
 
 export type AuthInputRef = ComponentRef<typeof TextInput>;
 

@@ -8,7 +8,7 @@ import {
   parseWeighIn,
   weeklyRateLabel,
 } from '@/lib/bodyWeightSummary';
-import { foodTrialUsageLine } from '@/lib/foodTrialUsage';
+import { foodTrialUsageLine, usageResetLabel } from '@/lib/foodTrialUsage';
 import { healthSyncMessage } from '@/lib/healthWeights';
 import { lbsToKg } from '@/lib/nutritionCalculator';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
@@ -318,6 +318,9 @@ describe('target calculator draft', () => {
     expect(wizardBodyFatPct(draft)).toBe(60);
     expect(wizardBodyFatPct({ ...draft, bodyFat: ' ' })).toBeNull();
     expect(wizardBodyReady(draft)).toBe(false);
+    // hyPer is for adults: 17 isn't enough, 18 is.
+    expect(wizardBodyReady({ ...draft, age: '17' })).toBe(false);
+    expect(wizardBodyReady({ ...draft, age: '18' })).toBe(true);
     const outcome = wizardOutcome({ ...draft, age: '34' }, profile, now);
     expect(outcome.profile).toMatchObject({ birth_year: 1992, height_cm: 177.8, adaptive_enabled: true, phase_started_on: '2026-09-01' });
     expect(outcome.targets.calories).toBe(outcome.computed.calories);
@@ -370,19 +373,41 @@ describe('WHOOP status words', () => {
   });
 });
 
+/** The reset phrase worked out by hand in the runner's time zone. */
+function expectedResetLabel(now: Date, reset: Date): string {
+  const hours = reset.getHours();
+  const minutes = reset.getMinutes();
+  if (hours === 0 && minutes === 0) return 'at midnight';
+  const time = `${hours % 12 === 0 ? 12 : hours % 12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''} ${hours < 12 ? 'AM' : 'PM'}`;
+  const sameDay = reset.getFullYear() === now.getFullYear() && reset.getMonth() === now.getMonth() && reset.getDate() === now.getDate();
+  return sameDay ? `at ${time}` : `tomorrow at ${time}`;
+}
+
 describe('short status lines', () => {
   it('counts hosted food analyses', () => {
     // Midnight UTC, shown in the device's time zone (the test runner's).
     const now = new Date('2026-10-27T18:00:00Z');
     const reset = new Date('2026-10-28T00:00:00Z');
-    const hours = reset.getHours();
-    const label = `${hours % 12 === 0 ? 12 : hours % 12}${reset.getMinutes() ? `:${String(reset.getMinutes()).padStart(2, '0')}` : ''} ${hours < 12 ? 'AM' : 'PM'}`;
-    expect(foodTrialUsageLine({ date: '2026-10-27', maxAttempts: 24, attemptsUsed: 3, attempts: [] }, now)).toBe(`3 of 24 analyses used. The count starts over at ${label}.`);
-    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 24 }, now)).toBe(`Daily limit reached: 24 of 24 used. It starts over at ${label}.`);
-    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: true }, now)).toBe(`Today’s limit for everyone is reached. It starts over at ${label}.`);
-    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: false }, now)).toBe(`3 of 24 analyses used. The count starts over at ${label}.`);
+    const label = usageResetLabel(now);
+    expect(label).toBe(expectedResetLabel(now, reset));
+    expect(foodTrialUsageLine({ date: '2026-10-27', maxAttempts: 24, attemptsUsed: 3, attempts: [] }, now)).toBe(`3 of 24 analyses used. The count starts over ${label}.`);
+    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 24 }, now)).toBe(`Daily limit reached: 24 of 24 used. It starts over ${label}.`);
+    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: true }, now)).toBe(`Today’s limit for everyone is reached. It starts over ${label}.`);
+    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, globalLimitReached: false }, now)).toBe(`3 of 24 analyses used. The count starts over ${label}.`);
+    // Switched off for everyone: said before any count.
+    expect(foodTrialUsageLine({ maxAttempts: 24, attemptsUsed: 3, aiEnabled: false, globalLimitReached: false }, now)).toBe('AI estimates are paused for now.');
     expect(foodTrialUsageLine({ preview: true })).toBe('Sample data: no analyses counted.');
     expect(() => foodTrialUsageLine({ maxAttempts: 0, attemptsUsed: 0 })).toThrow();
+  });
+
+  it('says tomorrow when the reset falls on the next local day', () => {
+    // Every hour of one UTC day: the label names the local time, adds
+    // "tomorrow" only when the local date moves on, and never a time already gone.
+    for (let hour = 0; hour < 24; hour += 1) {
+      const now = new Date(Date.UTC(2026, 10, 11, hour, 37));
+      const reset = new Date(Date.UTC(2026, 10, 12));
+      expect(usageResetLabel(now)).toBe(expectedResetLabel(now, reset));
+    }
   });
 
   it('words an Apple Health sync', () => {

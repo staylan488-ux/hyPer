@@ -91,6 +91,37 @@ history keep them (this file at commit b3f61df has the long version).
 - Also fixes the recorded cost of a meal analysis (it was always empty, so no
   real cost was ever logged).
 
+## App changes for the public release (branch `claude/project-thread-izn9r7`)
+
+- Piece 3 of the release plan, on top of the public sign-up backend above.
+  The app reads `my_beta_access().early_access` (kept per account on the
+  phone) and `app_public_config()` (at launch and on each return, at most
+  every five minutes). Anything unclear changes nothing.
+- WHOOP, the Mac worker and GPS runs show only to early-access accounts; a
+  WHOOP connection that exists stays visible so it can be disconnected. A
+  phone left on the worker goes back to Gemini for an account without early
+  access. App Store builds (`scripts/ship.sh`) no longer bake in the worker
+  address.
+- Before anything goes to Gemini (Analyze meal, Describe amount when it needs
+  the AI, Suggest targets) an alert asks once per account on the phone, with
+  the privacy policy one tap away; You › Food analysis can withdraw it.
+- Log food's AI tab says when the daily limit, the limit for everyone or the
+  off-switch stops an estimate, and offers Enter it yourself (Manual with the
+  meal's words as the name). AI results say they're Gemini estimates.
+- `min_app_version` newer than the build shows Update hyPer before anything
+  else. `APP_STORE_ID` in `native/src/lib/links.ts` is empty until the
+  listing exists; the button opens an App Store search until then.
+- About has Privacy policy, Terms of use and Support (the addresses from PR
+  #223) and the food data credits; Scan credits FatSecret too. Sign-in says
+  18 or older and links the terms. The calculator refuses ages under 18. New
+  passwords need 8 characters; sign-in still takes an older 6.
+- Crash reporting: `@sentry/react-native` (Expo's pinned ~8.28). Off without
+  `SENTRY_DSN` in `.env`; without `SENTRY_AUTH_TOKEN` (and `SENTRY_ORG`,
+  `SENTRY_PROJECT`) the build uploads no source maps. No user ids, screenshots
+  or tracing. A new native module: a phone needs a full build.
+- Not run in a simulator or on a phone yet (built in a cloud session):
+  type-checked, unit-tested, and the iOS bundle exported.
+
 ## Today's groups, and holding one to move it (branch `t3/native-ui-clutter-review`)
 
 - The rules are in the blanc-native skill (Design, and the owner's

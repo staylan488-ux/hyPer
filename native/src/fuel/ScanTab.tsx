@@ -219,6 +219,14 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
           onPress={() => void Linking.openURL('https://world.openfoodfacts.org/terms-of-use')}>
           ODbL
         </BlancText>
+        . Branded food data{' '}
+        <BlancText
+          variant="footnote"
+          accessibilityRole="link"
+          style={{ textDecorationLine: 'underline' }}
+          onPress={() => void Linking.openURL('https://www.fatsecret.com')}>
+          Powered by fatsecret
+        </BlancText>
         .
       </BlancText>
     </View>

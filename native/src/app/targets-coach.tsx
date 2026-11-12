@@ -20,6 +20,7 @@ import { FieldArea, FormNote, ToggleRow } from '~/components/Form';
 import { GlassButton } from '~/components/GlassButton';
 import { Label } from '~/components/Label';
 import { Row } from '~/components/Row';
+import { askAiConsent } from '~/lib/aiConsent';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { isPreviewActive } from '~/platform/previewFlag';
@@ -70,6 +71,8 @@ export default function TargetsCoachSheet() {
   const ask = async () => {
     if (!profile || asking) return;
     Keyboard.dismiss();
+    // Gemini gets the goal and body details: only once allowed (the Mac worker is the account's own).
+    if (coachSource() === 'gemini' && !(await askAiConsent())) return;
     setAsking(true);
     setError(null);
     try {

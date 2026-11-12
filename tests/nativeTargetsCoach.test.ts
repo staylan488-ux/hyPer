@@ -48,6 +48,8 @@ const { default: TargetsCoachSheet } = loadNativeModule<{ default: () => ReturnT
   '~/components/Label': { Label: Box },
   '~/components/Row': { Row: () => null },
   '~/lib/accessibility': { ...silentAccessibility, announce, useAnnounce },
+  // Allowed before: the request goes straight out.
+  '~/lib/aiConsent': { askAiConsent: async () => true },
   '~/lib/haptics': { haptics: { error: () => {}, success: () => {} } },
   '~/lib/leaveGuard': { useLeaveGuard: () => {} },
   '~/platform/previewFlag': { isPreviewActive: () => false },

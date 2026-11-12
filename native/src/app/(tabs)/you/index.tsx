@@ -24,6 +24,7 @@ import { useCurrentDayKey } from '~/lib/accountData';
 import { formatWhole } from '~/lib/format';
 import { dayKey } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { useEarlyAccess } from '~/lib/earlyAccess';
 import { figureLayout, rowLayout } from '~/lib/motion';
 import {
   APPEARANCE_LABELS,
@@ -56,6 +57,7 @@ export default function YouScreen() {
   const whoop = useAppStore((state) => state.whoopConnection);
   const health = useHealthStore((state) => state.enabled);
   const analysis = useAnalysisModeStore((state) => state.mode);
+  const early = useEarlyAccess();
   const { refreshing, refresh } = usePullRefresh(loadYou);
 
   useEffect(() => {
@@ -114,7 +116,7 @@ export default function YouScreen() {
                   <Hairline />
                   <Row
                     title="Food analysis"
-                    value={analysis === 'gemini' ? 'Gemini' : 'Your Mac'}
+                    value={early && analysis === 'worker' ? 'Your Mac' : 'Gemini'}
                     chevron
                     onPress={() => router.push('/you/analysis')}
                   />

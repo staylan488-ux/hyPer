@@ -91,6 +91,12 @@ function weightText(value: number): string {
   return String(Math.round(value * 10) / 10);
 }
 
+/**
+ * hyPer is for adults: Google's Gemini terms rule out apps likely to be used by
+ * anyone under 18, and calorie targets stay away from minors.
+ */
+export const MIN_AGE = 18;
+
 /** A typed number, a decimal comma included ("80,5"), held to its limits. */
 export function clampInput(value: string, min: number, max: number): number {
   const parsed = parseDecimal(value);
@@ -206,7 +212,7 @@ export function wizardBodyFatPct(draft: WizardDraft): number | null {
 /** Age, weight and height are filled in well enough to go on. */
 export function wizardBodyReady(draft: WizardDraft): boolean {
   return (
-    parseDecimal(draft.age) >= 13 &&
+    parseDecimal(draft.age) >= MIN_AGE &&
     parseDecimal(draft.weight) > 0 &&
     (draft.unitSystem === 'imperial' ? parseDecimal(draft.heightFeet) >= 3 : parseDecimal(draft.heightCm) >= 100)
   );
@@ -215,7 +221,7 @@ export function wizardBodyReady(draft: WizardDraft): boolean {
 export function wizardInput(draft: WizardDraft, profile: NutritionProfile | null | undefined): MacroTargetInput {
   return {
     sex: draft.sex,
-    age: clampInput(draft.age, 13, 100),
+    age: clampInput(draft.age, MIN_AGE, 100),
     heightCm: wizardHeightCm(draft),
     weightKg: wizardWeightKg(draft),
     bodyFatPct: wizardBodyFatPct(draft),
@@ -311,7 +317,7 @@ export function wizardOutcome(
     source: wizardTargetSource(draft, profile),
     profile: {
       sex: draft.sex,
-      birth_year: birthYearFromAge(clampInput(draft.age, 13, 100), now),
+      birth_year: birthYearFromAge(clampInput(draft.age, MIN_AGE, 100), now),
       height_cm: Math.round(heightCm * 10) / 10,
       body_fat_pct: wizardBodyFatPct(draft),
       activity: draft.activity,

@@ -21,6 +21,7 @@ import { patientPost } from '@/lib/patientFetch';
 import { createRequestIdempotencyKey } from '@/lib/requestIdempotency';
 import { getPhotoWorkerSettings, type PhotoWorkerSettings } from '@/lib/photoAnalysis';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
+import { MIN_AGE } from '@/lib/nutritionWizard';
 import type { WeightTrend } from '@/lib/weightTrend';
 import type { MacroTarget } from '@/types';
 
@@ -60,7 +61,7 @@ export function buildCoachContext(
   const share = options.shareMeasured ?? true;
   return {
     sex: profile.sex,
-    age: Math.max(13, new Date().getFullYear() - profile.birth_year),
+    age: Math.max(MIN_AGE, new Date().getFullYear() - profile.birth_year),
     height_cm: profile.height_cm,
     weight_kg: weightKg,
     activity: profile.activity,

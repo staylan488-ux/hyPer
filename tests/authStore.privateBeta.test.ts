@@ -173,3 +173,56 @@ describe('the not-on-the-list screen', () => {
     expect(supabaseMock.rpc).not.toHaveBeenCalled();
   });
 });
+
+describe('the early features (WHOOP, the Mac worker, runs)', () => {
+  const full = (userId: string, early?: boolean) => ({ data: { user_id: userId, approved: true, ...(early === undefined ? {} : { early_access: early, ai_daily_limit: 8 }) }, error: null });
+
+  it('reads early access only from a clear answer about this account', async () => {
+    const { fetchAccountAccess } = await import('@/lib/betaAccess');
+    expect(await fetchAccountAccess('a', async () => full('a', true))).toEqual({ access: 'approved', earlyAccess: true });
+    expect(await fetchAccountAccess('a', async () => full('a', false))).toEqual({ access: 'approved', earlyAccess: false });
+    expect(await fetchAccountAccess('a', async () => answer('a', false))).toEqual({ access: 'not-approved', earlyAccess: false });
+    expect(await fetchAccountAccess('a', async () => full('b', true))).toEqual({ access: 'unknown', earlyAccess: null });
+    expect(await fetchAccountAccess('a', async () => ({ data: null, error: { message: 'Failed to fetch' } }))).toEqual({ access: 'unknown', earlyAccess: null });
+  });
+
+  it('keeps them for everyone on a server from before public sign-up', async () => {
+    const { fetchAccountAccess } = await import('@/lib/betaAccess');
+    // The private beta's answer has no early_access field; older still, no function at all.
+    expect(await fetchAccountAccess('a', async () => full('a'))).toEqual({ access: 'approved', earlyAccess: true });
+    expect(await fetchAccountAccess('a', async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }))).toEqual({ access: 'approved', earlyAccess: true });
+  });
+
+  it('remembers the answer per account, so an offline launch shows the same settings', async () => {
+    const data = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => { data.set(key, value); },
+      removeItem: (key: string) => { data.delete(key); },
+    });
+    try {
+      supabaseMock.rpc.mockResolvedValue(full(ANNA.id, true));
+      const callback = await initialize();
+      expect(useAuthStore.getState().earlyAccess).toBe(true);
+
+      // Ben, who joined after public sign-up, never inherits Anna's.
+      supabaseMock.rpc.mockResolvedValue(full(BEN.id, false));
+      callback('SIGNED_IN', { user: BEN });
+      expect(useAuthStore.getState().earlyAccess).toBe(false);
+      await flush();
+      expect(useAuthStore.getState().earlyAccess).toBe(false);
+
+      // Anna again, offline: the phone remembers her answer.
+      supabaseMock.rpc.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+      callback('SIGNED_IN', { user: ANNA });
+      expect(useAuthStore.getState().earlyAccess).toBe(true);
+      await flush();
+      expect(useAuthStore.getState().earlyAccess).toBe(true);
+
+      await useAuthStore.getState().signOut();
+      expect(useAuthStore.getState().earlyAccess).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
