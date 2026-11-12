@@ -488,7 +488,7 @@ function SuggestionRow({ suggestion }: { suggestion: VolumeSuggestion }) {
           {line}
         </BlancText>
       </View>
-      <Capsule title="Add" size="small" variant="quiet" accessibilityLabel={`Add: ${suggestion.title}`} onPress={add} />
+      <Capsule title="Add" size="small" variant="quiet" accessibilityLabel={suggestion.title} onPress={add} />
     </View>
   );
 }
