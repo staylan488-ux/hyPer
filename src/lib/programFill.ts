@@ -250,7 +250,8 @@ export function builderLibrary(library: readonly Exercise[], equipment: Equipmen
 }
 
 export function fitsDumbbellsOnly(exercise: Pick<Exercise, 'equipment'>): boolean {
-  return exercise.equipment === 'dumbbells' || exercise.equipment === 'bodyweight';
+  const equipment = exercise.equipment?.trim().toLowerCase();
+  return equipment === 'dumbbells' || equipment === 'bodyweight';
 }
 
 /**
