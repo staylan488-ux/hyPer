@@ -315,16 +315,31 @@ describe('the set card\'s target', () => {
     expect(faded[0].textContent).toContain('Target · one more rep than last time');
   });
 
-  it('leaves the reason out at the accessibility sizes, keeping it in the spoken name', async () => {
+  it('keeps the reason at the accessibility sizes, free to wrap', async () => {
     largeText = true;
     try {
       await open();
-      expect(targetLine()).toBeUndefined();
-      const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
-      expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
+      expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
     } finally {
       largeText = false;
     }
+  });
+
+  it('gives the one quiet line to a note, the reason still in the spoken name', async () => {
+    notes = { row: { note: 'Straps on the last set' } };
+    await open();
+    expect(targetLine()).toBeUndefined();
+    expect(host.textContent).toContain('Straps on the last set');
+    const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
+    expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
+  });
+
+  it('shows no target under a weight far from it', async () => {
+    await open();
+    await type('Weight in pounds', '30');
+    expect(captions().map((caption) => caption.shown)).toEqual([false, false]);
+    await type('Weight in pounds', '75');
+    expect(captions()[0]).toEqual({ text: 'target 80', spoken: 'Target, 80 pounds', shown: true });
   });
 
   it('names a later movement\'s target in its row, spoken with units', async () => {

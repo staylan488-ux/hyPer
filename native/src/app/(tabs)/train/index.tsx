@@ -224,12 +224,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const ready = weight !== null && reps !== null;
   const figure = draft ? figureSize(draft.weight, draft.reps) : FIGURE_SIZE;
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
-  // The set's target and its one line saying why. At the accessibility sizes
-  // the line is left out (the figures already hold the target) so the figures
-  // and Log set stay on screen; VoiceOver still hears it with the name.
+  // The set's target and its one line saying why.
   const target = current ? setTargetFor(current.set, current.movement.sets, targets) : null;
   const targetText = target ? targetLine(target) : null;
   const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
+  // One quiet line under the set line: a note (the person's own words) takes
+  // it from the target's why, which VoiceOver still hears with the name.
+  const showTargetLine = Boolean(targetText && !current?.movement.note && !lastNote);
   const lastLoad = last && typeof last.weight === 'number' && last.weight > 0 ? last.weight : null;
   const lastRepCount = last && typeof last.reps === 'number' && Number.isFinite(last.reps) ? last.reps : null;
   // Last time's figure shows under its field only while the field holds
@@ -240,9 +241,12 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const lastReps = lastRepCount !== null && draft && differsFromLast(draft.reps, lastRepCount) ? lastRepCount : null;
   // With a target the figures show the target or last time, never both: the
   // fields hold the target (its line already says how it relates to last
-  // time), and a field edited away from it shows the target under it.
-  const targetWeight = target && target.weight > 0 && draft && differsFromLast(draft.weight, target.weight) ? formatLoad(target.weight) : null;
-  const targetReps = target && draft && differsFromLast(draft.reps, target.reps) ? target.reps : null;
+  // time), and a field edited away from it shows the target under it. On a
+  // weight 10% or more away the target no longer applies ("target 100" under
+  // 30 reads as a mistake), so nothing shows.
+  const farFromTarget = Boolean(target && weight !== null && Math.abs(weight - target.weight) >= 0.1 * Math.max(weight, target.weight) && Math.abs(weight - target.weight) > 0.01);
+  const targetWeight = target && !farFromTarget && target.weight > 0 && draft && differsFromLast(draft.weight, target.weight) ? formatLoad(target.weight) : null;
+  const targetReps = target && !farFromTarget && draft && differsFromLast(draft.reps, target.reps) ? target.reps : null;
   const weightCaption = target
     ? targetWeight ? { text: `target ${targetWeight}`, spoken: `Target, ${targetWeight} pounds` } : null
     : lastWeight ? { text: `last ${lastWeight}`, spoken: `Last time, ${lastWeight} pounds` } : null;
@@ -761,8 +765,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   ) : null}
                 </BlancText>
                 {/* The set's target: why the figures below hold what they do, in one quiet line. */}
-                {targetText && !large ? (
-                  <BlancText variant="secondary" numberOfLines={2} style={{ marginTop: 6 }}>
+                {showTargetLine && targetText ? (
+                  <BlancText variant="secondary" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
                     <BlancText variant="secondary" weight="600">
                       Target
                     </BlancText>
