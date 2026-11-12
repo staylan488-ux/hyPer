@@ -19,14 +19,16 @@ export function blankSplitDraft(dayCount: number): DraftSplit {
 }
 
 /**
- * A template's days with each exercise matched to the library by name. Names
- * the library lacks are left out (as program creation always did) and listed
+ * A template's days with each exercise matched to the library by name, never
+ * to a retired row. Names the library lacks are left out (as program creation always did) and listed
  * in `missing` so the editor can say so.
  */
 export function templateSplitDraft(template: SplitTemplate, library: readonly Exercise[]): { draft: DraftSplit; missing: string[] } {
   const exact = new Map<string, Exercise>();
   const loose = new Map<string, Exercise>();
   for (const exercise of library) {
+    // A retired movement is never offered, even when its name matches.
+    if (exercise.retired_at) continue;
     exact.set(exercise.name, exercise);
     const key = normalizeExerciseName(exercise.name);
     if (!loose.has(key)) loose.set(key, exercise);

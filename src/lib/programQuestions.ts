@@ -3,7 +3,7 @@
  * defaults, and the blank program's day count. The chooser only fills the
  * editor's draft.
  */
-import { getExerciseLibrary } from '@/lib/exerciseLibrary';
+import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import {
   buildGuidedTemplate,
   recommendProgramTemplate,
@@ -13,10 +13,11 @@ import {
   type ProgramFocus,
   type SessionLength,
 } from '@/lib/programDesigner';
+import { SESSION_SET_CAPS, fillByMuscle, fitToLibrary, keepCurrentMovements, thinLine, thinMuscles } from '@/lib/programFill';
 import { templateSplitDraft } from '@/lib/splitDraftSeed';
 import { splitTemplates } from '@/lib/splitTemplates';
 import type { DraftSplit } from '@/lib/splitDraft';
-import type { SplitTemplate } from '@/types';
+import type { Exercise, SplitTemplate } from '@/types';
 
 export type ProgramQuestion<K extends keyof ProgramDesignAnswers, T extends string> = {
   key: K;
@@ -69,19 +70,50 @@ export function templateExerciseCount(template: Pick<SplitTemplate, 'days'>): nu
 const LIBRARY_MAX_AGE_MS = 5 * 60_000;
 export const LIBRARY_LOAD_FAILED = "Couldn't load the exercise library. Check your connection and try again.";
 
+export interface GuidedDraft {
+  draft: DraftSplit;
+  /** Template movements the library lacks, left out. */
+  notice: string | null;
+}
+
 /**
- * The guided plan as a draft, matched to the exercise library. Names the
- * library lacks are left out and named in `notice`. Throws when the library
- * cannot load.
+ * The guided plan as a draft: the template matched to the exercise library,
+ * the current program's movements kept in its slots, then filled by muscle
+ * inside the session length (src/lib/programFill.ts). Main muscles that still
+ * sit low are named in the description. Names the library lacks are left out
+ * and named in `notice`.
  */
-export async function seedGuidedDraft(
-  template: SplitTemplate,
-  loadLibrary = () => getExerciseLibrary({ maxAgeMs: LIBRARY_MAX_AGE_MS }),
-): Promise<{ draft: DraftSplit; notice: string | null }> {
-  const library = await loadLibrary();
-  const { draft, missing } = templateSplitDraft(template, library);
+export function guidedDraft(
+  answers: ProgramDesignAnswers,
+  library: readonly Exercise[],
+  current?: DraftSplit | null,
+  template: SplitTemplate = guidedTemplate(answers),
+): GuidedDraft {
+  const equipment = answers.equipment === 'full_gym' ? 'full_gym' : 'dumbbell_only';
+  const { draft: seeded, missing } = templateSplitDraft(template, library);
+  const maxDaySets = SESSION_SET_CAPS[answers.sessionLength];
+  const kept = current?.days.length ? keepCurrentMovements(seeded, current, { equipment, maxDaySets }) : seeded;
+  const filled = fillByMuscle(fitToLibrary(kept, library, equipment), library, { ...answers, equipment });
+  const thin = thinLine(thinMuscles(filled), filled.days.length, answers.sessionLength);
   return {
-    draft,
+    draft: { ...filled, description: [filled.description, thin].filter(Boolean).join(' ') || null },
     notice: missing.length > 0 ? `Not in your exercise library, so left out: ${missing.join(', ')}.` : null,
   };
+}
+
+export function loadBuilderLibrary(): Promise<Exercise[]> {
+  return getExerciseLibrary({ maxAgeMs: LIBRARY_MAX_AGE_MS });
+}
+
+/** The library already in memory, or null; the chooser shows the plan from it before anything loads. */
+export function peekBuilderLibrary(): Exercise[] | null {
+  return peekExerciseLibrary();
+}
+
+/** `guidedDraft` once the library has loaded. Throws when the library cannot load. */
+export async function seedGuidedDraft(
+  answers: ProgramDesignAnswers,
+  { current = null, loadLibrary = loadBuilderLibrary }: { current?: DraftSplit | null; loadLibrary?: () => Promise<Exercise[]> } = {},
+): Promise<GuidedDraft> {
+  return guidedDraft(answers, await loadLibrary(), current);
 }
