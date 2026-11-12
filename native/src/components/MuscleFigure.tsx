@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { Pressable, useColorScheme, View } from 'react-native';
 import Svg, { ClipPath, Defs, Ellipse, G, Path } from 'react-native-svg';
 
-import { mixRgb, parseColor, rgbToCss, shadeMuscles, type MuscleShade, type Rgb } from '@/lib/maquette';
-import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
+import { mixRgb, parseColor, rgbToCss, shadeMuscles, type MuscleProgressState, type Rgb } from '@/lib/maquette';
+import { doneOfPlanned } from '@/lib/muscleProgress';
+import { muscleLabel } from '@/lib/muscleVolume';
+import type { MuscleGroup } from '@/types';
 import { FIGURE, HEAD, MUSCLE_EDGES, pathOf, REGIONS, regionAt, SILHOUETTE, type ViewSide } from '~/lib/anatomy';
 import { useIncreaseContrast, useLargeText } from '~/lib/accessibility';
 import { useBlanc } from '~/theme/blanc';
@@ -37,12 +39,12 @@ const HEAD_ROOM = 6;
 const BODY_EDGE = 1;
 const DARK_CONTOUR = 2.8;
 /**
- * The graphite outline that marks a muscle below range, in points as it
- * shows: drawn inside the muscle only, so it never spills onto a neighbour or
- * past the body. Graphite, not ink, so it reads at 3:1 or more on the body
- * and on its own light fill without outshouting the red past the ceiling.
+ * The graphite outline that marks a muscle under way, in points as it shows:
+ * drawn inside the muscle only, so it never spills onto a neighbour or past
+ * the body. Graphite, not ink, so the light fill reads at 3:1 or more on the
+ * body and stays quieter than a muscle whose planned sets are done.
  */
-const BELOW_OUTLINE = 1.25;
+const UNDER_WAY_OUTLINE = 1.25;
 /** The key sits in from the figure's edge as far as the caption above it does (Progress's caption). */
 const KEY_INSET = 6;
 
@@ -58,7 +60,7 @@ const VIEWS = SIDES.map((side, index) => {
       d: pathOf(region.cubics, dx),
       seams: region.seams.map((seam) => pathOf(seam, dx, false)).join(''),
     })),
-    // Each muscle as one shape, for the outline below range: its outer edge, and its pieces to keep the outline inside.
+    // Each muscle as one shape, for the outline while under way: its outer edge, and its pieces to keep the outline inside.
     muscles: [...MUSCLE_EDGES[side]].map(([muscle, edge]) => ({
       muscle,
       edge: edge.map((cubic) => pathOf([cubic], dx, false)).join(''),
@@ -67,26 +69,14 @@ const VIEWS = SIDES.map((side, index) => {
   };
 });
 
-type FigureState = 'untrained' | 'below' | 'in' | 'over';
-
-/** A muscle's state on the figure; the best range shows only on the rows' bars. */
-function stateOf(shade: MuscleShade | undefined): FigureState {
-  if (!shade || shade.ink === 0) return 'untrained';
-  if (shade.hot) return 'over';
-  return shade.status === 'mev_mav' || shade.status === 'mav' || shade.status === 'approaching_mrv' ? 'in' : 'below';
-}
-const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
-
 /** Muscles chest to calves, the order VoiceOver steps through them. */
-const DRAWN: MuscleGroup[] = ['chest', 'core', 'traps', 'back', 'front_delts', 'side_delts', 'rear_delts', 'biceps', 'triceps', 'glutes', 'quads', 'hamstrings', 'calves'];
-const drawnPlace = (muscle: MuscleGroup) => {
-  const index = DRAWN.indexOf(muscle === 'shoulders' ? 'front_delts' : muscle);
+const DRAWN: string[] = ['chest', 'core', 'traps', 'back', 'front_delts', 'side_delts', 'rear_delts', 'biceps', 'triceps', 'glutes', 'quads', 'hamstrings', 'calves'];
+const drawnPlace = (muscle: string) => {
+  const index = DRAWN.indexOf(muscle);
   return index < 0 ? DRAWN.length : index;
 };
 
-/** Whether a drawn region is the chosen muscle; general shoulders stand for the three delt heads. */
-const isChosen = (selected: MuscleGroup | null, muscle: MuscleGroup) =>
-  selected === muscle || (selected === 'shoulders' && DELTS.includes(muscle));
+const isChosen = (selected: string | null, muscle: MuscleGroup) => selected === muscle;
 
 /** Where the two figures sit in a view of this size, as the Svg's "meet" fits them. */
 function fit(width: number, height: number) {
@@ -108,46 +98,50 @@ function muscleAt(px: number, py: number, width: number, height: number): Muscle
 }
 
 /**
- * This week's volume on a flat front and back muscle figure, pointing at what
- * needs action: the bare body where untrained; below range, the muscle to act
- * on, a light fill held by a graphite outline; in range a `mark` fill, the
- * quietest tone that still reads at 3:1 on the body; and red past the
- * recoverable ceiling. The pair fills about 70% of Progress's card across.
- * Front and Back are named just under their figures, with the key close under
- * them, on the card title's left edge. The shading is the shared
- * `src/lib/maquette.ts`; the drawing is the app's own (`lib/anatomy.ts`).
+ * The week's progress on a flat front and back muscle figure: the bare body
+ * where nothing is done yet, a light fill held by a graphite outline while a
+ * muscle is under way, and the `mark` fill once its planned sets are done
+ * (with no plan, once it is trained). Never red: going past the plan is still
+ * done. The pair fills about 70% of Progress's card across. Front and Back are
+ * named just under their figures, with the key close under them, on the card
+ * title's left edge. The shading is the shared `src/lib/maquette.ts`; the
+ * drawing is the app's own (`lib/anatomy.ts`).
  * Tap a muscle to choose it (a near miss counts; small ones like the side
  * delts reach a fingertip); the others quiet down. Tapping it again, or away
  * from every muscle, clears it. For VoiceOver the figure is one adjustable
- * element: swiping up and down steps through this week's muscles (the rows
- * of the list below it), and down past the first clears the choice.
+ * element: swiping up and down steps through `muscles` (the rows of the list
+ * below it), and down past the first clears the choice.
  */
-export function MuscleFigure({ volume, selected, onPick, height = 204 }: {
-  volume: MuscleVolume[];
-  selected: MuscleGroup | null;
-  onPick: (muscle: MuscleGroup | null) => void;
+export function MuscleFigure({ done, planned, muscles, selected, onPick, height = 204 }: {
+  /** Sets done this week per muscle. */
+  done: ReadonlyMap<string, number>;
+  /** Sets planned this week per muscle; null with no plan. */
+  planned: ReadonlyMap<string, number> | null;
+  /** The muscles VoiceOver steps through: the list's rows. */
+  muscles: readonly string[];
+  selected: string | null;
+  onPick: (muscle: string | null) => void;
   height?: number;
 }) {
   const c = useBlanc();
   const large = useLargeText();
   const dark = useColorScheme() === 'dark';
   const contrast = useIncreaseContrast();
-  const shades = useMemo(() => shadeMuscles(volume), [volume]);
+  const shades = useMemo(() => shadeMuscles(done, planned), [done, planned]);
   const tones = muscleTonesFor(dark, contrast);
-  const palette = useMemo<Record<FigureState, Rgb>>(
+  const palette = useMemo<Record<MuscleProgressState, Rgb>>(
     () => ({
-      untrained: parseColor(tones.body, [0.96, 0.96, 0.95]),
-      below: parseColor(tones.below, [0.89, 0.89, 0.86]),
-      // In range is a fill that recedes, so below range's outline, the state to act on, leads.
-      in: parseColor(c.mark, [0.53, 0.53, 0.5]),
-      over: parseColor(c.live, [0.82, 0.23, 0.18]),
+      untouched: parseColor(tones.body, [0.96, 0.96, 0.95]),
+      under_way: parseColor(tones.below, [0.89, 0.89, 0.86]),
+      done: parseColor(c.mark, [0.53, 0.53, 0.5]),
     }),
-    [tones, c.mark, c.live],
+    [tones, c.mark],
   );
-  const belowEdge = useMemo(() => parseColor(c.graphite, [0.4, 0.4, 0.37]), [c.graphite]);
+  const underWayEdge = useMemo(() => parseColor(c.graphite, [0.4, 0.4, 0.37]), [c.graphite]);
   const body = tones.body;
   const seam = dark ? DARK_SEAM : SEAM;
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const stateOf = (muscle: MuscleGroup): MuscleProgressState => shades.get(muscle)?.state ?? 'untouched';
 
   const pick = (x: number, y: number) => {
     const muscle = muscleAt(x, y, size.width, size.height);
@@ -155,45 +149,45 @@ export function MuscleFigure({ volume, selected, onPick, height = 204 }: {
     else if (selected !== null) onPick(null);
   };
 
-  const choices = useMemo(() => volume.map((entry) => entry.muscle_group).sort((a, b) => drawnPlace(a) - drawnPlace(b)), [volume]);
+  const choices = useMemo(() => [...muscles].sort((a, b) => drawnPlace(a) - drawnPlace(b)), [muscles]);
   const step = (direction: 1 | -1) => {
     const next = (selected ? choices.indexOf(selected) : -1) + direction;
     if (next >= -1 && next < choices.length) onPick(next === -1 ? null : choices[next]);
   };
-  const entry = selected ? volume.find((candidate) => candidate.muscle_group === selected) : undefined;
-  const sets = entry ? (Number.isInteger(entry.weekly_sets) ? entry.weekly_sets : entry.weekly_sets.toFixed(1)) : null;
+  const plannedFor = (muscle: string) => (planned ? planned.get(muscle) ?? 0 : null);
   const spokenValue = selected
-    ? `${MUSCLE_GROUP_LABELS[selected]}${entry ? `, ${sets} ${entry.weekly_sets === 1 ? 'set' : 'sets'}` : ''}`
+    ? `${muscleLabel(selected)}, ${doneOfPlanned(done.get(selected) ?? 0, plannedFor(selected))}`
     : 'None chosen';
 
   const colorOf = (muscle: MuscleGroup) => {
-    const state = stateOf(shades.get(muscle));
+    const state = stateOf(muscle);
     const chosen = isChosen(selected, muscle);
-    // The others quiet down toward the bare body (red going grey, so the chosen one leads).
-    if (selected !== null && !chosen) return rgbToCss(mixRgb(palette[state === 'over' ? 'in' : state], palette.untrained, 0.72));
+    // The others quiet down toward the bare body, so the chosen one leads.
+    if (selected !== null && !chosen) return rgbToCss(mixRgb(palette[state], palette.untouched, 0.72));
     // A chosen muscle with nothing this week still shows where it is.
-    if (chosen && state === 'untrained') return rgbToCss(mixRgb(palette.untrained, palette.in, 0.3));
+    if (chosen && state === 'untouched') return rgbToCss(mixRgb(palette.untouched, palette.done, 0.3));
     return rgbToCss(palette[state]);
   };
-  // Below range also draws its outline, quieted with the rest while another muscle is chosen.
+  // Under way also draws its outline, quieted with the rest while another muscle is chosen.
   const outlineOf = (muscle: MuscleGroup) => {
-    if (stateOf(shades.get(muscle)) !== 'below') return null;
-    return rgbToCss(selected !== null && !isChosen(selected, muscle) ? mixRgb(belowEdge, palette.untrained, 0.72) : belowEdge);
+    if (stateOf(muscle) !== 'under_way') return null;
+    return rgbToCss(selected !== null && !isChosen(selected, muscle) ? mixRgb(underWayEdge, palette.untouched, 0.72) : underWayEdge);
   };
-  // Untrained and not chosen: drawn as the body itself.
-  const bare = (muscle: MuscleGroup) => stateOf(shades.get(muscle)) === 'untrained' && !isChosen(selected, muscle);
-  // The key: one swatch for each state a trained muscle takes.
-  const key: Array<{ label: string; swatch: string; edge?: string }> = [
-    { label: 'Below range', swatch: rgbToCss(palette.below), edge: rgbToCss(belowEdge) },
-    { label: 'In range', swatch: rgbToCss(palette.in) },
-    { label: 'Over', swatch: rgbToCss(palette.over) },
-  ];
+  // Untouched and not chosen: drawn as the body itself.
+  const bare = (muscle: MuscleGroup) => stateOf(muscle) === 'untouched' && !isChosen(selected, muscle);
+  // The key: one swatch for each state a trained muscle takes. With no plan, trained is all there is.
+  const key: Array<{ label: string; swatch: string; edge?: string }> = planned
+    ? [
+      { label: 'Under way', swatch: rgbToCss(palette.under_way), edge: rgbToCss(underWayEdge) },
+      { label: 'Done', swatch: rgbToCss(palette.done) },
+    ]
+    : [{ label: 'Trained', swatch: rgbToCss(palette.done) }];
   const placed = size.width > 0 ? fit(size.width, size.height) : null;
   const scale = placed?.scale ?? height / BOX.height;
   // The outline is stroked on the muscle's outer edge at twice its width and
   // clipped to the muscle, so only its inner half shows; the seam in the
   // card's colour then takes half a seam of it, which the width makes up.
-  const outlineWidth = 2 * (BELOW_OUTLINE / scale + seam / 2);
+  const outlineWidth = 2 * (UNDER_WAY_OUTLINE / scale + seam / 2);
   // The contour is stroked at twice the edge that shows outside the body.
   const contour = dark ? DARK_CONTOUR : (2 * BODY_EDGE) / scale;
 
@@ -234,7 +228,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 204 }: {
             {VIEWS.flatMap((view) =>
               view.muscles.map((group) =>
                 outlineOf(group.muscle) ? (
-                  <ClipPath key={`${view.side}-${group.muscle}`} id={`below-${view.side}-${group.muscle}`}>
+                  <ClipPath key={`${view.side}-${group.muscle}`} id={`under-way-${view.side}-${group.muscle}`}>
                     {group.pieces.map((piece, i) => (
                       <Path key={i} d={piece} />
                     ))}
@@ -263,7 +257,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 204 }: {
                     strokeWidth={outlineWidth}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    clipPath={`url(#below-${view.side}-${group.muscle})`}
+                    clipPath={`url(#under-way-${view.side}-${group.muscle})`}
                   />
                 ) : null;
               })}
@@ -310,7 +304,7 @@ export function MuscleFigure({ volume, selected, onPick, height = 204 }: {
                 borderRadius: 2.5,
                 borderCurve: 'continuous',
                 backgroundColor: item.swatch,
-                ...(item.edge ? { borderWidth: BELOW_OUTLINE, borderColor: item.edge } : null),
+                ...(item.edge ? { borderWidth: UNDER_WAY_OUTLINE, borderColor: item.edge } : null),
               }}
             />
             <BlancText variant="footnote" tone="graphite">

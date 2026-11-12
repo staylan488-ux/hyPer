@@ -4,7 +4,7 @@
  * A finished set counts 1 for its movement's main muscle and 0.5 for its
  * second (the "fractional" count that fit the research best). Every count
  * gets one of three bands with the same edges for every muscle; what the
- * edges rest on is in docs/training-volume.md. There is no ceiling: "high" is
+ * edges rest on is in docs/training-volume.md. There is no upper limit: "high" is
  * never a warning.
  *
  * Bands describe a program's design only. A person's own weeks are counted

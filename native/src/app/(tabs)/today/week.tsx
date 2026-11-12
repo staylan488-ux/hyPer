@@ -5,7 +5,7 @@ import { ActivityIndicator, RefreshControl, View } from 'react-native';
 import { checkInWeekLabel, goalPaceKg, hasCheckIn, paceCall } from '@/lib/weekCheckIn';
 import { formatWeight } from '@/lib/weightDisplayCore';
 import { useAppStore } from '@/stores/appStore';
-import { MUSCLE_GROUP_LABELS } from '@/types';
+import { formatSetCount, muscleLabel } from '@/lib/muscleVolume';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
@@ -15,7 +15,7 @@ import { TabScroll } from '~/components/TabScroll';
 import { useAnnounce } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { formatSet, formatWhole } from '~/lib/format';
-import { loadWeekCheckIn, muscleNote, paceWeekLabel, recordDetail, signedWeight, useWeekCheckIn } from '~/lib/weekCheckIn';
+import { loadWeekCheckIn, paceWeekLabel, recordDetail, signedWeight, useWeekCheckIn } from '~/lib/weekCheckIn';
 import { useWeightStore } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
@@ -104,17 +104,14 @@ export default function LastWeekScreen() {
               </Section>
             ) : null}
 
+            {/* What was done, as plain counts: a finished week is never set against its plan. */}
             {checkIn.muscles.length > 0 ? (
               <Section title="Muscles" note={`${formatWhole(checkIn.sets)} ${checkIn.sets === 1 ? 'set' : 'sets'}`}>
                 <Label style={{ overflow: 'hidden' }}>
                   {checkIn.muscles.map((volume, index) => (
                     <View key={volume.muscle_group}>
                       {index > 0 ? <Hairline /> : null}
-                      <Row
-                        title={MUSCLE_GROUP_LABELS[volume.muscle_group] ?? volume.muscle_group}
-                        detail={muscleNote(volume)}
-                        value={`${formatSets(volume.weekly_sets)} ${volume.weekly_sets === 1 ? 'set' : 'sets'}`}
-                      />
+                      <Row title={muscleLabel(volume.muscle_group)} value={setsValue(volume.weekly_sets)} />
                     </View>
                   ))}
                 </Label>
@@ -140,9 +137,10 @@ export default function LastWeekScreen() {
   );
 }
 
-/** "12", or "4.5" with a secondary muscle's half sets. */
-function formatSets(sets: number): string {
-  return Number.isInteger(sets) ? String(sets) : sets.toFixed(1);
+/** "12 sets", or "4.5 sets" with a secondary muscle's half sets. */
+function setsValue(sets: number): string {
+  const count = formatSetCount(sets);
+  return `${count} ${count === '1' ? 'set' : 'sets'}`;
 }
 
 function capitalise(words: string): string {

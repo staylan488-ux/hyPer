@@ -3,8 +3,6 @@ import { getWorkoutResumeSet } from '@/lib/workoutFocus';
 import { plannedDayForDate, type PlanSchedule, type ScheduleWorkout } from '@/lib/planSchedule';
 import { formatWorkoutDuration } from '@/lib/workoutSessions';
 import {
-  MUSCLE_GROUP_LABELS,
-  type MuscleVolume,
   type Split,
   type SplitDay,
   type Workout,
@@ -130,91 +128,6 @@ export function todayCapsule(hero: HeroState, context: TodayCapsuleContext): Tod
 
 function formatWeight(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '');
-}
-
-export interface WeekVolumeSummary {
-  trained: number;
-  inRange: number;
-  under: number;
-  over: number;
-}
-
-/** Muscles trained this week and where they sit against their landmarks; one with none to grade against is left out. */
-export function summarizeWeekVolume(weeklyVolume: MuscleVolume[]): WeekVolumeSummary {
-  const trained = (weeklyVolume ?? []).filter((volume) => volume.weekly_sets > 0 && volume.status !== null);
-  return {
-    trained: trained.length,
-    under: trained.filter((volume) => volume.status === 'below_mev').length,
-    over: trained.filter((volume) => volume.status === 'above_mrv').length,
-    inRange: trained.filter((volume) => volume.status === 'mev_mav' || volume.status === 'mav' || volume.status === 'approaching_mrv').length,
-  };
-}
-
-export interface VolumeInsight {
-  volume: MuscleVolume;
-  landmark: NonNullable<MuscleVolume['landmark']>;
-  tone: 'under' | 'over' | 'zone';
-  muscle: string;
-  headline: string;
-  detail: string;
-  /** The short flag line under the week summary, after "Muscle: ". */
-  flag: string;
-}
-
-/** Main's one weekly insight (unchanged rules), plus a short flag line. */
-export function pickInsight(weeklyVolume: MuscleVolume[]): VolumeInsight | null {
-  if (!weeklyVolume || weeklyVolume.length === 0) return null;
-
-  const labeled = (mv: MuscleVolume) => MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group;
-
-  const below = weeklyVolume
-    .filter((mv) => mv.status === 'below_mev' && mv.landmark)
-    .sort((a, b) => a.weekly_sets - b.weekly_sets)[0];
-  if (below?.landmark) {
-    const gap = Math.max(1, Math.ceil(below.landmark.mev - below.weekly_sets));
-    return {
-      volume: below,
-      landmark: below.landmark,
-      tone: 'under',
-      muscle: labeled(below),
-      headline: `${labeled(below)} is under-stimulated`,
-      detail: `${below.weekly_sets} sets this week — about ${gap} more to clear your minimum effective volume.`,
-      flag: `add about ${gap} ${gap === 1 ? 'set' : 'sets'} this week`,
-    };
-  }
-
-  const over = weeklyVolume
-    .filter((mv) => (mv.status === 'above_mrv' || mv.status === 'approaching_mrv') && mv.landmark)
-    .sort((a, b) => b.weekly_sets - a.weekly_sets)[0];
-  if (over?.landmark) {
-    const past = over.status === 'above_mrv';
-    return {
-      volume: over,
-      landmark: over.landmark,
-      tone: 'over',
-      muscle: labeled(over),
-      headline: past ? `${labeled(over)} is past recoverable volume` : `${labeled(over)} is nearing its ceiling`,
-      detail: past
-        ? `${over.weekly_sets} sets this week — pull back or plan a deload.`
-        : `${over.weekly_sets} sets this week — hold here rather than adding more.`,
-      flag: past ? 'over its ceiling' : 'near its ceiling',
-    };
-  }
-
-  const inZone = weeklyVolume.filter((mv) => mv.status === 'mav' && mv.landmark)[0];
-  if (inZone?.landmark) {
-    return {
-      volume: inZone,
-      landmark: inZone.landmark,
-      tone: 'zone',
-      muscle: labeled(inZone),
-      headline: `${labeled(inZone)} is in the adaptive zone`,
-      detail: `${inZone.weekly_sets} sets this week — right where growth compounds. Hold the line.`,
-      flag: 'in its best range',
-    };
-  }
-
-  return null;
 }
 
 /** Everything Today's hero depends on, from the stores, the day read and the schedule. */

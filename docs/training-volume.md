@@ -52,11 +52,11 @@ tier boundary is between 10 and 11, so high starts above 10. The median study
 volume was 10.5 fractional sets a week, so "solid" covers what most of the
 research actually tested.
 
-**No ceiling.** The best-fitting hypertrophy model was a square-root curve:
+**No upper limit.** The best-fitting hypertrophy model was a square-root curve:
 diminishing returns, no plateau and no inverted U (section 5.4: "no clear
 plateau"). Few studies went past about 25 sets, so the top end is uncertain,
 but nothing supports a maximum. "High" is therefore a plain description, never
-a warning and never red. The old "ceiling" (MRV) numbers came from a coaching
+a warning and never red. The old maximum (MRV) numbers came from a coaching
 convention, not from this data.
 
 **The same edges for every muscle.** The app's research notes expect muscles
