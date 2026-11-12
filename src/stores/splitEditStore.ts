@@ -3,6 +3,7 @@ import { normalizeSetRange, serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
 import { getExerciseLibrary, invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { applyExerciseIds, insertPendingExercises, pendingExercises, type ExerciseInsertClient } from '@/lib/customExercises';
+import { applyVolumeSuggestion, type VolumeSuggestion } from '@/lib/volumeSuggestions';
 import {
   createSupersetGroupId,
   fixDayOrders,
@@ -111,6 +112,8 @@ interface SplitEditState {
   clearExerciseSuperset: (dayId: string, exerciseId: string) => void;
   removeExercise: (dayId: string, exerciseId: string) => void;
   updateExerciseNotes: (dayId: string, exerciseId: string, notes: string | null) => void;
+  /** A one-tap fix from the Sets per week group: a draft change like any other, kept until saved or discarded. */
+  applyVolumeSuggestion: (suggestion: VolumeSuggestion) => void;
 }
 
 // ═══════════════════════════════════
@@ -510,6 +513,10 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
         }),
       }))
     );
+  },
+
+  applyVolumeSuggestion: (suggestion) => {
+    set((state) => updateDraft(state, (d) => applyVolumeSuggestion(d, suggestion)));
   },
 
   addExercise: (dayId, exercise) => {

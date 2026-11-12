@@ -11,7 +11,6 @@ import {
   previewSplit,
   previewCurrentWorkout,
   previewMacroTarget,
-  previewLandmarks,
   previewWeeklyVolume,
 } from './previewData';
 
@@ -37,7 +36,6 @@ export function maybeSeedPreview(): void {
     currentWorkoutDayPlan: null,
     flexTemplates: [],
     macroTarget: previewMacroTarget,
-    volumeLandmarks: previewLandmarks,
     weeklyVolume: previewWeeklyVolume,
     // Keep illustrative volume totals. Nutrition, workout and program reads
     // use the real store actions so saved edits survive route remounts.

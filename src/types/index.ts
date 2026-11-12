@@ -322,25 +322,14 @@ export const DEFAULT_MACRO_TARGET = {
   fat: 65,
 } as const;
 
-export interface VolumeLandmark {
-  id: string;
-  user_id: string;
-  muscle_group: MuscleGroup;
-  mv: number;
-  mev: number;
-  mav_low: number;
-  mav_high: number;
-  mrv: number;
-}
-
-export type VolumeStatus = 'below_mev' | 'mev_mav' | 'mav' | 'approaching_mrv' | 'above_mrv';
-
+/**
+ * A muscle's finished sets this week. `muscle_group` is the counted muscle
+ * (src/lib/muscleVolume's volumeMuscle): shoulders count as front delts, and a
+ * value the app has no name for passes through as it is.
+ */
 export interface MuscleVolume {
   muscle_group: MuscleGroup;
   weekly_sets: number;
-  landmark?: VolumeLandmark;
-  /** null: no landmark to grade against (traps has no default). */
-  status: VolumeStatus | null;
 }
 
 export interface SplitTemplate {
