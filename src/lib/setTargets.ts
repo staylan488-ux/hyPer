@@ -44,7 +44,7 @@ export type TargetWhy =
   /** Match what was done last time: after two short sessions, or a break. */
   | { kind: 'match'; cause: 'missed_twice' | 'break' }
   /** Moved during the session: to the weight in use today, or with how an earlier set went. */
-  | { kind: 'moved'; cause: 'weight' | 'reps'; off: number };
+  | { kind: 'moved'; cause: 'weight' | 'reps'; off: number; /** Weight cause: how much heavier (+) or lighter (−) set 1 went. */ by?: number };
 
 export type TargetFigures = { weight: number; reps: number };
 export type SetTarget = TargetFigures & { why: TargetWhy };
@@ -492,7 +492,8 @@ export function liveSetTarget(
   if (!anchor) return planned;
   const off = anchor.set.reps - anchor.target.reps;
   if (Math.abs(anchor.set.weight - anchor.target.weight) > WEIGHT_TOLERANCE) {
-    return { weight: anchor.set.weight, reps: Math.max(1, planned.reps + off), why: { kind: 'moved', cause: 'weight', off } };
+    const by = round2(anchor.set.weight - anchor.target.weight);
+    return { weight: anchor.set.weight, reps: Math.max(1, planned.reps + off), why: { kind: 'moved', cause: 'weight', off, by } };
   }
   if (Math.abs(off) >= 2) {
     return { weight: planned.weight, reps: Math.max(1, planned.reps + off), why: { kind: 'moved', cause: 'reps', off } };
@@ -521,13 +522,16 @@ export function describeTarget(target: SetTarget): string {
         ? `${count(why.reps, 'more rep')}, ${pounds(why.nextWeight)} is too big a jump yet`
         : `${count(why.reps, 'more rep')} than last time`;
     case 'repeat':
-      return 'same target, last time fell short';
+      return 'last time fell short, try again';
     case 'match':
       return why.cause === 'break' ? 'match last time after a break' : 'match last time';
     case 'moved':
-      // A concrete aim, not a condition: the weight in use and the reps to reach.
-      if (why.cause === 'weight') return target.weight > 0 ? `keep ${pounds(target.weight)}, aim for ${count(target.reps, 'rep', true)}` : `aim for ${count(target.reps, 'rep', true)}`;
-      return `set 1 came in ${Math.abs(why.off)} ${why.off < 0 ? 'under' : 'over'}, aim for ${count(target.reps, 'rep', true)}`;
+      // Only the why: the figures themselves hold the weight and reps to aim for.
+      if (why.cause === 'weight') {
+        const by = why.by ?? 0;
+        return Math.abs(by) > WEIGHT_TOLERANCE ? `set 1 went ${pounds(Math.abs(by))} ${by > 0 ? 'heavier' : 'lighter'}` : 'follows set 1';
+      }
+      return `set 1 came in ${count(Math.abs(why.off), 'rep', true)} ${why.off < 0 ? 'under' : 'over'}`;
   }
 }
 
