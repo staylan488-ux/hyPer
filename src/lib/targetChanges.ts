@@ -144,6 +144,16 @@ export function shownTargetChange(
   return sameMacros(target, newMacros(change)) ? { change, undone: false } : null;
 }
 
+/**
+ * The target that applied in the week before this one: the figures a change
+ * made this week replaced, else the current target.
+ */
+export function targetForWeekBefore<T extends Macros>(change: MacroTargetChange | null, current: T | null, now: Date): Macros | null {
+  if (!change) return current;
+  const at = Date.parse(change.changed_at);
+  return Number.isFinite(at) && at >= startOfLocalWeek(now).getTime() ? oldMacros(change) : current;
+}
+
 const kcal = (value: number) => Math.round(value).toLocaleString('en-US');
 
 /** One decimal in the person's unit; "0.0" for a change too small to show. */
@@ -156,9 +166,10 @@ const PACE_GAP_KG = 0.05;
 
 /**
  * The weight story, when it explains the change: eating more because the
- * weight is behind the goal's pace, or less because it is ahead. "Over three
- * weeks you gained 0.2 lb a week and the goal is 0.5." The window is the
- * estimate's (three weeks), which is why it can differ from last week alone.
+ * weight is behind the goal's pace, or less because it is ahead. "Your
+ * three-week weight trend is up 0.2 lb a week and the goal is 0.5." It is a
+ * smoothed trend over the estimate's three weeks, and says so, since a
+ * single week's change can point the other way.
  */
 function weightReason(change: MacroTargetChange, delta: number, unit: WeightUnit): string | null {
   const measured = change.kg_per_week;
@@ -177,8 +188,8 @@ function weightReason(change: MacroTargetChange, delta: number, unit: WeightUnit
       ? `the goal is ${goalShown}`
       : `the goal is to ${goal > 0 ? 'gain' : 'lose'} ${goalShown}${steady ? ` ${unit} a week` : ''}`;
   const weightWords = steady
-    ? 'Over three weeks your weight held steady'
-    : `Over three weeks you ${measured > 0 ? 'gained' : 'lost'} ${shown} ${unit} a week`;
+    ? 'Your three-week weight trend is flat'
+    : `Your three-week weight trend is ${measured > 0 ? 'up' : 'down'} ${shown} ${unit} a week`;
   return `${weightWords} and ${goalWords}.`;
 }
 
@@ -201,8 +212,8 @@ function changeReason(change: MacroTargetChange, delta: number, unit: WeightUnit
 
 /**
  * The change as one title and one quiet line, beside a screen that already
- * shows the new figure: "Target up 100 kcal", "Over three weeks you gained
- * 0.2 lb a week and the goal is 0.5." Once undone: "Change undone", "Your
+ * shows the new figure: "Target up 100 kcal", "Your three-week weight trend
+ * is up 0.2 lb a week and the goal is 0.5." Once undone: "Change undone", "Your
  * previous target stays until next Monday's update."
  */
 export function describeTargetChange(shown: ShownTargetChange, unit: WeightUnit): { title: string; line: string } {

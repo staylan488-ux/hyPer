@@ -12,7 +12,7 @@ import { BlancText } from './BlancText';
 import { Capsule } from './Capsule';
 
 /** Noon of a day key ("2026-11-16"), so the week it falls in never depends on the hour. */
-function dayFromKey(key: string): Date {
+export function dayFromKey(key: string): Date {
   const [year, month, day] = key.split('-').map(Number);
   return new Date(year, month - 1, day, 12);
 }

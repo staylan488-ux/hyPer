@@ -60,9 +60,12 @@ export default function AdaptationScreen() {
         <BlancText variant="body" style={{ marginHorizontal: space.gutter, marginTop: burn.kcal !== null ? 16 : 12 }}>
           {stillNeeded ? `${NOT_LEARNED} ${stillNeeded}` : burn.explanation}
         </BlancText>
-        <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 14 }}>
-          These are estimates, not measurements. Targets set by hand stay fixed until you resume adaptive targets.
-        </BlancText>
+        {burn.kcal !== null ? (
+          // About the figure above; with no figure yet, the one sentence stands alone.
+          <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 14 }}>
+            These are estimates, not measurements. Targets set by hand stay fixed until you resume adaptive targets.
+          </BlancText>
+        ) : null}
         <Label style={{ marginTop: 28 }}>
           <Row title="Body weight" chevron onPress={() => router.push('/you/weight')} />
         </Label>

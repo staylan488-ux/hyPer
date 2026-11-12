@@ -371,7 +371,7 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
       const { nutrition_profiles, body_weight_measurements } = buildYouFixtures('populated');
       // Adaptive on, so the calculator offers the learned burn beside the formula.
       // This morning's update raised the adaptive target by 100 kcal (the
-      // weight slipped while the goal is to hold steady), so Targets (and
+      // weight trend slipped while the goal is to hold steady), so Targets (and
       // Last week on a Monday) show the change and its Undo.
       const changedAt = new Date();
       changedAt.setHours(6, 0, 0, 0);

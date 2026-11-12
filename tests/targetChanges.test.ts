@@ -5,6 +5,7 @@ import {
   describeTargetChange,
   normalizeTargetChange,
   shownTargetChange,
+  targetForWeekBefore,
   type MacroTargetChange,
 } from '@/lib/targetChanges';
 
@@ -49,36 +50,36 @@ describe('describeTargetChange', () => {
   it('says the move, and the weight behind it, in pounds', () => {
     expect(words({})).toEqual({
       title: 'Target up 100 kcal',
-      line: 'Over three weeks you gained 0.2 lb a week and the goal is 0.5.',
+      line: 'Your three-week weight trend is up 0.2 lb a week and the goal is 0.5.',
     });
   });
 
   it('uses the person’s unit', () => {
-    expect(words({}, 'kg').line).toBe('Over three weeks you gained 0.1 kg a week and the goal is 0.2.');
+    expect(words({}, 'kg').line).toBe('Your three-week weight trend is up 0.1 kg a week and the goal is 0.2.');
   });
 
   it('says a lower target plainly, when the weight ran ahead of the goal', () => {
     expect(words({ new_calories: 2700, new_carbs: 325, kg_per_week: 0.363 })).toEqual({
       title: 'Target down 100 kcal',
-      line: 'Over three weeks you gained 0.8 lb a week and the goal is 0.5.',
+      line: 'Your three-week weight trend is up 0.8 lb a week and the goal is 0.5.',
     });
   });
 
   it('names the goal’s direction when the weight went the other way', () => {
     expect(words({ kg_per_week: -0.0907 }).line).toBe(
-      'Over three weeks you lost 0.2 lb a week and the goal is to gain 0.5.',
+      'Your three-week weight trend is down 0.2 lb a week and the goal is to gain 0.5.',
     );
     expect(words({ new_calories: 2700, kg_per_week: 0.0907, goal_kg_per_week: -0.2268 }).line).toBe(
-      'Over three weeks you gained 0.2 lb a week and the goal is to lose 0.5.',
+      'Your three-week weight trend is up 0.2 lb a week and the goal is to lose 0.5.',
     );
   });
 
   it('says when the weight held steady, and a maintenance goal', () => {
     expect(words({ kg_per_week: 0.01 }).line).toBe(
-      'Over three weeks your weight held steady and the goal is to gain 0.5 lb a week.',
+      'Your three-week weight trend is flat and the goal is to gain 0.5 lb a week.',
     );
     expect(words({ goal_kg_per_week: 0, kg_per_week: -0.0907 }).line).toBe(
-      'Over three weeks you lost 0.2 lb a week and the goal is to hold steady.',
+      'Your three-week weight trend is down 0.2 lb a week and the goal is to hold steady.',
     );
   });
 
@@ -155,6 +156,20 @@ describe('shownTargetChange', () => {
   it('shows nothing without a change or a target', () => {
     expect(shownTargetChange(null, target(NEW), MONDAY)).toBeNull();
     expect(shownTargetChange(change(), null, MONDAY)).toBeNull();
+  });
+});
+
+describe('targetForWeekBefore', () => {
+  it('grades last week against the target a change this week replaced', () => {
+    expect(targetForWeekBefore(change(), target(NEW), MONDAY)).toEqual(OLD);
+    expect(targetForWeekBefore(change({ undone_at: MONDAY.toISOString() }), target(OLD), MONDAY)).toEqual(OLD);
+  });
+
+  it('uses the current target when nothing changed this week', () => {
+    const lastWeek = change({ changed_at: new Date(2026, 10, 10, 7, 0).toISOString() });
+    expect(targetForWeekBefore(lastWeek, target(NEW), MONDAY)).toEqual(target(NEW));
+    expect(targetForWeekBefore(null, target(NEW), MONDAY)).toEqual(target(NEW));
+    expect(targetForWeekBefore(null, null, MONDAY)).toBeNull();
   });
 });
 
