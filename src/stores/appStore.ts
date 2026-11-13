@@ -453,6 +453,12 @@ interface AppState {
   updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
   /** Takes a movement out of the live workout (its logged sets stay); the program is untouched. */
   removeSessionExercise: (exerciseId: string) => Promise<void>;
+  /**
+   * Adds an exercise to the end of a program day (3 × 8–12, as a movement
+   * added in a workout starts), unless the day already has it; throws when
+   * it doesn't save. The programs are read again after.
+   */
+  addExerciseToProgramDay: (splitDayId: string, exerciseId: string) => Promise<void>;
   /** force: read again even if a read is running; pass it after a write. */
   fetchFlexTemplates: (options?: { force?: boolean }) => Promise<void>;
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
@@ -1813,6 +1819,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ currentWorkoutDayPlan: toDayPlan(updatedPlan) });
     }
   }),
+
+  addExerciseToProgramDay: async (splitDayId, exerciseId) => {
+    const failed = 'Could not add it to your program. Try again.';
+    const { data: rows, error: readError } = await supabase
+      .from('split_exercises')
+      .select('exercise_id, exercise_order')
+      .eq('split_day_id', splitDayId);
+    if (readError || !rows) throw new Error(failed);
+    if (!rows.some((row) => row.exercise_id === exerciseId)) {
+      const lastOrder = rows.reduce((highest, row) => Math.max(highest, Number(row.exercise_order) || 0), -1);
+      const { error } = await supabase.from('split_exercises').insert({
+        split_day_id: splitDayId,
+        exercise_id: exerciseId,
+        target_sets: 3,
+        target_reps_min: 8,
+        target_reps_max: 12,
+        exercise_order: lastOrder + 1,
+        notes: null,
+        superset_group_id: null,
+      });
+      if (error) throw new Error(failed);
+    }
+    await get().fetchSplits({ force: true });
+  },
 
   removeSessionExercise: writesWorkout(async (exerciseId) => {
     const isCurrentAccount = captureAccountScope();

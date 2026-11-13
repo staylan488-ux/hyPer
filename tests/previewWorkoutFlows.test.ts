@@ -240,6 +240,27 @@ describe('preview uses real program and workout store paths', () => {
     expect(JSON.stringify(previewTables.split_exercises)).toBe(program);
   });
 
+  it('keeps a movement added mid-workout on its program day once, after the day\'s last exercise', async () => {
+    await useAppStore.getState().fetchSplits();
+    await useAppStore.getState().fetchCurrentWorkout();
+    const pullUp = (await client.from('exercises').select('*').eq('id', 'ex_pullup').single()).data;
+    const dayRows = () => previewTables.split_exercises.filter((row) => row.split_day_id === 'd1');
+    const lastOrder = Math.max(...dayRows().map((row) => Number(row.exercise_order)));
+
+    await useAppStore.getState().addSessionExercise(pullUp);
+    await useAppStore.getState().addExerciseToProgramDay('d1', 'ex_pullup');
+    await useAppStore.getState().addExerciseToProgramDay('d1', 'ex_pullup');
+
+    const kept = dayRows().filter((row) => row.exercise_id === 'ex_pullup');
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatchObject({ target_sets: 3, target_reps_min: 8, target_reps_max: 12, exercise_order: lastOrder + 1 });
+    const split = useAppStore.getState().activeSplit;
+    expect(split?.days.find((day) => day.id === 'd1')?.exercises.at(-1)?.exercise_id).toBe('ex_pullup');
+    // Now on the program day, it is a program movement, not an added one.
+    const model = buildSessionModel(useAppStore.getState().currentWorkout, { split, plan: useAppStore.getState().currentWorkoutDayPlan }, null);
+    expect(model?.movements.at(-1)).toMatchObject({ exerciseId: 'ex_pullup', added: false });
+  });
+
   it('shows a movement removed from a flexible session again when it comes back as a superset partner', async () => {
     await useAppStore.getState().fetchCurrentWorkout();
     await useAppStore.getState().completeWorkout();

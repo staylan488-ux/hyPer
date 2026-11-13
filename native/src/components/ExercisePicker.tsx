@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { memo, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { memo, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
@@ -40,13 +40,15 @@ type PickerProps = {
   allowCustom?: boolean;
   /** A button in the top-right corner, such as "Add 3" for a several-at-once pick. */
   action?: { title: string; accessibilityLabel: string; onPress: () => void } | null;
+  /** A choice that applies to the pick, in its own label above the list (it scrolls away with it). */
+  accessory?: ReactNode;
 };
 
 /**
  * The one exercise picker: search, muscle chips, everyday gym movements
  * first and bodyweight skills on request.
  */
-export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action }: PickerProps) {
+export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action, accessory }: PickerProps) {
   const c = useBlanc();
   const large = useLargeText();
   const [library, setLibrary] = useState<Exercise[] | null>(() => peekExerciseLibrary());
@@ -253,6 +255,8 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             ))}
           </ScrollView>
         </View>
+
+        {accessory ? <Label style={{ marginTop: 4, marginBottom: 14 }}>{accessory}</Label> : null}
 
         {library === null && !loadFailed ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
         {loadFailed && library === null ? (

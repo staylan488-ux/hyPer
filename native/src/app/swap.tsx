@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import type { Exercise } from '@/types';
 import { ExercisePicker } from '~/components/ExercisePicker';
+import { ToggleRow } from '~/components/Form';
 import { announce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { useLeaveGuard } from '~/lib/leaveGuard';
@@ -24,9 +25,19 @@ const COPY: Record<PickMode, { title: string; verb: string; done: string; failed
   superset: { title: 'Add a superset', verb: 'Pair with', done: 'Paired with', failed: 'Not added', fallback: 'Could not add the superset. Try again.' },
 };
 
+/** Adds the pick to the program day too; resolves to whether it saved. */
+async function keepInProgram(splitDayId: string, exercise: Exercise): Promise<boolean> {
+  try {
+    await useAppStore.getState().addExerciseToProgramDay(splitDayId, exercise.id);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Adds the pick to the live workout, pairs it with the movement as a
- * superset, or swaps the movement for it; throws when the save fails. Out
+ * superset, or swaps the movement for it; rejects when the save fails. Out
  * here because the React Compiler can't yet compile a component whose own
  * code branches inside a try.
  */
@@ -68,6 +79,11 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   const movement = session?.movements.find((entry) => entry.exerciseId === params.id) ?? null;
   const baseName = movement?.name ?? (pastBase?.exercise as { name?: string } | undefined)?.name ?? null;
   const sourceMuscle = mode === 'swap' ? movement?.sets[0]?.exercise?.muscle_group : undefined;
+
+  // Adding to a planned session: also keep the movement on its program day.
+  const splitDayId = useAppStore((state) => state.currentWorkout?.split_day_id ?? null);
+  const programDayId = mode === 'add' && session && !session.flexible ? splitDayId : null;
+  const [keep, setKeep] = useState(false);
 
   const [swapping, setSwapping] = useState<string | null>(null);
   // While a pick saves, the sheet holds still: closing it then would leave the
@@ -114,16 +130,26 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     // Back to the workout, past the movement sheet a swap or superset opened
     // from (a swipe on Train's row opens this sheet straight from Train).
     const exitTo = mode === 'add' || params.from === 'train' ? 'back' : 'dismiss';
-    try {
-      await pickInWorkout(session, mode, movement, exercise);
-      haptics.success();
-      announce(`${copy.done} ${exercise.name}`);
-      setExit(exitTo);
-    } catch (error) {
+    const failure = await pickInWorkout(session, mode, movement, exercise).then(
+      () => null,
+      (error: unknown) => error ?? new Error(copy.fallback),
+    );
+    if (failure) {
       haptics.error();
       setSwapping(null);
-      Alert.alert(copy.failed, errorMessage(error, copy.fallback));
+      Alert.alert(copy.failed, errorMessage(failure, copy.fallback));
+      return;
     }
+    // In this workout now; the program day is a second save that can fail alone.
+    const kept = keep && programDayId ? await keepInProgram(programDayId, exercise) : null;
+    if (kept === false) {
+      haptics.error();
+      Alert.alert(`${exercise.name} added to this workout only`, `Couldn't add it to ${session.dayName}. You can add it in Program.`);
+    } else {
+      haptics.success();
+      announce(`${copy.done} ${exercise.name}${kept ? `, and to ${session.dayName}` : ''}`);
+    }
+    setExit(exitTo);
   };
 
   return (
@@ -132,12 +158,24 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
       subtitle={
         baseName && mode !== 'add'
           ? mode === 'swap' ? `Replacing ${baseName}` : `With ${baseName}`
-          : mode === 'add' && session && !session.flexible ? 'For this workout only' : null
+          : programDayId ? (keep ? `This workout and ${session?.dayName ?? 'your program'}` : 'For this workout only') : null
       }
       initialMuscle={sourceMuscle}
       exclude={inWorkout}
       busyId={swapping}
       onPick={(exercise) => void choose(exercise)}
+      accessory={
+        programDayId && session ? (
+          <ToggleRow
+            list
+            label={`Keep in ${session.dayName}`}
+            detail="Add it to your program for next time too"
+            value={keep}
+            disabled={swapping !== null}
+            onChange={setKeep}
+          />
+        ) : null
+      }
     />
   );
 }
