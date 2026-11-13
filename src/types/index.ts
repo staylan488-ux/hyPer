@@ -12,7 +12,9 @@ export type MuscleGroup =
   | 'glutes'
   | 'calves'
   | 'core'
-  | 'traps';
+  | 'traps'
+  | 'adductors'
+  | 'lower_back';
 
 export type ExerciseCategory = 'gym' | 'calisthenics';
 
@@ -368,6 +370,8 @@ export const MUSCLE_GROUP_LABELS: Record<MuscleGroup, string> = {
   calves: 'Calves',
   core: 'Core',
   traps: 'Traps',
+  adductors: 'Adductors',
+  lower_back: 'Lower back',
 };
 
 export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {

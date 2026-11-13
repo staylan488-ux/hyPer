@@ -1436,7 +1436,7 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('Push-Up', 'chest', 'triceps', 'bodyweight', true),
 
 -- Back
-('Barbell Deadlift', 'back', 'legs', 'barbell', true),
+('Barbell Deadlift', 'glutes', 'hamstrings', 'barbell', true),
 ('Barbell Row', 'back', 'biceps', 'barbell', true),
 ('One-Arm Dumbbell Row', 'back', 'biceps', 'dumbbells', true),
 ('Lat Pulldown', 'back', 'biceps', 'cable', true),

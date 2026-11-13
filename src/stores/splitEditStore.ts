@@ -23,7 +23,7 @@ import {
   splitSignature,
   type StoredSplitDraft,
 } from '@/lib/splitDraftStorage';
-import type { Split, Exercise, MuscleGroup } from '@/types';
+import type { Split, Exercise } from '@/types';
 
 export type { DraftDay, DraftExercise, DraftSplit } from '@/lib/splitDraft';
 export { moveExercise, moveExerciseBlock } from '@/lib/splitDraft';
@@ -119,17 +119,6 @@ interface SplitEditState {
 // ═══════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════
-
-function inferSecondaryMuscleGroup(primary: MuscleGroup): MuscleGroup | null {
-  if (primary === 'chest') return 'triceps';
-  if (primary === 'triceps') return 'chest';
-  if (primary === 'back') return 'biceps';
-  if (primary === 'biceps') return 'back';
-  if (primary === 'quads') return 'hamstrings';
-  if (primary === 'hamstrings') return 'quads';
-  if (primary === 'shoulders') return 'triceps';
-  return null;
-}
 
 const TARGET_FIELDS = [
   'target_sets_min',
@@ -566,10 +555,9 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
             return entry;
           });
 
-          const partnerExercise = newDraftExercise({
-            ...exercise,
-            muscle_group_secondary: exercise.muscle_group_secondary ?? inferSecondaryMuscleGroup(source.exercise.muscle_group),
-          }, source.exercise_order + 1, {
+          // The partner keeps its own muscles: a second one guessed from the
+          // movement it is paired with would count sets it never trains.
+          const partnerExercise = newDraftExercise(exercise, source.exercise_order + 1, {
             target_sets: source.target_sets,
             target_sets_min: source.target_sets_min,
             target_sets_max: source.target_sets_max,

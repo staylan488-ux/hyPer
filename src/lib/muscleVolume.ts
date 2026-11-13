@@ -22,14 +22,18 @@ import { MUSCLE_GROUP_LABELS, type MuscleGroup, type SplitDay, type WorkoutMode 
 
 /**
  * Library values counted as another muscle. `shoulders` holds only presses,
- * so it counts with front delts. The rest are values the live library has
- * that the app's own list lacks.
+ * so it counts with front delts. The rest are spellings the live library or
+ * a custom movement may carry for a muscle the app names differently.
  */
 const MUSCLE_ALIASES: Readonly<Record<string, string>> = {
   shoulders: 'front_delts',
   abs: 'core',
   brachialis: 'biceps',
   legs: 'quads',
+  adductor: 'adductors',
+  inner_thigh: 'adductors',
+  erectors: 'lower_back',
+  spinal_erectors: 'lower_back',
 };
 
 /** The muscle a library value counts as, or null for an empty value. Unknown values pass through. */

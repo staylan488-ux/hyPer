@@ -60,6 +60,11 @@ describe('muscle names', () => {
     expect(volumeMuscle('abs')).toBe('core');
     expect(volumeMuscle('brachialis')).toBe('biceps');
     expect(volumeMuscle('legs')).toBe('quads');
+    expect(volumeMuscle('Lower back')).toBe('lower_back');
+    expect(volumeMuscle('erectors')).toBe('lower_back');
+    expect(volumeMuscle('adductor')).toBe('adductors');
+    expect(muscleLabel('lower_back')).toBe('Lower back');
+    expect(muscleLabel('adductors')).toBe('Adductors');
     expect(volumeMuscle('Hip Flexors')).toBe('hip_flexors');
     expect(volumeMuscle('')).toBeNull();
     expect(volumeMuscle(null)).toBeNull();

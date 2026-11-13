@@ -54,7 +54,7 @@ const exCalf = ex('ex_calf', 'Standing Calf Raise', 'calves', null, 'Machine', f
 const libraryOnly: Exercise[] = [
   ex('ex_hack', 'Hack Squat', 'quads', 'glutes', 'Machine', true),
   ex('ex_machine_chest', 'Machine Chest Press', 'chest', 'triceps', 'Machine', true),
-  ex('ex_hyper', 'Weighted Hyperextension', 'hamstrings', 'glutes', 'Machine', true),
+  ex('ex_hyper', 'Weighted Hyperextension', 'glutes', 'hamstrings', 'Machine', true),
   ex('ex_back_ext', '45° Back Extension', 'glutes', 'hamstrings', 'Machine', true),
   ex('ex_pullup', 'Pull-Up', 'back', 'biceps', 'Bodyweight', true),
   ex('ex_front_lever_row', 'Front Lever Row', 'back', 'biceps', 'Bodyweight', true),
