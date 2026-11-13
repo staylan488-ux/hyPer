@@ -318,7 +318,9 @@ export function fillByMuscle(draft: DraftSplit, library: readonly Exercise[], an
   let current = trimToCap(draft, cap, answers.focus);
   // A beginner's own movements can bring more sets than a starting plan holds.
   // A set past the aim is left alone: that is as close as whole movements land.
-  if (answers.experience === 'beginner') current = trimToStartingSets(current, (muscle) => weeklySetTarget(muscle, answers) + 1);
+  // The starting count itself is never trimmed, so glutes, aimed a little
+  // lower, keep 6 like the rest.
+  if (answers.experience === 'beginner') current = trimToStartingSets(current, (muscle) => Math.max(BEGINNER_STARTING_SETS, weeklySetTarget(muscle, answers) + 1));
 
   for (let round = 0; round < 64; round += 1) {
     current = applySuggestions(current, offered, cap, answers.focus);

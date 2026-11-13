@@ -177,6 +177,17 @@ describe('names the builder can emit', () => {
 });
 
 describe('the fill', () => {
+  it("leaves a beginner's muscle that sits at the starting count alone, glutes too", () => {
+    // Glutes are aimed a little under the others, but 6 sets is the starting count for every main muscle.
+    const draft = draftOf([
+      ['Upper', [['Flat Dumbbell Bench Press', 4], ['Seated Cable Row', 4], ['Lateral Raise', 4], ['Tricep Pushdown', 3], ['Dumbbell Curl', 3]]],
+      ['Lower', [['Leg Press', 4], ['Lying Leg Curl', 4], ['Hip Thrust', 4]]],
+    ]);
+    expect(sets(draft, 'glutes')).toBe(BEGINNER_STARTING_SETS);
+    const filled = fillByMuscle(draft, library, { focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'beginner' });
+    expect(filled.days[1].exercises.map((exercise) => exercise.target_sets)).toEqual([4, 4, 4]);
+  });
+
   it('trims a session over its cap from the muscle with the most to spare', () => {
     const draft = draftOf([['Upper', [
       ['Flat Dumbbell Bench Press', 5], ['Seated Cable Row', 5], ['Lat Pulldown', 5], ['Lateral Raise', 4], ['Tricep Pushdown', 4], ['Dumbbell Curl', 4],
