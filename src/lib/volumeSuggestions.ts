@@ -65,6 +65,19 @@ export const SUGGESTED_MOVEMENTS: Readonly<Record<MainMuscle, readonly string[]>
   triceps: ['Tricep Pushdown', 'Overhead Tricep Extension', 'Rope Pushdown', 'Dips'],
 };
 
+export interface VolumeSuggestionOptions {
+  /**
+   * Most sets a day may hold (the program builder's session length). A
+   * suggestion never takes a day past it; without it, days have no limit.
+   */
+  maxDaySets?: number;
+}
+
+/** Sets a day can still take under the options' limit. */
+function roomOn(day: DraftDay, options: VolumeSuggestionOptions): number {
+  return options.maxDaySets === undefined ? Infinity : options.maxDaySets - daySets(day);
+}
+
 const LOWER_BODY = new Set(['quads', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors', 'tibialis', 'hip_flexors']);
 
 function region(muscle: string | null): 'upper' | 'lower' | 'any' {
@@ -85,10 +98,11 @@ function setsWord(count: number): string {
 }
 
 /** Raise a movement the program already has for the muscle, the one with the most room on the lightest day. */
-function raiseFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: number): VolumeSuggestion | null {
+function raiseFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: number, options: VolumeSuggestionOptions): VolumeSuggestion | null {
   let best: { day: DraftDay; index: number; exercise: DraftExercise; sets: number; dayTotal: number } | null = null;
   draft.days.forEach((day, index) => {
     const dayTotal = daySets(day);
+    if (roomOn(day, options) < 1) return;
     for (const exercise of day.exercises) {
       if (primaryOf(exercise) !== muscle) continue;
       const sets = plannedMovementSets(exercise);
@@ -100,7 +114,7 @@ function raiseFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: num
   });
   if (!best) return null;
   const { day, index, exercise, sets } = best as { day: DraftDay; index: number; exercise: DraftExercise; sets: number };
-  const added = Math.min(need, MAX_SUGGESTED_SETS - sets);
+  const added = Math.min(need, MAX_SUGGESTED_SETS - sets, roomOn(day, options));
   const dayName = dayLabel(day, index);
   return {
     kind: 'raise',
@@ -130,13 +144,16 @@ function libraryCandidates(muscle: MainMuscle, library: readonly Exercise[], equ
 }
 
 /** Add a library movement to the lightest day that already trains that part of the body. */
-function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: number, library: readonly Exercise[]): VolumeSuggestion | null {
+function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: number, library: readonly Exercise[], options: VolumeSuggestionOptions): VolumeSuggestion | null {
   if (!draft.days.length) return null;
   const equipment = new Set(draft.days.flatMap((day) => day.exercises.flatMap((entry) => entry.exercise?.equipment ?? [])));
   const candidates = libraryCandidates(muscle, library, equipment);
   if (!candidates.length) return null;
 
-  const days = draft.days.map((day, index) => ({ day, index, total: daySets(day) }));
+  // A new movement needs room for at least 2 sets.
+  const days = draft.days
+    .map((day, index) => ({ day, index, total: daySets(day) }))
+    .filter(({ day }) => roomOn(day, options) >= 2);
   const suits = days.filter(({ day }) => day.exercises.some((exercise) => {
     const area = region(primaryOf(exercise));
     return area === 'any' || area === region(muscle);
@@ -146,7 +163,7 @@ function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: numbe
   for (const exercise of candidates) {
     const target = pool.find(({ day }) => !day.exercises.some((entry) => entry.exercise_id === exercise.id));
     if (!target) continue;
-    const sets = Math.max(2, Math.min(3, need));
+    const sets = Math.min(Math.max(2, Math.min(3, need)), roomOn(target.day, options));
     // A compound's second muscle may be this one; count only what lands here.
     const gained = dayVolume({ exercises: [{ exercise, target_sets: sets }] }).get(muscle) ?? 0;
     if (gained <= 0) continue;
@@ -172,12 +189,12 @@ function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: numbe
  * raise a movement the program already has for it, otherwise add one from
  * the library. A muscle with neither gets none.
  */
-export function volumeSuggestions(draft: DraftSplit, library: readonly Exercise[]): VolumeSuggestion[] {
+export function volumeSuggestions(draft: DraftSplit, library: readonly Exercise[], options: VolumeSuggestionOptions = {}): VolumeSuggestion[] {
   const sets = programVolume(draft);
   return lowMainMuscles(sets).flatMap((row) => {
     const muscle = row.muscle as MainMuscle;
     const need = Math.max(1, Math.ceil(VOLUME_BAND_EDGES.solidFrom - row.sets));
-    return raiseFor(draft, muscle, row.sets, need) ?? addFor(draft, muscle, row.sets, need, library) ?? [];
+    return raiseFor(draft, muscle, row.sets, need, options) ?? addFor(draft, muscle, row.sets, need, library, options) ?? [];
   });
 }
 
@@ -219,10 +236,15 @@ export function applyVolumeSuggestion(draft: DraftSplit, suggestion: VolumeSugge
  * muscle by at least one set and nothing ever falls, so it ends; the step cap
  * only guards against a library that changes underneath.
  */
-export function applyAllVolumeSuggestions(draft: DraftSplit, library: readonly Exercise[], maxSteps = MAIN_MUSCLES.length * VOLUME_BAND_EDGES.solidFrom * 2): DraftSplit {
+export function applyAllVolumeSuggestions(
+  draft: DraftSplit,
+  library: readonly Exercise[],
+  maxSteps = MAIN_MUSCLES.length * VOLUME_BAND_EDGES.solidFrom * 2,
+  options: VolumeSuggestionOptions = {},
+): DraftSplit {
   let current = draft;
   for (let step = 0; step < maxSteps; step += 1) {
-    const [first] = volumeSuggestions(current, library);
+    const [first] = volumeSuggestions(current, library, options);
     if (!first) break;
     const next = applyVolumeSuggestion(current, first);
     if (next === current) break;
