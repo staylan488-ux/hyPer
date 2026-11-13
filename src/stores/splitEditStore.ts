@@ -3,6 +3,7 @@ import { normalizeSetRange, serializeSetRangeNotes } from '@/lib/setRangeNotes';
 import { supabase } from '@/lib/supabase';
 import { getExerciseLibrary, invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { applyExerciseIds, insertPendingExercises, pendingExercises, type ExerciseInsertClient } from '@/lib/customExercises';
+import { applyVolumeSuggestion, type VolumeSuggestion } from '@/lib/volumeSuggestions';
 import {
   createSupersetGroupId,
   fixDayOrders,
@@ -22,7 +23,7 @@ import {
   splitSignature,
   type StoredSplitDraft,
 } from '@/lib/splitDraftStorage';
-import type { Split, Exercise, MuscleGroup } from '@/types';
+import type { Split, Exercise } from '@/types';
 
 export type { DraftDay, DraftExercise, DraftSplit } from '@/lib/splitDraft';
 export { moveExercise, moveExerciseBlock } from '@/lib/splitDraft';
@@ -111,22 +112,13 @@ interface SplitEditState {
   clearExerciseSuperset: (dayId: string, exerciseId: string) => void;
   removeExercise: (dayId: string, exerciseId: string) => void;
   updateExerciseNotes: (dayId: string, exerciseId: string, notes: string | null) => void;
+  /** A one-tap fix from the Sets per week group: a draft change like any other, kept until saved or discarded. */
+  applyVolumeSuggestion: (suggestion: VolumeSuggestion) => void;
 }
 
 // ═══════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════
-
-function inferSecondaryMuscleGroup(primary: MuscleGroup): MuscleGroup | null {
-  if (primary === 'chest') return 'triceps';
-  if (primary === 'triceps') return 'chest';
-  if (primary === 'back') return 'biceps';
-  if (primary === 'biceps') return 'back';
-  if (primary === 'quads') return 'hamstrings';
-  if (primary === 'hamstrings') return 'quads';
-  if (primary === 'shoulders') return 'triceps';
-  return null;
-}
 
 const TARGET_FIELDS = [
   'target_sets_min',
@@ -512,6 +504,10 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
     );
   },
 
+  applyVolumeSuggestion: (suggestion) => {
+    set((state) => updateDraft(state, (d) => applyVolumeSuggestion(d, suggestion)));
+  },
+
   addExercise: (dayId, exercise) => {
     get().addExercises(dayId, [exercise]);
   },
@@ -559,10 +555,9 @@ export const useSplitEditStore = create<SplitEditState>((set, get) => ({
             return entry;
           });
 
-          const partnerExercise = newDraftExercise({
-            ...exercise,
-            muscle_group_secondary: exercise.muscle_group_secondary ?? inferSecondaryMuscleGroup(source.exercise.muscle_group),
-          }, source.exercise_order + 1, {
+          // The partner keeps its own muscles: a second one guessed from the
+          // movement it is paired with would count sets it never trains.
+          const partnerExercise = newDraftExercise(exercise, source.exercise_order + 1, {
             target_sets: source.target_sets,
             target_sets_min: source.target_sets_min,
             target_sets_max: source.target_sets_max,

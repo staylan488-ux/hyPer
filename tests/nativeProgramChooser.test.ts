@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
 import * as programQuestions from '@/lib/programQuestions';
+import * as muscleProgress from '@/lib/muscleProgress';
+import * as muscleVolume from '@/lib/muscleVolume';
 import * as programSummary from '@/lib/programSummary';
+import * as volumeSuggestions from '@/lib/volumeSuggestions';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 
@@ -40,10 +43,14 @@ async function open() {
     'expo-symbols': { SymbolView: Empty },
     'react-native': { Alert: { alert: noop }, Keyboard: { dismiss: noop }, ScrollView: Wrap, TextInput: Empty, View: Wrap },
     'react-native-reanimated': { default: { View: Wrap } },
+    '@/lib/exerciseLibrary': { getExerciseLibrary: async () => [], peekExerciseLibrary: () => [] },
+    '@/lib/muscleProgress': muscleProgress,
+    '@/lib/muscleVolume': muscleVolume,
+    '@/lib/volumeSuggestions': volumeSuggestions,
     '@/lib/splitEditActions': { saveSplitEdit: noop },
-    '@/lib/programQuestions': { ...programQuestions, seedGuidedDraft },
+    '@/lib/programQuestions': { ...programQuestions, seedGuidedDraft, peekBuilderLibrary: () => null, loadBuilderLibrary: () => new Promise(() => {}) },
     '@/lib/programSummary': programSummary,
-    '@/lib/splitDraft': { dayLabel: noop, daySummary: noop },
+    '@/lib/splitDraft': { dayLabel: noop, daySummary: noop, splitToDraft: noop },
     '@/lib/splitDraftSeed': { blankSplitDraft: noop },
     '@/lib/splitDraftStorage': { NEW_SPLIT_DRAFT_ID: 'new', clearSplitDraft: noop, readSplitDraft: () => stored },
     '@/stores/appStore': { useAppStore: create(() => ({})) },

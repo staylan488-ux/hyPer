@@ -13,6 +13,7 @@ const { isBodyweight, weightToLog } = loadNativeModule<{
 }>('lib/setEntry.ts', {
   'react-native': { ActionSheetIOS: { showActionSheetWithOptions: vi.fn() } },
   './haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
+  zustand: { create: () => () => undefined },
 });
 
 describe('the weight a set logs', () => {

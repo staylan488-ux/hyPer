@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import type { MovementHistoryMap, PastSession } from '@/lib/setTargets';
 import { parseWorkoutNotes } from '@/lib/workoutNotes';
 import { toFiniteNumber, type PreviousSetSummary, type PreviousWorkoutSummary } from '@/lib/workoutProgress';
 import type { WorkoutSet } from '@/types';
@@ -68,21 +69,89 @@ export function buildPreviousSetTargets(workoutIds: string[], previousSets: Prev
 }
 
 /**
+ * Each movement's recent sessions, newest first, with its sets by the
+ * movement's own set position (the same counting as buildPreviousSetTargets).
+ * An unlogged slot is null. `workouts` is newest first. Sessions with nothing
+ * logged on the movement are left out.
+ */
+export function buildMovementHistory(
+  workouts: ReadonlyArray<{ id: string; date: string }>,
+  previousSets: PreviousSetSummary[],
+): MovementHistoryMap {
+  const byMovement = new Map<string, PreviousSetSummary[]>();
+  for (const set of previousSets) {
+    if (!Number.isFinite(Number(set.set_number))) continue;
+    const key = `${set.workout_id}:${set.exercise_id}`;
+    const sets = byMovement.get(key) ?? [];
+    sets.push(set);
+    byMovement.set(key, sets);
+  }
+  const history: MovementHistoryMap = {};
+  for (const workout of workouts) {
+    for (const [key, sets] of byMovement) {
+      if (!key.startsWith(`${workout.id}:`)) continue;
+      sets.sort((a, b) => Number(a.set_number) - Number(b.set_number));
+      const slots: PastSession['sets'][number][] = [];
+      let previousNumber: number | undefined;
+      let logged = false;
+      for (const set of sets) {
+        const number = Number(set.set_number);
+        if (number === previousNumber) {
+          // Two rows on one slot: keep the logged one.
+          if (set.completed !== false && slots[slots.length - 1] === null) {
+            slots[slots.length - 1] = { weight: toFiniteNumber(set.weight), reps: toFiniteNumber(set.reps), rpe: toFiniteNumber(set.rpe) };
+            logged = true;
+          }
+          continue;
+        }
+        previousNumber = number;
+        if (set.completed === false) {
+          slots.push(null);
+          continue;
+        }
+        slots.push({ weight: toFiniteNumber(set.weight), reps: toFiniteNumber(set.reps), rpe: toFiniteNumber(set.rpe) });
+        logged = true;
+      }
+      if (!logged) continue;
+      (history[sets[0].exercise_id] ??= []).push({ workoutId: workout.id, date: workout.date, sets: slots });
+    }
+  }
+  return history;
+}
+
+/**
  * "Target to beat" for each set: completed sets from the last 30 workouts on
  * or before `date`, excluding the current one. History supplies a strict
  * `beforeCreatedAt` cutoff; null means the start is unknown, so only earlier
  * dates are safe. Returns `null` on a query error, versus no history (`{}`).
  */
-export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeCreatedAt, exerciseIds }: {
+export async function fetchPreviousSetTargets(input: PreviousTrainingQuery): Promise<PreviousWorkoutSetMap | null> {
+  return (await fetchPreviousTraining(input))?.targets ?? null;
+}
+
+type PreviousTrainingQuery = {
   userId: string;
   workoutId: string;
   date: string;
   beforeCreatedAt?: string | null;
   exerciseIds: string[];
-}): Promise<PreviousWorkoutSetMap | null> {
+};
+
+export type PreviousTraining = {
+  /** Last time's numbers per set: "last 100", Beat last time. */
+  targets: PreviousWorkoutSetMap;
+  /** Each movement's sessions from the same read, newest first, for set targets. */
+  history: MovementHistoryMap;
+};
+
+/**
+ * The same read, keeping every session it found per movement as well as the
+ * newest set per position. Null on a query error.
+ */
+export async function fetchPreviousTraining({ userId, workoutId, date, beforeCreatedAt, exerciseIds }: PreviousTrainingQuery): Promise<PreviousTraining | null> {
   let query = supabase
     .from('workouts')
-    .select('id')
+    .select('id, date')
     .eq('user_id', userId)
     .lte('date', date)
     .neq('id', workoutId);
@@ -99,9 +168,10 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeC
     return null;
   }
 
-  const workoutIds = (completedWorkouts || []).map((workout) => (workout as PreviousWorkoutSummary).id);
+  const workouts = (completedWorkouts || []) as Array<PreviousWorkoutSummary & { date: string }>;
+  const workoutIds = workouts.map((workout) => workout.id);
 
-  if (workoutIds.length === 0) return {};
+  if (workoutIds.length === 0) return { targets: {}, history: {} };
 
   // A page at a time, because one request returns at most
   // PREVIOUS_SETS_PAGE_SIZE rows and a cut-off reply could drop last time's
@@ -130,13 +200,13 @@ export async function fetchPreviousSetTargets({ userId, workoutId, date, beforeC
     after = page[page.length - 1].id;
   }
 
-  return buildPreviousSetTargets(workoutIds, previousSets);
+  return { targets: buildPreviousSetTargets(workoutIds, previousSets), history: buildMovementHistory(workouts, previousSets) };
 }
 
 /** Rows per request for last time's sets: the API's own cap. */
 const PREVIOUS_SETS_PAGE_SIZE = 1_000;
 
-export type PreviousMovementNotes = Record<string, { note: string; date: string }>;
+export type PreviousMovementNotes = Record<string, { note: string; date: string; workoutId: string }>;
 
 /**
  * For each exercise, the note from the most recent earlier workout that has
@@ -152,7 +222,7 @@ export function buildPreviousMovementNotes(
   for (const workout of workouts) {
     const { movementNotes } = parseWorkoutNotes(workout.notes);
     for (const [exerciseId, note] of Object.entries(movementNotes)) {
-      if (wanted.has(exerciseId) && !found[exerciseId]) found[exerciseId] = { note, date: workout.date };
+      if (wanted.has(exerciseId) && !found[exerciseId]) found[exerciseId] = { note, date: workout.date, workoutId: workout.id };
     }
     if (Object.keys(found).length === wanted.size) break;
   }

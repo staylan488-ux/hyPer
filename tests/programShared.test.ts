@@ -164,17 +164,18 @@ describe('new program chooser', () => {
   it('seeds the guided plan from the library and names what it left out', async () => {
     const template = guidedTemplate(DEFAULT_PROGRAM_ANSWERS);
     expect(template.days).toHaveLength(4);
+    expect(templateExerciseCount(template)).toBeGreaterThan(0);
     const names = template.days.flatMap((day) => day.exercises.map((entry) => entry.name));
     const library = names.slice(1).map((name, index) => exercise(`e${index}`, name));
-    const { draft, notice } = await seedGuidedDraft(template, async () => library);
+    const { draft, notice } = await seedGuidedDraft(DEFAULT_PROGRAM_ANSWERS, { loadLibrary: async () => library });
     expect(draft._isNew).toBe(true);
-    expect(draft.days.flatMap((day) => day.exercises)).toHaveLength(templateExerciseCount(template) - names.filter((name) => name === names[0]).length);
+    expect(draft.days).toHaveLength(4);
     expect(notice).toBe(`Not in your exercise library, so left out: ${names[0]}.`);
-    await expect(seedGuidedDraft(template, async () => names.map((name, index) => exercise(`e${index}`, name)))).resolves.toMatchObject({ notice: null });
+    await expect(seedGuidedDraft(DEFAULT_PROGRAM_ANSWERS, { loadLibrary: async () => names.map((name, index) => exercise(`e${index}`, name)) })).resolves.toMatchObject({ notice: null });
   });
 
   it('passes a library failure to the caller', async () => {
-    await expect(seedGuidedDraft(guidedTemplate(DEFAULT_PROGRAM_ANSWERS), async () => { throw new Error('offline'); })).rejects.toThrow('offline');
+    await expect(seedGuidedDraft(DEFAULT_PROGRAM_ANSWERS, { loadLibrary: async () => { throw new Error('offline'); } })).rejects.toThrow('offline');
   });
 });
 

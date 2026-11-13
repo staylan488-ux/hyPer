@@ -16,6 +16,8 @@ import { RollingText } from '~/components/RollingText';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { TargetChangeRow, useShownTargetChange } from '~/components/TargetChangeRow';
+import { WeightNudgeRow, useWeightNudge } from '~/components/WeightNudgeRow';
 import { formatWhole } from '~/lib/format';
 import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
@@ -65,6 +67,9 @@ export default function TargetsScreen() {
       ? goalLine(profile, latestKg == null ? null : Number(latestKg))
       : targetModeLabel(target ? base.source : undefined, profile?.adaptive_enabled);
   const burn = expenditureSummary(profile);
+  const targetChange = useShownTargetChange();
+  // While the burn is not learned, the scale alone can still make one offer.
+  const weightNudge = useWeightNudge();
   // The coach is the AI chosen in Food analysis: Gemini needs nothing set
   // up, the Mac worker needs its address.
   const analysis = useAnalysisModeStore((state) => state.mode);
@@ -174,7 +179,17 @@ export default function TargetsScreen() {
                 </BlancText>
               ) : null}
             </View>
-            <Label style={{ marginTop: 24 }}>
+            {/* This week's change from the adaptive loop, said once, under the figure it moved. */}
+            {targetChange ? (
+              <Label style={{ marginTop: 24, overflow: 'hidden' }}>
+                <TargetChangeRow />
+              </Label>
+            ) : weightNudge ? (
+              <Label style={{ marginTop: 24, overflow: 'hidden' }}>
+                <WeightNudgeRow />
+              </Label>
+            ) : null}
+            <Label style={{ marginTop: targetChange || weightNudge ? 16 : 24 }}>
               <Row
                 title="Protein"
                 value={ready ? `${formatWhole(base.protein)} g` : undefined}

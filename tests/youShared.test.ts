@@ -427,8 +427,8 @@ describe('last time’s movement notes', () => {
       { id: 'w0', date: '2026-10-14', notes: null },
     ];
     expect(buildPreviousMovementNotes(workouts, ['bench', 'row', 'squat'])).toEqual({
-      row: { note: 'Straps on the last set', date: '2026-10-25' },
-      bench: { note: 'Notch 4', date: '2026-10-21' },
+      row: { note: 'Straps on the last set', date: '2026-10-25', workoutId: 'w3' },
+      bench: { note: 'Notch 4', date: '2026-10-21', workoutId: 'w2' },
     });
     expect(buildPreviousMovementNotes([], ['bench'])).toEqual({});
   });

@@ -78,6 +78,7 @@ function youHarness() {
     nutritionProfileLoadedForUserId: null as string | null,
     updateMacroTarget: vi.fn<(target: unknown) => Promise<void>>(async () => {}),
     updateNutritionProfile: vi.fn<(input: unknown) => Promise<void>>(async () => {}),
+    fetchTargetChange: vi.fn(async () => {}),
     connectWhoop: vi.fn<(returnTo: string) => Promise<string | null>>(async () => null),
     fetchWhoopConnection: vi.fn(async () => null),
     syncWhoop: vi.fn(async () => null),
@@ -858,6 +859,11 @@ function loadYouScreen(you: YouModule, seen: Seen, harness: ReturnType<typeof yo
     '~/lib/earlyAccess': { useEarlyAccess: () => false },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd') },
+    '~/lib/setEntry': {
+      chooseEffortScale: vi.fn(),
+      EFFORT_SCALE_LABELS: { rir: 'Reps in reserve', rpe: 'RPE' },
+      useEffortScaleStore: create(() => ({ scale: 'rir' })),
+    },
   };
   return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/index.tsx', imports, options).default;
 }

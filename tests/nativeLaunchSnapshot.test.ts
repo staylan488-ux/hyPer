@@ -112,14 +112,15 @@ describe('program, quick starts, volume and targets', () => {
   });
 
   it('keeps volume only within the same training week', () => {
-    const body = (weekStart: string) => ({ weekStart, weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 8, status: 'mav' }], volumeLandmarks: [] });
+    const body = (weekStart: string) => ({ weekStart, weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 8 }] });
     expect(plan({ volume: envelope('volume', body(trainingWeekRange(NOW).weekStart)) }).volume?.weeklyVolume).toHaveLength(1);
     const sunday = new Date(2026, 10, 8, 23, 59);
     const monday = new Date(2026, 10, 9, 0, 1);
     const copy = envelope('volume', body(trainingWeekRange(sunday).weekStart), { savedAt: sunday.getTime() });
     expect(plan({ volume: copy }, sunday).volume).not.toBeNull();
     expect(plan({ volume: copy }, monday).volume).toBeNull();
-    expect(plan({ volume: envelope('volume', { ...body(trainingWeekRange(NOW).weekStart), volumeLandmarks: [{ id: 'l', user_id: 'user-2' }] }) }).volume).toBeNull();
+    // Counts that are not counts are not restored.
+    expect(plan({ volume: envelope('volume', { weekStart: trainingWeekRange(NOW).weekStart, weeklyVolume: [{ muscle_group: 'chest' }] }) }).volume).toBeNull();
   });
 
   it('names a week only once a read could not have counted the last one', () => {
