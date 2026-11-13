@@ -2,12 +2,17 @@
  * One-tap fixes for a program whose main muscle sits in the low band, as plain
  * data the program editor and the program builder both use. Applying one is a
  * pure step on the editor's draft.
+ *
+ * A fix is offered only under the floor (4 sets a week), and it aims past it:
+ * the floor is the least that grows a muscle measurably, not the goal, so one
+ * tap adds what one movement can take toward about 10.
  */
 import {
   MAIN_MUSCLES,
+  VOLUME_AIM,
   VOLUME_BAND_EDGES,
   dayVolume,
-  lowMainMuscles,
+  mainMusclesUnder,
   muscleLabel,
   plannedMovementSets,
   programVolume,
@@ -71,6 +76,19 @@ export interface VolumeSuggestionOptions {
    * suggestion never takes a day past it; without it, days have no limit.
    */
   maxDaySets?: number;
+  /**
+   * Main muscles under this many sets a week get a suggestion. Left out, only
+   * the low band does (under 4); the builder passes its aim to fill past it.
+   */
+  under?: number;
+  /** The sets a week a suggestion works toward. Left out, about 10. */
+  aim?: number;
+  /**
+   * A new movement goes only on a day that already trains that half of the
+   * body. Left out, a program with no such day with room takes it on any day:
+   * right for a muscle under its floor, too much for one already solid.
+   */
+  ownRegionOnly?: boolean;
 }
 
 /** Sets a day can still take under the options' limit. */
@@ -158,7 +176,7 @@ function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: numbe
     const area = region(primaryOf(exercise));
     return area === 'any' || area === region(muscle);
   }));
-  const pool = (suits.length ? suits : days).sort((a, b) => a.total - b.total || a.index - b.index);
+  const pool = (suits.length || options.ownRegionOnly ? suits : days).sort((a, b) => a.total - b.total || a.index - b.index);
 
   for (const exercise of candidates) {
     const target = pool.find(({ day }) => !day.exercises.some((entry) => entry.exercise_id === exercise.id));
@@ -191,9 +209,11 @@ function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: numbe
  */
 export function volumeSuggestions(draft: DraftSplit, library: readonly Exercise[], options: VolumeSuggestionOptions = {}): VolumeSuggestion[] {
   const sets = programVolume(draft);
-  return lowMainMuscles(sets).flatMap((row) => {
+  const under = options.under ?? VOLUME_BAND_EDGES.solidFrom;
+  const aim = Math.max(under, options.aim ?? VOLUME_AIM);
+  return mainMusclesUnder(sets, under).flatMap((row) => {
     const muscle = row.muscle as MainMuscle;
-    const need = Math.max(1, Math.ceil(VOLUME_BAND_EDGES.solidFrom - row.sets));
+    const need = Math.max(1, Math.ceil(aim - row.sets));
     return raiseFor(draft, muscle, row.sets, need, options) ?? addFor(draft, muscle, row.sets, need, library, options) ?? [];
   });
 }

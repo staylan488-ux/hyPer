@@ -71,6 +71,14 @@ export type VolumeBand = 'low' | 'solid' | 'high';
  */
 export const VOLUME_BAND_EDGES = { solidFrom: 4, highAbove: 10 } as const;
 
+/**
+ * What a main muscle is aimed at when there is room: the end of the most
+ * efficient tier. 4 sets a week is the least that grows a muscle measurably,
+ * and about 10 earns the next measurable step (docs/training-volume.md).
+ * An aim, never a grade: no screen holds a person or a program to it.
+ */
+export const VOLUME_AIM = VOLUME_BAND_EDGES.highAbove;
+
 export const VOLUME_BAND_LABELS: Readonly<Record<VolumeBand, string>> = {
   low: 'Low',
   solid: 'Solid',
@@ -174,11 +182,16 @@ export function volumeRows(sets: MuscleSets): MuscleVolumeRow[] {
     .sort((a, b) => b.sets - a.sets || order(a.muscle) - order(b.muscle) || a.label.localeCompare(b.label));
 }
 
+/** Main muscles under `under` sets a week, fewest sets first. */
+export function mainMusclesUnder(sets: MuscleSets, under: number): MuscleVolumeRow[] {
+  return volumeRows(sets)
+    .filter((row) => row.main && row.sets < under)
+    .sort((a, b) => a.sets - b.sets || MAIN_MUSCLES.indexOf(a.muscle as MainMuscle) - MAIN_MUSCLES.indexOf(b.muscle as MainMuscle));
+}
+
 /** Main muscles in the low band, fewest sets first. */
 export function lowMainMuscles(sets: MuscleSets): MuscleVolumeRow[] {
-  return volumeRows(sets)
-    .filter((row) => row.main && row.band === 'low')
-    .sort((a, b) => a.sets - b.sets || MAIN_MUSCLES.indexOf(a.muscle as MainMuscle) - MAIN_MUSCLES.indexOf(b.muscle as MainMuscle));
+  return mainMusclesUnder(sets, VOLUME_BAND_EDGES.solidFrom);
 }
 
 // ── Finished sessions ───────────────────────────────────────────────

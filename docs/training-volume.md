@@ -73,8 +73,15 @@ not graded anywhere (owner decision, 2026-11-12).
 ## Suggestions
 
 Made only for the main muscles (chest, back, quads, hamstrings, glutes, side
-delts, biceps, triceps) when the program's week puts one in the low band. They
-aim at 4 sets, the bottom of solid:
+delts, biceps, triceps) when the program's week puts one in the low band, under
+4 sets. That is the only time the editor speaks up, so a solid program is
+never nagged.
+
+A suggestion aims past the floor (audit of 2026-11-13). In Table 2A of Pelland
+et al., 4 sets a week is the least that produces growth you can detect, and
+each tier after it is one more detectable step: about 10 sets earns the
+second. So 4 is a floor and about 10 (`VOLUME_AIM`) is the aim. One tap adds
+what one movement can take toward it:
 
 - First, raise a movement the program already has for that muscle, never past
   5 sets. Both papers find more sets keep helping inside one session too
@@ -87,7 +94,29 @@ aim at 4 sets, the bottom of solid:
   sets are equal, so the day is chosen for room, not for spreading.
 - The research note "do not add weekly volume unless you have stopped
   progressing" is about adding past what a program already gives. These
-  suggestions only lift a program to the minimum effective dose.
+  suggestions only speak up under the minimum effective dose.
+
+## The program builder
+
+The guided builder (`src/lib/programFill.ts`) first brings every main muscle
+to the floor inside the session's set cap, taking sets from muscles with the
+most to spare when a day is full. Then, where sessions still have room, it
+takes main muscles toward about 10 sets a week, the one with the fewest
+first. This second pass never takes a set from another muscle, never passes
+the cap, and only adds a movement to a day that already trains that half of
+the body. A beginner's plan skips it: it starts low on purpose (about 6 sets
+a week at most) and the person adds from there.
+
+## Muscle tags
+
+Counts are only as good as the tags on each movement. The audit of
+2026-11-13 found four that distorted them (the adductor machine under glutes,
+back extensions and the barbell deadlift under back, a row with no second
+muscle); `supabase/migrations/20261113120000_fix_muscle_tags.sql` corrects
+them, and adductors and lower back became muscles the app names. Each
+movement still names one main muscle and one second muscle, so a press gives
+side delts nothing and a squat gives adductors nothing. That is harmless
+while suggestions are made only for the eight main muscles.
 
 ## Frequency
 
