@@ -69,6 +69,12 @@ let pairing: Record<string, unknown>;
 /** The movement's first set is up, with nothing of it logged yet. */
 let fresh: boolean;
 let largeText = false;
+let everySetLogged = false;
+let screenOptions: { unstable_headerRightItems?: () => { label: string }[] } = {};
+const Screen = ({ options }: { options: typeof screenOptions }) => {
+  screenOptions = options;
+  return null;
+};
 let laterMovements: Record<string, unknown>[] = [];
 const push = vi.fn();
 
@@ -100,7 +106,7 @@ function liveSession(total = 3) {
     sets,
     doneCount: done,
     movements: [movement, ...laterMovements],
-    current: { movement, set: sets[done], setNumber: done + 1, index: done, blocked: null },
+    current: everySetLogged ? null : { movement, set: sets[done], setNumber: done + 1, index: done, blocked: null },
   };
 }
 
@@ -130,7 +136,7 @@ async function open() {
   const { default: TrainScreen } = loadNativeModule<{ default: () => ReactNode }>(
     'app/(tabs)/train/index.tsx',
     {
-      'expo-router': { router: { push }, Stack: { Screen: Empty } },
+      'expo-router': { router: { push }, Stack: { Screen } },
       'expo-symbols': { SymbolView: Empty },
       'date-fns': dates,
       'react-native': {
@@ -377,6 +383,28 @@ describe('the set card\'s target', () => {
     await open();
     expect(targetLine()).toBeUndefined();
     expect(host.querySelector('[data-field="Reps"]')?.textContent).toBe('9');
+  });
+});
+
+describe('finishing', () => {
+  const headerLabels = () => screenOptions.unstable_headerRightItems?.().map((item) => item.label) ?? [];
+
+  it('keeps Finish in the bar while sets are left, to end early', async () => {
+    await open();
+    expect(headerLabels()).toContain('Finish');
+  });
+
+  it('gives one finish action once every set is logged: the card\'s, not the bar\'s', async () => {
+    everySetLogged = true;
+    try {
+      await open();
+      expect(host.textContent).toContain('All sets logged');
+      expect(host.textContent).toContain('Finish workout');
+      expect(headerLabels()).not.toContain('Finish');
+      expect(headerLabels()).toContain('Rest timer');
+    } finally {
+      everySetLogged = false;
+    }
   });
 });
 

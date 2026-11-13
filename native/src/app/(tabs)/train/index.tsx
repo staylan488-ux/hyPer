@@ -433,24 +433,30 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       followScroll(scrollOffset.current);
     });
   };
-  // Finish stays quiet glass beside Log set until every set is logged, then leads.
-  const allLogged = session.sets.length > 0 && session.doneCount >= session.sets.length;
+  // Finish stays quiet glass beside Log set while sets are left (to end early).
+  // Once nothing is left, the card's own Finish workout is the one finish
+  // action, so this one goes: two finish buttons on one screen only repeat.
+  const finishOnCard = session.movements.length > 0 && !current;
   const headerOptions = useMemo(
     () =>
       ({
         title: barTitle,
         unstable_headerRightItems: () => [
-          {
-            type: 'button',
-            label: closing ? 'Saving…' : 'Finish',
-            variant: allLogged ? 'prominent' : 'plain',
-            tintColor: c.ink,
-            disabled: closing,
-            onPress: () => {
-              haptics.tap();
-              finish();
-            },
-          },
+          ...(finishOnCard
+            ? []
+            : [
+                {
+                  type: 'button' as const,
+                  label: closing ? 'Saving…' : 'Finish',
+                  variant: 'plain' as const,
+                  tintColor: c.ink,
+                  disabled: closing,
+                  onPress: () => {
+                    haptics.tap();
+                    finish();
+                  },
+                },
+              ]),
           {
             // Rest without logging a set, or change a movement's rest length.
             type: 'button',
@@ -479,7 +485,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             : []),
         ],
       }) satisfies ComponentProps<typeof Stack.Screen>['options'],
-    [workoutId, dayName, barTitle, closing, c.ink, flexible, finish, allLogged],
+    [workoutId, dayName, barTitle, closing, c.ink, flexible, finish, finishOnCard],
   );
 
   // A drop saves this session's order at once (never the program); while it
