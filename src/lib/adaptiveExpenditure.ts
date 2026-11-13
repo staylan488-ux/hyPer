@@ -54,6 +54,8 @@ export interface ExpenditureEstimate {
   meanIntakeKcal: number | null;
   kgPerWeek: number | null;
   loggedDayCount: number;
+  /** Days left out as half-logged: over the BMR floor, but well under the person's own usual logged day. */
+  partialDayCount: number;
   weighInDayCount: number;
   windowStart: string;
   windowEnd: string;
@@ -63,6 +65,15 @@ export interface ExpenditureEstimate {
 
 /** Long enough to average out a bad week, short enough to still be current. */
 export const WINDOW_DAYS = 21;
+/**
+ * The window tried when three weeks do not hold enough (audit of 2026-11-13).
+ * With the same gates, three weeks ask for food logged on two days in three;
+ * the owner sat right at that edge for months and the learning never switched
+ * on. Half the days of four weeks is a bar a real person clears. Someone who
+ * logs most days never reaches this window, so nothing slows down for them.
+ * Engineering judgment, not a study.
+ */
+export const WIDE_WINDOW_DAYS = 28;
 /** The gates the measurement must pass before it counts. Shown while learning. */
 export const MIN_LOGGED_DAYS = 14;
 export const MIN_WEIGH_IN_DAYS = 10;
@@ -79,12 +90,29 @@ const PHASE_TRANSIENT_DAYS = 7;
  */
 const MIN_LOGGED_FRACTION_OF_BMR = 0.5;
 
+/**
+ * A day well under the person's own usual logged day is half-logged too: lunch
+ * alone can clear half of BMR. Days under this share of the median logged day
+ * are left out, never counted as a real low day. Leaving out a true low day
+ * reads the burn a little high; counting a half-logged one reads it low and
+ * pulls the target down, which is the spiral this file exists to stop. Applied
+ * only once there are enough logged days for the median to mean something.
+ */
+const MIN_FRACTION_OF_USUAL_DAY = 0.6;
+const MIN_DAYS_FOR_USUAL_DAY = 7;
+
 /** Bounds on how far a measurement is allowed to sit from the prediction. */
 const CLAMP_LOW = 0.7;
 const CLAMP_HIGH = 1.4;
 
 /** Weight given to the measurement the moment it first qualifies. */
 const BLEND_AT_GATE = 0.35;
+/**
+ * The same over the wide window, trusted a little less: at the gate its logs
+ * cover half the window, not two thirds of it. An estimate from the wide
+ * window is never called measured.
+ */
+const WIDE_BLEND_AT_GATE = 0.25;
 
 /**
  * Days of BOTH logging and weigh-ins, inside the window, at which the estimate
@@ -113,6 +141,12 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 function shiftIsoDate(iso: string, days: number): string {
   const [year, month, day] = iso.split('-').map(Number);
   return localIsoDate(new Date(year, month - 1, day + days));
@@ -126,19 +160,32 @@ function daysBetween(startIso: string, endIso: string): number {
   return Math.round((end - start) / MS_PER_DAY);
 }
 
+/**
+ * The estimate over three weeks; when those do not hold enough logged days
+ * and weigh-ins to measure, over four. What comes back when neither does is
+ * the four-week count, since that is the bar still to clear.
+ */
 export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimate {
+  const recent = estimateOver(input, WINDOW_DAYS, BLEND_AT_GATE);
+  if (recent.measuredKcal !== null) return recent;
+  const wide = estimateOver(input, WIDE_WINDOW_DAYS, WIDE_BLEND_AT_GATE);
+  // A fresh four-week measurement is learning at most; a frozen value keeps its name.
+  return wide.measuredKcal !== null && wide.confidence === 'measured' ? { ...wide, confidence: 'learning' } : wide;
+}
+
+function estimateOver(input: ExpenditureInput, windowDays: number, blendAtGate: number): ExpenditureEstimate {
   const through = input.through ?? new Date();
   const windowEnd = localIsoDate(through);
 
-  // The window normally spans WINDOW_DAYS, but never reaches back into the
+  // The window normally spans windowDays, but never reaches back into the
   // transient that follows a change of goal or rate.
-  let windowStart = shiftIsoDate(windowEnd, -(WINDOW_DAYS - 1));
+  let windowStart = shiftIsoDate(windowEnd, -(windowDays - 1));
   // Intake counts complete days only, so its window ends yesterday: a refresh
   // mid-day would otherwise read today's half-logged total as a full day and
   // bias the estimate low. Weigh-ins keep today, since a morning weigh-in is
   // already complete.
   const intakeEnd = shiftIsoDate(windowEnd, -1);
-  let intakeStart = shiftIsoDate(intakeEnd, -(WINDOW_DAYS - 1));
+  let intakeStart = shiftIsoDate(intakeEnd, -(windowDays - 1));
   const reasons: string[] = [];
 
   if (input.phaseStartedOn) {
@@ -162,11 +209,17 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
 
   // Days below the threshold are treated as MISSING, never as a real low day.
   const intakeFloor = input.bmr * MIN_LOGGED_FRACTION_OF_BMR;
-  const loggedDays = input.dailyIntake.filter(
+  const overFloor = input.dailyIntake.filter(
     (day) => inIntakeWindow(day.date) && Number.isFinite(day.calories) && day.calories >= intakeFloor
   );
+  // So is a day well under the person's own usual logged day.
+  const usualFloor = overFloor.length >= MIN_DAYS_FOR_USUAL_DAY
+    ? median(overFloor.map((day) => day.calories)) * MIN_FRACTION_OF_USUAL_DAY
+    : 0;
+  const loggedDays = overFloor.filter((day) => day.calories >= usualFloor);
+  const partialDayCount = overFloor.length - loggedDays.length;
 
-  const trend = buildWeightTrend(weightSamples, { windowDays: WINDOW_DAYS });
+  const trend = buildWeightTrend(weightSamples, { windowDays });
   const loggedDayCount = loggedDays.length;
   const weighInDayCount = trend.fittedDayCount;
 
@@ -177,6 +230,7 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
       : null,
     kgPerWeek: trend.kgPerWeek,
     loggedDayCount,
+    partialDayCount,
     weighInDayCount,
     windowStart,
     windowEnd,
@@ -185,12 +239,12 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
 
   if (loggedDayCount < MIN_LOGGED_DAYS) {
     reasons.push(
-      `Needs ${MIN_LOGGED_DAYS} logged days in the last ${WINDOW_DAYS} — you have ${loggedDayCount}.`
+      `Needs ${MIN_LOGGED_DAYS} logged days in the last ${windowDays} — you have ${loggedDayCount}.`
     );
   }
   if (weighInDayCount < MIN_WEIGH_IN_DAYS) {
     reasons.push(
-      `Needs ${MIN_WEIGH_IN_DAYS} weigh-ins in the last ${WINDOW_DAYS} days — you have ${weighInDayCount}.`
+      `Needs ${MIN_WEIGH_IN_DAYS} weigh-ins in the last ${windowDays} days — you have ${weighInDayCount}.`
     );
   }
 
@@ -242,12 +296,12 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
 
   // Coverage of the window drives how much the measurement is trusted. Both
   // inputs must be present, so the weaker one governs.
-  const usableSpan = Math.min(WINDOW_DAYS, daysBetween(windowStart, windowEnd) + 1);
-  const intakeSpan = Math.min(WINDOW_DAYS, daysBetween(intakeStart, intakeEnd) + 1);
+  const usableSpan = Math.min(windowDays, daysBetween(windowStart, windowEnd) + 1);
+  const intakeSpan = Math.min(windowDays, daysBetween(intakeStart, intakeEnd) + 1);
   const loggedCoverage = (loggedDayCount - MIN_LOGGED_DAYS) / Math.max(1, intakeSpan - MIN_LOGGED_DAYS);
   const weighInCoverage = (weighInDayCount - MIN_WEIGH_IN_DAYS) / Math.max(1, usableSpan - MIN_WEIGH_IN_DAYS);
   const coverage = clamp(Math.min(loggedCoverage, weighInCoverage), 0, 1);
-  const blendWeight = BLEND_AT_GATE + (1 - BLEND_AT_GATE) * coverage;
+  const blendWeight = blendAtGate + (1 - blendAtGate) * coverage;
 
   let expenditureKcal = (1 - blendWeight) * input.predictedTdee + blendWeight * clamped;
 

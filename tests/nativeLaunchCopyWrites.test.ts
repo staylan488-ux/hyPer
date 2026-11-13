@@ -92,6 +92,7 @@ describe('Resume adaptive targets', () => {
       '~/components/Section': { Section: box },
       '~/components/TabScroll': { TabScroll: box },
       '~/components/TargetChangeRow': { TargetChangeRow: none, useShownTargetChange: () => null },
+      '~/components/WeightNudgeRow': { WeightNudgeRow: none, useWeightNudge: () => null },
       '~/lib/accessibility': silentAccessibility,
       '~/lib/format': { formatWhole: (value: number) => String(Math.round(value)) },
       '~/lib/haptics': { haptics },

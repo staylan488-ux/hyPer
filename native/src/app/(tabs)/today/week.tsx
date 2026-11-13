@@ -14,6 +14,7 @@ import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { TargetChangeRow, dayFromKey, useShownTargetChange } from '~/components/TargetChangeRow';
+import { WeightNudgeRow, useWeightNudge } from '~/components/WeightNudgeRow';
 import { useAnnounce } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { formatSet, formatWhole } from '~/lib/format';
@@ -35,6 +36,7 @@ export default function LastWeekScreen() {
   const target = useAppStore((state) => state.macroTarget);
   const profile = useAppStore((state) => state.nutritionProfile);
   const targetChange = useShownTargetChange();
+  const weightNudge = useWeightNudge();
   // Last week is graded against the target that applied then, not one
   // Monday's update has since replaced.
   const recordedChange = useAppStore((state) => state.targetChange);
@@ -119,6 +121,14 @@ export default function LastWeekScreen() {
               <Section title="This week’s target">
                 <Label style={{ overflow: 'hidden' }}>
                   <TargetChangeRow />
+                </Label>
+              </Section>
+            ) : weightNudge ? (
+              // No burn learned yet, so no Monday update: the scale alone
+              // makes one offer for the week ahead. Nothing moves until tapped.
+              <Section title="This week’s target">
+                <Label style={{ overflow: 'hidden' }}>
+                  <WeightNudgeRow />
                 </Label>
               </Section>
             ) : null}

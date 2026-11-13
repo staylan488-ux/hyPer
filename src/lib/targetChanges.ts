@@ -166,10 +166,10 @@ const PACE_GAP_KG = 0.05;
 
 /**
  * The weight story, when it explains the change: eating more because the
- * weight is behind the goal's pace, or less because it is ahead. "Your
- * three-week weight trend is up 0.2 lb a week and the goal is 0.5." It is a
- * smoothed trend over the estimate's three weeks, and says so, since a
- * single week's change can point the other way.
+ * weight is behind the goal's pace, or less because it is ahead. "Over the
+ * last few weeks your weight is up 0.2 lb a week and the goal is 0.5." It is
+ * a smoothed trend over the estimate's three or four weeks, and says so,
+ * since a single week's change can point the other way.
  */
 function weightReason(change: MacroTargetChange, delta: number, unit: WeightUnit): string | null {
   const measured = change.kg_per_week;
@@ -188,8 +188,8 @@ function weightReason(change: MacroTargetChange, delta: number, unit: WeightUnit
       ? `the goal is ${goalShown}`
       : `the goal is to ${goal > 0 ? 'gain' : 'lose'} ${goalShown}${steady ? ` ${unit} a week` : ''}`;
   const weightWords = steady
-    ? 'Your three-week weight trend is flat'
-    : `Your three-week weight trend is ${measured > 0 ? 'up' : 'down'} ${shown} ${unit} a week`;
+    ? 'Over the last few weeks your weight is flat'
+    : `Over the last few weeks your weight is ${measured > 0 ? 'up' : 'down'} ${shown} ${unit} a week`;
   return `${weightWords} and ${goalWords}.`;
 }
 
@@ -212,8 +212,8 @@ function changeReason(change: MacroTargetChange, delta: number, unit: WeightUnit
 
 /**
  * The change as one title and one quiet line, beside a screen that already
- * shows the new figure: "Target up 100 kcal", "Your three-week weight trend
- * is up 0.2 lb a week and the goal is 0.5." Once undone: "Change undone", "Your
+ * shows the new figure: "Target up 100 kcal", "Over the last few weeks your
+ * weight is up 0.2 lb a week and the goal is 0.5." Once undone: "Change undone", "Your
  * previous target stays until next Monday's update."
  */
 export function describeTargetChange(shown: ShownTargetChange, unit: WeightUnit): { title: string; line: string } {

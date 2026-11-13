@@ -29,7 +29,7 @@ import {
   type NutritionProfileInput,
 } from '@/lib/nutritionProfile';
 import {
-  WINDOW_DAYS,
+  WIDE_WINDOW_DAYS,
   estimateExpenditure,
   shouldRefreshExpenditure,
   type ExpenditureEstimate,
@@ -60,7 +60,7 @@ import { getExerciseLibrary } from '@/lib/exerciseLibrary';
 export type AdaptiveRefreshStatus = 'updated' | 'unchanged' | 'skipped' | 'failed';
 
 /** Pull a little more than the estimator's window so its filter has slack. */
-const ADAPTIVE_LOOKBACK_DAYS = WINDOW_DAYS + 7;
+const ADAPTIVE_LOOKBACK_DAYS = WIDE_WINDOW_DAYS + 7;
 
 /**
  * The profile fields a refresh computes from. If any change while it runs,

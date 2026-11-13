@@ -498,3 +498,106 @@ describe('when the estimate is called measured', () => {
     expect(belowGate.measuredKcal).toBeNull();
   });
 });
+
+describe('half-logged days', () => {
+  it('leaves out a day well under the person’s own usual logged day', () => {
+    // 1,400 kcal clears half of the 1,800 BMR, but is half of this person's usual 2,700: lunch and a snack.
+    const days: DailyIntake[] = intake(2700, 21).map((day, i) => (i % 5 === 0 ? { ...day, calories: 1400 } : day));
+    const result = estimateExpenditure(inputWith({ dailyIntake: days }));
+
+    expect(result.partialDayCount).toBe(5);
+    expect(result.loggedDayCount).toBe(16);
+    expect(result.meanIntakeKcal).toBe(2700);
+    expect(result.measuredKcal).toBeCloseTo(2700, 6);
+  });
+
+  it('keeps an ordinary lighter day', () => {
+    // 2,000 is three quarters of the usual day: a real day, counted.
+    const days: DailyIntake[] = intake(2700, 21).map((day, i) => (i % 5 === 0 ? { ...day, calories: 2000 } : day));
+    const result = estimateExpenditure(inputWith({ dailyIntake: days }));
+
+    expect(result.partialDayCount).toBe(0);
+    expect(result.loggedDayCount).toBe(21);
+    expect(result.meanIntakeKcal as number).toBeLessThan(2700);
+  });
+
+  it('needs a week of logged days before it judges one against the rest', () => {
+    const days: DailyIntake[] = [...intake(2700, 5), { date: isoDay(-6), calories: 1400 }];
+    const result = estimateExpenditure(inputWith({ dailyIntake: days }));
+
+    expect(result.partialDayCount).toBe(0);
+    expect(result.loggedDayCount).toBe(6);
+  });
+
+  it('a half-logged day no longer pulls the burn down', () => {
+    const days: DailyIntake[] = intake(2700, 21).map((day, i) => (i % 4 === 0 ? { ...day, calories: 1300 } : day));
+    const result = estimateExpenditure(inputWith({ dailyIntake: days }));
+    // Counted as real days they would read the burn about 400 kcal low.
+    expect(result.expenditureKcal).toBe(2700);
+  });
+});
+
+describe('the four-week window', () => {
+  /** Logged on every other day of the last four weeks: 14 days, 10 or 11 of them in the last three. */
+  const everyOtherDay = (calories: number): DailyIntake[] => intake(calories, 28).filter((_, i) => i % 2 === 0);
+
+  it('learns from 14 logged days in four weeks when three weeks hold too few', () => {
+    const result = estimateExpenditure(inputWith({
+      dailyIntake: everyOtherDay(2400),
+      weightSamples: weighIns(82, -0.05, 28),
+    }));
+
+    expect(result.loggedDayCount).toBe(14);
+    expect(result.confidence).toBe('learning');
+    expect(result.measuredKcal).toBeCloseTo(2400 + 0.05 * 7700, 4);
+    // Trusted a little less than a three-week measurement at its gate.
+    expect(result.blendWeight).toBeCloseTo(0.25, 6);
+    expect(result.windowStart).toBe(isoDay(-27));
+  });
+
+  it('is never called measured, however full the four weeks are', () => {
+    // Nothing logged in the last 8 days, every day of the 20 before: three weeks hold 13.
+    const days = intake(2400, 28).slice(0, 20);
+    const result = estimateExpenditure(inputWith({ dailyIntake: days, weightSamples: weighIns(82, -0.05, 28) }));
+
+    expect(result.loggedDayCount).toBe(20);
+    expect(result.measuredKcal).not.toBeNull();
+    expect(result.confidence).toBe('learning');
+  });
+
+  it('is not used when three weeks hold enough', () => {
+    const result = estimateExpenditure(inputWith({ dailyIntake: intake(2400, 28), weightSamples: weighIns(82, -0.05, 28) }));
+
+    expect(result.windowStart).toBe(isoDay(-(WINDOW_DAYS - 1)));
+    expect(result.loggedDayCount).toBe(21);
+    expect(result.confidence).toBe('measured');
+  });
+
+  it('says what four weeks still need when neither window holds enough', () => {
+    const result = estimateExpenditure(inputWith({ dailyIntake: everyOtherDay(2400).slice(0, 12), weightSamples: weighIns(82, 0, 28).filter((_, i) => i % 4 === 0) }));
+
+    expect(result.confidence).toBe('predicted');
+    expect(result.loggedDayCount).toBe(12);
+    expect(result.weighInDayCount).toBe(7);
+    expect(result.reasons.join(' ')).toContain('in the last 28');
+  });
+
+  it('keeps a learned value, and its name, when four weeks hold too little as well', () => {
+    const result = estimateExpenditure(inputWith({ dailyIntake: [], weightSamples: [], previousExpenditureKcal: 3050, previousConfidence: 'measured' }));
+
+    expect(result.expenditureKcal).toBe(3050);
+    expect(result.confidence).toBe('measured');
+  });
+
+  it('still skips the first week of a new goal', () => {
+    // Usable from day -20: the four-week window is cut to the same three weeks, which hold too few logged days.
+    const result = estimateExpenditure(inputWith({
+      dailyIntake: everyOtherDay(2400),
+      weightSamples: weighIns(82, -0.05, 28),
+      phaseStartedOn: isoDay(-27),
+    }));
+
+    expect(result.windowStart).toBe(isoDay(-20));
+    expect(result.confidence).toBe('predicted');
+  });
+});

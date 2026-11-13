@@ -50,36 +50,36 @@ describe('describeTargetChange', () => {
   it('says the move, and the weight behind it, in pounds', () => {
     expect(words({})).toEqual({
       title: 'Target up 100 kcal',
-      line: 'Your three-week weight trend is up 0.2 lb a week and the goal is 0.5.',
+      line: 'Over the last few weeks your weight is up 0.2 lb a week and the goal is 0.5.',
     });
   });
 
   it('uses the person’s unit', () => {
-    expect(words({}, 'kg').line).toBe('Your three-week weight trend is up 0.1 kg a week and the goal is 0.2.');
+    expect(words({}, 'kg').line).toBe('Over the last few weeks your weight is up 0.1 kg a week and the goal is 0.2.');
   });
 
   it('says a lower target plainly, when the weight ran ahead of the goal', () => {
     expect(words({ new_calories: 2700, new_carbs: 325, kg_per_week: 0.363 })).toEqual({
       title: 'Target down 100 kcal',
-      line: 'Your three-week weight trend is up 0.8 lb a week and the goal is 0.5.',
+      line: 'Over the last few weeks your weight is up 0.8 lb a week and the goal is 0.5.',
     });
   });
 
   it('names the goal’s direction when the weight went the other way', () => {
     expect(words({ kg_per_week: -0.0907 }).line).toBe(
-      'Your three-week weight trend is down 0.2 lb a week and the goal is to gain 0.5.',
+      'Over the last few weeks your weight is down 0.2 lb a week and the goal is to gain 0.5.',
     );
     expect(words({ new_calories: 2700, kg_per_week: 0.0907, goal_kg_per_week: -0.2268 }).line).toBe(
-      'Your three-week weight trend is up 0.2 lb a week and the goal is to lose 0.5.',
+      'Over the last few weeks your weight is up 0.2 lb a week and the goal is to lose 0.5.',
     );
   });
 
   it('says when the weight held steady, and a maintenance goal', () => {
     expect(words({ kg_per_week: 0.01 }).line).toBe(
-      'Your three-week weight trend is flat and the goal is to gain 0.5 lb a week.',
+      'Over the last few weeks your weight is flat and the goal is to gain 0.5 lb a week.',
     );
     expect(words({ goal_kg_per_week: 0, kg_per_week: -0.0907 }).line).toBe(
-      'Your three-week weight trend is down 0.2 lb a week and the goal is to hold steady.',
+      'Over the last few weeks your weight is down 0.2 lb a week and the goal is to hold steady.',
     );
   });
 
