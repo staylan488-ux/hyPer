@@ -1,4 +1,5 @@
-import type { SplitTemplate } from '@/types';
+import type { MuscleGroup, SplitTemplate } from '@/types';
+import { DESIGNER_MOVEMENTS } from '@/lib/designerMovements';
 import { beardsleyEvidenceSnapshot } from '@/lib/evidence/snapshot';
 import type { ExerciseProfile } from '@/lib/evidence/types';
 
@@ -72,6 +73,23 @@ const EQUIPMENT_FALLBACKS: Record<EquipmentProfile, Record<string, string[]>> = 
   },
 };
 
+/**
+ * Evidence substitutions spelled differently from the exercise library. The
+ * snapshot is generated (docs/evidence-pipeline.md), so names are mapped here.
+ */
+const LIBRARY_NAME_ALIASES: Record<string, string> = {
+  'single arm cable row': 'One-Arm Cable Row',
+};
+
+function libraryName(name: string): string {
+  return LIBRARY_NAME_ALIASES[normalizeExerciseName(name)] ?? name;
+}
+
+/** An evidence profile's substitutions, in the library's spelling. */
+function profileSubstitutions(exerciseName: string): string[] {
+  return (getExerciseProfile(exerciseName)?.substitutions || []).map(libraryName);
+}
+
 function normalizeEquipmentProfile(equipment: EquipmentProfile | LegacyEquipmentProfile): EquipmentProfile {
   if (equipment === 'full_gym') return 'full_gym';
   return 'dumbbell_only';
@@ -111,6 +129,17 @@ function getExerciseProfile(exerciseName: string): ExerciseProfile | undefined {
   return exerciseProfileByName.get(normalized);
 }
 
+/**
+ * What a movement the designer emits trains, as the seeded library files it:
+ * its main and second muscle and whether it is a compound. Null for any other
+ * name.
+ */
+export function designerMovementMuscles(exerciseName: string): { muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null; is_compound: boolean } | null {
+  const normalized = normalizeExerciseName(exerciseName);
+  const row = Object.entries(DESIGNER_MOVEMENTS).find(([name]) => normalizeExerciseName(name) === normalized)?.[1];
+  return row ? { muscle_group: row[0] as MuscleGroup, muscle_group_secondary: row[1] as MuscleGroup | null, is_compound: row[2] } : null;
+}
+
 function resolveExerciseForEquipment(
   exerciseName: string,
   equipment: EquipmentProfile,
@@ -127,7 +156,7 @@ function resolveExerciseForEquipment(
   }
   visited.add(normalized);
 
-  const profileFallbacks = getExerciseProfile(exerciseName)?.substitutions || [];
+  const profileFallbacks = profileSubstitutions(exerciseName);
   const ruleFallbacks = EQUIPMENT_FALLBACKS[equipment][normalized] || [];
   const fallbackCandidates = [...profileFallbacks, ...ruleFallbacks];
 
@@ -238,6 +267,29 @@ const SESSION_ACCESSORY_POOL: Record<string, TemplateExercise[]> = {
   ],
 };
 
+/**
+ * Every movement name the designer can put in a plan: the templates' own,
+ * the long-session accessories, and every equipment fallback and evidence
+ * substitution reachable from them. Tests check each against the seeded
+ * library.
+ */
+export function designerMovementNames(templates: readonly SplitTemplate[]): string[] {
+  const names = new Set<string>();
+  const queue = [
+    ...templates.flatMap((template) => template.days.flatMap((day) => day.exercises.map((exercise) => exercise.name))),
+    ...Object.values(SESSION_ACCESSORY_POOL).flatMap((pool) => pool.map((exercise) => exercise.name)),
+    ...Object.values(EQUIPMENT_FALLBACKS).flatMap((rules) => Object.values(rules).flat()),
+  ];
+  while (queue.length) {
+    const name = queue.shift()!;
+    if (names.has(name)) continue;
+    names.add(name);
+    const normalized = normalizeExerciseName(name);
+    queue.push(...profileSubstitutions(name), ...(EQUIPMENT_FALLBACKS.dumbbell_only[normalized] ?? []));
+  }
+  return [...names].sort();
+}
+
 function getDayCategory(dayName: string): 'upper' | 'lower' | 'full' {
   if (isUpperDay(dayName)) return 'upper';
   if (isLowerDay(dayName)) return 'lower';
@@ -316,8 +368,11 @@ export function recommendProgramTemplate(
       const dayDistance = Math.abs(template.days_per_week - answers.daysPerWeek);
       score += Math.max(0, 40 - dayDistance * 10);
 
+      // The day count is the person's own choice: a template with it always
+      // wins over one without, whatever its focus. Emphasis is then given room
+      // by the fill (src/lib/programFill.ts).
       if (template.days_per_week === answers.daysPerWeek) {
-        score += 20;
+        score += 100;
       }
 
       if (isEvidenceTemplate(template)) {

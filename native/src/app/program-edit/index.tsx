@@ -19,13 +19,17 @@ import {
   FOCUS_QUESTION,
   LIBRARY_LOAD_FAILED,
   SESSION_QUESTION,
+  guidedDraft,
   guidedTemplate,
+  keptExerciseCount,
+  loadBuilderLibrary,
+  peekBuilderLibrary,
   seedGuidedDraft,
   templateExerciseCount,
   type ProgramQuestion,
 } from '@/lib/programQuestions';
 import { plural } from '@/lib/programSummary';
-import { dayLabel, daySummary, type DraftDay } from '@/lib/splitDraft';
+import { dayLabel, daySummary, splitToDraft, type DraftDay } from '@/lib/splitDraft';
 import { blankSplitDraft } from '@/lib/splitDraftSeed';
 import { NEW_SPLIT_DRAFT_ID, clearSplitDraft, readSplitDraft } from '@/lib/splitDraftStorage';
 import { useAppStore } from '@/stores/appStore';
@@ -91,9 +95,24 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const guided = useMemo(() => guidedTemplate(answers), [answers]);
+  // With a program already active, the plan keeps its movements (src/lib/programFill.ts).
+  const activeSplit = useAppStore((state) => state.activeSplit ?? null);
+  const current = useMemo(() => (activeSplit ? splitToDraft(activeSplit) : null), [activeSplit]);
+  // The plan is filled by muscle against the library, so it is shown from the
+  // library once it is in memory; until then, the template's own count.
+  const [library, setLibrary] = useState(peekBuilderLibrary);
+  useEffect(() => {
+    if (library) return;
+    let live = true;
+    loadBuilderLibrary().then((rows) => { if (live) setLibrary(rows); }, () => {});
+    return () => { live = false; };
+  }, [library]);
+  const preview = useMemo(() => (library ? guidedDraft(answers, library, current, guided) : null), [answers, library, current, guided]);
   // The line under it says the days, so the name, and the program it starts, leave out its "(4 days)".
   const shownName = guided.name.replace(/ \(\d+ days?\)/, '').replace(/\(\d+ days?, /, '(');
-  const guidedLine = `${plural(guided.days.length, 'day')} a week · ${plural(templateExerciseCount(guided), 'exercise')}`;
+  const exerciseCount = preview ? preview.draft.days.reduce((sum, day) => sum + day.exercises.length, 0) : templateExerciseCount(guided);
+  const kept = preview ? keptExerciseCount(preview.draft, current) : 0;
+  const guidedLine = `${plural(guided.days.length, 'day')} a week · ${plural(exerciseCount, 'exercise')}${kept ? `, ${kept} from your program` : ''}`;
   // The plan follows the answers: VoiceOver hears it change once one is chosen.
   const [answered, setAnswered] = useState(false);
   useAnnounce(answered && `${shownName} · ${guidedLine}`);
@@ -102,7 +121,7 @@ function Chooser({ onNotice }: { onNotice: (notice: string | null) => void }) {
     setLoading(true);
     setError(null);
     try {
-      const { draft, notice } = await seedGuidedDraft(guided);
+      const { draft, notice } = preview ?? await seedGuidedDraft(answers, { current });
       haptics.success();
       onNotice(notice);
       useSplitEditStore.getState().startNew({ ...draft, name: shownName }, { userId });
