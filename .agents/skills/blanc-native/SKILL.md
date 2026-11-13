@@ -162,7 +162,18 @@ Settled; do not reopen or "improve" them without being asked.
   Skip skips a movement for this workout only and stays on the set card.
   Reorder is in place (hold and drag), with no Reorder sheet. Warm-up rows are
   never logged. Corrections never celebrate.
-- Session complete names new records and "N sets beat last time".
+- Set targets (approved 2026-11-11): Train fills each set with its target
+  (one weight for the movement) and one line says only why, never the
+  figures; a note takes that line. After a log it says "Target hit" or
+  "Beat target · +1 rep", and a missed target says nothing.
+  A target is a floor: on a movement's last set the line opens "Target, or
+  more" (built 2026-11-13 from the audit, not yet seen by Sinan). What each
+  number rests on: [set targets](../../../docs/set-targets.md).
+- Sets are rated in reps in reserve by default (Sinan, 2026-11-13), stored
+  as RPE (2 in reserve = RPE 8); RPE is a per-phone choice in You › App. A
+  rating is never carried over from another set: only a tap saves one.
+- Session complete names new records and "N targets hit" (Sinan's pick,
+  2026-11-12, over "N of M"); with no targets in the session, "N sets beat last time".
 - Editing targets: a new calorie figure carries carbs and fat with it;
   protein never moves.
 - The tab bar shrinks on scroll on every tab
@@ -170,7 +181,19 @@ Settled; do not reopen or "improve" them without being asked.
 - Today holds the day's training, Fuel and Progress, and fits one screen.
   Progress is two rows built as You's: This week (the sessions done) and, on
   Mondays, Last week as one line (its weight change). The five-line recap and
-  the muscles outside their range are one tap away, not on Today.
+  each muscle's sets are one tap away, not on Today.
+- Attendance is never graded (2026-11-12, after the app told him he trains
+  3 of 6 planned days: "i only train 3 because ive been lacking hard"):
+  - The plan is the plan. The app never works out how many days he "really"
+    trains, never says it, and never offers to shrink the plan; a shorter
+    plan is his to ask for in the builder.
+  - It says what is done and what is next, never what was missed: no
+    "behind", "missed", "only", "low" or "under" about his own weeks, no count
+    of skipped sessions, no red, no finished week set against its plan.
+  - Band words (low, solid, high; `src/lib/muscleVolume`) describe a
+    program's design only, never his own weeks.
+  - A skipped day changes nothing: the schedule picks up where he left off
+    (`plannedDayForDate`).
 - No cards: he called them "cheap excuses for a bad UI". On 2026-11-09 he saw
   Today with the same content in glass cards beside it without, and kept no
   cards, "narrowly"; the trimmed content mattered more than the cards. Cards

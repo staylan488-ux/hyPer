@@ -185,6 +185,26 @@ describe('Session complete\'s card', () => {
     expect(host.textContent).not.toContain('beat last time');
   });
 
+  it('says how many targets were hit in place of the beats, and nothing when none was', async () => {
+    summary = { ...finished(9, 4), targets: { hit: 7, total: 9 } };
+    await open();
+    const line = spanNamed('7 targets hit')!;
+    expect({ variant: line.dataset.variant, tone: line.dataset.tone }).toEqual({ variant: 'body', tone: 'ink' });
+    expect(host.textContent).not.toContain('beat last time');
+    act(() => root.unmount());
+    root = createRoot(host);
+    summary = { ...finished(9, 4), targets: { hit: 0, total: 9 } };
+    await open();
+    expect(host.textContent).not.toContain('targets hit');
+    expect(host.textContent).not.toContain('beat last time');
+    act(() => root.unmount());
+    root = createRoot(host);
+    // No set had a target (every movement new): the beats, as before.
+    summary = { ...finished(9, 4), targets: { hit: 0, total: 0 } };
+    await open();
+    expect(spanNamed('4 sets beat last time')).toBeDefined();
+  });
+
   it('drops the Sets and Beat last time rows: the tally, the line and the lead say them', async () => {
     summary = finished(5, 2);
     await open();

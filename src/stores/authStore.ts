@@ -3,7 +3,7 @@ import { isAuthRetryableFetchError, type User, type Session } from '@supabase/su
 import { getAuthRedirectTo, signInWithOAuthProvider } from '@/lib/nativeAuth';
 import { hydratePhotoWorkerSettings } from '@/lib/photoAnalysis';
 import { invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
-import { fetchBetaAccess, type BetaAccess } from '@/lib/betaAccess';
+import { fetchAccountAccess, type BetaAccess } from '@/lib/betaAccess';
 import { supabase } from '@/lib/supabase';
 import { resetAppData } from '@/stores/appStore';
 
@@ -38,6 +38,31 @@ let profileRequestFor: string | null = null;
 // user id whose private beta check is in flight
 let betaAccessRequestFor: string | null = null;
 
+// The accounts that keep WHOOP and the Mac worker, as the server last said,
+// so an offline launch shows the same settings. Ids only; one per account.
+const EARLY_ACCESS_KEY = 'hyper.early-access';
+
+function storedEarlyAccess(userId: string | null | undefined): boolean {
+  if (!userId) return false;
+  try {
+    const ids = JSON.parse(globalThis.localStorage?.getItem(EARLY_ACCESS_KEY) ?? '[]') as unknown;
+    return Array.isArray(ids) && ids.includes(userId);
+  } catch {
+    return false;
+  }
+}
+
+function storeEarlyAccess(userId: string, early: boolean) {
+  try {
+    const raw = JSON.parse(globalThis.localStorage?.getItem(EARLY_ACCESS_KEY) ?? '[]') as unknown;
+    const ids = (Array.isArray(raw) ? raw : []).filter((id): id is string => typeof id === 'string' && id !== userId);
+    if (early) ids.push(userId);
+    globalThis.localStorage?.setItem(EARLY_ACCESS_KEY, JSON.stringify(ids));
+  } catch {
+    // storage unavailable: the answer still holds for this run
+  }
+}
+
 // a password sign-in by an unconfirmed email emits SIGNED_IN before signIn
 // rejects it and signs out; it must not take over the device AI settings
 function isUnverifiedEmailUser(user: User) {
@@ -63,6 +88,10 @@ interface AuthState {
    * server's clear "no" for this account shows the not-on-the-list screen.
    * Reset whenever the account changes, so a switch never inherits an answer. */
   betaAccess: BetaAccess;
+  /** WHOOP and the Mac food worker: only the accounts from before public
+   * sign-up keep them (my_beta_access's early_access). The server's last
+   * clear answer for this account, kept on the phone; false until one exists. */
+  earlyAccess: boolean;
   /** Asks the server again; the not-on-the-list screen's Check again. */
   checkBetaAccess: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -105,12 +134,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   reconnecting: false,
   passwordRecovery: false,
   betaAccess: 'unknown',
+  earlyAccess: false,
 
   initialize: async () => {
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (session) {
-      set({ session, user: session.user, loading: false, initialized: true });
+      set({ session, user: session.user, loading: false, initialized: true, earlyAccess: storedEarlyAccess(session.user.id) });
       get().fetchProfile();
       void get().checkBetaAccess();
       // no-op when local settings exist; restores them after storage eviction
@@ -136,7 +166,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const nextId = session?.user?.id ?? null;
       set({ session, user: session?.user ?? null });
       if (prevId && prevId !== nextId) resetAppData();
-      if (prevId !== nextId) set({ betaAccess: 'unknown' });
+      if (prevId !== nextId) set({ betaAccess: 'unknown', earlyAccess: storedEarlyAccess(nextId) });
       // A reset link's code was exchanged for a session: ask for the new
       // password. Any other account change ends a recovery in progress.
       if (event === 'PASSWORD_RECOVERY' && nextId) set({ passwordRecovery: true });
@@ -153,7 +183,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (get().betaAccess !== 'approved') void get().checkBetaAccess();
         if (!isUnverifiedEmailUser(session.user)) void hydratePhotoWorkerSettings(userId);
       } else {
-        set({ profile: null, betaAccess: 'unknown' });
+        set({ profile: null, betaAccess: 'unknown', earlyAccess: false });
       }
     });
   },
@@ -165,10 +195,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (betaAccessRequestFor === userId) return;
     betaAccessRequestFor = userId;
     try {
-      const access = await fetchBetaAccess(userId, () => supabase.rpc('my_beta_access'));
+      const { access, earlyAccess } = await fetchAccountAccess(userId, () => supabase.rpc('my_beta_access'));
       // An unclear answer never overwrites a clear one, and a slow answer for
       // a previous account never lands after a switch.
-      if (access !== 'unknown' && get().user?.id === userId) set({ betaAccess: access });
+      if (access !== 'unknown' && get().user?.id === userId) {
+        set({ betaAccess: access, ...(earlyAccess === null ? {} : { earlyAccess }) });
+        if (earlyAccess !== null) storeEarlyAccess(userId, earlyAccess);
+      }
     } finally {
       if (betaAccessRequestFor === userId) betaAccessRequestFor = null;
     }
@@ -328,7 +361,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     invalidateExerciseLibrary();
     resetAppData();
-    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false, betaAccess: 'unknown' });
+    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false, betaAccess: 'unknown', earlyAccess: false });
     return { error: null };
   },
 
@@ -336,6 +369,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await supabase.auth.signOut();
     invalidateExerciseLibrary();
     resetAppData();
-    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false, betaAccess: 'unknown' });
+    set({ user: null, session: null, profile: null, reconnecting: false, passwordRecovery: false, betaAccess: 'unknown', earlyAccess: false });
   },
 }));

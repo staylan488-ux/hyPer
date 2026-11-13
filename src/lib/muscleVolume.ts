@@ -4,7 +4,7 @@
  * A finished set counts 1 for its movement's main muscle and 0.5 for its
  * second (the "fractional" count that fit the research best). Every count
  * gets one of three bands with the same edges for every muscle; what the
- * edges rest on is in docs/training-volume.md. There is no ceiling: "high" is
+ * edges rest on is in docs/training-volume.md. There is no upper limit: "high" is
  * never a warning.
  *
  * Bands describe a program's design only. A person's own weeks are counted
@@ -22,14 +22,18 @@ import { MUSCLE_GROUP_LABELS, type MuscleGroup, type SplitDay, type WorkoutMode 
 
 /**
  * Library values counted as another muscle. `shoulders` holds only presses,
- * so it counts with front delts. The rest are values the live library has
- * that the app's own list lacks.
+ * so it counts with front delts. The rest are spellings the live library or
+ * a custom movement may carry for a muscle the app names differently.
  */
 const MUSCLE_ALIASES: Readonly<Record<string, string>> = {
   shoulders: 'front_delts',
   abs: 'core',
   brachialis: 'biceps',
   legs: 'quads',
+  adductor: 'adductors',
+  inner_thigh: 'adductors',
+  erectors: 'lower_back',
+  spinal_erectors: 'lower_back',
 };
 
 /** The muscle a library value counts as, or null for an empty value. Unknown values pass through. */
@@ -66,6 +70,14 @@ export type VolumeBand = 'low' | 'solid' | 'high';
  * docs/training-volume.md gives the sources.
  */
 export const VOLUME_BAND_EDGES = { solidFrom: 4, highAbove: 10 } as const;
+
+/**
+ * What a main muscle is aimed at when there is room: the end of the most
+ * efficient tier. 4 sets a week is the least that grows a muscle measurably,
+ * and about 10 earns the next measurable step (docs/training-volume.md).
+ * An aim, never a grade: no screen holds a person or a program to it.
+ */
+export const VOLUME_AIM = VOLUME_BAND_EDGES.highAbove;
 
 export const VOLUME_BAND_LABELS: Readonly<Record<VolumeBand, string>> = {
   low: 'Low',
@@ -285,8 +297,13 @@ export interface WeekProgress {
   done: MuscleSets;
 }
 
-/** The program days expected this training week: a fixed schedule's days, or a rotation's done days plus the next ones in turn. */
-export function plannedWeekDays(input: Omit<WeekProgressInput, 'workoutMode'>): SplitDay[] {
+/**
+ * The program days expected this training week: a fixed schedule's days, or a
+ * rotation's days done this week, then the next ones in turn until the week's
+ * count is met. A rotation with a schedule takes its done days from the
+ * schedule's own completions; without one, from the finished sessions.
+ */
+export function plannedWeekDays(input: Omit<WeekProgressInput, 'workoutMode' | 'sessions'> & { sessions?: readonly VolumeSession[] }): SplitDay[] {
   const days = [...(input.splitDays ?? [])];
   if (!days.length) return [];
   const weekStart = parseISO(trainingWeekStart(input.dayKey));
@@ -299,13 +316,19 @@ export function plannedWeekDays(input: Omit<WeekProgressInput, 'workoutMode'>): 
     )).filter((day): day is SplitDay => day !== null);
   }
 
-  // A rotation: what is done this week, then the next days in turn until the week's count is met.
   const target = Math.max(1, Math.round(input.daysPerWeek || days.length));
   const weekKey = format(weekStart, 'yyyy-MM-dd');
-  const done = input.sessions
-    .filter((session) => isFinishedSession(session) && trainingWeekStart(session.date) === weekKey)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .flatMap((session) => days.filter((day) => day.id === session.split_day_id));
+  const inWeek = (date: string) => trainingWeekStart(date) === weekKey && date <= input.dayKey;
+  const doneIds = input.schedule
+    ? history
+      .filter((workout) => workout.completed && inWeek(workout.date))
+      .sort((a, b) => a.date.localeCompare(b.date) || Date.parse(a.created_at) - Date.parse(b.created_at))
+      .map((workout) => workout.split_day_id)
+    : (input.sessions ?? [])
+      .filter((session) => isFinishedSession(session) && inWeek(session.date))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((session) => session.split_day_id);
+  const done = doneIds.flatMap((id) => days.filter((day) => day.id === id));
 
   let next: number;
   const last = done.at(-1);

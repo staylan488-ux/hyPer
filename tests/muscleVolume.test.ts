@@ -60,6 +60,11 @@ describe('muscle names', () => {
     expect(volumeMuscle('abs')).toBe('core');
     expect(volumeMuscle('brachialis')).toBe('biceps');
     expect(volumeMuscle('legs')).toBe('quads');
+    expect(volumeMuscle('Lower back')).toBe('lower_back');
+    expect(volumeMuscle('erectors')).toBe('lower_back');
+    expect(volumeMuscle('adductor')).toBe('adductors');
+    expect(muscleLabel('lower_back')).toBe('Lower back');
+    expect(muscleLabel('adductors')).toBe('Adductors');
     expect(volumeMuscle('Hip Flexors')).toBe('hip_flexors');
     expect(volumeMuscle('')).toBeNull();
     expect(volumeMuscle(null)).toBeNull();
@@ -227,7 +232,15 @@ describe('this week, done of planned', () => {
       splitDays: [A, B, C, D], daysPerWeek: 3, schedule: flex,
       scheduleWorkouts: [scheduleWorkout('2026-11-06', 'A'), scheduleWorkout('2026-11-10', 'B')],
       adaptiveSchedulingEnabled: true, dayKey: '2026-11-11',
-      sessions: [session('2026-11-10', [ROW], 3, 'B')],
+    });
+    expect(days.map((entry) => entry.id)).toEqual(['B', 'C', 'D']);
+  });
+
+  it('with no schedule, a rotation takes its done days from the finished sessions', () => {
+    const days = plannedWeekDays({
+      splitDays: [A, B, C, D], daysPerWeek: 3, schedule: null, scheduleWorkouts: [],
+      adaptiveSchedulingEnabled: true, dayKey: '2026-11-11',
+      sessions: [session('2026-11-10', [ROW], 3, 'B'), session('2026-11-12', [SQUAT], 3, 'C')],
     });
     expect(days.map((entry) => entry.id)).toEqual(['B', 'C', 'D']);
   });

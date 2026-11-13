@@ -2,7 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
 
-import { interpretFoodServing } from '@/lib/foodTrial';
+import { interpretFoodServing, servingNeedsAi } from '@/lib/foodTrial';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -10,6 +10,7 @@ import { FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline } from '~/components/Row';
 import { speak, useAnnounce } from '~/lib/accessibility';
+import { askAiConsent } from '~/lib/aiConsent';
 import { workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { type as typeScale, useBlanc } from '~/theme/blanc';
@@ -69,6 +70,8 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
 
 
   const interpret = async () => {
+    // Only an amount the AI must read asks first; "8 oz" never leaves the phone.
+    if (servingNeedsAi(food, text) && !(await askAiConsent())) return;
     const current = ++request.current;
     setBusy(true);
     setError('');

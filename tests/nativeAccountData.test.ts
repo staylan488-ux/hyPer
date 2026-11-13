@@ -19,6 +19,7 @@ const app = create(() => ({
   macroTargetLoadedForUserId: 'user-1' as string | null,
   fetchSplits: noop,
   fetchMacroTarget: noop,
+  fetchTargetChange: noop,
   calculateWeeklyVolume: noop,
   fetchCurrentWorkout: noop,
   fetchWorkoutMode: noop,

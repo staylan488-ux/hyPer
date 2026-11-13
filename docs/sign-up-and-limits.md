@@ -70,14 +70,15 @@ update public.app_config set signup_mode = 'open';        -- back to open
 AI:
 
 ```sql
-update public.app_config set ai_enabled = false;              -- off for everyone, at once
+update public.app_config set ai_enabled = false;              -- off for everyone, at once (Log food says it's paused)
 update public.app_config set ai_enabled = true;
 update public.app_config set ai_daily_budget_usd = 5;         -- dollars a day, everyone together (0–500)
 update public.app_config set ai_daily_requests_per_user = 8;  -- each account a day (0–40)
 ```
 
 One account's own AI limit (0–40; `null` goes back to the default) and the
-early features (WHOOP and the Mac food worker, once the app reads it):
+early features (the app shows WHOOP, the Mac food worker and GPS runs only to
+these accounts, and anyone already connected to WHOOP can still disconnect):
 
 ```sql
 update public.approved_users set ai_daily_limit = 24, early_access = true
@@ -96,8 +97,10 @@ Food lookups:
 update public.app_config set lookups_per_minute = 30, lookups_per_day = 600, open_food_facts_per_minute = 12;
 ```
 
-Oldest app version allowed (the app asks older builds to update once it reads
-this; `null` allows all):
+Oldest app version allowed (builds from this change on show an "Update hyPer"
+screen, signed in or not, when they are older; `null` allows all). Set it only
+after the newer build is live in the App Store, or everyone on the old one is
+locked out until it is:
 
 ```sql
 update public.app_config set min_app_version = '2.0.1';

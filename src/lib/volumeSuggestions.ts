@@ -2,9 +2,14 @@
  * One-tap fixes for a program whose main muscle sits in the low band, as plain
  * data the program editor and the program builder both use. Applying one is a
  * pure step on the editor's draft.
+ *
+ * A fix is offered only under the floor (4 sets a week), and it aims past it:
+ * the floor is the least that grows a muscle measurably, not the goal, so one
+ * tap adds what one movement can take toward about 10.
  */
 import {
   MAIN_MUSCLES,
+  VOLUME_AIM,
   VOLUME_BAND_EDGES,
   dayVolume,
   lowMainMuscles,
@@ -71,6 +76,11 @@ export interface VolumeSuggestionOptions {
    * suggestion never takes a day past it; without it, days have no limit.
    */
   maxDaySets?: number;
+  /**
+   * The sets a week a suggestion works toward. Left out, about 10. The
+   * program builder passes the floor, so room goes round its muscles.
+   */
+  aim?: number;
 }
 
 /** Sets a day can still take under the options' limit. */
@@ -191,9 +201,10 @@ function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: numbe
  */
 export function volumeSuggestions(draft: DraftSplit, library: readonly Exercise[], options: VolumeSuggestionOptions = {}): VolumeSuggestion[] {
   const sets = programVolume(draft);
+  const aim = Math.max(VOLUME_BAND_EDGES.solidFrom, options.aim ?? VOLUME_AIM);
   return lowMainMuscles(sets).flatMap((row) => {
     const muscle = row.muscle as MainMuscle;
-    const need = Math.max(1, Math.ceil(VOLUME_BAND_EDGES.solidFrom - row.sets));
+    const need = Math.max(1, Math.ceil(aim - row.sets));
     return raiseFor(draft, muscle, row.sets, need, options) ?? addFor(draft, muscle, row.sets, need, library, options) ?? [];
   });
 }

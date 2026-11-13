@@ -24,12 +24,14 @@ export default function Index() {
   const href =
     screen === 'app'
       ? (launch ?? '/today')
-      : screen === 'new-password'
-        ? '/new-password'
-        : screen === 'not-approved'
-          ? '/not-approved'
-          : screen === 'offline'
-            ? '/offline'
-            : '/sign-in';
+      : screen === 'update'
+        ? '/update'
+        : screen === 'new-password'
+          ? '/new-password'
+          : screen === 'not-approved'
+            ? '/not-approved'
+            : screen === 'offline'
+              ? '/offline'
+              : '/sign-in';
   return <Redirect href={href} />;
 }

@@ -64,18 +64,28 @@ describe('the seeded library', () => {
 });
 
 describe('suggestions', () => {
-  it('raises a movement the program already has for the low muscle', () => {
+  it('raises a movement the program already has for the low muscle, past the floor: as far as one movement goes', () => {
     const [first, ...rest] = volumeSuggestions(PUSH_PULL, library);
     expect(rest).toEqual([]);
     expect(first).toMatchObject({
       kind: 'raise', muscle: 'side_delts', dayName: 'Push A', exerciseName: 'Cable Lateral Raise',
-      fromSets: 2, toSets: 4, setsBefore: 2, setsAfter: 4, title: 'Add 2 sets to Cable Lateral Raise on Push A',
+      fromSets: 2, toSets: 5, setsBefore: 2, setsAfter: 5, title: 'Add 3 sets to Cable Lateral Raise on Push A',
     });
+  });
+
+  it('speaks up only under the floor: a muscle at 4 or more gets nothing', () => {
+    const program = draft([{ name: 'Upper', moves: [['Lateral Raise', 4]] }]);
+    expect(volumeSuggestions(program, library).some((entry) => entry.muscle === 'side_delts')).toBe(false);
+  });
+
+  it('stops at the aim it is given', () => {
+    const [first] = volumeSuggestions(PUSH_PULL, library, { aim: 4 });
+    expect(first).toMatchObject({ fromSets: 2, toSets: 4, title: 'Add 2 sets to Cable Lateral Raise on Push A' });
   });
 
   it('says "a set" for one', () => {
     const program = draft([{ name: 'Upper', moves: [['Lateral Raise', 3]] }]);
-    const raise = volumeSuggestions(program, library).find((entry) => entry.muscle === 'side_delts');
+    const raise = volumeSuggestions(program, library, { aim: 4 }).find((entry) => entry.muscle === 'side_delts');
     expect(raise?.title).toBe('Add a set to Lateral Raise on Upper');
   });
 
@@ -143,7 +153,7 @@ describe('suggestions', () => {
     ]);
     const after = applyVolumeSuggestion(program, volumeSuggestions(program, library).find((entry) => entry.muscle === 'biceps')!);
     const curl = after.days[0].exercises.find((entry) => entry.exercise.name === 'Dumbbell Curl');
-    expect(curl).toMatchObject({ superset_group_id: 'g', target_sets: 4, target_sets_max: 4 });
+    expect(curl).toMatchObject({ superset_group_id: 'g', target_sets: 5, target_sets_max: 5 });
   });
 
   it('nothing to suggest for a program with no days or no library', () => {
@@ -160,7 +170,7 @@ describe('applying suggestions', () => {
     const after = applyVolumeSuggestion(PUSH_PULL, first);
     expect(JSON.stringify(PUSH_PULL)).toBe(before);
     expect(after).not.toBe(PUSH_PULL);
-    expect(after.days[0].exercises[1]).toMatchObject({ target_sets: 4, target_sets_min: 2, target_sets_max: 4 });
+    expect(after.days[0].exercises[1]).toMatchObject({ target_sets: 5, target_sets_min: 2, target_sets_max: 5 });
     expect(after.days[1]).toBe(PUSH_PULL.days[1]);
     expect(volumeSuggestions(after, library)).toEqual([]);
   });

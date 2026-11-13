@@ -199,11 +199,18 @@ export function trimToStartingSets(draft: DraftSplit, startingSets: number | ((m
 
 // ── Filling ─────────────────────────────────────────────────────────
 
+/**
+ * The builder's suggestions stop at solid, so room goes round: the editor's
+ * own suggestions aim higher (about 10), and here that would let the first
+ * muscle take what the next one needs.
+ */
+const TO_FLOOR = { aim: VOLUME_BAND_EDGES.solidFrom } as const;
+
 /** Applies the weekly-sets suggestions inside the cap, favoured muscles first, until none fit. */
 function applySuggestions(draft: DraftSplit, library: readonly Exercise[], cap: number, focus: ProgramFocus): DraftSplit {
   let current = draft;
   for (let step = 0; step < MAIN_MUSCLES.length * VOLUME_BAND_EDGES.solidFrom * 2; step += 1) {
-    const suggestions = volumeSuggestions(current, library, { maxDaySets: cap });
+    const suggestions = volumeSuggestions(current, library, { maxDaySets: cap, ...TO_FLOOR });
     const first = [...suggestions].sort((a, b) => Number(outsideFocus(a.muscle, focus)) - Number(outsideFocus(b.muscle, focus)))[0];
     if (!first) break;
     const next = applyVolumeSuggestion(current, first);
@@ -225,7 +232,7 @@ function makeRoom(draft: DraftSplit, library: readonly Exercise[], cap: number, 
       const next = takeOneSet(trial, dayIndex, programVolume(trial), { focus, keepFloors: true, protect: muscle });
       if (!next) break;
       trial = next;
-      const suggestion = volumeSuggestions(trial, library, { maxDaySets: cap }).find((entry) => entry.muscle === muscle);
+      const suggestion = volumeSuggestions(trial, library, { maxDaySets: cap, ...TO_FLOOR }).find((entry) => entry.muscle === muscle);
       if (!suggestion || suggestion.dayId !== draft.days[dayIndex].id) continue;
       const placed = applyVolumeSuggestion(trial, suggestion);
       if ((programVolume(placed).get(muscle) ?? 0) > before) return placed;

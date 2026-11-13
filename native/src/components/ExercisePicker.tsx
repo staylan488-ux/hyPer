@@ -94,6 +94,17 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
       skills: ranked.filter((exercise) => exerciseCategory(exercise) === 'calisthenics'),
     };
   }, [library, extras, exclude, selected, muscle, search]);
+  // A chip for each muscle the library has a movement for (and the one in
+  // use): a muscle with nothing filed under it would open an empty list.
+  const muscles = useMemo(() => {
+    if (library === null) return MUSCLES;
+    const filed = new Set<string>();
+    for (const exercise of [...extras, ...library]) {
+      filed.add(exercise.muscle_group);
+      if (exercise.muscle_group_secondary) filed.add(exercise.muscle_group_secondary);
+    }
+    return MUSCLES.filter((group) => group === muscle || filed.has(group));
+  }, [library, extras, muscle]);
   // Everyday gym movements first; bodyweight skills on request, or whenever a search finds them.
   const skillsOpen = showSkills || searching || gym.length === 0;
 
@@ -243,7 +254,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
             style={{ marginTop: 12 }}>
-            {(['all', ...MUSCLES] as const).map((group) => (
+            {(['all', ...muscles] as const).map((group) => (
               <Chip
                 key={group}
                 label={group === 'all' ? 'All' : MUSCLE_GROUP_LABELS[group]}

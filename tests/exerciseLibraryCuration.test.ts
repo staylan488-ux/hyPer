@@ -56,3 +56,25 @@ describe('the curated exercise library migration', () => {
     for (const name of retired) expect(moved, name).not.toContain(name);
   });
 });
+
+describe('the muscle tag migration', () => {
+  const tags = readFileSync(join(__dirname, '../supabase/migrations/20261113120000_fix_muscle_tags.sql'), 'utf8');
+  const statements = tags.split('\n').filter((line) => !line.trimStart().startsWith('--')).join('\n').split(';').map((statement) => statement.trim()).filter(Boolean);
+
+  it('only updates tags, and only where it names the value it expects', () => {
+    expect(statements.length).toBeGreaterThan(3);
+    for (const statement of statements) {
+      expect(statement, statement).toMatch(/^UPDATE exercises SET muscle_group(_secondary)? = /);
+      expect(statement, statement).toMatch(/WHERE .*muscle_group(_secondary)? (=|IN|IS) /s);
+    }
+  });
+
+  it('sets only muscles the app knows', () => {
+    // Each SET clause sits on its statement's first line, before WHERE.
+    const values = statements.flatMap((statement) => Array.from(statement.split(/\bWHERE\b/)[0].matchAll(/= '(\w+)'/g), (match) => match[1]));
+    expect(values.length).toBeGreaterThanOrEqual(statements.length);
+    expect(values).toContain('adductors');
+    expect(values).toContain('lower_back');
+    for (const value of values) expect(MUSCLE_GROUP_LABELS[value as MuscleGroup], value).toBeDefined();
+  });
+});

@@ -6,14 +6,16 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import Svg, { Line } from 'react-native-svg';
 
-import { summarizeWeekVolume } from '@/lib/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
 import { warnsOverTarget } from '@/lib/fuelSummary';
 import { fetchTrainingHours } from '@/lib/trainingHours';
-import { coachMuscles, type CoachingCall } from '@/lib/volumeCoaching';
+import { doneOfPlanned, muscleProgressRows, plannedShare, programWeekLine, usualWeekLine, weekLine, type MuscleProgressRow } from '@/lib/muscleProgress';
+import { plannedWeekDays, programVolume, type UsualWeek } from '@/lib/muscleVolume';
+import { readUsualWeek } from '@/lib/usualWeekRead';
+import { volumeSets } from '@/lib/weeklyVolume';
 import { TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
 import { initialAppData, useAppStore } from '@/stores/appStore';
-import { MUSCLE_GROUP_LABELS, type MuscleGroup, type MuscleVolume } from '@/types';
+import { useAuthStore } from '@/stores/authStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Disclosure } from '~/components/Disclosure';
@@ -27,14 +29,15 @@ import { speak, spokenClock, useAnnounce, useLargeText } from '~/lib/accessibili
 import { formatMinutes, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { useBlanc } from '~/theme/blanc';
-import { useMuscleTones } from '~/theme/useMuscleTones';
 import { openTrain } from '~/lib/openTrain';
-
-const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
+import { useTodayPlan } from '~/lib/today';
+import { Track } from '~/components/Track';
 
 /**
- * Progress: this week's volume by muscle, training time over eight weeks, and
- * eating over the seven days before today. Each section names its own span, since they differ.
+ * Progress: this week's sets by muscle as done of planned, training time over
+ * eight weeks, and eating over the seven days before today. Each section names
+ * its own span, since they differ. The week says what is done and what is
+ * next, never what was missed.
  */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
@@ -49,7 +52,14 @@ export default function ProgressScreen() {
   const [hours, setHours] = useState<TrainingHoursPoint[] | null>(null);
   // A read that fails says so: with nothing shown yet it offers Retry; over a chart already drawn, the chart stays and a line says it couldn't refresh.
   const [hoursFailed, setHoursFailed] = useState(false);
-  const [open, setOpen] = useState<MuscleGroup | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  // The usual week, read once on opening (and on pull to refresh); a failed read shows nothing rather than an empty week.
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const [usual, setUsual] = useState<UsualWeek | null>(null);
+  // The plan: the week's planned days from the program and its schedule, as Today plans them.
+  const plan = useTodayPlan();
+  const activeSplit = useAppStore((state) => state.activeSplit);
+  const workoutMode = useAppStore((state) => state.workoutMode);
   // Pull to refresh reads everything again; the nutrition block remounts to refetch.
   const [round, setRound] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,9 +75,16 @@ export default function ProgressScreen() {
     if (active.current) setVolumeFailed(useAppStore.getState().weeklyVolume === initialAppData.weeklyVolume);
   }, []);
 
+  const readUsual = useCallback(async () => {
+    if (!userId) return;
+    const read = await readUsualWeek(userId, dayKey).catch(() => undefined);
+    if (active.current && read !== undefined) setUsual(read);
+  }, [userId, dayKey]);
+
   const load = useCallback(async () => {
     await Promise.all([
       readVolume(),
+      readUsual(),
       fetchTrainingHours()
         .then((points) => {
           if (!active.current) return;
@@ -79,7 +96,7 @@ export default function ProgressScreen() {
         }),
       useAppStore.getState().fetchMacroTarget(),
     ]);
-  }, [readVolume]);
+  }, [readVolume, readUsual]);
 
   useEffect(() => {
     active.current = true;
@@ -114,52 +131,66 @@ export default function ProgressScreen() {
     if (active.current) setRefreshing(false);
   };
 
-  const coached = useMemo(() => coachMuscles(volume), [volume]);
-  const week = summarizeWeekVolume(volume);
-  const rows = useMemo(() => new Set(volume.map((entry) => entry.muscle_group)), [volume]);
+  const hasPlan = workoutMode !== 'flexible' && Boolean(activeSplit?.days.length);
+  const done = useMemo(() => volumeSets(volume), [volume]);
+  const { schedule, scheduleWorkouts, adaptiveSchedulingEnabled } = plan;
+  const planned = useMemo(
+    () => (hasPlan && activeSplit
+      ? programVolume({
+        days: plannedWeekDays({
+          splitDays: activeSplit.days,
+          daysPerWeek: activeSplit.days_per_week,
+          schedule,
+          scheduleWorkouts,
+          adaptiveSchedulingEnabled,
+          dayKey,
+        }),
+      })
+      : null),
+    [hasPlan, activeSplit, schedule, scheduleWorkouts, adaptiveSchedulingEnabled, dayKey],
+  );
+  const program = useMemo(() => (hasPlan && activeSplit ? programVolume(activeSplit) : null), [hasPlan, activeSplit]);
+  const rows = useMemo(() => muscleProgressRows(done, planned), [done, planned]);
+  const muscles = useMemo(() => rows.map((row) => row.muscle), [rows]);
 
-  // A tapped delt with no row of its own opens the general shoulders row.
-  const pick = (muscle: MuscleGroup | null) => {
+  const pick = (muscle: string | null) => {
     haptics.select();
-    if (!muscle) return setOpen(null);
-    setOpen(rows.has(muscle) ? muscle : DELTS.includes(muscle) && rows.has('shoulders') ? 'shoulders' : muscle);
+    setOpen(muscle);
   };
-  const chosen = open ? volume.find((entry) => entry.muscle_group === open) ?? null : null;
-  const caption = chosen
-    ? `${MUSCLE_GROUP_LABELS[chosen.muscle_group]} · ${formatSets(chosen.weekly_sets)}`
-    : `${week.inRange} of ${week.trained} trained muscles in range`;
+  const chosen = open ? rows.find((row) => row.muscle === open) ?? null : null;
+  // What is done and what is next; never what was missed.
+  const line = weekLine({ done: plan.weekDone, target: plan.weekTarget, next: plan.upNext?.day_name });
+  const caption = chosen ? `${chosen.label} · ${doneOfPlanned(chosen.done, chosen.planned)}` : line ?? 'Nothing logged yet this week';
 
   return (
     <>
       <Stack.Screen options={{ title: 'Progress' }} />
       <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
         <Section title="Muscles" note={`Week of ${format(startOfWeek(parseISO(dayKey), TRAINING_WEEK), 'MMMM d')}`} style={{ marginTop: 6 }}>
-          {volume.length === 0 ? (
-            volumeRead ? (
-              <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 16, gap: 12 }}>
-                <BlancText variant="headline">Nothing trained yet this week</BlancText>
-                <BlancText variant="secondary" tone="graphite">
-                  Log a session and Progress tracks each muscle&apos;s weekly sets against its landmarks.
-                </BlancText>
-                <View style={{ alignSelf: 'flex-start' }}>
-                  <Capsule title="Start training" onPress={openTrain} />
+          {!volumeRead ? (
+            // In the figure card's place, with its padding: a spinner while the week is read, or what happened and a way to try again.
+            <Label style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 15 }}>
+              {musclesFailed ? (
+                <View style={{ minHeight: FIGURE_SPACE, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                  <BlancText variant="secondary" tone="graphite">
+                    Muscles couldn’t load.
+                  </BlancText>
+                  <Capsule title="Retry" variant="quiet" onPress={retryVolume} />
                 </View>
-              </Label>
-            ) : (
-              // In the figure card's place, with its padding: a spinner while the week is read, or what happened and a way to try again.
-              <Label style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 15 }}>
-                {musclesFailed ? (
-                  <View style={{ minHeight: FIGURE_SPACE, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                    <BlancText variant="secondary" tone="graphite">
-                      Muscles couldn’t load.
-                    </BlancText>
-                    <Capsule title="Retry" variant="quiet" onPress={retryVolume} />
-                  </View>
-                ) : (
-                  <Waiting height={FIGURE_SPACE} label="Loading muscles" />
-                )}
-              </Label>
-            )
+              ) : (
+                <Waiting height={FIGURE_SPACE} label="Loading muscles" />
+              )}
+            </Label>
+          ) : rows.length === 0 ? (
+            <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 16, gap: 12 }}>
+              <BlancText variant="headline">Nothing trained yet this week</BlancText>
+              <BlancText variant="secondary" tone="graphite">
+                Log a session and Progress counts each muscle&apos;s sets this week.
+              </BlancText>
+              <View style={{ alignSelf: 'flex-start' }}>
+                <Capsule title="Start training" onPress={openTrain} />
+              </View>
+            </Label>
           ) : (
             <>
               <Label style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 15 }}>
@@ -176,21 +207,21 @@ export default function ProgressScreen() {
                   accessibilityLabel={inWords(caption)}>
                   {caption}
                 </BlancText>
-                <MuscleFigure volume={volume} selected={open} onPick={pick} />
+                <MuscleFigure done={done} planned={planned} muscles={muscles} selected={open} onPick={pick} />
               </Label>
 
-              {/* Each muscle's sets against its range, under the rails' key; a tap opens its landmarks. */}
+              {/* Each muscle's sets this week against the plan; a tap opens the program's week and the usual one. */}
               <Label style={{ overflow: 'hidden', marginTop: 12 }}>
-                {coached.some(({ mv }) => mv.landmark) ? (
-                  <>
-                    <RailKey />
-                    <Hairline />
-                  </>
-                ) : null}
-                {coached.map(({ mv, call }, index) => (
-                  <Animated.View key={mv.muscle_group} layout={LinearTransition.duration(220)}>
+                {rows.map((row, index) => (
+                  <Animated.View key={row.muscle} layout={LinearTransition.duration(220)}>
                     {index > 0 ? <Hairline /> : null}
-                    <MuscleRow mv={mv} call={call} open={open === mv.muscle_group} onToggle={() => pick(open === mv.muscle_group ? null : mv.muscle_group)} />
+                    <MuscleRow
+                      row={row}
+                      program={program ? program.get(row.muscle) ?? 0 : null}
+                      usual={usual?.sets.get(row.muscle)}
+                      open={open === row.muscle}
+                      onToggle={() => pick(open === row.muscle ? null : row.muscle)}
+                    />
                   </Animated.View>
                 ))}
               </Label>
@@ -235,202 +266,56 @@ export default function ProgressScreen() {
  */
 const FIGURE_SPACE = 232;
 
-const formatSets = (sets: number) => `${formatWhole(sets) === String(sets) ? sets : sets.toFixed(1)} ${sets === 1 ? 'set' : 'sets'}`;
-
-function MuscleRow({ mv, call, open, onToggle }: { mv: MuscleVolume; call: CoachingCall; open: boolean; onToggle: () => void }) {
+/**
+ * A muscle this week: its name, done of planned, and a Track of the planned
+ * sets done (ink, never red: past the plan is still done). Open, it shows the
+ * program's week with its band word and, when there is one, the usual week as
+ * a plain figure with no band and no comparison.
+ */
+function MuscleRow({ row, program, usual, open, onToggle }: { row: MuscleProgressRow; program: number | null; usual: number | undefined; open: boolean; onToggle: () => void }) {
   const c = useBlanc();
   const large = useLargeText();
-  // Red only past the ceiling, as on the figure.
-  const hot = mv.status === 'above_mrv';
-  // Words only when something needs doing: under, over or near the ceiling.
-  const words = call.priority <= 2;
-  const name = MUSCLE_GROUP_LABELS[mv.muscle_group] ?? mv.muscle_group.replace('_', ' ');
-  const advice = adviceFor(mv, call);
-  // An open row names the rail's marks by what they mean.
-  const marks = mv.landmark
-    ? [`Minimum ${mv.landmark.mev}`, `Best ${mv.landmark.mav_low}–${mv.landmark.mav_high}`, `Ceiling ${mv.landmark.mrv}`]
-    : null;
-  const landmarks = marks ? marks.join(' · ') : 'No landmarks set for this muscle';
-  // One fact for VoiceOver, the rail's band included, with the words the row
-  // shows; an open row adds what it shows.
-  const spoken = [
-    `${name}, ${formatSets(mv.weekly_sets)}${mv.landmark ? `, in range ${mv.landmark.mev}–${mv.landmark.mrv}` : ''}, ${call.chip}`,
-    words ? advice : null,
-    open ? landmarks : null,
-  ]
-    .filter(Boolean)
-    .join('. ');
+  const figure = doneOfPlanned(row.done, row.planned);
+  const share = plannedShare(row.done, row.planned);
+  const details = [program !== null ? programWeekLine(row.muscle, program) : null, usualWeekLine(usual)].filter((line): line is string => Boolean(line));
+  const spoken = [`${row.label}, ${figure}`, ...(open ? details : [])].join('. ');
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ expanded: open }}
+      accessibilityState={details.length ? { expanded: open } : { selected: open }}
       accessibilityLabel={inWords(spoken)}
       onPress={onToggle}
       style={({ pressed }) => ({ paddingLeft: 18, paddingRight: 16, paddingVertical: 12, backgroundColor: pressed ? c.pressed : 'transparent' })}>
-      {/* At the accessibility text sizes the sets wrap under a long name. */}
+      {/* At the accessibility text sizes the figure wraps under a long name. */}
       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12, ...(large ? { flexWrap: 'wrap', rowGap: 0 } : null) }}>
         {/* The name with a small chevron that turns as the row opens, so the row reads as one that expands. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, ...(large ? { flexShrink: 1 } : { flex: 1 }) }}>
           <BlancText variant="bodyStrong" style={{ flexShrink: 1 }} numberOfLines={large ? undefined : 1}>
-            {name}
+            {row.label}
           </BlancText>
-          <Disclosure open={open} />
+          {details.length ? <Disclosure open={open} /> : null}
         </View>
-        <BlancText variant="secondary" weight="500" tone={hot ? 'live' : 'ink'} style={{ fontVariant: ['tabular-nums'] }}>
-          {formatSets(mv.weekly_sets)}
+        <BlancText variant="secondary" style={{ fontVariant: ['tabular-nums'] }}>
+          {figure}
         </BlancText>
       </View>
-      {words ? (
-        // Red stays on the count and the rail's tick; the advice is quiet.
-        <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-          {advice}
-        </BlancText>
+      {share !== null ? (
+        <View style={{ marginTop: 9 }} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+          <Track progress={share} warnOver={false} />
+        </View>
       ) : null}
-      {mv.landmark ? <Rail sets={mv.weekly_sets} landmark={mv.landmark} hot={hot} open={open} /> : null}
-      {open ? (
-        // The marks wrap a whole mark at a time when they no longer fit on one line.
-        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 }}>
-          {marks ? (
-            marks.map((mark) => (
-              <BlancText key={mark} variant="meta" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-                {mark}
-              </BlancText>
-            ))
-          ) : (
-            <BlancText variant="footnote" tone="graphite">
-              {landmarks}
+      {open && details.length ? (
+        <Animated.View entering={FadeIn.duration(180)} style={{ marginTop: 8, gap: 2 }}>
+          {details.map((detail) => (
+            <BlancText key={detail} variant="footnote" tone="graphite">
+              {detail}
             </BlancText>
-          )}
+          ))}
         </Animated.View>
       ) : null}
     </Pressable>
   );
 }
-
-/** The rail's marker for this week's sets: a short upright tick, a reading on a scale rather than a handle to drag. */
-const TICK = { width: 2, height: 12 } as const;
-/** The page-coloured edge either side of the tick that keeps it clear of the band under it. */
-const TICK_EDGE = 1;
-/** The rail's band as the key draws it. */
-const BAND = { width: 14, height: 5 } as const;
-
-/** This week's reading on a rail: ink, the one red when over. */
-function Tick({ hot }: { hot: boolean }) {
-  const c = useBlanc();
-  return (
-    <View style={{ width: TICK.width + TICK_EDGE * 2, height: TICK.height, paddingHorizontal: TICK_EDGE, backgroundColor: c.ground }}>
-      <View style={{ flex: 1, borderRadius: TICK.width / 2, backgroundColor: hot ? c.live : c.ink }} />
-    </View>
-  );
-}
-
-/**
- * The one key for every rail, at the head of the list so the marks are known
- * before the first row: the band is the range, the tick this week's sets.
- * Each row already says both to VoiceOver.
- */
-function RailKey() {
-  const c = useBlanc();
-  return (
-    <View
-      importantForAccessibility="no-hide-descendants"
-      accessibilityElementsHidden
-      style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 16, rowGap: 4, paddingLeft: 18, paddingRight: 16, paddingTop: 12, paddingBottom: 10 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <View style={{ width: BAND.width, height: BAND.height, borderRadius: BAND.height / 2, backgroundColor: c.mark }} />
-        <BlancText variant="footnote" tone="graphite">
-          In range
-        </BlancText>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Tick hot={false} />
-        <BlancText variant="footnote" tone="graphite">
-          This week
-        </BlancText>
-      </View>
-    </View>
-  );
-}
-
-/**
- * Weekly sets on a line from zero past the ceiling. The band is in range
- * (from the minimum that grows, MEV, up to the ceiling, MRV), as the week's
- * "in range" counts it, in the figure's in-range tone, `mark`. The track is
- * the lighter `fill`, so the band reads at 3:1 or more against both the
- * track and the card in every palette (against `track` it would not). An
- * open row adds the band's middle, the best range, in a deeper step of that
- * tone, and names the marks under the rail. The tick is this week's reading,
- * in ink (red over); the list's head keys both once.
- */
-function Rail({ sets, landmark, hot, open }: { sets: number; landmark: NonNullable<MuscleVolume['landmark']>; hot: boolean; open: boolean }) {
-  const c = useBlanc();
-  const tones = useMuscleTones();
-  const max = Math.max(landmark.mrv * 1.1, sets, 1);
-  const share = (value: number) => Math.min(100, (value / max) * 100);
-  const at = (value: number) => `${share(value)}%` as const;
-  const span = (from: number, to: number) => `${Math.max(0, ((Math.min(to, max) - from) / max) * 100)}%` as const;
-  return (
-    <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-      <View style={{ height: TICK.height, marginTop: 9, justifyContent: 'center' }}>
-        <View style={{ height: 3, borderRadius: 1.5, backgroundColor: c.fill }} />
-        <View
-          style={{
-            position: 'absolute',
-            left: at(landmark.mev),
-            width: span(landmark.mev, landmark.mrv),
-            height: 5,
-            borderRadius: 2.5,
-            backgroundColor: c.mark,
-          }}
-        />
-        {open ? (
-          <Animated.View
-            entering={FadeIn.duration(180)}
-            style={{
-              position: 'absolute',
-              left: at(landmark.mav_low),
-              width: span(landmark.mav_low, landmark.mav_high),
-              height: 5,
-              borderRadius: 2.5,
-              backgroundColor: tones.best,
-            }}
-          />
-        ) : null}
-        <View style={{ position: 'absolute', left: at(sets), marginLeft: -(TICK.width / 2 + TICK_EDGE) }}>
-          <Tick hot={hot} />
-        </View>
-      </View>
-    </View>
-  );
-}
-
-/**
- * A row's quiet line. Over the ceiling it says by how much, in the shape of
- * the line below range ("Add about 3 sets this week") and rounded up as that
- * one is: "About 2 sets over its ceiling". Right at the ceiling, which the
- * shared rule counts as over, there is nothing to count: "At its ceiling,
- * pull back a little". Every other call is the shared shorthand as a fragment.
- */
-function adviceFor(mv: MuscleVolume, call: CoachingCall): string {
-  if (mv.status === 'above_mrv' && mv.landmark) {
-    const over = Math.ceil(mv.weekly_sets - mv.landmark.mrv);
-    return over > 0 ? `About ${over} ${over === 1 ? 'set' : 'sets'} over its ceiling` : 'At its ceiling, pull back a little';
-  }
-  return asFragment(call.headline);
-}
-
-/**
- * Shared coaching shorthand as one quiet fragment, with no full stop, as iOS
- * writes a secondary line: "Near its ceiling · hold here" reads "Near its
- * ceiling, hold here". A single phrase stays as it is.
- */
-function asFragment(headline: string): string {
-  return FRAGMENTS[headline] ?? headline.split(' · ').join(', ');
-}
-const FRAGMENTS: Record<string, string> = {
-  'Over its ceiling · pull back': 'Over its ceiling, pull back a little',
-  'Near its ceiling · hold here': 'Near its ceiling, hold here',
-};
 
 /**
  * Shorthand in words for VoiceOver, with the coaching lines' "~2 sets" as

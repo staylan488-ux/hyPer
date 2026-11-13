@@ -11,7 +11,22 @@ export type RestPreferences = Record<string, RestPreferenceEntry>;
 
 type PrefStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
+/**
+ * Where a movement's rest starts when the person has never set one: 90 s for
+ * a single-joint movement, 2 min 30 for a multi-joint lift. Rests over a
+ * minute help growth a little, mostly by keeping reps on later sets (Singer
+ * et al. 2024, nine studies, wide uncertainty; past about 90 s the benefit is
+ * unclear). Big lifts lose the most reps to a short rest, and reps kept on
+ * later sets are what the set targets build on. The evidence is thin; the
+ * figures are a sensible start, and one tap changes them.
+ */
 export const DEFAULT_REST_SECONDS = 90;
+export const COMPOUND_REST_SECONDS = 150;
+
+/** The starting rest for a movement of a known kind; 90 s when the kind is not known. */
+export function defaultRestSeconds(isCompound: boolean | null | undefined): number {
+  return isCompound ? COMPOUND_REST_SECONDS : DEFAULT_REST_SECONDS;
+}
 const MIN_REST_SECONDS = 5;
 const MAX_REST_SECONDS = 3600;
 const STORAGE_PREFIX = 'hyper:rest-preferences:';
@@ -78,14 +93,31 @@ export function getLastUsedRestSeconds(prefs: RestPreferences): number | null {
   return best ? best.restSeconds : null;
 }
 
+/**
+ * A movement's rest length: its own when the person set one; else the length
+ * last set on a movement of the same kind (a choice spreads among big lifts,
+ * or among single-joint movements, never from a curl onto a squat); else the
+ * kind's default. `isCompound` says each movement's kind, or null when it is
+ * not known. Without it, or for a movement of unknown kind, the last length
+ * set anywhere stands in, then `fallback`.
+ */
 export function resolveRestSeconds(
   prefs: RestPreferences,
   exerciseId: string,
   fallback: number = DEFAULT_REST_SECONDS,
+  isCompound?: (exerciseId: string) => boolean | null | undefined,
 ): number {
   const own = prefs[exerciseId];
   if (own) return own.restSeconds;
-  return getLastUsedRestSeconds(prefs) ?? fallback;
+  const kind = isCompound?.(exerciseId);
+  if (!isCompound || kind == null) return getLastUsedRestSeconds(prefs) ?? fallback;
+  let best: RestPreferenceEntry | null = null;
+  for (const [otherId, entry] of Object.entries(prefs)) {
+    const otherKind = isCompound(otherId);
+    if (otherKind == null || Boolean(otherKind) !== Boolean(kind)) continue;
+    if (!best || entry.updatedAt > best.updatedAt) best = entry;
+  }
+  return best ? best.restSeconds : defaultRestSeconds(kind);
 }
 
 /** Merge two maps, keeping the entry with the newer updatedAt per movement. */

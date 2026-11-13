@@ -290,6 +290,8 @@ export async function loadTargets(): Promise<boolean> {
   const targetBeforeSaves = macroTargetSaves.begin();
   const profileBeforeSaves = nutritionProfileSaves.begin();
   useTargetsStore.setState({ status: 'loading' });
+  // The last change's line: its own quiet read, which never fails the targets.
+  void useAppStore.getState().fetchTargetChange();
   try {
     const [target, profile] = await Promise.all([
       supabase.from('macro_targets').select('*').eq('user_id', userId).maybeSingle(),
@@ -373,6 +375,25 @@ export const useAnalysisModeStore = create<{ mode: AnalysisMode }>(() => ({ mode
 export function chooseAnalysisMode(mode: AnalysisMode) {
   saveFoodAnalysisMode(mode);
   useAnalysisModeStore.setState({ mode });
+}
+
+// ── Early features ───────────────────────────────────────────────────────
+
+let followingEarlyAccess = false;
+/**
+ * A phone left on the Mac worker by an early account goes back to Gemini once
+ * the server clearly says the signed-in account has no early features. Once per launch.
+ */
+export function followEarlyAccess(): void {
+  if (followingEarlyAccess) return;
+  followingEarlyAccess = true;
+  const settle = (state: ReturnType<typeof useAuthStore.getState>) => {
+    if (state.user && state.betaAccess === 'approved' && !state.earlyAccess && useAnalysisModeStore.getState().mode === 'worker') {
+      chooseAnalysisMode('gemini');
+    }
+  };
+  settle(useAuthStore.getState());
+  useAuthStore.subscribe(settle);
 }
 
 /** Opens a saved meal for editing: its numbers, or the meal builder for a built meal. */

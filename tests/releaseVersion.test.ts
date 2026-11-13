@@ -97,6 +97,21 @@ describe('native app config version', () => {
     expect(release.ios.bundleIdentifier).toBe('app.hyper.mobile');
   });
 
+  it('adds crash reporting, uploading source maps only when a Sentry token is set', () => {
+    const saved = process.env.SENTRY_AUTH_TOKEN;
+    try {
+      delete process.env.SENTRY_AUTH_TOKEN;
+      const plain = resolve({ HYPER_APP: 'release' }) as unknown as { plugins: unknown[] };
+      expect(plain.plugins).toContainEqual(['@sentry/react-native/expo', { disableAutoUpload: true }]);
+      process.env.SENTRY_AUTH_TOKEN = 'token';
+      const uploading = resolve({ HYPER_APP: 'release' }) as unknown as { plugins: unknown[] };
+      expect(uploading.plugins).toContainEqual(['@sentry/react-native/expo', { disableAutoUpload: false }]);
+    } finally {
+      if (saved === undefined) delete process.env.SENTRY_AUTH_TOKEN;
+      else process.env.SENTRY_AUTH_TOKEN = saved;
+    }
+  });
+
   it.each(['2.0', '2.0.1-beta', 'latest', '02.0.1'])('refuses HYPER_APP_VERSION=%j', (version) => {
     expect(() => resolve({ HYPER_APP: 'release', HYPER_APP_VERSION: version })).toThrow('HYPER_APP_VERSION');
   });

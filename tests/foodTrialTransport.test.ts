@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 vi.mock('@/preview/flag', () => ({ isPreviewActive: () => false }));
-import { interpretFoodServing, analyzeFoodTrial, getFoodTrialStatus, getFoodAnalysisMode, saveFoodAnalysisMode, previewFoodTrialResult } from '@/lib/foodTrial';
+import { aiLimitOf, interpretFoodServing, analyzeFoodTrial, getFoodTrialStatus, getFoodAnalysisMode, saveFoodAnalysisMode, previewFoodTrialResult, servingNeedsAi } from '@/lib/foodTrial';
 afterEach(() => vi.unstubAllGlobals());
 // Typed like fetch so tests can read the request URL and body they sent.
 type FetchStub = (url: string, init: { body: string }) => Promise<Response>;
@@ -25,6 +25,17 @@ describe('hosted food trial transport', () => {
     await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('Food analysis isn’t available right now. Try again in a moment.');
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Daily limit reached.' }), { status: 429 })));
     await expect(analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' })).rejects.toThrow('Daily limit reached.');
+  });
+  it('names the reason when the AI can’t take a request today', async () => {
+    const refusal = async (code: string, status: number) => {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code, error: 'No.' }), { status })));
+      return analyzeFoodTrial({ images: [], hint: 'six samosas', accessToken: 'user-token' }).catch((error: unknown) => error);
+    };
+    expect(aiLimitOf(await refusal('daily_quota_exhausted', 429))).toBe('daily');
+    expect(aiLimitOf(await refusal('global_quota_exhausted', 429))).toBe('everyone');
+    expect(aiLimitOf(await refusal('analysis_paused', 503))).toBe('paused');
+    expect(aiLimitOf(await refusal('analysis_unavailable', 503))).toBeNull();
+    expect(aiLimitOf(new Error('Network failed'))).toBeNull();
   });
   it('does not fallback when the model is unavailable or substituted', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ...previewFoodTrialResult, model: 'different-model' }))));
@@ -114,6 +125,11 @@ describe('serving interpretation transport', () => {
     expect(result.status === 'resolved' && result.servings).toBeCloseTo(1.15, 2);
     expect(await interpretFoodServing(food, 'I ate 6 pieces', 'token')).toMatchObject({ servings: 1.2 });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+  it('knows which amounts need the AI, so only those ask permission first', () => {
+    const juice = { name: 'Orange Juice', serving_size: 1, serving_unit: 'serving', serving_label: '1 cup' };
+    expect(servingNeedsAi(juice, '272 ML')).toBe(false);
+    expect(servingNeedsAi(juice, 'a big glass, mostly ice')).toBe(true);
   });
   it('preserves ambiguity without a multiplier and never retries a network failure', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ provider: 'gemini', model: previewFoodTrialResult.model,

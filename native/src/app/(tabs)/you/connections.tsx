@@ -11,16 +11,24 @@ import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
 import { useAnnounce } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
+import { useEarlyAccess } from '~/lib/earlyAccess';
 import { connectOrSyncHealth, connectWhoop, stopHealthSync, useHealthStore } from '~/lib/you';
 
-/** WHOOP (workouts and recovery stats) and Apple Health (body weight). */
+/**
+ * WHOOP (workouts and recovery stats) and Apple Health (body weight). WHOOP
+ * is an early feature: WHOOP lets an unreviewed app connect only a few
+ * people, so only the accounts from before public sign-up see it, and anyone
+ * already connected keeps it to sync or disconnect.
+ */
 export default function ConnectionsScreen() {
+  const early = useEarlyAccess();
+  const connected = useAppStore((state) => Boolean(state.whoopConnection));
   return (
     <>
       <Stack.Screen options={{ title: 'Connections' }} />
       <TabScroll>
-        <Whoop />
-        <Health />
+        {early || connected ? <Whoop /> : null}
+        <Health first={!early && !connected} />
       </TabScroll>
     </>
   );
@@ -127,7 +135,7 @@ function Whoop() {
   );
 }
 
-function Health() {
+function Health({ first = false }: { first?: boolean }) {
   const enabled = useHealthStore((state) => state.enabled);
   const busy = useHealthStore((state) => state.busy);
   const message = useHealthStore((state) => state.message);
@@ -144,7 +152,7 @@ function Health() {
   };
 
   return (
-    <Section title="Apple Health">
+    <Section title="Apple Health" style={first ? { marginTop: 8 } : undefined}>
       <Label>
         <ToggleRow list label="Weight from Apple Health" value={enabled} disabled={busy} onChange={toggle} />
         {enabled ? (

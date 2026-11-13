@@ -55,7 +55,7 @@ let clock = () => new Date();
 let pending: Partial<Record<Part, Envelope>> | null = null;
 let restoring = false;
 // Parts with no loaded marker: what came from the copy, so it is never saved back as new.
-let fromCopy: { flexTemplates?: unknown; weeklyVolume?: unknown; volumeLandmarks?: unknown } = {};
+let fromCopy: { flexTemplates?: unknown; weeklyVolume?: unknown } = {};
 let volumeWeek: string | null = null;
 let todaySeed: TodaySeed | null = null;
 const dirty = new Set<Part>();
@@ -159,7 +159,6 @@ function apply(plan: LaunchRestore) {
   fromCopy = {
     flexTemplates: plan.templates ?? undefined,
     weeklyVolume: plan.volume?.weeklyVolume,
-    volumeLandmarks: plan.volume?.volumeLandmarks,
   };
   todaySeed = plan.seed;
   useAppStore.setState({
@@ -178,7 +177,7 @@ function onApp(state: AppSnapshot, prev: AppSnapshot) {
   try {
     if (state.splits !== prev.splits || state.workoutMode !== prev.workoutMode || state.hydratedForUserId !== prev.hydratedForUserId) mark('program');
     if (state.flexTemplates !== prev.flexTemplates) mark('templates');
-    if (state.weeklyVolume !== prev.weeklyVolume || state.volumeLandmarks !== prev.volumeLandmarks) {
+    if (state.weeklyVolume !== prev.weeklyVolume) {
       volumeWeek = stableWeek(clock());
       mark('volume');
     }
@@ -266,13 +265,10 @@ function freshBody(part: Part, userId: string): unknown {
         ? { templates: a.flexTemplates }
         : undefined;
     case 'volume': {
-      // calculateWeeklyVolume sets only the half that changed, so a new array in
-      // either half shows that this launch's read landed.
+      // A new array shows that this launch's read landed (calculateWeeklyVolume
+      // keeps the stored one when nothing changed); the stamp names the account.
       const newVolume = a.weeklyVolume !== initialAppData.weeklyVolume && a.weeklyVolume !== fromCopy.weeklyVolume;
-      const newLandmarks = a.volumeLandmarks !== initialAppData.volumeLandmarks && a.volumeLandmarks !== fromCopy.volumeLandmarks;
-      return volumeWeek && (newVolume || newLandmarks) && own(a.volumeLandmarks)
-        ? { weekStart: volumeWeek, weeklyVolume: a.weeklyVolume, volumeLandmarks: a.volumeLandmarks }
-        : undefined;
+      return volumeWeek && newVolume ? { weekStart: volumeWeek, weeklyVolume: a.weeklyVolume } : undefined;
     }
     case 'target':
       return a.macroTargetLoadedForUserId === userId && (!a.macroTarget || a.macroTarget.user_id === userId)

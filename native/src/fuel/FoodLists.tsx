@@ -11,7 +11,7 @@ import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { chosenFoodLogSource } from '@/lib/saveNutritionEntry';
 import { filterSavedMeals, retireSavedMeal } from '@/lib/savedMeals';
 import { getSessionUserId } from '@/lib/sessionUser';
-import { searchUsdaFoodsSecureStrict, withUsdaPortion } from '@/lib/usdaClient';
+import { foodLookupFailure, searchUsdaFoodsSecureStrict, withUsdaPortion, type FoodLookupFailure } from '@/lib/usdaClient';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -616,14 +616,25 @@ function SavedRow({ meal, divided, state, purpose, quickAdd, onOpen, onAdd, onTa
 }
 
 /**
+ * What a failed search says. Only a request that got no answer blames the
+ * connection: when hyPer answered and the lookup behind it failed, the phone's
+ * connection is fine and saying otherwise sends the person the wrong way.
+ */
+const SEARCH_FAILURES: Record<FoodLookupFailure, string> = {
+  offline: 'The search failed. Check your connection.',
+  unavailable: 'The food database didn’t answer. Try again.',
+  limited: 'Too many searches for now. Try again in a minute.',
+};
+
+/**
  * USDA search results for the words in Log food's Search foods field (two
  * letters or more), with Retry on failure. The sheet owns the field and its
  * words, so they outlast a food's review and an ingredient added.
  */
 export function SearchTab({ query }: { query: string }) {
   const logger = useLogger();
-  // USDA's last answer, with the words it answers (no foods: the search failed).
-  const [found, setFound] = useState<{ query: string; foods: Food[] | null } | null>(null);
+  // USDA's last answer, with the words it answers (no foods: the search failed, and why).
+  const [found, setFound] = useState<{ query: string; foods: Food[] | null; failure?: FoodLookupFailure } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, takeOut: quickTakeOut, enabled } = useQuickAdd();
@@ -641,17 +652,16 @@ export function SearchTab({ query }: { query: string }) {
   // belongs to other words.
   const answer = trimmed.length >= 2 && found?.query === trimmed ? found : null;
   const results = answer?.foods ?? null;
-  const failed = answer !== null && answer.foods === null;
+  const failure = answer !== null && answer.foods === null ? SEARCH_FAILURES[answer.failure ?? 'offline'] : null;
   const searching = trimmed.length >= 2 && answer === null;
   // Results land a moment after typing stops: VoiceOver says how many.
   useAnnounce(
-    failed
-      ? 'The search failed.'
-      : results !== null
+    failure ??
+      (results !== null
         ? results.length === 0
           ? 'No USDA matches.'
           : `${results.length} result${results.length === 1 ? '' : 's'}`
-        : null,
+        : null),
   );
 
   useEffect(() => {
@@ -662,8 +672,8 @@ export function SearchTab({ query }: { query: string }) {
         .then((foods) => {
           if (current) setFound({ query: trimmed, foods });
         })
-        .catch(() => {
-          if (current) setFound({ query: trimmed, foods: null });
+        .catch((error: unknown) => {
+          if (current) setFound({ query: trimmed, foods: null, failure: foodLookupFailure(error) });
         });
     }, 350);
     return () => {
@@ -751,10 +761,10 @@ export function SearchTab({ query }: { query: string }) {
           ) : null}
         </>
       ) : null}
-      {failed ? (
+      {failure ? (
         <View style={{ alignItems: 'center', gap: 14, marginTop: 32 }}>
-          <BlancText variant="secondary" tone="graphite">
-            The search failed. Check your connection.
+          <BlancText variant="secondary" tone="graphite" style={{ textAlign: 'center', marginHorizontal: 20 }}>
+            {failure}
           </BlancText>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
             <Capsule
@@ -766,7 +776,7 @@ export function SearchTab({ query }: { query: string }) {
                 setAttempt((value) => value + 1);
               }}
             />
-            {/* Offline, typing it in is the way on. */}
+            {/* Whatever stopped the search, typing it in is the way on. */}
             {logger.purpose === 'log' && logger.enterManually ? (
               <Capsule title="Enter it manually" variant="quiet" onPress={() => logger.enterManually?.(trimmed)} />
             ) : null}

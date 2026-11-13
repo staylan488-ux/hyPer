@@ -14,7 +14,7 @@ import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { useLeaveGuard } from '~/lib/leaveGuard';
-import { chooseRpe, parseNumber } from '~/lib/setEntry';
+import { chooseRpe, effortChip, parseNumber, useEffortScaleStore } from '~/lib/setEntry';
 import { space, useBlanc } from '~/theme/blanc';
 
 /** Text VoiceOver skips: the fields are named "Weight in pounds" and "Reps", and the × is read as part of neither. */
@@ -33,6 +33,7 @@ export default function PastSetSheet() {
   const [weight, setWeight] = useState(set?.weight == null ? '' : String(set.weight));
   const [reps, setReps] = useState(set?.reps == null ? '' : String(set.reps));
   const [rpe, setRpe] = useState<number | null>(set?.rpe ?? null);
+  const effortScale = useEffortScaleStore((state) => state.scale);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -161,8 +162,7 @@ export default function PastSetSheet() {
           </View>
 
           <Chip
-            label={rpe ? `RPE ${rpe}` : 'Add RPE'}
-            accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
+            {...effortChip(rpe, effortScale)}
             disabled={saving}
             haptic={false}
             onPress={() => chooseRpe(setRpe)}

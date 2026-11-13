@@ -14,18 +14,22 @@ import { DevLaunchRunner } from '~/components/DevLaunchRunner';
 import { GlassDemo } from '~/components/GlassDemo';
 import { useGlassPressWave } from '~/components/GlassField';
 import { useReduceMotionOverride } from '~/lib/accessibility';
+import { followAppConfig } from '~/lib/appConfig';
 import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
+import { startCrashReporting } from '~/lib/crashReporting';
 import { followReminderTaps } from '~/lib/fuelReminder';
 import { installLaunchCache } from '~/lib/launchCache';
 import { backendOf } from '~/lib/launchSnapshot';
 import { launchWaiting, takeNativeLaunch, useLaunchActions } from '~/lib/launch';
 import { pendingLaunchLink } from '~/lib/launchLink';
-import { restoreAppearance } from '~/lib/you';
+import { followEarlyAccess, restoreAppearance } from '~/lib/you';
 import { readDevLaunch } from '~/platform/devLaunch';
 import { isPreviewActive } from '~/platform/previewFlag';
 import { useBlanc } from '~/theme/blanc';
 
+// Crash reports (off without a DSN in the build), before anything else can fail.
+startCrashReporting();
 // Light or Dark chosen in You applies before anything draws.
 restoreAppearance();
 // Preview mode: fill the shared stores with the sample account before the
@@ -51,6 +55,10 @@ takeNativeLaunch();
 followReminderTaps();
 // Otherwise restore the saved session (Keychain) and follow auth changes.
 if (!isPreviewActive()) void useAuthStore.getState().initialize();
+// The server's switches: food analysis on or off, and the oldest build allowed.
+followAppConfig();
+// The early features (WHOOP, the Mac worker) follow the account's answer.
+followEarlyAccess();
 // Keep the launch screen up until the intro takes over, or without the intro
 // until it is known whether someone is signed in.
 void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -266,6 +274,10 @@ export default function RootLayout() {
           {/* Signed in, but the server says the account isn't approved (invite-only). */}
           <Stack.Protected guard={screen === 'not-approved'}>
             <Stack.Screen name="not-approved" options={{ contentStyle: { backgroundColor: p.ground } }} />
+          </Stack.Protected>
+          {/* The server no longer allows this build: it asks to be updated, signed in or not. */}
+          <Stack.Protected guard={screen === 'update'}>
+            <Stack.Screen name="update" options={{ contentStyle: { backgroundColor: p.ground } }} />
           </Stack.Protected>
           <Stack.Protected guard={screen === 'offline'}>
             <Stack.Screen name="offline" options={{ contentStyle: { backgroundColor: p.ground } }} />

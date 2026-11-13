@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { FlexDayTemplate, MacroTarget, VolumeLandmark, WhoopConnection, Workout } from '@/types';
+import type { FlexDayTemplate, MacroTarget, WhoopConnection, Workout } from '@/types';
 
 type Result = { data: unknown; error: unknown };
 type Write = { table: string; op: string; payload: unknown; filters: unknown[][] };
@@ -165,55 +165,35 @@ describe('reads that changed nothing keep the stored data', () => {
     expect(useAppStore.getState().flexTemplates[0].label).toBe('Arms day');
   });
 
-  it('calculateWeeklyVolume replaces only the slices that changed', async () => {
-    const landmarks: VolumeLandmark[] = [
-      { id: 'lm-chest', user_id: 'user-1', muscle_group: 'chest', mv: 4, mev: 8, mav_low: 12, mav_high: 16, mrv: 20 },
-    ];
+  it('calculateWeeklyVolume replaces the week only when it changed', async () => {
     const week = [{ id: 'w-1', sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: 'triceps' } }] }];
     answer('workouts', week);
-    answer('volume_landmarks', landmarks);
     await useAppStore.getState().calculateWeeklyVolume();
-    const { weeklyVolume, volumeLandmarks } = useAppStore.getState();
-    expect(weeklyVolume.map((entry) => [entry.muscle_group, entry.weekly_sets])).toEqual([['chest', 1], ['triceps', 0.5]]);
+    const { weeklyVolume } = useAppStore.getState();
+    expect(weeklyVolume).toEqual([{ muscle_group: 'chest', weekly_sets: 1 }, { muscle_group: 'triceps', weekly_sets: 0.5 }]);
 
-    // Same week, same landmarks: nothing is replaced.
+    // Same week: nothing is replaced.
     answer('workouts', clone(week));
-    answer('volume_landmarks', clone(landmarks));
     await useAppStore.getState().calculateWeeklyVolume();
     expect(useAppStore.getState().weeklyVolume).toBe(weeklyVolume);
-    expect(useAppStore.getState().volumeLandmarks).toBe(volumeLandmarks);
 
-    // Another set logged: the volume changes, the landmarks stay put.
+    // Another set logged: the week changes.
     answer('workouts', [...clone(week), { id: 'w-2', sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }]);
-    answer('volume_landmarks', clone(landmarks));
     await useAppStore.getState().calculateWeeklyVolume();
     expect(useAppStore.getState().weeklyVolume).not.toBe(weeklyVolume);
     expect(useAppStore.getState().weeklyVolume[0].weekly_sets).toBe(2);
-    expect(useAppStore.getState().volumeLandmarks).toBe(volumeLandmarks);
-
-    // A landmark edit regrades the week and replaces both.
-    const raised = [{ ...landmarks[0], mv: 1, mev: 2, mav_low: 3, mav_high: 4, mrv: 5 }];
-    const graded = useAppStore.getState().weeklyVolume;
-    answer('workouts', [...clone(week), { id: 'w-2', sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }]);
-    answer('volume_landmarks', raised);
-    await useAppStore.getState().calculateWeeklyVolume();
-    expect(useAppStore.getState().volumeLandmarks).toBe(raised);
-    expect(useAppStore.getState().weeklyVolume).not.toBe(graded);
-    expect(useAppStore.getState().weeklyVolume[0].landmark).toBe(raised[0]);
   });
 
   it('calculateWeeklyVolume always lands its first read, even an empty week', async () => {
     resetAppData();
     const unread = useAppStore.getState().weeklyVolume;
     answer('workouts', []);
-    answer('volume_landmarks', []);
     await useAppStore.getState().calculateWeeklyVolume();
     // Progress tells "nothing trained yet" from "not read yet" by this.
     const read = useAppStore.getState().weeklyVolume;
     expect(read).not.toBe(unread);
 
     answer('workouts', []);
-    answer('volume_landmarks', []);
     await useAppStore.getState().calculateWeeklyVolume();
     expect(useAppStore.getState().weeklyVolume).toBe(read);
   });

@@ -4,7 +4,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuthStore } from '@/stores/authStore';
-import { AuthField, MIN_PASSWORD_LENGTH, SHORT_PASSWORD_MESSAGE, TextLink } from '~/components/AuthForm';
+import { AuthField, MIN_NEW_PASSWORD_LENGTH, SHORT_NEW_PASSWORD_MESSAGE, TextLink } from '~/components/AuthForm';
 import { BlancText } from '~/components/BlancText';
 import { BrandMark, EMBLEM_MARK_SIZE } from '~/components/BrandMark';
 import { Capsule } from '~/components/Capsule';
@@ -28,13 +28,13 @@ export default function NewPassword() {
   const [error, setError] = useState<string | null>(null);
   useAnnounce(error);
 
-  const canSave = password.length >= MIN_PASSWORD_LENGTH && !saving;
+  const canSave = password.length >= MIN_NEW_PASSWORD_LENGTH && !saving;
 
   const save = async () => {
     if (saving) return;
-    if (password.length < MIN_PASSWORD_LENGTH) {
+    if (password.length < MIN_NEW_PASSWORD_LENGTH) {
       haptics.error();
-      setError(SHORT_PASSWORD_MESSAGE);
+      setError(SHORT_NEW_PASSWORD_MESSAGE);
       return;
     }
     Keyboard.dismiss();
@@ -89,7 +89,7 @@ export default function NewPassword() {
         <AuthField
           value={password}
           onChangeText={(next) => {
-            if (error === SHORT_PASSWORD_MESSAGE && next.length >= MIN_PASSWORD_LENGTH) setError(null);
+            if (error === SHORT_NEW_PASSWORD_MESSAGE && next.length >= MIN_NEW_PASSWORD_LENGTH) setError(null);
             setPassword(next);
           }}
           placeholder="New password"
@@ -98,7 +98,7 @@ export default function NewPassword() {
           secureTextEntry
           textContentType="newPassword"
           autoComplete="new-password"
-          passwordRules={`minlength: ${MIN_PASSWORD_LENGTH};`}
+          passwordRules={`minlength: ${MIN_NEW_PASSWORD_LENGTH};`}
           enablesReturnKeyAutomatically
           returnKeyType="done"
           onSubmitEditing={() => void save()}

@@ -28,6 +28,9 @@ import {
   templateExerciseCount,
   type ProgramQuestion,
 } from '@/lib/programQuestions';
+import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
+import { programVolumeLine } from '@/lib/muscleProgress';
+import { formatSetCount, lowMainMuscles, programVolume } from '@/lib/muscleVolume';
 import { plural } from '@/lib/programSummary';
 import { dayLabel, daySummary, splitToDraft, type DraftDay } from '@/lib/splitDraft';
 import { blankSplitDraft } from '@/lib/splitDraftSeed';
@@ -35,6 +38,8 @@ import { NEW_SPLIT_DRAFT_ID, clearSplitDraft, readSplitDraft } from '@/lib/split
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
+import { volumeSuggestions, type VolumeSuggestion } from '@/lib/volumeSuggestions';
+import type { Exercise } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { FormNote } from '~/components/Form';
@@ -295,6 +300,17 @@ function Editor({ notice }: { notice: string | null }) {
   const isNew = Boolean(draft?._isNew);
   // The Undo bar belongs to the screen on top; a day pushed over this one shows its own.
   const focused = useIsFocused();
+  // The library, for suggestions that add a movement; raising one the program has needs none.
+  const [library, setLibrary] = useState<Exercise[]>(() => peekExerciseLibrary() ?? []);
+  useEffect(() => {
+    let live = true;
+    getExerciseLibrary().then((rows) => {
+      if (live) setLibrary(rows);
+    }, () => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const save = () => {
     Keyboard.dismiss();
@@ -436,9 +452,63 @@ function Editor({ notice }: { notice: string | null }) {
             </Animated.View>
           </Label>
         </Section>
+
+        <WeeklySets draft={draft} library={library} />
       </ScrollView>
       <UndoBar label={focused ? (undo?.label ?? null) : null} onUndo={() => store().undoRemoval()} />
     </>
+  );
+}
+
+/**
+ * Sets per week: at most two one-tap fixes for a main muscle the program
+ * leaves low, then the full list. A fix is a draft change like any other, so
+ * Cancel and the unsaved-changes prompt take it back.
+ */
+function WeeklySets({ draft, library }: { draft: NonNullable<ReturnType<typeof useSplitEditStore.getState>['draft']>; library: readonly Exercise[] }) {
+  const suggestions = useMemo(() => volumeSuggestions(draft, library).slice(0, 2), [draft, library]);
+  const low = useMemo(() => lowMainMuscles(programVolume(draft)), [draft]);
+  const open = () => router.push('/program-edit/muscles');
+  return (
+    <Section title="Sets per week">
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
+        {suggestions.map((suggestion, index) => (
+          <Animated.View key={`${suggestion.muscle}:${suggestion.title}`} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+            {index > 0 ? <Hairline /> : null}
+            <SuggestionRow suggestion={suggestion} />
+          </Animated.View>
+        ))}
+        <Animated.View layout={rowLayout}>
+          {suggestions.length > 0 ? <Hairline /> : null}
+          {/* With a fix showing, the fixes say what is low; with none, the row says how the program stands. */}
+          <Row title="All muscles" detail={suggestions.length ? undefined : programVolumeLine(low.map((row) => row.label))} chevron onPress={open} />
+        </Animated.View>
+      </Label>
+    </Section>
+  );
+}
+
+/** One fix: the muscle and its sets, what the fix does, and Add. */
+function SuggestionRow({ suggestion }: { suggestion: VolumeSuggestion }) {
+  const large = useLargeText();
+  const sets = formatSetCount(suggestion.setsBefore);
+  const title = `${suggestion.label} · ${sets} ${sets === '1' ? 'set' : 'sets'}`;
+  const line = `Low. ${suggestion.title}.`;
+  const add = () => {
+    useSplitEditStore.getState().applyVolumeSuggestion(suggestion);
+    haptics.success();
+    announce(`${suggestion.title}. ${suggestion.label} now ${formatSetCount(suggestion.setsAfter)} sets a week.`);
+  };
+  return (
+    <View style={{ flexDirection: large ? 'column' : 'row', alignItems: large ? 'flex-start' : 'center', gap: large ? 10 : 12, paddingLeft: 18, paddingRight: 16, paddingVertical: 12 }}>
+      <View accessible accessibilityLabel={speak(`${title}. ${line}`)} style={large ? undefined : { flex: 1 }}>
+        <BlancText variant="body">{title}</BlancText>
+        <BlancText variant="secondary" tone="graphite" style={{ marginTop: 2 }}>
+          {line}
+        </BlancText>
+      </View>
+      <Capsule title="Add" size="small" variant="quiet" accessibilityLabel={suggestion.title} onPress={add} />
+    </View>
   );
 }
 

@@ -24,6 +24,8 @@ import { useCurrentDayKey } from '~/lib/accountData';
 import { formatWhole } from '~/lib/format';
 import { dayKey } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
+import { useEarlyAccess } from '~/lib/earlyAccess';
+import { chooseEffortScale, EFFORT_SCALE_LABELS, useEffortScaleStore, type EffortScale } from '~/lib/setEntry';
 import { figureLayout, rowLayout } from '~/lib/motion';
 import {
   APPEARANCE_LABELS,
@@ -56,6 +58,7 @@ export default function YouScreen() {
   const whoop = useAppStore((state) => state.whoopConnection);
   const health = useHealthStore((state) => state.enabled);
   const analysis = useAnalysisModeStore((state) => state.mode);
+  const early = useEarlyAccess();
   const { refreshing, refresh } = usePullRefresh(loadYou);
 
   useEffect(() => {
@@ -114,7 +117,7 @@ export default function YouScreen() {
                   <Hairline />
                   <Row
                     title="Food analysis"
-                    value={analysis === 'gemini' ? 'Gemini' : 'Your Mac'}
+                    value={early && analysis === 'worker' ? 'Your Mac' : 'Gemini'}
                     chevron
                     onPress={() => router.push('/you/analysis')}
                   />
@@ -131,6 +134,8 @@ export default function YouScreen() {
               <Row title="Connections" value={connections} chevron onPress={() => router.push('/you/connections')} />
               <Hairline />
               <AppearanceRow />
+              <Hairline />
+              <EffortRow />
               <Hairline />
               <Row title="About" chevron onPress={() => router.push('/you/about')} />
             </Label>
@@ -260,17 +265,35 @@ function WeightCard() {
 }
 
 const APPEARANCE_CHOICES: AppearanceChoice[] = ['system', 'light', 'dark'];
+const EFFORT_SCALES: EffortScale[] = ['rir', 'rpe'];
+
+/** Automatic, Light or Dark. */
+function AppearanceRow() {
+  const choice = useAppearanceStore((state) => state.choice);
+  return <MenuRow title="Appearance" choice={choice} options={APPEARANCE_CHOICES} labels={APPEARANCE_LABELS} onChoose={chooseAppearance} />;
+}
+
+/** How a set is rated: reps in reserve (the default) or RPE. */
+function EffortRow() {
+  const scale = useEffortScaleStore((state) => state.scale);
+  return <MenuRow title="Rate sets by" choice={scale} options={EFFORT_SCALES} labels={EFFORT_SCALE_LABELS} onChoose={chooseEffortScale} />;
+}
 
 /**
- * Automatic, Light or Dark, in iOS's own menu. A menu picker draws its value
- * at body size, so the menu has its own label: the value as the other rows'
- * values and the ⌃⌄ on their chevrons' column.
+ * A choice in iOS's own menu. A menu picker draws its value at body size, so
+ * the menu has its own label: the value as the other rows' values and the ⌃⌄
+ * on their chevrons' column.
  */
-function AppearanceRow() {
+function MenuRow<T extends string>({ title, choice, options, labels, onChoose }: {
+  title: string;
+  choice: T;
+  options: T[];
+  labels: Record<T, string>;
+  onChoose: (option: T) => void;
+}) {
   const c = useBlanc();
   const large = useLargeText();
   const { fontScale } = useWindowDimensions();
-  const choice = useAppearanceStore((state) => state.choice);
   return (
     // At the accessibility text sizes the menu sits under its label.
     <View
@@ -281,27 +304,27 @@ function AppearanceRow() {
       }>
       {/* The menu says its own name to VoiceOver, with the choice as its value: one stop, "Appearance, Automatic". */}
       <BlancText variant="body" style={large ? undefined : { flex: 1 }} accessibilityElementsHidden importantForAccessibility="no">
-        Appearance
+        {title}
       </BlancText>
       <Host ignoreSafeArea="all" matchContents>
         <Menu
           label={
             <HStack spacing={10}>
-              <SwiftText modifiers={[font({ size: 15 * fontScale }), foregroundStyle(c.graphite)]}>{APPEARANCE_LABELS[choice]}</SwiftText>
+              <SwiftText modifiers={[font({ size: 15 * fontScale }), foregroundStyle(c.graphite)]}>{labels[choice]}</SwiftText>
               <Image systemName="chevron.up.chevron.down" color={c.upcoming} modifiers={[font({ size: 13, weight: 'semibold' }), accessibilityHidden(true)]} />
             </HStack>
           }
-          modifiers={[accessibilityLabel('Appearance'), accessibilityValue(APPEARANCE_LABELS[choice])]}>
+          modifiers={[accessibilityLabel(title), accessibilityValue(labels[choice])]}>
           {/* Checked items whose state comes from the store, as iOS draws a menu picker's. */}
-          {APPEARANCE_CHOICES.map((option) => (
+          {options.map((option) => (
             <Toggle
               key={option}
-              label={APPEARANCE_LABELS[option]}
+              label={labels[option]}
               isOn={option === choice}
               onIsOnChange={(on) => {
                 if (!on || option === choice) return;
                 haptics.select();
-                chooseAppearance(option);
+                onChoose(option);
               }}
             />
           ))}
