@@ -98,14 +98,13 @@ what one movement can take toward it:
 
 ## The program builder
 
-The guided builder (`src/lib/programFill.ts`) first brings every main muscle
-to the floor inside the session's set cap, taking sets from muscles with the
-most to spare when a day is full. Then, where sessions still have room, it
-takes main muscles toward about 10 sets a week, the one with the fewest
-first. This second pass never takes a set from another muscle, never passes
-the cap, and only adds a movement to a day that already trains that half of
-the body. A beginner's plan skips it: it starts low on purpose (about 6 sets
-a week at most) and the person adds from there.
+The guided builder (`src/lib/programFill.ts`) brings every main muscle to the
+floor inside the session's set cap, taking sets from muscles with the most to
+spare when a day is full. Its suggestions stop at the floor so room goes round
+every muscle, and it does not add to a plan that is already solid. How far
+past the floor a plan goes is decided where the plan is designed, not in the
+fill: a flat aim added afterwards would undo choices the design makes muscle
+by muscle.
 
 ## Muscle tags
 

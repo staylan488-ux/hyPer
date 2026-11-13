@@ -73,23 +73,14 @@ describe('suggestions', () => {
     });
   });
 
-  it('speaks up only under the floor: a muscle at 4 or more gets nothing unless asked', () => {
+  it('speaks up only under the floor: a muscle at 4 or more gets nothing', () => {
     const program = draft([{ name: 'Upper', moves: [['Lateral Raise', 4]] }]);
     expect(volumeSuggestions(program, library).some((entry) => entry.muscle === 'side_delts')).toBe(false);
-    // The builder asks, to fill toward the aim.
-    const asked = volumeSuggestions(program, library, { under: 10 }).find((entry) => entry.muscle === 'side_delts');
-    expect(asked).toMatchObject({ kind: 'raise', fromSets: 4, toSets: 5 });
   });
 
   it('stops at the aim it is given', () => {
     const [first] = volumeSuggestions(PUSH_PULL, library, { aim: 4 });
     expect(first).toMatchObject({ fromSets: 2, toSets: 4, title: 'Add 2 sets to Cable Lateral Raise on Push A' });
-  });
-
-  it('past the floor, a new movement joins only a day that already trains that half of the body', () => {
-    const program = draft([{ name: 'Legs', moves: [['Leg Press', 4], ['Lying Leg Curl', 4], ['Hip Thrust', 4]] }]);
-    expect(volumeSuggestions(program, library).some((entry) => entry.muscle === 'chest')).toBe(true);
-    expect(volumeSuggestions(program, library, { under: 10, ownRegionOnly: true }).some((entry) => entry.muscle === 'chest')).toBe(false);
   });
 
   it('says "a set" for one', () => {

@@ -146,10 +146,8 @@ describe('the seven templates', () => {
       const filled = fillByMuscle(draft, library, { focus, equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' });
       expect(thinMuscles(filled), template.name).toEqual([]);
       expect(Math.max(...filled.days.map(daySets)), template.name).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
-      // A template already solid everywhere and inside the cap gives nothing up: sets only go toward the aim.
-      if (!thinMuscles(draft).length && Math.max(...draft.days.map(daySets)) <= SESSION_SET_CAPS.moderate) {
-        for (const muscle of MAIN_MUSCLES) expect(sets(filled, muscle), `${template.name} ${muscle}`).toBeGreaterThanOrEqual(sets(draft, muscle));
-      }
+      // A template already solid everywhere and inside the cap is left as it is.
+      if (!thinMuscles(draft).length && Math.max(...draft.days.map(daySets)) <= SESSION_SET_CAPS.moderate) expect(filled).toBe(draft);
     }
     // As compiled, 4 of the 7 leave a main muscle low.
     expect(before.length).toBeGreaterThan(0);
@@ -180,40 +178,6 @@ describe('names the builder can emit', () => {
     );
     expect(draft.days[0].exercises).toEqual([]);
     expect(missing).toEqual(['Lunge']);
-  });
-});
-
-describe('the fill past the floor', () => {
-  const lower: [string, Array<[string, number]>] = ['Lower', [['Leg Press', 4], ['Lying Leg Curl', 4], ['Hip Thrust', 4]]];
-  const upper: [string, Array<[string, number]>] = ['Upper', [['Flat Dumbbell Bench Press', 4], ['Seated Cable Row', 4], ['Lateral Raise', 3], ['Tricep Pushdown', 3], ['Dumbbell Curl', 3]]];
-  const rows = (plan: DraftSplit) => plan.days.map((day) => day.exercises.map((exercise) => `${exercise.exercise.name} ${plannedMovementSets(exercise)}`));
-  const fill = (experience: ProgramDesignAnswers['experience'], sessionLength: ProgramDesignAnswers['sessionLength'] = 'moderate') =>
-    fillByMuscle(draftOf([upper, lower]), library, { focus: 'no_focus', equipment: 'full_gym', sessionLength, experience });
-
-  it('takes main muscles toward about 10 sets a week while sessions have room, never past the cap', () => {
-    const before = draftOf([upper, lower]);
-    const filled = fill('intermediate');
-    for (const day of filled.days) expect(daySets(day)).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
-    for (const muscle of MAIN_MUSCLES) expect(sets(filled, muscle), muscle).toBeGreaterThanOrEqual(sets(before, muscle));
-    // The lower day had 12 of 18 sets: its muscles take the room.
-    expect(sets(filled, 'quads') + sets(filled, 'hamstrings') + sets(filled, 'glutes')).toBeGreaterThan(sets(before, 'quads') + sets(before, 'hamstrings') + sets(before, 'glutes'));
-    expect(daySets(filled.days[1])).toBeGreaterThan(12);
-  });
-
-  it('keeps upper-body work off a lower day, and the other way round', () => {
-    const filled = fill('intermediate', 'long');
-    const regionOf = (name: string) => (['quads', 'hamstrings', 'glutes', 'calves'].includes(lib(name).muscle_group) ? 'lower' : 'upper');
-    expect(filled.days[0].exercises.every((exercise) => regionOf(exercise.exercise.name) === 'upper')).toBe(true);
-    expect(filled.days[1].exercises.every((exercise) => regionOf(exercise.exercise.name) === 'lower')).toBe(true);
-  });
-
-  it("leaves a beginner's plan where it starts", () => {
-    // Side delts sit under the floor, so they still get their fix; nothing else moves.
-    const before = draftOf([upper, lower]);
-    const filled = fill('beginner');
-    expect(rows(filled)[1]).toEqual(rows(before)[1]);
-    expect(sets(filled, 'side_delts')).toBe(4);
-    for (const muscle of MAIN_MUSCLES.filter((entry) => entry !== 'side_delts')) expect(sets(filled, muscle), muscle).toBe(sets(before, muscle));
   });
 });
 

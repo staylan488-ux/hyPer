@@ -182,16 +182,11 @@ export function volumeRows(sets: MuscleSets): MuscleVolumeRow[] {
     .sort((a, b) => b.sets - a.sets || order(a.muscle) - order(b.muscle) || a.label.localeCompare(b.label));
 }
 
-/** Main muscles under `under` sets a week, fewest sets first. */
-export function mainMusclesUnder(sets: MuscleSets, under: number): MuscleVolumeRow[] {
-  return volumeRows(sets)
-    .filter((row) => row.main && row.sets < under)
-    .sort((a, b) => a.sets - b.sets || MAIN_MUSCLES.indexOf(a.muscle as MainMuscle) - MAIN_MUSCLES.indexOf(b.muscle as MainMuscle));
-}
-
 /** Main muscles in the low band, fewest sets first. */
 export function lowMainMuscles(sets: MuscleSets): MuscleVolumeRow[] {
-  return mainMusclesUnder(sets, VOLUME_BAND_EDGES.solidFrom);
+  return volumeRows(sets)
+    .filter((row) => row.main && row.band === 'low')
+    .sort((a, b) => a.sets - b.sets || MAIN_MUSCLES.indexOf(a.muscle as MainMuscle) - MAIN_MUSCLES.indexOf(b.muscle as MainMuscle));
 }
 
 // ── Finished sessions ───────────────────────────────────────────────

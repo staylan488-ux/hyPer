@@ -12,7 +12,7 @@ import {
   VOLUME_AIM,
   VOLUME_BAND_EDGES,
   dayVolume,
-  mainMusclesUnder,
+  lowMainMuscles,
   muscleLabel,
   plannedMovementSets,
   programVolume,
@@ -77,18 +77,10 @@ export interface VolumeSuggestionOptions {
    */
   maxDaySets?: number;
   /**
-   * Main muscles under this many sets a week get a suggestion. Left out, only
-   * the low band does (under 4); the builder passes its aim to fill past it.
+   * The sets a week a suggestion works toward. Left out, about 10. The
+   * program builder passes the floor, so room goes round its muscles.
    */
-  under?: number;
-  /** The sets a week a suggestion works toward. Left out, about 10. */
   aim?: number;
-  /**
-   * A new movement goes only on a day that already trains that half of the
-   * body. Left out, a program with no such day with room takes it on any day:
-   * right for a muscle under its floor, too much for one already solid.
-   */
-  ownRegionOnly?: boolean;
 }
 
 /** Sets a day can still take under the options' limit. */
@@ -176,7 +168,7 @@ function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: numbe
     const area = region(primaryOf(exercise));
     return area === 'any' || area === region(muscle);
   }));
-  const pool = (suits.length || options.ownRegionOnly ? suits : days).sort((a, b) => a.total - b.total || a.index - b.index);
+  const pool = (suits.length ? suits : days).sort((a, b) => a.total - b.total || a.index - b.index);
 
   for (const exercise of candidates) {
     const target = pool.find(({ day }) => !day.exercises.some((entry) => entry.exercise_id === exercise.id));
@@ -209,9 +201,8 @@ function addFor(draft: DraftSplit, muscle: MainMuscle, have: number, need: numbe
  */
 export function volumeSuggestions(draft: DraftSplit, library: readonly Exercise[], options: VolumeSuggestionOptions = {}): VolumeSuggestion[] {
   const sets = programVolume(draft);
-  const under = options.under ?? VOLUME_BAND_EDGES.solidFrom;
-  const aim = Math.max(under, options.aim ?? VOLUME_AIM);
-  return mainMusclesUnder(sets, under).flatMap((row) => {
+  const aim = Math.max(VOLUME_BAND_EDGES.solidFrom, options.aim ?? VOLUME_AIM);
+  return lowMainMuscles(sets).flatMap((row) => {
     const muscle = row.muscle as MainMuscle;
     const need = Math.max(1, Math.ceil(aim - row.sets));
     return raiseFor(draft, muscle, row.sets, need, options) ?? addFor(draft, muscle, row.sets, need, library, options) ?? [];

@@ -1,16 +1,14 @@
 /**
  * The guided builder's last steps, after the template is chosen and shaped:
  * keep the person's own movements when they already have a program, then
- * fill by muscle inside a cap on sets per session: first every main muscle to
- * at least solid (the floor), then, while sessions have room, toward the aim
- * of about 10 sets a week.
+ * fill by muscle until every main muscle is at least solid, inside a cap on
+ * sets per session.
  *
  * Counting, bands and suggestions all come from the weekly-sets rules
  * (muscleVolume, volumeSuggestions); nothing here grades sets on its own.
  */
 import {
   MAIN_MUSCLES,
-  VOLUME_AIM,
   VOLUME_BAND_EDGES,
   isMainMuscle,
   lowMainMuscles,
@@ -52,16 +50,6 @@ export const SESSION_MINUTES: Readonly<Record<SessionLength, number>> = {
  * number of sets, and no screen holds them to it.
  */
 export const BEGINNER_STARTING_SETS = 6;
-
-/**
- * The sets a week the builder works each main muscle toward once every one
- * has its floor and sessions still have room: about 10 (VOLUME_AIM). A
- * beginner's plan stops at the floor: it starts low on purpose
- * (BEGINNER_STARTING_SETS) and the person adds from there.
- */
-export function builderAim(experience: ExperienceLevel): number {
-  return experience === 'beginner' ? VOLUME_BAND_EDGES.solidFrom : VOLUME_AIM;
-}
 
 /** Weekly sets a muscle keeps when sets are taken away for room: solid for a main muscle, 2 for the rest. */
 function floorOf(muscle: string): number {
@@ -212,15 +200,18 @@ export function trimToStartingSets(draft: DraftSplit, startingSets: number): Dra
 
 // ── Filling ─────────────────────────────────────────────────────────
 
-/** The floor fill's suggestions: only for a muscle in the low band, and only up to solid, so room goes round. */
-const TO_FLOOR = { under: VOLUME_BAND_EDGES.solidFrom, aim: VOLUME_BAND_EDGES.solidFrom } as const;
+/**
+ * The builder's suggestions stop at solid, so room goes round: the editor's
+ * own suggestions aim higher (about 10), and here that would let the first
+ * muscle take what the next one needs.
+ */
+const TO_FLOOR = { aim: VOLUME_BAND_EDGES.solidFrom } as const;
 
-/** Applies the weekly-sets suggestions for muscles under `aim` inside the cap, favoured muscles first, until none fit. */
-function applySuggestions(draft: DraftSplit, library: readonly Exercise[], cap: number, focus: ProgramFocus, aim: number = VOLUME_BAND_EDGES.solidFrom): DraftSplit {
+/** Applies the weekly-sets suggestions inside the cap, favoured muscles first, until none fit. */
+function applySuggestions(draft: DraftSplit, library: readonly Exercise[], cap: number, focus: ProgramFocus): DraftSplit {
   let current = draft;
-  for (let step = 0; step < MAIN_MUSCLES.length * aim * 2; step += 1) {
-    // Past the floor, a new movement only joins a day that already trains that half of the body.
-    const suggestions = volumeSuggestions(current, library, { maxDaySets: cap, under: aim, aim, ownRegionOnly: aim > VOLUME_BAND_EDGES.solidFrom });
+  for (let step = 0; step < MAIN_MUSCLES.length * VOLUME_BAND_EDGES.solidFrom * 2; step += 1) {
+    const suggestions = volumeSuggestions(current, library, { maxDaySets: cap, ...TO_FLOOR });
     const first = [...suggestions].sort((a, b) => Number(outsideFocus(a.muscle, focus)) - Number(outsideFocus(b.muscle, focus)))[0];
     if (!first) break;
     const next = applyVolumeSuggestion(current, first);
@@ -327,10 +318,6 @@ export function fitToLibrary(draft: DraftSplit, library: readonly Exercise[], eq
  * a beginner's main muscles come back to the low edge of solid. When the days
  * cannot hold everything, the Emphasis answer decides who gets the room, and
  * what stays low is left for `thinMuscles` to name.
- *
- * Then, with every floor met or out of reach, sessions that still have room
- * take sets toward the aim (`builderAim`), the muscle with the fewest first.
- * Nothing is taken from another muscle for it, and no session passes its cap.
  */
 export function fillByMuscle(draft: DraftSplit, library: readonly Exercise[], answers: FillAnswers): DraftSplit {
   const cap = SESSION_SET_CAPS[answers.sessionLength];
@@ -353,7 +340,6 @@ export function fillByMuscle(draft: DraftSplit, library: readonly Exercise[], an
     if (!next) break;
     current = next;
   }
-  current = applySuggestions(current, offered, cap, answers.focus, builderAim(answers.experience));
   return keepFixedSets(draft, current);
 }
 
