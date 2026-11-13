@@ -1,10 +1,11 @@
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, TextInput, View, type ViewStyle } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import { formatMeasurementAmount } from '@/lib/foodUnits';
+import { prepareGenericFoods, searchGenericFoods } from '@/lib/genericFoods';
 import { createMealIngredient, decodeMealComposition } from '@/lib/mealComposition';
 import { servingLabel } from '@/lib/nutritionLedger';
 import { createPendingEntryId } from '@/lib/pendingEntryId';
@@ -36,6 +37,8 @@ const QUICK_ADD_UNCONFIRMED = "Couldn't confirm. Tap + to try again.";
 
 /** How many USDA searches and portions this session keeps. */
 const USDA_CACHE_LIMIT = 50;
+/** How many foods a search lists before Show more. */
+const SEARCH_FIRST = 8;
 /** USDA results by the exact query sent, so typing back to a query needs no new lookup. */
 const usdaResults = new Map<string, Food[]>();
 /** A result with its household portion, by fdc_id, with the result it was read for. */
@@ -628,6 +631,17 @@ export function SearchTab({ query }: { query: string }) {
   const [opening, setOpening] = useState<string | null>(null);
   const { added, add: quickAdd, takeOut: quickTakeOut, enabled } = useQuickAdd();
   const trimmed = query.trim();
+  // The app's own list of USDA's generic foods answers as each letter is typed,
+  // the plain food first and each with its everyday serving (@/lib/genericFoods).
+  // USDA's live search, below, is asked only for words the list has nothing for.
+  const local = useMemo(() => searchGenericFoods(trimmed), [trimmed]);
+  const listed = local.length > 0;
+  // Reading the list takes a moment, once: on the first letter, before the second starts a search.
+  useEffect(() => {
+    if (trimmed.length === 1) prepareGenericFoods();
+  }, [trimmed]);
+  // The first few show, and the rest once Show more is pressed for these words.
+  const [more, setMore] = useState<string | null>(null);
   // A result's portion read claims the sheet until the review opens, so Snap a
   // meal can't hide that review behind the camera. Closing meanwhile loses
   // nothing, so it is not held (beginRead, not beginBusy).
@@ -639,7 +653,9 @@ export function SearchTab({ query }: { query: string }) {
   // Only an answer to the words in the field shows. Once they change, the
   // last words' results give way to the spinner, so no row on screen (or its +)
   // belongs to other words.
-  const answer = trimmed.length >= 2 && found?.query === trimmed ? found : null;
+  const answer: typeof found = listed
+    ? { query: trimmed, foods: more === trimmed ? local : local.slice(0, SEARCH_FIRST) }
+    : trimmed.length >= 2 && found?.query === trimmed ? found : null;
   const results = answer?.foods ?? null;
   const failed = answer !== null && answer.foods === null;
   const searching = trimmed.length >= 2 && answer === null;
@@ -655,7 +671,7 @@ export function SearchTab({ query }: { query: string }) {
   );
 
   useEffect(() => {
-    if (trimmed.length < 2) return;
+    if (trimmed.length < 2 || listed) return;
     let current = true;
     const timer = setTimeout(() => {
       searchUsda(trimmed)
@@ -670,7 +686,7 @@ export function SearchTab({ query }: { query: string }) {
       current = false;
       clearTimeout(timer);
     };
-  }, [trimmed, attempt]);
+  }, [trimmed, attempt, listed]);
 
   // Your own saved meals that match come first, found as you type; USDA's follow.
   const saved = trimmed.length >= 2 ? filterSavedMeals(logger.savedMeals ?? [], trimmed) : [];
@@ -681,6 +697,11 @@ export function SearchTab({ query }: { query: string }) {
 
   const open = async (food: Food) => {
     if (opening) return;
+    // A food from the app's list carries its serving already: nothing to read first.
+    if (listed) {
+      logger.chooseFood(food);
+      return;
+    }
     setOpening(food.fdc_id || food.id);
     // without its portion, the food opens as listed
     logger.chooseFood(await usdaWithPortion(food).catch(() => food));
@@ -739,6 +760,9 @@ export function SearchTab({ query }: { query: string }) {
             );
           })}
         </Label>
+      ) : null}
+      {listed && more !== trimmed && local.length > SEARCH_FIRST ? (
+        <Capsule title="Show more" variant="quiet" onPress={() => setMore(trimmed)} style={{ alignSelf: 'center', marginTop: 14 }} />
       ) : null}
       {searching ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
       {trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}

@@ -34,7 +34,10 @@ const pressables: Press[] = [];
 let detail = deferred<Food>();
 /** USDA's answer for the words sent; milk for any words unless a case says otherwise. */
 let usda: (query: string) => Promise<Food[]> = async () => [milk];
+/** The app's own food list's answer; nothing unless a case says otherwise, so USDA is asked. */
+let listed: (query: string) => Food[] = () => [];
 let retry: (() => void) | undefined;
+let showMore: (() => void) | undefined;
 const release = vi.fn();
 const beginRead = vi.fn(() => release);
 const beginBusy = vi.fn(() => release);
@@ -64,6 +67,7 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: strin
   'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
   '@/lib/foodPersistence': { ensureFoodRow: vi.fn() },
   '@/lib/foodUnits': { foodMacroLine: () => '', formatMeasurementAmount: String },
+  '@/lib/genericFoods': { prepareGenericFoods: () => {}, searchGenericFoods: (query: string) => listed(query) },
   '@/lib/mealComposition': { createMealIngredient: noop, decodeMealComposition: () => null },
   '@/lib/nutritionLedger': { servingLabel: () => '' },
   '@/lib/pendingEntryId': { createPendingEntryId: noop },
@@ -76,7 +80,11 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: strin
   '@/lib/usdaClient': { searchUsdaFoodsSecureStrict: (query: string) => usda(query), withUsdaPortion: () => detail.promise },
   '~/components/BlancText': { BlancText: ({ children }: PropsWithChildren) => createElement('span', null, children) },
   // Retry, kept so a case can press it
-  '~/components/Capsule': { Capsule: (props: { title: string; onPress: () => void }) => { if (props.title === 'Retry') retry = props.onPress; return null; } },
+  '~/components/Capsule': { Capsule: (props: { title: string; onPress: () => void }) => {
+    if (props.title === 'Retry') retry = props.onPress;
+    if (props.title === 'Show more') showMore = props.onPress;
+    return null;
+  } },
   '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => null, showActionSheet: noop },
   '~/components/Label': { Label: Wrap },
   '~/components/Row': { Hairline: Empty },
@@ -102,7 +110,9 @@ beforeEach(() => {
   pressables.length = 0;
   detail = deferred();
   usda = async () => [milk];
+  listed = () => [];
   retry = undefined;
+  showMore = undefined;
   release.mockClear();
   chooseFood.mockClear();
   root = createRoot(document.createElement('div'));
@@ -187,6 +197,80 @@ describe('Search: one field for saved meals and USDA', () => {
     expect(host.textContent).toContain(milk.name);
     expect(host.textContent).not.toContain('Saved');
     expect(host.textContent).not.toContain('Foods');
+  });
+});
+
+describe("Search: the app's own food list answers first", () => {
+  /** Foods as the list hands them over: named for the words typed, each with its serving. */
+  const listFor = (count: number) => (query: string): Food[] =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `list-${serial}-${index}`, user_id: null, name: `${query} food ${index + 1}`, calories: 100, protein: 5, carbs: 10, fat: 2,
+      serving_size: 126, serving_unit: 'g', serving_label: '1 banana', source: 'usda', fdc_id: `${9000 + serial * 100 + index}`,
+    }));
+
+  it('shows its foods at once, without asking USDA', async () => {
+    const asked = vi.fn(async () => [milk]);
+    usda = asked;
+    listed = listFor(3);
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(SearchTab, { query: 'banana' })); });
+    // no pause after typing, and no spinner
+    expect(host.textContent).toContain('banana food 1');
+    expect(host.textContent).toContain('banana food 3');
+    expect(host.querySelector('progress')).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(asked).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain(milk.name);
+  });
+
+  it('opens a listed food as it stands, with no portion to read first', async () => {
+    listed = listFor(2);
+    await act(async () => { root.render(createElement(SearchTab, { query: 'banana' })); });
+    const row = [...pressables].reverse().find((props) => props.accessibilityLabel?.startsWith('banana food 2, '));
+    expect(row).toBeDefined();
+    await act(async () => { row!.onPress!(); });
+    expect(chooseFood).toHaveBeenCalledOnce();
+    expect(chooseFood.mock.calls[0][0]).toMatchObject({ name: 'banana food 2', serving_label: '1 banana' });
+    // nothing was read, so the sheet was never claimed
+    expect(beginRead).not.toHaveBeenCalled();
+  });
+
+  it('lists the first eight, and the rest once Show more is pressed', async () => {
+    listed = listFor(12);
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(SearchTab, { query: 'banana' })); });
+    expect(host.textContent).toContain('banana food 8');
+    expect(host.textContent).not.toContain('banana food 9');
+    expect(showMore).toBeDefined();
+    await act(async () => { showMore!(); });
+    expect(host.textContent).toContain('banana food 12');
+    // new words start from the first eight again
+    await act(async () => { root.render(createElement(SearchTab, { query: 'bananas' })); });
+    expect(host.textContent).toContain('bananas food 8');
+    expect(host.textContent).not.toContain('bananas food 9');
+  });
+
+  it('offers no Show more for a short list', async () => {
+    listed = listFor(8);
+    await act(async () => { root.render(createElement(SearchTab, { query: 'banana' })); });
+    expect(showMore).toBeUndefined();
+  });
+
+  it('asks USDA only for words the list has nothing for', async () => {
+    const asked = vi.fn(async () => [milk]);
+    usda = asked;
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(SearchTab, { query: milk.name })); });
+    expect(host.querySelector('progress')).not.toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(asked).toHaveBeenCalledWith(milk.name);
+    expect(host.textContent).toContain(milk.name);
   });
 });
 
