@@ -40,7 +40,7 @@ import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, s
 import { restSecondsFor, startRest } from '~/lib/rest';
 import { liveSessionModel, useFocusStore, usePreviousHistory, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
-import { chooseRpe, isBodyweight, parseNumber, weightToLog } from '~/lib/setEntry';
+import { chooseRpe, effortChip, isBodyweight, parseNumber, useEffortScaleStore, weightToLog } from '~/lib/setEntry';
 import { sessionTargets, setTargetFor, targetFigures, targetLine, targetMoment, type SessionTargets } from '~/lib/setTargets';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
 import { useBarWeight } from '~/lib/warmup';
@@ -134,6 +134,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const history = usePreviousHistory(session.workoutId);
   const targets = sessionTargets(session, history);
   const previousNotes = usePreviousNotes(session);
+  const effortScale = useEffortScaleStore((state) => state.scale);
   const logSet = useAppStore((state) => state.logSet);
   const focus = useFocusStore((state) => state.focus);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -859,7 +860,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               }
             />
 
-            {/* RPE is the one value to set beside the figures; Skip is a quiet word at the far side. */}
+            {/* How hard the set was (RIR or RPE) is the one value to set beside the figures; Skip is a quiet word at the far side. */}
             <View
               style={
                 large
@@ -867,12 +868,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                   : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }
               }>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                <Chip
-                  label={draft.rpe ? `RPE ${draft.rpe}` : 'Add RPE'}
-                  accessibilityLabel={draft.rpe ? `RPE ${draft.rpe}. Change` : 'Add RPE'}
-                  haptic={false}
-                  onPress={pickRpe}
-                />
+                <Chip {...effortChip(draft.rpe, effortScale)} haptic={false} onPress={pickRpe} />
                 {helper ? (
                   <Chip
                     label={helper}

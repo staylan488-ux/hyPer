@@ -111,9 +111,11 @@ function liveSession(total = 3) {
 }
 
 const { headingShown } = loadNativeModule<{ headingShown: (scrolled: number, span: unknown) => number }>('lib/barTitle.ts', {});
-const setEntry = loadNativeModule<Record<string, unknown>>('lib/setEntry.ts', {
-  'react-native': { ActionSheetIOS: { showActionSheetWithOptions: vi.fn() } },
+const showActionSheet = vi.fn();
+const setEntry = loadNativeModule<Record<string, unknown> & { useEffortScaleStore: { setState: (state: { scale: 'rir' | 'rpe' }) => void } }>('lib/setEntry.ts', {
+  'react-native': { ActionSheetIOS: { showActionSheetWithOptions: showActionSheet } },
   './haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
+  zustand: { create },
 });
 
 // The real list row, so the Movements list's type is the row's own.
@@ -488,7 +490,7 @@ describe('the set card\'s warm-up and plates', () => {
   it('offers warm-ups before a barbell movement\'s first set, opening them at the weight typed', async () => {
     fresh = true;
     await open();
-    expect(chips()).toEqual(['Add RPE', 'Warm-up', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Warm-up', 'Log set']);
     expect(chip('Warm-up').getAttribute('aria-label')).toBe('Warm-up sets');
     await act(async () => chip('Warm-up').click());
     expect(push).toHaveBeenCalledWith({ pathname: '/warm-up', params: { id: 'row', weight: '80' } });
@@ -498,17 +500,17 @@ describe('the set card\'s warm-up and plates', () => {
     fresh = true;
     previous = { row: { 1: { weight: 80, reps: 8, rpe: 8 }, 2: { weight: 80, reps: 8, rpe: 8.5 }, 3: { weight: 80, reps: 8, rpe: 9 } } };
     await open();
-    expect(chips()[0]).toBe('Add RPE');
+    expect(chips()[0]).toBe('Add RIR');
   });
 
   it('offers the plates on later sets, and nothing at or under the bar', async () => {
     await open();
-    expect(chips()).toEqual(['Add RPE', 'Plates', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Plates', 'Log set']);
     expect(chip('Plates').getAttribute('aria-label')).toBe('Plates for 80 pounds');
     await type('Weight in pounds', '45');
-    expect(chips()).toEqual(['Add RPE', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Log set']);
     await type('Weight in pounds', '');
-    expect(chips()).toEqual(['Add RPE', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Log set']);
   });
 
   it('keeps warm-ups off a first set too light to ramp up to', async () => {
@@ -516,6 +518,6 @@ describe('the set card\'s warm-up and plates', () => {
     await open();
     await type('Weight in pounds', '50');
     // Only 5 lb over the bar: no warm-up, but the plates still help.
-    expect(chips()).toEqual(['Add RPE', 'Plates', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Plates', 'Log set']);
   });
 });
