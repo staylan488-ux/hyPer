@@ -5,6 +5,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { approvalRefusal } from '../_shared/approval.ts';
 import { corsHeaders, jsonResponse } from '../_shared/oauth.ts';
 import { LOOKUP_LIMITED, cachedBarcodeAnswer, type LookupStore, type ProviderAnswer } from './guard.ts';
+import { usdaSearchRequest } from './usda.ts';
 
 type FoodLookupRequest =
   | { action: 'search'; query?: string }
@@ -218,13 +219,12 @@ serve(async (req) => {
   if (!apiKey) return jsonResponse({ error: 'food-lookup is not configured' }, 500);
 
   let url: URL;
+  let init: RequestInit = { headers: { Accept: 'application/json' } };
   if (body.action === 'search') {
     const query = body.query?.trim() ?? '';
     if (query.length < 2 || query.length > 120) return jsonResponse({ error: 'Invalid search query' }, 400);
-    url = new URL('https://api.nal.usda.gov/fdc/v1/foods/search');
-    url.searchParams.set('query', query);
-    url.searchParams.set('pageSize', '10');
-    url.searchParams.set('dataType', 'Foundation,SR Legacy,Survey (FNDDS)');
+    // A POST, not the GET the other lookups use: see usdaSearchRequest.
+    ({ url, init } = usdaSearchRequest(query));
   } else if (body.action === 'barcode') {
     const barcode = normalizeFoodBarcode(body.barcode ?? '');
     if (!barcode) return jsonResponse({ error: 'Invalid barcode' }, 400);
@@ -242,10 +242,7 @@ serve(async (req) => {
 
   url.searchParams.set('api_key', apiKey);
   const fetchUsda = async (): Promise<ProviderAnswer> => {
-    const response = await fetch(url, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-    });
+    const response = await fetch(url, { ...init, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) });
     const payload = await response.json().catch(() => ({ error: 'Invalid USDA response' }));
     if (!response.ok) {
       console.error('USDA lookup failed:', response.status);
