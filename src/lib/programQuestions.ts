@@ -71,6 +71,8 @@ export function templateExerciseCount(template: Pick<SplitTemplate, 'days'>): nu
 const LIBRARY_MAX_AGE_MS = 5 * 60_000;
 export const LIBRARY_LOAD_FAILED = "Couldn't load the exercise library. Check your connection and try again.";
 
+export { keptExerciseCount } from '@/lib/programFill';
+
 export interface GuidedDraft {
   draft: DraftSplit;
   /** Template movements the library lacks, left out. */

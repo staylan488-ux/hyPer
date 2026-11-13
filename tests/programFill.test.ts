@@ -5,7 +5,7 @@ import { normalizeExerciseName } from '@/lib/customExercises';
 import { MAIN_MUSCLES, plannedMovementSets, programVolume, volumeBand, type MainMuscle } from '@/lib/muscleVolume';
 import { designerMovementNames, recommendProgramTemplate, type ProgramDesignAnswers } from '@/lib/programDesigner';
 import {
-  BEGINNER_MUSCLE_CEILING,
+  BEGINNER_STARTING_SETS,
   SESSION_SET_CAPS,
   fillByMuscle,
   fitToLibrary,
@@ -125,9 +125,9 @@ describe('every guided plan', () => {
     // A muscle can sit a little past the edge when its sets also carry another
     // muscle's (a squat's glutes), or a new movement brings 2 or 3 sets at once.
     for (const { answers, draft } of beginner) {
-      for (const muscle of MAIN_MUSCLES) expect(sets(draft, muscle), `${key(answers)} ${muscle}`).toBeLessThanOrEqual(BEGINNER_MUSCLE_CEILING + 2);
+      for (const muscle of MAIN_MUSCLES) expect(sets(draft, muscle), `${key(answers)} ${muscle}`).toBeLessThanOrEqual(BEGINNER_STARTING_SETS + 2);
     }
-    expect(counts.reduce((sum, count) => sum + count, 0) / counts.length).toBeLessThanOrEqual(BEGINNER_MUSCLE_CEILING);
+    expect(counts.reduce((sum, count) => sum + count, 0) / counts.length).toBeLessThanOrEqual(BEGINNER_STARTING_SETS);
     const total = (experience: ProgramDesignAnswers['experience']) => plans
       .filter(({ answers }) => answers.experience === experience)
       .reduce((sum, { draft }) => sum + MAIN_MUSCLES.reduce((inner, muscle) => inner + sets(draft, muscle), 0), 0);

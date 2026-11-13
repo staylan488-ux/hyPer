@@ -21,13 +21,13 @@ import {
   SESSION_QUESTION,
   guidedDraft,
   guidedTemplate,
+  keptExerciseCount,
   loadBuilderLibrary,
   peekBuilderLibrary,
   seedGuidedDraft,
   templateExerciseCount,
   type ProgramQuestion,
 } from '@/lib/programQuestions';
-import { keptExerciseCount } from '@/lib/programFill';
 import { plural } from '@/lib/programSummary';
 import { dayLabel, daySummary, splitToDraft, type DraftDay } from '@/lib/splitDraft';
 import { blankSplitDraft } from '@/lib/splitDraftSeed';

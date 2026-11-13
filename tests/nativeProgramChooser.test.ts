@@ -43,7 +43,6 @@ async function open() {
     '@/lib/splitEditActions': { saveSplitEdit: noop },
     '@/lib/programQuestions': { ...programQuestions, seedGuidedDraft, peekBuilderLibrary: () => null, loadBuilderLibrary: () => new Promise(() => {}) },
     '@/lib/programSummary': programSummary,
-    '@/lib/programFill': { keptExerciseCount: () => 0 },
     '@/lib/splitDraft': { dayLabel: noop, daySummary: noop, splitToDraft: noop },
     '@/lib/splitDraftSeed': { blankSplitDraft: noop },
     '@/lib/splitDraftStorage': { NEW_SPLIT_DRAFT_ID: 'new', clearSplitDraft: noop, readSplitDraft: () => stored },

@@ -5,7 +5,6 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
-import * as programFill from '@/lib/programFill';
 import * as programQuestions from '@/lib/programQuestions';
 import * as programSummary from '@/lib/programSummary';
 import * as setRangeNotes from '@/lib/setRangeNotes';
@@ -90,7 +89,6 @@ function load() {
     'react-native-reanimated': { default: { View: Wrap } },
     '@/lib/splitEditActions': { saveSplitEdit: (...args: unknown[]) => { saveSplitEdit(...args); return Promise.resolve(); } },
     '@/lib/programQuestions': programQuestions,
-    '@/lib/programFill': programFill,
     '@/lib/programSummary': programSummary,
     '@/lib/splitDraft': splitDraft,
     '@/lib/splitDraftSeed': { blankSplitDraft: noop },

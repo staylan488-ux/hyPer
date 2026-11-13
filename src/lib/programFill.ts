@@ -44,10 +44,12 @@ export const SESSION_MINUTES: Readonly<Record<SessionLength, number>> = {
 };
 
 /**
- * A beginner's main muscles are brought back to this many sets a week: the
- * low edge of solid (4 to 10), not the middle.
+ * Where a beginner's guided plan starts each main muscle: about this many
+ * sets a week, the low edge of solid (4 to 10), not the middle. It shapes the
+ * plan the builder hands over and nothing else; the person can add any
+ * number of sets, and no screen holds them to it.
  */
-export const BEGINNER_MUSCLE_CEILING = 6;
+export const BEGINNER_STARTING_SETS = 6;
 
 /** Weekly sets a muscle keeps when sets are taken away for room: solid for a main muscle, 2 for the rest. */
 function floorOf(muscle: string): number {
@@ -164,13 +166,13 @@ export function trimToCap(draft: DraftSplit, cap: number, focus: ProgramFocus): 
   return current;
 }
 
-/** Main muscles above the ceiling lose sets from their own movements, never taking another muscle under its floor. */
-export function trimToCeiling(draft: DraftSplit, ceiling: number): DraftSplit {
+/** Main muscles past the starting count lose sets from their own movements, never taking another muscle under its floor. */
+export function trimToStartingSets(draft: DraftSplit, startingSets: number): DraftSplit {
   let current = draft;
   for (let guard = 0; guard < 200; guard += 1) {
     const sets = programVolume(current);
     const over = MAIN_MUSCLES
-      .filter((muscle) => (sets.get(muscle) ?? 0) > ceiling)
+      .filter((muscle) => (sets.get(muscle) ?? 0) > startingSets)
       .sort((a, b) => (sets.get(b) ?? 0) - (sets.get(a) ?? 0));
     let next: DraftSplit | null = null;
     for (const muscle of over) {
@@ -315,7 +317,7 @@ export function fillByMuscle(draft: DraftSplit, library: readonly Exercise[], an
   const offered = builderLibrary(library, answers.equipment);
 
   let current = trimToCap(draft, cap, answers.focus);
-  if (answers.experience === 'beginner') current = trimToCeiling(current, BEGINNER_MUSCLE_CEILING);
+  if (answers.experience === 'beginner') current = trimToStartingSets(current, BEGINNER_STARTING_SETS);
 
   for (let round = 0; round < 64; round += 1) {
     current = applySuggestions(current, offered, cap, answers.focus);
