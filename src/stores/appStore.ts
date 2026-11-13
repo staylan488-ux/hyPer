@@ -188,7 +188,6 @@ import type {
   Workout,
   WorkoutSet,
   MacroTarget,
-  VolumeLandmark,
   MuscleVolume,
   WorkoutMode,
   WorkoutDayPlan,
@@ -412,7 +411,6 @@ interface AppState {
   /** The latest calorie target change the adaptive loop recorded, or null (none, or no table yet). */
   targetChange: MacroTargetChange | null;
   nutritionProfile: NutritionProfile | null;
-  volumeLandmarks: VolumeLandmark[];
   weeklyVolume: MuscleVolume[];
   /** The account whose splits, live workout and workout mode have each loaded
    * into this store at least once, so a screen can show them while it reads
@@ -726,7 +724,6 @@ export const initialAppData = {
   macroTarget: null,
   targetChange: null,
   nutritionProfile: null,
-  volumeLandmarks: [],
   weeklyVolume: [],
   whoopConnection: null,
   hydratedForUserId: null,
@@ -3951,46 +3948,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { weekStart, weekEnd } = trainingWeekRange(new Date());
 
     // Get all completed sets from this week, regardless of whether
-    // the parent workout was explicitly marked complete. Landmarks load
-    // alongside so statuses are never graded against a missing or stale list.
-    const [{ data: workouts }, { data: freshLandmarks }] = await Promise.all([
-      supabase
-        .from('workouts')
-        .select(`
-          *,
-          sets!inner (
-            exercise_id,
-            completed,
-            exercise:exercises (muscle_group, muscle_group_secondary)
-          )
-        `)
-        .eq('user_id', userId)
-        .eq('sets.completed', true)
-        .gte('date', weekStart)
-        .lte('date', weekEnd),
-      Promise.resolve(
-        supabase
-          .from('volume_landmarks')
-          .select('*')
-          .eq('user_id', userId)
-      ).catch(() => ({ data: null })),
-    ]);
+    // the parent workout was explicitly marked complete.
+    const { data: workouts } = await supabase
+      .from('workouts')
+      .select(`
+        *,
+        sets!inner (
+          exercise_id,
+          completed,
+          exercise:exercises (muscle_group, muscle_group_secondary)
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('sets.completed', true)
+      .gte('date', weekStart)
+      .lte('date', weekEnd);
 
     if (!workouts || !isAccountCurrent() || !isLatest()) return;
 
-    // If the landmarks query failed, keep grading against the stored list.
-    const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
-    const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[], volumeLandmarks);
+    const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[]);
 
-    const stored = get();
-    const changed: Partial<Pick<AppState, 'volumeLandmarks' | 'weeklyVolume'>> = {};
-    if (!sameData(stored.volumeLandmarks, volumeLandmarks)) changed.volumeLandmarks = volumeLandmarks;
     // The first read always lands, even an empty week: Progress tells "not read
     // yet" from "nothing trained" by the initial list.
+    const stored = get();
     if (stored.weeklyVolume === initialAppData.weeklyVolume || !sameData(stored.weeklyVolume, weeklyVolume)) {
-      changed.weeklyVolume = weeklyVolume;
+      set({ weeklyVolume });
     }
-    if (changed.volumeLandmarks || changed.weeklyVolume) set(changed);
   }),
 }));
 

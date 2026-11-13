@@ -178,7 +178,19 @@ Settled; do not reopen or "improve" them without being asked.
 - Today holds the day's training, Fuel and Progress, and fits one screen.
   Progress is two rows built as You's: This week (the sessions done) and, on
   Mondays, Last week as one line (its weight change). The five-line recap and
-  the muscles outside their range are one tap away, not on Today.
+  each muscle's sets are one tap away, not on Today.
+- Attendance is never graded (2026-11-12, after the app told him he trains
+  3 of 6 planned days: "i only train 3 because ive been lacking hard"):
+  - The plan is the plan. The app never works out how many days he "really"
+    trains, never says it, and never offers to shrink the plan; a shorter
+    plan is his to ask for in the builder.
+  - It says what is done and what is next, never what was missed: no
+    "behind", "missed", "only", "low" or "under" about his own weeks, no count
+    of skipped sessions, no red, no finished week set against its plan.
+  - Band words (low, solid, high; `src/lib/muscleVolume`) describe a
+    program's design only, never his own weeks.
+  - A skipped day changes nothing: the schedule picks up where he left off
+    (`plannedDayForDate`).
 - No cards: he called them "cheap excuses for a bad UI". On 2026-11-09 he saw
   Today with the same content in glass cards beside it without, and kept no
   cards, "narrowly"; the trimmed content mattered more than the cards. Cards

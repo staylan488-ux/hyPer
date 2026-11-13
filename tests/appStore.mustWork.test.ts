@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ActivitySegment, ActivitySession, Exercise, FlexiblePlanItem, VolumeLandmark, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
+import type { ActivitySegment, ActivitySession, Exercise, FlexiblePlanItem, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 import type { FinishedRun } from '@/lib/runTracker';
 
 const supabaseMock = vi.hoisted(() => ({
@@ -120,7 +120,6 @@ beforeEach(() => {
     currentWorkoutDayPlan: null,
     flexTemplates: [],
     macroTarget: null,
-    volumeLandmarks: [],
     weeklyVolume: [],
     ...defaultActivityActions,
   });
@@ -2019,13 +2018,8 @@ describe('must-work store contracts', () => {
       lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
     });
 
-    const landmarksChain = createChain({
-      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-    });
-
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'workouts') return workoutsChain;
-      if (table === 'volume_landmarks') return landmarksChain;
       throw new Error(`Unexpected table: ${table}`);
     });
 
@@ -2052,7 +2046,6 @@ describe('must-work store contracts', () => {
       weeklyVolume: [{
         muscle_group: 'chest',
         weekly_sets: 4,
-        status: 'below_mev',
       }],
     });
 
@@ -2076,13 +2069,8 @@ describe('must-work store contracts', () => {
       lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
     });
 
-    const landmarksChain = createChain({
-      eq: vi.fn().mockResolvedValue({ data: [], error: null }),
-    });
-
     supabaseMock.from.mockImplementation((table: string) => {
       if (table === 'workouts') return workoutsChain;
-      if (table === 'volume_landmarks') return landmarksChain;
       throw new Error(`Unexpected table: ${table}`);
     });
 
@@ -2091,29 +2079,8 @@ describe('must-work store contracts', () => {
     expect(useAppStore.getState().weeklyVolume).toEqual([]);
   });
 
-  describe('weekly volume landmarks', () => {
-    const chestLandmark: VolumeLandmark = {
-      id: 'lm-chest',
-      user_id: 'user-1',
-      muscle_group: 'chest',
-      mv: 4,
-      mev: 6,
-      mav_low: 10,
-      mav_high: 16,
-      mrv: 20,
-    };
-    const tricepsLandmark: VolumeLandmark = {
-      id: 'lm-triceps',
-      user_id: 'user-1',
-      muscle_group: 'triceps',
-      mv: 2,
-      mev: 4,
-      mav_low: 6,
-      mav_high: 12,
-      mrv: 16,
-    };
-
-    // 7 chest sets with triceps as the secondary: chest 7 (mev_mav), triceps 3.5 (below_mev).
+  describe('weekly volume', () => {
+    // 7 chest sets with triceps as the secondary: chest 7, triceps 3.5.
     const workouts = [
       {
         id: 'workout-1',
@@ -2125,19 +2092,15 @@ describe('must-work store contracts', () => {
       },
     ];
 
-    function mockTables(landmarksResult: () => Promise<unknown>) {
+    function mockTables() {
       const workoutsChain = createChain({
         lte: vi.fn().mockResolvedValue({ data: workouts, error: null }),
       });
-      const landmarksChain = createChain({
-        eq: vi.fn().mockImplementation(landmarksResult),
-      });
       supabaseMock.from.mockImplementation((table: string) => {
         if (table === 'workouts') return workoutsChain;
-        if (table === 'volume_landmarks') return landmarksChain;
         throw new Error(`Unexpected table: ${table}`);
       });
-      return { workoutsChain, landmarksChain };
+      return { workoutsChain };
     }
 
     beforeEach(() => {
@@ -2146,68 +2109,32 @@ describe('must-work store contracts', () => {
       });
     });
 
-    it('grades against landmarks that arrive after the workouts on a cold store', async () => {
-      const { landmarksChain } = mockTables(
-        () => new Promise((resolve) => {
-          setTimeout(() => resolve({ data: [chestLandmark, tricepsLandmark], error: null }), 5);
-        })
-      );
+    it('counts the week by muscle and grades nothing', async () => {
+      mockTables();
 
       await useAppStore.getState().calculateWeeklyVolume();
 
-      const state = useAppStore.getState();
       expect(supabaseMock.auth.getSession).toHaveBeenCalledTimes(1);
-      expect(landmarksChain.eq).toHaveBeenCalledWith('user_id', 'user-1');
-      expect(state.volumeLandmarks).toEqual([chestLandmark, tricepsLandmark]);
-      expect(state.weeklyVolume).toEqual([
-        { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' },
-        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: tricepsLandmark, status: 'below_mev' },
+      expect(supabaseMock.from).not.toHaveBeenCalledWith('volume_landmarks');
+      expect(useAppStore.getState().weeklyVolume).toEqual([
+        { muscle_group: 'chest', weekly_sets: 7 },
+        { muscle_group: 'triceps', weekly_sets: 3.5 },
       ]);
-    });
-
-    it('keeps the stored landmarks when the landmarks query fails', async () => {
-      useAppStore.setState({ volumeLandmarks: [chestLandmark] });
-      mockTables(() => Promise.resolve({ data: null, error: { message: 'offline' } }));
-
-      await useAppStore.getState().calculateWeeklyVolume();
-
-      const state = useAppStore.getState();
-      expect(state.volumeLandmarks).toEqual([chestLandmark]);
-      expect(state.weeklyVolume).toEqual([
-        { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' },
-        // No stored row for triceps: graded against the schema seed's default.
-        { muscle_group: 'triceps', weekly_sets: 3.5, landmark: expect.objectContaining({ muscle_group: 'triceps', mev: 6 }), status: 'below_mev' },
-      ]);
-    });
-
-    it('keeps the stored landmarks when the landmarks request rejects', async () => {
-      useAppStore.setState({ volumeLandmarks: [chestLandmark] });
-      mockTables(() => Promise.reject(new Error('network down')));
-
-      await useAppStore.getState().calculateWeeklyVolume();
-
-      const state = useAppStore.getState();
-      expect(state.volumeLandmarks).toEqual([chestLandmark]);
-      expect(state.weeklyVolume[0]).toEqual(
-        { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' }
-      );
     });
 
     it('leaves the current weekly volume in place when the workouts query fails', async () => {
-      const previous = [{ muscle_group: 'chest' as const, weekly_sets: 4, status: 'below_mev' as const }];
-      useAppStore.setState({ volumeLandmarks: [chestLandmark], weeklyVolume: previous });
-      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [tricepsLandmark], error: null }));
+      const previous = [{ muscle_group: 'chest' as const, weekly_sets: 4 }];
+      useAppStore.setState({ weeklyVolume: previous });
+      const { workoutsChain } = mockTables();
       workoutsChain.lte.mockResolvedValue({ data: null, error: { message: 'offline' } });
 
       await useAppStore.getState().calculateWeeklyVolume();
 
-      const state = useAppStore.getState();
-      expect(state.weeklyVolume).toBe(previous);
-      expect(state.volumeLandmarks).toEqual([chestLandmark]);
+      expect(useAppStore.getState().weeklyVolume).toBe(previous);
     });
 
     it('lets only the latest read set the volume, and an earlier caller waits for it', async () => {
-      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+      const { workoutsChain } = mockTables();
       // The first read started before an edit and answers last, with the old sets.
       let answerOld!: (value: unknown) => void;
       const before = [{ id: 'workout-1', completed: true, sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }];
@@ -2227,7 +2154,7 @@ describe('must-work store contracts', () => {
     });
 
     it('has an earlier read that answers first wait for the latest one', async () => {
-      const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+      const { workoutsChain } = mockTables();
       let answerLatest!: (value: unknown) => void;
       const before = [{ id: 'workout-1', completed: true, sets: [{ completed: true, exercise: { muscle_group: 'chest', muscle_group_secondary: null } }] }];
       workoutsChain.lte
@@ -2253,21 +2180,19 @@ describe('must-work store contracts', () => {
       it('on a Sunday, queries the Monday-to-Sunday week that ends that day', async () => {
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(new Date(2026, 8, 27, 12)); // Sunday, local time
-        const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+        const { workoutsChain } = mockTables();
 
         await useAppStore.getState().calculateWeeklyVolume();
 
         expect(workoutsChain.gte).toHaveBeenCalledWith('date', '2026-09-21');
         expect(workoutsChain.lte).toHaveBeenCalledWith('date', '2026-09-27');
-        expect(useAppStore.getState().weeklyVolume[0]).toEqual(
-          { muscle_group: 'chest', weekly_sets: 7, landmark: chestLandmark, status: 'mev_mav' }
-        );
+        expect(useAppStore.getState().weeklyVolume[0]).toEqual({ muscle_group: 'chest', weekly_sets: 7 });
       });
 
       it('on a Monday, starts a new week that runs through the next Sunday', async () => {
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(new Date(2026, 8, 28, 9)); // Monday, local time
-        const { workoutsChain } = mockTables(() => Promise.resolve({ data: [chestLandmark], error: null }));
+        const { workoutsChain } = mockTables();
 
         await useAppStore.getState().calculateWeeklyVolume();
 

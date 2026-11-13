@@ -9,12 +9,12 @@ import type { HeroState } from '@/lib/todayModel';
 import { todayKey } from '@/lib/todayRefresh';
 import { trainingWeekRange } from '@/lib/weeklyVolume';
 import { canResumeWorkout } from '@/lib/workoutSessions';
-import type { FlexDayTemplate, MacroTarget, MuscleVolume, NutritionGroup, Split, VolumeLandmark, WorkoutMode } from '@/types';
+import type { FlexDayTemplate, MacroTarget, MuscleVolume, NutritionGroup, Split, WorkoutMode } from '@/types';
 
 import type { FoodLog } from './fuel';
 
 /** Bump when a kept shape changes in a way a screen reads (blanc-native skill). Each new build also drops the copy. */
-export const LAUNCH_SNAPSHOT_VERSION = 1;
+export const LAUNCH_SNAPSHOT_VERSION = 2;
 export const PARTS = ['program', 'templates', 'volume', 'target', 'profile', 'today', 'month', 'training'] as const;
 export type Part = (typeof PARTS)[number];
 export const partKey = (part: Part) => `hyper-launch:${part}`;
@@ -38,7 +38,7 @@ export type Stamp = { v: number; part: Part; userId: string; backend: string; bu
 export type Envelope<T = unknown> = { stamp: Stamp; body: T };
 export type ProgramBody = { splits: Split[]; workoutMode: WorkoutMode };
 export type TemplatesBody = { templates: FlexDayTemplate[] };
-export type VolumeBody = { weekStart: string; weeklyVolume: MuscleVolume[]; volumeLandmarks: VolumeLandmark[] };
+export type VolumeBody = { weekStart: string; weeklyVolume: MuscleVolume[] };
 export type TargetBody = { value: MacroTarget | null };
 export type ProfileBody = { value: NutritionProfile | null };
 export type TodayBody = { dayKey: string; totals: MacroTotals };
@@ -65,7 +65,7 @@ export type LaunchRestore = {
   foreign: boolean;
   program: { splits: Split[]; activeSplit: Split | null; workoutMode: WorkoutMode } | null;
   templates: FlexDayTemplate[] | null;
-  volume: { weeklyVolume: MuscleVolume[]; volumeLandmarks: VolumeLandmark[] } | null;
+  volume: { weeklyVolume: MuscleVolume[] } | null;
   target: TargetBody | null;
   profile: ProfileBody | null;
   fuel: { todayKey: string; totals: MacroTotals; month: MonthBody | null } | null;
@@ -131,13 +131,13 @@ function templatesOf(body: unknown, userId: string): FlexDayTemplate[] | null {
   return shaped ? (body.templates as unknown as FlexDayTemplate[]) : null;
 }
 
-function volumeOf(body: unknown, userId: string, now: Date): LaunchRestore['volume'] {
+function volumeOf(body: unknown, now: Date): LaunchRestore['volume'] {
   if (!isObject(body) || body.weekStart !== trainingWeekRange(now).weekStart) return null;
-  if (!Array.isArray(body.weeklyVolume) || !body.weeklyVolume.every(isObject) || !owned(body.volumeLandmarks, userId)) return null;
-  return {
-    weeklyVolume: body.weeklyVolume as unknown as MuscleVolume[],
-    volumeLandmarks: body.volumeLandmarks as unknown as VolumeLandmark[],
-  };
+  // Whose it is, the stamp says: the counts carry no account of their own.
+  const shaped = Array.isArray(body.weeklyVolume) && body.weeklyVolume.every((entry) => (
+    isObject(entry) && typeof entry.muscle_group === 'string' && typeof entry.weekly_sets === 'number'
+  ));
+  return shaped ? { weeklyVolume: body.weeklyVolume as unknown as MuscleVolume[] } : null;
 }
 
 function ownedValueOf<T>(body: unknown, userId: string, shaped: (value: Row) => boolean = () => true): { value: T | null } | null {
@@ -184,7 +184,7 @@ export function planLaunchRestore(copies: Partial<Record<Part, Envelope>>, userI
 
   const program = programOf(copies.program?.body, userId);
   const templates = templatesOf(copies.templates?.body, userId);
-  const volume = volumeOf(copies.volume?.body, userId, now);
+  const volume = volumeOf(copies.volume?.body, now);
   const target = ownedValueOf<MacroTarget>(copies.target?.body, userId,
     (value) => finite(value.calories) && finite(value.protein) && finite(value.carbs) && finite(value.fat));
   const profile = ownedValueOf<NutritionProfile>(copies.profile?.body, userId);

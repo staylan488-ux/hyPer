@@ -9,13 +9,8 @@ import {
   shadeMuscles,
   visibleFrom,
 } from '../src/lib/maquette';
-import type { MuscleVolume } from '../src/types';
 
-const volume = (muscle_group: MuscleVolume['muscle_group'], weekly_sets: number, status: MuscleVolume['status']): MuscleVolume => ({
-  muscle_group,
-  weekly_sets,
-  status,
-});
+const sets = (entries: Record<string, number>) => new Map(Object.entries(entries));
 
 describe('volume maquette', () => {
   it('draws every rendered muscle symmetrically except midline regions', () => {
@@ -29,30 +24,21 @@ describe('volume maquette', () => {
     expect(BODY_SOLIDS.length).toBeGreaterThan(10);
   });
 
-  it('shades trained muscles by status and leaves untrained ones bare', () => {
-    const shades = shadeMuscles([
-      volume('chest', 12, 'mav'),
-      volume('quads', 4, 'below_mev'),
-      volume('side_delts', 26, 'above_mrv'),
-      volume('calves', 0, 'below_mev'),
-    ]);
-    expect(shades.get('chest')).toMatchObject({ ink: 0.62, hot: false, sets: 12 });
-    expect(shades.get('quads')?.ink).toBe(0.2);
-    expect(shades.get('side_delts')).toMatchObject({ hot: true, sets: 26 });
-    expect(shades.get('calves')?.ink).toBe(0);
-    expect(shades.get('back')).toMatchObject({ ink: 0, hot: false, sets: 0, status: null });
+  it('shades each muscle by how far it is through the week, never as a warning', () => {
+    const shades = shadeMuscles(sets({ chest: 6, quads: 2, side_delts: 12, calves: 0 }), sets({ chest: 6, quads: 10, side_delts: 6, calves: 4 }));
+    expect(shades.get('chest')).toMatchObject({ state: 'done', ink: 0.62, done: 6, planned: 6 });
+    expect(shades.get('quads')).toMatchObject({ state: 'under_way', ink: 0.3, done: 2, planned: 10 });
+    // Past the plan is still done.
+    expect(shades.get('side_delts')).toMatchObject({ state: 'done', done: 12 });
+    expect(shades.get('calves')).toMatchObject({ state: 'untouched', ink: 0 });
+    expect(shades.get('back')).toMatchObject({ state: 'untouched', done: 0, planned: 0 });
   });
 
-  it('shades an ungraded muscle as trained, never as past its ceiling', () => {
-    const shades = shadeMuscles([volume('traps', 6, null)]);
-    expect(shades.get('traps')).toMatchObject({ ink: 0.2, hot: false, sets: 6, status: null });
-  });
-
-  it('lets general shoulder volume stand in for untracked deltoid heads', () => {
-    const shades = shadeMuscles([volume('shoulders', 10, 'mev_mav'), volume('rear_delts', 6, 'mav')]);
-    expect(shades.get('front_delts')?.ink).toBe(0.4);
-    expect(shades.get('side_delts')?.ink).toBe(0.4);
-    expect(shades.get('rear_delts')?.ink).toBe(0.62);
+  it('counts sets off the plan as done, and anything trained as done with no plan', () => {
+    expect(shadeMuscles(sets({ traps: 2 }), sets({})).get('traps')?.state).toBe('done');
+    const free = shadeMuscles(sets({ chest: 1 }), null);
+    expect(free.get('chest')).toMatchObject({ state: 'done', planned: null });
+    expect(free.get('back')?.state).toBe('untouched');
   });
 
   it('mixes colours from theme tokens', () => {
@@ -61,10 +47,9 @@ describe('volume maquette', () => {
     expect(parseColor('rgb(10, 20, 30)', [0, 0, 0])).toEqual([10 / 255, 20 / 255, 30 / 255]);
     expect(parseColor('var(--x)', [0.5, 0.5, 0.5])).toEqual([0.5, 0.5, 0.5]);
     expect(mixRgb([0, 0, 0], [1, 1, 1], 0.25)).toEqual([0.25, 0.25, 0.25]);
-    const palette = { body: [1, 1, 1] as [number, number, number], ink: [0, 0, 0] as [number, number, number], accent: [1, 0, 0] as [number, number, number] };
+    const palette = { body: [1, 1, 1] as [number, number, number], ink: [0, 0, 0] as [number, number, number] };
     expect(muscleColor(undefined, palette)).toEqual([1, 1, 1]);
-    expect(muscleColor({ muscle: 'chest', ink: 0.5, hot: false, sets: 8, status: 'mev_mav' }, palette)).toEqual([0.5, 0.5, 0.5]);
-    expect(muscleColor({ muscle: 'chest', ink: 0.84, hot: true, sets: 30, status: 'above_mrv' }, palette)).toEqual([1, 0, 0]);
+    expect(muscleColor({ muscle: 'chest', state: 'under_way', ink: 0.5, done: 3, planned: 8 }, palette)).toEqual([0.5, 0.5, 0.5]);
   });
 
   it('projects front and back views', () => {
