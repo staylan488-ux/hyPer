@@ -206,7 +206,7 @@ export async function fetchPreviousTraining({ userId, workoutId, date, beforeCre
 /** Rows per request for last time's sets: the API's own cap. */
 const PREVIOUS_SETS_PAGE_SIZE = 1_000;
 
-export type PreviousMovementNotes = Record<string, { note: string; date: string }>;
+export type PreviousMovementNotes = Record<string, { note: string; date: string; workoutId: string }>;
 
 /**
  * For each exercise, the note from the most recent earlier workout that has
@@ -222,7 +222,7 @@ export function buildPreviousMovementNotes(
   for (const workout of workouts) {
     const { movementNotes } = parseWorkoutNotes(workout.notes);
     for (const [exerciseId, note] of Object.entries(movementNotes)) {
-      if (wanted.has(exerciseId) && !found[exerciseId]) found[exerciseId] = { note, date: workout.date };
+      if (wanted.has(exerciseId) && !found[exerciseId]) found[exerciseId] = { note, date: workout.date, workoutId: workout.id };
     }
     if (Object.keys(found).length === wanted.size) break;
   }

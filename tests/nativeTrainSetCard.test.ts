@@ -60,7 +60,7 @@ const set = (id: string, setNumber: number, completed: boolean, weight: number |
 
 let previous: setAutofill.PreviousWorkoutSetMap;
 let history: MovementHistoryMap;
-let notes: Record<string, { note: string }>;
+let notes: Record<string, { note: string; workoutId?: string }>;
 let note: string | null;
 let session: Record<string, unknown>;
 let total: number;
@@ -326,12 +326,25 @@ describe('the set card\'s target', () => {
   });
 
   it('gives the one quiet line to a note, the reason still in the spoken name', async () => {
-    notes = { row: { note: 'Straps on the last set' } };
+    notes = { row: { note: 'Straps on the last set', workoutId: 'w0' } };
     await open();
     expect(targetLine()).toBeUndefined();
     expect(host.textContent).toContain('Straps on the last set');
     const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
     expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
+  });
+
+  it('shows last time\'s note only when it was written the last time, labelled as such', async () => {
+    notes = { row: { note: 'Smith today.', workoutId: 'w-august' } };
+    await open();
+    expect(host.textContent).not.toContain('Smith today.');
+    expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
+    act(() => root.unmount());
+    root = createRoot(host);
+    notes = { row: { note: 'Smith today.', workoutId: 'w0' } };
+    await open();
+    const shown = textNamed('Last time · Smith today.')!;
+    expect(shown.getAttribute('aria-label')).toBe('Your note last time: Smith today.');
   });
 
   it('shows no target under a weight far from it', async () => {
@@ -370,12 +383,13 @@ describe('the set card\'s target', () => {
 describe('the set card under the collapsed bar', () => {
   it('fades its whole header block (name, set line and notes) together, and not the figures', async () => {
     note = 'Bench at notch 4';
-    notes = { row: { note: 'Straps on the last set' } };
+    notes = { row: { note: 'Straps on the last set', workoutId: 'w0' } };
+    history = { row: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 80, reps: 8 }] }] };
     await open();
     const faded = [...host.querySelectorAll<HTMLElement>('[data-fades]')];
     expect(faded).toHaveLength(1);
     const block = faded[0].textContent ?? '';
-    for (const words of ['Barbell Row', 'Set 3 of 3', '8–10 reps', 'Bench at notch 4', 'Straps on the last set']) expect(block).toContain(words);
+    for (const words of ['Barbell Row', 'Set 3 of 3', '8–10 reps', 'Bench at notch 4', 'Last time · Straps on the last set']) expect(block).toContain(words);
     expect(faded[0].querySelector('[data-field]')).toBeNull();
   });
 });
@@ -397,12 +411,13 @@ describe('the set card\'s rep target', () => {
 describe('the set card\'s type', () => {
   it('sets the notes at the set line\'s size and tone', async () => {
     note = 'Bench at notch 4';
-    notes = { row: { note: 'Straps on the last set' } };
+    notes = { row: { note: 'Straps on the last set', workoutId: 'w0' } };
+    history = { row: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 80, reps: 8 }] }] };
     await open();
     const line = [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent?.startsWith('Set 3 of 3'))!;
     expect(line.dataset.variant).toBe('secondary');
     expect(line.dataset.tone).toBe('graphite');
-    for (const words of ['Bench at notch 4', 'Straps on the last set']) {
+    for (const words of ['Bench at notch 4', 'Last time · Straps on the last set']) {
       const shown = textNamed(words)!;
       expect({ variant: shown.dataset.variant, tone: shown.dataset.tone }).toEqual({ variant: line.dataset.variant, tone: line.dataset.tone });
     }

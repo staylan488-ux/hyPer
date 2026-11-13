@@ -227,7 +227,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // The set's target and its one line saying why.
   const target = current ? setTargetFor(current.set, current.movement.sets, targets) : null;
   const targetText = target ? targetLine(target) : null;
-  const lastNote = current ? previousNotes[current.movement.exerciseId] : undefined;
+  // Last time's note, only when it was written the last time this movement
+  // was done: a note from months back ("Smith today") is not about today.
+  const noteBefore = current ? previousNotes[current.movement.exerciseId] : undefined;
+  const lastNote = noteBefore && current && history[current.movement.exerciseId]?.[0]?.workoutId === noteBefore.workoutId ? noteBefore : undefined;
   // One quiet line under the set line: a note (the person's own words) takes
   // it from the target's why, which VoiceOver still hears with the name.
   const showTargetLine = Boolean(targetText && !current?.movement.note && !lastNote);
@@ -799,12 +802,16 @@ function LiveWorkout({ session }: { session: SessionModel }) {
               <BeatLine key={beat.key} text={beat.text} mark={beat.mark} style={{ marginTop: 8 }} />
             ) : lastNote ? (
               <Animated.View key="note" entering={FadeIn.duration(220)} style={{ marginTop: 4 }}>
+                {/* Labelled as the person's own note from last time, like the target's line. */}
                 <BlancText
                   variant="secondary"
                   tone="graphite"
                   numberOfLines={large ? undefined : 2}
-                  accessibilityLabel={`Last note: ${lastNote.note}`}>
-                  {lastNote.note}
+                  accessibilityLabel={`Your note last time: ${lastNote.note}`}>
+                  <BlancText variant="secondary" tone="graphite" weight="600">
+                    Last time
+                  </BlancText>
+                  {` · ${lastNote.note}`}
                 </BlancText>
               </Animated.View>
             ) : null}
