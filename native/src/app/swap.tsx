@@ -41,8 +41,9 @@ async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Mo
 }
 
 /**
- * Picks an exercise to swap a movement for this workout only, to add to a
- * flexible session, or to pair with a movement as a superset. Leaves out
+ * Picks an exercise to swap a movement for this workout only, to add to the
+ * live workout (a planned session's program stays the same), or to pair with
+ * a movement as a superset. Leaves out
  * exercises already in the workout; a swap opens on the movement's muscle.
  * With a past workout (`workout`), it adds a movement or a superset to that
  * workout instead, as History does.
@@ -128,7 +129,11 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   return (
     <ExercisePicker
       title={copy.title}
-      subtitle={baseName && mode !== 'add' ? (mode === 'swap' ? `Replacing ${baseName}` : `With ${baseName}`) : null}
+      subtitle={
+        baseName && mode !== 'add'
+          ? mode === 'swap' ? `Replacing ${baseName}` : `With ${baseName}`
+          : mode === 'add' && session && !session.flexible ? 'For this workout only' : null
+      }
       initialMuscle={sourceMuscle}
       exclude={inWorkout}
       busyId={swapping}

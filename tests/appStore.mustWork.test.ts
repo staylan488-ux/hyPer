@@ -3038,7 +3038,7 @@ describe('set-count edits never delete finished sets and superset partners follo
       ] },
     });
 
-    await useAppStore.getState().removeFlexibleExerciseFromPlan('ex-a');
+    await useAppStore.getState().removeSessionExercise('ex-a');
 
     expect(planItem('ex-a')).toMatchObject({ hidden: true, superset_group_id: null });
     expect(planItem('ex-b')).toMatchObject({ hidden: false, superset_group_id: null });
@@ -3063,7 +3063,7 @@ describe('set-count edits never delete finished sets and superset partners follo
       ] },
     });
 
-    await useAppStore.getState().removeFlexibleExerciseFromPlan('ex-b');
+    await useAppStore.getState().removeSessionExercise('ex-b');
     expect(table.numbersFor('ex-b')).toEqual([1]);
 
     await useAppStore.getState().addFlexibleSuperset('ex-a', {

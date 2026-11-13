@@ -490,13 +490,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
     // Skipping a movement part way through ends it early.
     const skipLabel = movement.done > 0 ? 'End early' : 'Skip';
     // Swipe to swap or skip a movement with sets to go and, in a flexible
-    // session, to take it out (asks first).
+    // session or for a movement added to a planned one, to take it out (asks first).
     const swipe: SwipeAction[] = [
       ...(hasSetsLeft
         ? [{ label: 'Swap', onPress: () => router.push({ pathname: '/swap', params: { id: movement.exerciseId, from: 'train' } }) }]
         : []),
       ...(hasSetsLeft && !movement.skipped ? [{ label: skipLabel, onPress: () => skip(movement) }] : []),
-      ...(session.flexible
+      ...(session.flexible || movement.added
         ? [{ label: 'Remove', destructive: true, onPress: () => confirmRemoveMovement(session.workoutId, movement) }]
         : []),
     ];
@@ -628,20 +628,19 @@ function LiveWorkout({ session }: { session: SessionModel }) {
             onHold={(key) => openMovement(heldMovement(blocks, key, touchedMovement.current))}
             onDragging={setDragging}
           />
-          {session.flexible ? (
-            <Animated.View layout={rowLayout}>
-              <Hairline />
-              <Row
-                title="Add movement"
-                leading={
-                  <Lead>
-                    <SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />
-                  </Lead>
-                }
-                onPress={addMovement}
-              />
-            </Animated.View>
-          ) : null}
+          {/* Any session takes another movement; a planned one's program stays the same. */}
+          <Animated.View layout={rowLayout}>
+            <Hairline />
+            <Row
+              title="Add movement"
+              leading={
+                <Lead>
+                  <SymbolView name="plus" size={15} weight="semibold" tintColor={c.ink} />
+                </Lead>
+              }
+              onPress={addMovement}
+            />
+          </Animated.View>
         </Label>
       </Section>
     ) : null;

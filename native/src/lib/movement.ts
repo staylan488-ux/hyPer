@@ -1,6 +1,6 @@
 // Changes to the live workout's movements: set counts, a swap for this workout
-// only and switching it back, a skip, the order, and in a flexible session adding,
-// removing and pairing movements and naming the session. Writes go through the
+// only and switching it back, a skip, the order, adding a movement and taking an
+// added one out again, and in a flexible session pairing movements and naming it. Writes go through the
 // shared store actions after any notes typed before them have saved.
 import { Alert } from 'react-native';
 
@@ -141,9 +141,9 @@ export function reorderMovements(workoutId: string, exerciseIds: string[]) {
 const inPlan = (exerciseId: string) =>
   useAppStore.getState().currentWorkoutDayPlan?.items.some((item) => item.exercise_id === exerciseId && !item.hidden) ?? false;
 
-/** Flexible session: adds a movement with three sets. */
+/** Adds a movement with three sets, to any live workout; a planned session's program is untouched. */
 export async function addMovement(workoutId: string, exercise: Exercise) {
-  await changeWorkout(workoutId, () => useAppStore.getState().addFlexibleExercise(exercise));
+  await changeWorkout(workoutId, () => useAppStore.getState().addSessionExercise(exercise));
   if (!inPlan(exercise.id)) throw new Error('Could not add the exercise. Try again.');
 }
 
@@ -162,17 +162,20 @@ export function unlinkSuperset(workoutId: string, exerciseId: string) {
   return changeWorkout(workoutId, () => useAppStore.getState().clearFlexibleSuperset(exerciseId));
 }
 
-/** Flexible session: takes a movement out; its logged sets stay in the workout. */
+/**
+ * Takes a movement out of a flexible session, or a movement added to a planned
+ * one; its logged sets stay in the workout.
+ */
 export async function removeMovement(workoutId: string, exerciseId: string) {
-  await changeWorkout(workoutId, () => useAppStore.getState().removeFlexibleExerciseFromPlan(exerciseId));
+  await changeWorkout(workoutId, () => useAppStore.getState().removeSessionExercise(exerciseId));
   if (inPlan(exerciseId)) throw new Error('Could not remove the exercise. Try again.');
   const focus = useFocusStore.getState();
   if (focus.exerciseId === exerciseId) focus.focus(null);
 }
 
 /**
- * Flexible session: asks, then takes a movement out (from its sheet, or a
- * swipe on its row). `onRemoved` runs once it is out.
+ * Asks, then takes a movement out (from its sheet, or a swipe on its row): any
+ * movement of a flexible session, or one added to a planned session. `onRemoved` runs once it is out.
  */
 export function confirmRemoveMovement(
   workoutId: string,

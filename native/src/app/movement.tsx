@@ -34,7 +34,8 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 /**
  * One movement of the live workout: correct a logged set, change how many
  * sets it has, keep a note, or swap or skip it for this workout only. In a
- * flexible session it can also be paired as a superset or taken out.
+ * flexible session it can also be paired as a superset or taken out; a
+ * movement added to a planned session can be taken out again.
  */
 export default function MovementSheet() {
   const c = useBlanc();
@@ -349,25 +350,30 @@ function MovementDetail({
         </Section>
       ) : null}
 
-      {flexible && inWorkout ? (
+      {(flexible || movement.added) && inWorkout ? (
         <Section title="Session">
           <Label>
-            {movement.superset ? (
-              <Row
-                title="Unlink superset"
-                detail={`With ${movement.superset.partnerName}`}
-                trailing={editingPlan === 'unlink' ? <ActivityIndicator /> : undefined}
-                onPress={editingPlan ? undefined : () => void runUnlink()}
-              />
-            ) : (
-              <Row
-                title="Add a superset"
-                detail="Alternate sets with another movement"
-                chevron
-                onPress={() => router.push({ pathname: '/swap', params: { id: movement.exerciseId, mode: 'superset' } })}
-              />
-            )}
-            <Hairline />
+            {/* Pairs belong to flexible sessions; an added movement can only come out again. */}
+            {flexible ? (
+              <>
+                {movement.superset ? (
+                  <Row
+                    title="Unlink superset"
+                    detail={`With ${movement.superset.partnerName}`}
+                    trailing={editingPlan === 'unlink' ? <ActivityIndicator /> : undefined}
+                    onPress={editingPlan ? undefined : () => void runUnlink()}
+                  />
+                ) : (
+                  <Row
+                    title="Add a superset"
+                    detail="Alternate sets with another movement"
+                    chevron
+                    onPress={() => router.push({ pathname: '/swap', params: { id: movement.exerciseId, mode: 'superset' } })}
+                  />
+                )}
+                <Hairline />
+              </>
+            ) : null}
             <Row
               title="Remove from workout"
               destructive

@@ -195,11 +195,49 @@ describe('preview uses real program and workout store paths', () => {
     const started = await useAppStore.getState().startFlexibleWorkout('Pull');
     expect(started?.sets).toEqual([]);
     const exercise = (await client.from('exercises').select('*').eq('id', 'ex_row').single()).data;
-    await useAppStore.getState().addFlexibleExercise(exercise);
+    await useAppStore.getState().addSessionExercise(exercise);
     const current = useAppStore.getState().currentWorkout;
     expect(current?.sets).toHaveLength(3);
     expect(current?.sets.every((set) => set.exercise?.name === 'Barbell Row')).toBe(true);
     expect(useAppStore.getState().currentWorkoutDayPlan?.items[0].exercise_id).toBe('ex_row');
+  });
+
+  it('adds a movement to a planned session for this workout only, logs it at body weight and takes it out again', async () => {
+    await useAppStore.getState().fetchSplits();
+    await useAppStore.getState().fetchCurrentWorkout();
+    const workout = useAppStore.getState().currentWorkout!;
+    expect(workout.split_day_id).toBe('d1');
+    const program = JSON.stringify(previewTables.split_exercises);
+    const pullUp = (await client.from('exercises').select('*').eq('id', 'ex_pullup').single()).data;
+
+    await useAppStore.getState().addSessionExercise(pullUp);
+    const added = useAppStore.getState().currentWorkout!.sets.filter((set) => set.exercise_id === 'ex_pullup');
+    expect(added.map((set) => set.set_number)).toEqual([1, 2, 3]);
+    expect(added.every((set) => set.exercise?.name === 'Pull-Up' && !set.completed)).toBe(true);
+    const plan = useAppStore.getState().currentWorkoutDayPlan!;
+    expect(plan.workout_id).toBe(workout.id);
+    expect(plan.items.at(-1)).toMatchObject({ exercise_id: 'ex_pullup', target_sets: 3, hidden: false });
+    // The program day is untouched.
+    expect(JSON.stringify(previewTables.split_exercises)).toBe(program);
+
+    const split = useAppStore.getState().activeSplit;
+    const model = buildSessionModel(useAppStore.getState().currentWorkout, { split, plan }, null);
+    expect(model?.movements.at(-1)).toMatchObject({ exerciseId: 'ex_pullup', added: true, sets: { length: 3 } });
+    expect(model?.movements.slice(0, -1).every((movement) => !movement.added)).toBe(true);
+
+    // A body-weight set: zero added weight logs like any other.
+    await useAppStore.getState().logSet(added[0].id, 0, 8);
+    expect(useAppStore.getState().currentWorkout!.sets.find((set) => set.id === added[0].id)).toMatchObject({ weight: 0, reps: 8, completed: true });
+
+    await useAppStore.getState().removeSessionExercise('ex_pullup');
+    const kept = useAppStore.getState().currentWorkout!.sets.filter((set) => set.exercise_id === 'ex_pullup');
+    expect(kept.map((set) => set.id)).toEqual([added[0].id]);
+    const after = useAppStore.getState().currentWorkoutDayPlan!;
+    expect(after.items.find((item) => item.exercise_id === 'ex_pullup')?.hidden).toBe(true);
+    const removed = buildSessionModel(useAppStore.getState().currentWorkout, { split, plan: after }, null);
+    expect(removed?.movements.some((movement) => movement.exerciseId === 'ex_pullup')).toBe(false);
+    expect(removed?.doneCount).toBe((model?.doneCount ?? 0) + 1);
+    expect(JSON.stringify(previewTables.split_exercises)).toBe(program);
   });
 
   it('shows a movement removed from a flexible session again when it comes back as a superset partner', async () => {
@@ -209,9 +247,9 @@ describe('preview uses real program and workout store paths', () => {
     const started = await useAppStore.getState().startFlexibleWorkout('Pull');
     const row = (await client.from('exercises').select('*').eq('id', 'ex_row').single()).data;
     const curl = (await client.from('exercises').select('*').eq('id', 'ex_curl').single()).data;
-    await useAppStore.getState().addFlexibleExercise(row);
-    await useAppStore.getState().addFlexibleExercise(curl);
-    await useAppStore.getState().removeFlexibleExerciseFromPlan('ex_curl');
+    await useAppStore.getState().addSessionExercise(row);
+    await useAppStore.getState().addSessionExercise(curl);
+    await useAppStore.getState().removeSessionExercise('ex_curl');
     await useAppStore.getState().addFlexibleSuperset('ex_row', curl);
 
     const plan = useAppStore.getState().currentWorkoutDayPlan!;
@@ -323,7 +361,7 @@ describe('preview uses real program and workout store paths', () => {
     await useAppStore.getState().setWorkoutMode('flexible');
     const started = await useAppStore.getState().startFlexibleWorkout('Pull');
     const exercise = (await client.from('exercises').select('*').eq('id', 'ex_row').single()).data;
-    await useAppStore.getState().addFlexibleExercise(exercise);
+    await useAppStore.getState().addSessionExercise(exercise);
     await useAppStore.getState().skipWorkoutExercise(started!.id, 'ex_row', true);
     expect(useAppStore.getState().currentWorkoutDayPlan?.items[0].skipped).toBe(true);
     await useAppStore.getState().saveFlexibleTemplateFromCurrentWorkout();
