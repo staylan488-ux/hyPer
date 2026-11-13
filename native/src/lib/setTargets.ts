@@ -8,6 +8,7 @@ import {
   liveSetTarget,
   planMovementTargets,
   targetOutcome,
+  type EffortWords,
   type LoggedSet,
   type MovementHistoryMap,
   type MovementTargets,
@@ -93,9 +94,30 @@ export function targetFigures(target: SetTarget, units = false): string {
   return units ? `${weight} lb × ${reps}` : `${weight} × ${target.reps}`;
 }
 
-/** The card's one line: "Target · one more rep than last time". */
-export function targetLine(target: SetTarget): string {
-  return `Target · ${describeTarget(target)}`;
+/** Whether a set is the movement's last, by its own set position. */
+export function isLastSet(set: Pick<WorkoutSet, 'set_number'>, movementSets: readonly Pick<WorkoutSet, 'set_number'>[]): boolean {
+  const positions = setPositions(movementSets);
+  return positions.length > 0 && positions[positions.length - 1] === set.set_number;
+}
+
+/**
+ * The line's first word. A target is a floor, and the movement's last set is
+ * where going past it costs nothing later: there it reads "Target, or more".
+ * Not after a miss or a break, where the target is already the ask.
+ */
+export function targetLabel(target: SetTarget, lastSet: boolean): string {
+  const why = target.why;
+  const open = why.kind === 'more_reps' || why.kind === 'hold' || why.kind === 'more_weight' || why.kind === 'past_top'
+    || (why.kind === 'moved' && why.off >= 0);
+  return lastSet && open ? 'Target, or more' : 'Target';
+}
+
+/**
+ * The card's one line: "Target · one more rep than last time". `scale` is
+ * how the person rates a set, for a line that names last time's rating.
+ */
+export function targetLine(target: SetTarget, { scale = 'rir', lastSet = false }: { scale?: EffortWords; lastSet?: boolean } = {}): string {
+  return `${targetLabel(target, lastSet)} · ${describeTarget(target, scale)}`;
 }
 
 /** What the card says once a set is logged against its target, or null when it missed. */

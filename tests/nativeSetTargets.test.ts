@@ -5,7 +5,7 @@ import type { Exercise, Split, Workout, WorkoutSet } from '@/types';
 
 import { summarize } from '../native/src/lib/finished';
 import { buildSessionModel } from '../native/src/lib/sessionModel';
-import { countTargets, sessionTargets, setTargetFor, targetFigures, targetLine, targetMoment } from '../native/src/lib/setTargets';
+import { countTargets, isLastSet, sessionTargets, setTargetFor, targetFigures, targetLabel, targetLine, targetMoment } from '../native/src/lib/setTargets';
 
 // The live workout's set targets: what Train fills in, says and counts.
 
@@ -140,6 +140,41 @@ describe('what the card says', () => {
     expect(targetFigures(target)).toBe('60 × 11');
     expect(targetFigures(target, true)).toBe('60 lb × 11 reps');
     expect(targetFigures({ ...target, weight: 0, reps: 1 }, true)).toBe('1 rep');
+  });
+
+  it('opens the last set\'s line "Target, or more": a target is a floor', () => {
+    expect(targetLine(target, { lastSet: true })).toBe('Target, or more · one more rep than last time');
+    expect(targetLabel({ ...target, why: { kind: 'hold' } }, true)).toBe('Target, or more');
+    expect(targetLabel({ ...target, why: { kind: 'more_weight', step: 5, allTop: false, top: 12, first: true } }, true)).toBe('Target, or more');
+    expect(targetLabel({ ...target, why: { kind: 'moved', cause: 'reps', off: 2 } }, true)).toBe('Target, or more');
+    // An earlier set keeps the plain word: going past it there costs the sets after it.
+    expect(targetLabel(target, false)).toBe('Target');
+  });
+
+  it('keeps the plain word after a miss or a break, where the target is already the ask', () => {
+    for (const why of [
+      { kind: 'repeat' as const },
+      { kind: 'match' as const, cause: 'missed_twice' as const },
+      { kind: 'match' as const, cause: 'break' as const },
+      { kind: 'match' as const, cause: 'long_break' as const },
+      { kind: 'moved' as const, cause: 'reps' as const, off: -3 },
+    ]) {
+      expect(targetLabel({ ...target, why }, true)).toBe('Target');
+    }
+  });
+
+  it('knows a movement\'s last set by its own set position', () => {
+    const sets = [{ set_number: 1 }, { set_number: 2 }, { set_number: 4 }];
+    expect(isLastSet({ set_number: 4 }, sets)).toBe(true);
+    expect(isLastSet({ set_number: 2 }, sets)).toBe(false);
+    expect(isLastSet({ set_number: 1 }, [{ set_number: 1 }])).toBe(true);
+    expect(isLastSet({ set_number: 1 }, [])).toBe(false);
+  });
+
+  it('names last time\'s rating on the person\'s own scale', () => {
+    const rated = { weight: 60, reps: 12, why: { kind: 'more_reps' as const, reps: 2, rated: 7 } };
+    expect(targetLine(rated)).toBe('Target · two more reps, 3 in reserve last time');
+    expect(targetLine(rated, { scale: 'rpe' })).toBe('Target · two more reps, RPE 7 last time');
   });
 
   it('says hit or beat after a log, and nothing for a miss', () => {

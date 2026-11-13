@@ -166,6 +166,9 @@ Settled; do not reopen or "improve" them without being asked.
   (one weight for the movement) and one line says only why, never the
   figures; a note takes that line. After a log it says "Target hit" or
   "Beat target · +1 rep", and a missed target says nothing.
+  A target is a floor: on a movement's last set the line opens "Target, or
+  more" (built 2026-11-13 from the audit, not yet seen by Sinan). What each
+  number rests on: [set targets](../../../docs/set-targets.md).
 - Sets are rated in reps in reserve by default (Sinan, 2026-11-13), stored
   as RPE (2 in reserve = RPE 8); RPE is a per-phone choice in You › App. A
   rating is never carried over from another set: only a tap saves one.

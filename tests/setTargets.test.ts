@@ -5,6 +5,8 @@ import {
   learnWeightStep,
   liveSetTarget,
   planMovementTargets,
+  ratedReps,
+  repsPastRange,
   targetOutcome,
   type PastSession,
   type PastSet,
@@ -33,7 +35,10 @@ function figures(result: ReturnType<typeof planMovementTargets>) {
 describe('set targets: the worked examples', () => {
   it.each([
     { last: [100, [10, 9, 8]], want: ['100×11', '100×9', '100×8'], line: 'one more rep than last time' },
-    { last: [100, [12, 10, 9]], want: ['100×12', '100×11', '100×9'], line: 'same as last time' },
+    // Set 1 at the top and every set in the range: up, though the estimate puts set 3 at 7.
+    { last: [100, [12, 10, 9]], want: ['105×9', '105×8', '105×7'], line: 'up 5 lb, set 1 reached 12' },
+    // Set 3 is still under the range: reps first.
+    { last: [100, [12, 10, 7]], want: ['100×12', '100×11', '100×7'], line: 'same as last time' },
     { last: [100, [12, 11, 10]], want: ['105×9', '105×8', '105×8'], line: 'up 5 lb, every set stays in range' },
     { last: [60, [12, 12, 12]], want: ['65×8', '65×8', '65×8'], line: 'up 5 lb, every set reached 12' },
     { last: [25, [12, 12]], want: ['25×13', '25×12'], line: 'one more rep, 30 lb is too big a jump yet' },
@@ -51,9 +56,64 @@ describe('set targets: the worked examples', () => {
   });
 
   it('names the set that gets the rep, and holds the others', () => {
-    const result = planMovementTargets({ history: [session('2026-11-01', 100, [12, 10, 9])], today: '2026-11-04', setCount: 3, range: RANGE });
+    const result = planMovementTargets({ history: [session('2026-11-01', 100, [12, 10, 7])], today: '2026-11-04', setCount: 3, range: RANGE });
     expect(result!.sets.map((set) => set!.why.kind)).toEqual(['hold', 'more_reps', 'hold']);
     expect(describeTarget(result!.sets[1]!)).toBe('one more rep than last time');
+  });
+});
+
+describe('set targets: when the weight goes up', () => {
+  const plan = (weight: number, reps: number[], range: RepRange = RANGE, rpe?: Array<number | null>) =>
+    planMovementTargets({ history: [session('2026-11-20', weight, reps, rpe)], today: '2026-11-24', setCount: reps.length, range });
+
+  it('goes up once set 1 reaches the top with every set in the range, on a step of a tenth or less', () => {
+    // 50 to 55 is a tenth: the estimate alone would hold this at 50 until about 12, 12, 9.
+    const result = plan(50, [8, 6, 5], { min: 5, max: 8 });
+    expect(result!.sets.every((set) => set!.weight === 55)).toBe(true);
+    expect(result!.sets[0]!.reps).toBe(5);
+    expect(describeTarget(result!.sets[0]!)).toBe('up 5 lb, set 1 reached 8');
+  });
+
+  it('starts later sets on last time\'s drop from set 1, under the range if need be, never under 1', () => {
+    expect(figures(plan(100, [12, 10, 8]))).toEqual(['105×9', '105×8', '105×6']);
+    expect(figures(plan(50, [8, 5, 5], { min: 5, max: 8 }))).toEqual(['55×5', '55×3', '55×3']);
+  });
+
+  it('waits while set 1 is short of the top, or a set is under the range', () => {
+    expect(figures(plan(100, [11, 10, 9]))).toEqual(['100×12', '100×10', '100×9']);
+    expect(figures(plan(100, [12, 9, 7]))).toEqual(['100×12', '100×10', '100×7']);
+  });
+
+  it('still goes up early when every set would land in the range by the estimate', () => {
+    const result = plan(200, [11, 11, 11]);
+    expect(figures(result)).toEqual(['205×9', '205×9', '205×9']);
+    expect(describeTarget(result!.sets[0]!)).toBe('up 5 lb, every set stays in range');
+  });
+
+  it('asks for reps past the range before a step over a tenth of the weight', () => {
+    // 15 to 20 lb is a third heavier: 5 reps past a 12 to 15 range on every set.
+    const range = { min: 12, max: 15 };
+    expect(repsPastRange(15, 5, range)).toBe(5);
+    expect(repsPastRange(50, 5, range)).toBe(0);
+    expect(repsPastRange(25, 5, RANGE)).toBe(2);
+    const short = planMovementTargets({ history: [session('2026-11-20', 15, [15, 15])], today: '2026-11-24', setCount: 2, range });
+    expect(figures(short)).toEqual(['15×16', '15×15']);
+    expect(describeTarget(short!.sets[0]!)).toBe('one more rep, 20 lb is too big a jump yet');
+    const ready = planMovementTargets({ history: [session('2026-11-20', 15, [20, 17])], today: '2026-11-24', setCount: 2, range });
+    expect(ready!.sets.map((set) => set!.weight)).toEqual([20, 20]);
+    expect(ready!.sets[0]!.reps).toBe(12);
+  });
+
+  it('counts what a rating says was left: set 1 two short of the top with 4 in reserve goes up', () => {
+    const result = plan(100, [10, 9, 8], RANGE, [6, null, null]);
+    expect(result!.sets.every((set) => set!.weight === 105)).toBe(true);
+    expect(describeTarget(result!.sets[0]!)).toBe('up 5 lb, 4 or more in reserve last time');
+    expect(describeTarget(result!.sets[0]!, 'rpe')).toBe('up 5 lb, RPE 6 last time');
+  });
+
+  it('never goes up without a rep range, or on bodyweight', () => {
+    expect(planMovementTargets({ history: [session('2026-11-20', 100, [15, 15])], today: '2026-11-24', setCount: 2, range: null })!.sets[0]!.weight).toBe(100);
+    expect(plan(0, [12, 12])!.sets[0]!.weight).toBe(0);
   });
 });
 
@@ -140,6 +200,26 @@ describe('set targets: bad days, breaks and stalls', () => {
       .toEqual(['100×11', '100×9', '100×8']);
   });
 
+  it('eases back in after more than five weeks away: two reps under last time', () => {
+    const history = [session('2026-09-01', 100, [10, 9, 2])];
+    // 35 days still matches.
+    expect(figures(planMovementTargets({ history, today: '2026-10-06', setCount: 3, range: RANGE }))).toEqual(['100×10', '100×9', '100×2']);
+    const result = planMovementTargets({ history, today: '2026-10-07', setCount: 3, range: RANGE });
+    expect(figures(result)).toEqual(['100×8', '100×7', '100×1']);
+    expect(describeTarget(result!.sets[0]!)).toBe('ease back in after a break');
+  });
+
+  it('starts about a tenth lighter after three months away, on a weight the movement loads', () => {
+    expect(figures(planMovementTargets({ history: [session('2026-06-01', 100, [10, 9, 8])], today: '2026-09-01', setCount: 3, range: RANGE })))
+      .toEqual(['90×10', '90×9', '90×8']);
+    // Step 10 learned from 100, 110 and 120: one step down from 120.
+    const history = newestFirst(session('2026-05-01', 100, [12, 12]), session('2026-05-04', 110, [10, 9]), session('2026-05-07', 120, [9, 8]));
+    expect(figures(planMovementTargets({ history, today: '2026-09-01', setCount: 2, range: RANGE }))).toEqual(['110×9', '110×8']);
+    // Too light to step down, and bodyweight: three reps fewer.
+    expect(figures(planMovementTargets({ history: [session('2026-06-01', 5, [12, 10])], today: '2026-09-01', setCount: 2, range: RANGE }))).toEqual(['5×9', '5×7']);
+    expect(figures(planMovementTargets({ history: [session('2026-06-01', 0, [12, 2])], today: '2026-09-01', setCount: 2, range: RANGE }))).toEqual(['0×9', '0×1']);
+  });
+
   it('a break inside the history is judged against a match target', () => {
     const history = newestFirst(session('2026-08-01', 100, [10, 9, 8]), session('2026-09-15', 100, [10, 9, 8]));
     // The second session matched last time after a break, so it met its target.
@@ -202,21 +282,58 @@ describe('set targets: bodyweight', () => {
   });
 });
 
-describe('set targets: RPE', () => {
-  it('lets an easy set step two reps', () => {
-    const result = planMovementTargets({ history: [session('2026-10-30', 100, [9, 9, 8], [7, 8, 8])], today: '2026-11-01', setCount: 3, range: RANGE });
-    expect(figures(result)).toEqual(['100×11', '100×9', '100×8']);
-    expect(describeTarget(result!.sets[0]!)).toBe('two more reps than last time');
+describe('set targets: the rating sets the pace', () => {
+  const rated = (reps: number[], rpe: Array<number | null>, date = '2026-11-20', options?: Parameters<typeof planMovementTargets>[0]['options']) =>
+    planMovementTargets({ history: [session(date, 100, reps, rpe)], today: '2026-11-24', setCount: reps.length, range: RANGE, options });
+
+  it('adds one rep at 2 in reserve, two at 3 and three at 4 or more; none at 0 or 1, or unrated', () => {
+    expect([10, 9.5, 9, 8.5, 8, 7.5, 7, 6.5, 6].map(ratedReps)).toEqual([0, 0, 0, 0, 1, 1, 2, 2, 3]);
+    expect(ratedReps(null)).toBe(0);
+    expect(ratedReps(undefined)).toBe(0);
+  });
+
+  it('moves every rated set, not only the one that gets the rep anyway', () => {
+    // 3, 2 and 2 in reserve. Set 3 stays under the range, so the weight holds.
+    const result = rated([9, 8, 6], [7, 8, 8]);
+    expect(figures(result)).toEqual(['100×11', '100×9', '100×7']);
+    expect(describeTarget(result!.sets[0]!)).toBe('two more reps, 3 in reserve last time');
+    expect(describeTarget(result!.sets[1]!)).toBe('one more rep, 2 in reserve last time');
+    expect(describeTarget(result!.sets[0]!, 'rpe')).toBe('two more reps, RPE 7 last time');
+  });
+
+  it('a hard or unrated set behaves as before: one rep on the first set short of the top', () => {
+    expect(figures(rated([9, 9, 6], [9, 10, null]))).toEqual(['100×10', '100×9', '100×6']);
+    const result = rated([9, 9, 6], [9, 8, null]);
+    expect(figures(result)).toEqual(['100×10', '100×10', '100×6']);
+    expect(describeTarget(result!.sets[0]!)).toBe('one more rep than last time');
   });
 
   it('never steps past the top of the range for it', () => {
-    const result = planMovementTargets({ history: [session('2026-10-30', 100, [11, 9, 8], [6, 8, 8])], today: '2026-11-01', setCount: 3, range: RANGE });
-    expect(figures(result)).toEqual(['100×12', '100×9', '100×8']);
+    expect(figures(rated([11, 7, 7], [6, null, null]))).toEqual(['100×12', '100×7', '100×7']);
+    expect(figures(rated([12, 11, 7], [6, 6, null]))).toEqual(['100×12', '100×12', '100×7']);
   });
 
-  it('works without any RPE', () => {
-    const result = planMovementTargets({ history: [session('2026-10-30', 100, [9, 9, 8])], today: '2026-11-01', setCount: 3, range: RANGE });
-    expect(figures(result)).toEqual(['100×10', '100×9', '100×8']);
+  it('adds to a bodyweight set too, with no top to stop at', () => {
+    // Inside the range the top still stops it; with every set there, it does not.
+    const inside = planMovementTargets({ history: [session('2026-11-20', 0, [12, 10], [6, 8])], today: '2026-11-24', setCount: 2, range: RANGE });
+    expect(figures(inside)).toEqual(['0×12', '0×11']);
+    const past = planMovementTargets({ history: [session('2026-11-20', 0, [12, 12], [6, 8])], today: '2026-11-24', setCount: 2, range: RANGE });
+    expect(figures(past)).toEqual(['0×15', '0×13']);
+  });
+
+  it('does not read a rating from before ratings were only ever chosen', () => {
+    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-12'))).toEqual(['100×10', '100×8', '100×6']);
+    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-13'))).toEqual(['100×11', '100×9', '100×7']);
+    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-12', { ratingsFrom: null }))).toEqual(['100×11', '100×9', '100×7']);
+  });
+
+  it('works without any rating', () => {
+    expect(figures(rated([9, 9, 8], [null, null, null]))).toEqual(['100×10', '100×9', '100×8']);
+  });
+
+  it('a set added today has no rating of its own', () => {
+    const result = planMovementTargets({ history: [session('2026-11-20', 100, [9, 6], [9, 6])], today: '2026-11-24', setCount: 3, range: RANGE });
+    expect(figures(result)).toEqual(['100×10', '100×9', '100×6']);
   });
 });
 

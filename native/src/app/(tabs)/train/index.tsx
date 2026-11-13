@@ -41,7 +41,7 @@ import { restSecondsFor, startRest } from '~/lib/rest';
 import { liveSessionModel, useFocusStore, usePreviousHistory, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, effortChip, isBodyweight, parseNumber, useEffortScaleStore, weightToLog } from '~/lib/setEntry';
-import { sessionTargets, setTargetFor, targetFigures, targetLine, targetMoment, type SessionTargets } from '~/lib/setTargets';
+import { isLastSet, sessionTargets, setTargetFor, targetFigures, targetLabel, targetLine, targetMoment, type SessionTargets } from '~/lib/setTargets';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
 import { useBarWeight } from '~/lib/warmup';
 import { useEarlyAccess } from '~/lib/earlyAccess';
@@ -230,7 +230,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const last = current ? previousSetTarget(current.set, current.movement.sets, previous) : undefined;
   // The set's target and its one line saying why.
   const target = current ? setTargetFor(current.set, current.movement.sets, targets) : null;
-  const targetText = target ? targetLine(target) : null;
+  // On the movement's last set the line opens "Target, or more": a target is a floor.
+  const lastOfMovement = Boolean(current && isLastSet(current.set, current.movement.sets));
+  const targetWord = target ? targetLabel(target, lastOfMovement) : 'Target';
+  const targetText = target ? targetLine(target, { scale: effortScale, lastSet: lastOfMovement }) : null;
   // Last time's note, only when it was written the last time this movement
   // was done: a note from months back ("Smith today") is not about today.
   const noteBefore = current ? previousNotes[current.movement.exerciseId] : undefined;
@@ -781,9 +784,9 @@ function LiveWorkout({ session }: { session: SessionModel }) {
                 {showTargetLine && targetText ? (
                   <BlancText variant="secondary" numberOfLines={large ? undefined : 2} style={{ marginTop: 6 }}>
                     <BlancText variant="secondary" weight="600">
-                      Target
+                      {targetWord}
                     </BlancText>
-                    {targetText.slice('Target'.length)}
+                    {targetText.slice(targetWord.length)}
                   </BlancText>
                 ) : null}
               </Pressable>
