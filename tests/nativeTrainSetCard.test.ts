@@ -12,6 +12,8 @@ import type { WorkoutSet } from '@/types';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
 import * as format from '../native/src/lib/format';
+import * as nativeSetTargets from '../native/src/lib/setTargets';
+import type { MovementHistoryMap } from '@/lib/setTargets';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,7 +59,8 @@ const set = (id: string, setNumber: number, completed: boolean, weight: number |
   ({ id, exercise_id: 'row', set_number: setNumber, weight, reps, rpe: null, completed, exercise: { id: 'row', name: 'Barbell Row', equipment: 'Barbell' } }) as unknown as WorkoutSet;
 
 let previous: setAutofill.PreviousWorkoutSetMap;
-let notes: Record<string, { note: string }>;
+let history: MovementHistoryMap;
+let notes: Record<string, { note: string; workoutId?: string }>;
 let note: string | null;
 let session: Record<string, unknown>;
 let total: number;
@@ -65,6 +68,14 @@ let total: number;
 let pairing: Record<string, unknown>;
 /** The movement's first set is up, with nothing of it logged yet. */
 let fresh: boolean;
+let largeText = false;
+let everySetLogged = false;
+let screenOptions: { unstable_headerRightItems?: () => { label: string }[] } = {};
+const Screen = ({ options }: { options: typeof screenOptions }) => {
+  screenOptions = options;
+  return null;
+};
+let laterMovements: Record<string, unknown>[] = [];
 const push = vi.fn();
 
 /** Barbell Row, set 3 of 3 (or of `total`): two logged at 80 × 8, the third filled in from them. */
@@ -88,20 +99,23 @@ function liveSession(total = 3) {
   };
   return {
     workoutId: 'w1',
+    date: '2026-11-06',
     dayName: 'Upper A',
     flexible: false,
     startedAt: new Date('2026-11-06T00:23:00'),
     sets,
     doneCount: done,
-    movements: [movement],
-    current: { movement, set: sets[done], setNumber: done + 1, index: done, blocked: null },
+    movements: [movement, ...laterMovements],
+    current: everySetLogged ? null : { movement, set: sets[done], setNumber: done + 1, index: done, blocked: null },
   };
 }
 
 const { headingShown } = loadNativeModule<{ headingShown: (scrolled: number, span: unknown) => number }>('lib/barTitle.ts', {});
-const setEntry = loadNativeModule<Record<string, unknown>>('lib/setEntry.ts', {
-  'react-native': { ActionSheetIOS: { showActionSheetWithOptions: vi.fn() } },
+const showActionSheet = vi.fn();
+const setEntry = loadNativeModule<Record<string, unknown> & { useEffortScaleStore: { setState: (state: { scale: 'rir' | 'rpe' }) => void } }>('lib/setEntry.ts', {
+  'react-native': { ActionSheetIOS: { showActionSheetWithOptions: showActionSheet } },
   './haptics': { haptics: { tap: vi.fn(), select: vi.fn() } },
+  zustand: { create },
 });
 
 // The real list row, so the Movements list's type is the row's own.
@@ -124,7 +138,7 @@ async function open() {
   const { default: TrainScreen } = loadNativeModule<{ default: () => ReactNode }>(
     'app/(tabs)/train/index.tsx',
     {
-      'expo-router': { router: { push }, Stack: { Screen: Empty } },
+      'expo-router': { router: { push }, Stack: { Screen } },
       'expo-symbols': { SymbolView: Empty },
       'date-fns': dates,
       'react-native': {
@@ -170,7 +184,7 @@ async function open() {
       '~/components/TabScroll': { scrolledFromRest: (offset: number) => offset + 165, TabScroll: Box, tabBarCover: () => 83 },
       '~/components/Tally': { COMPACT_RISE: 6, Tally: Empty },
       '~/components/UndoBar': { UndoBar: Empty },
-      '~/lib/accessibility': silentAccessibility,
+      '~/lib/accessibility': { ...silentAccessibility, useLargeText: () => largeText },
       '~/lib/accountData': { useAccountDay: () => '2026-11-06', useAccountRefresh: () => ({ refreshing: false, refresh: vi.fn() }) },
       '~/lib/beatLastTime': { gainOnLastTime: () => null },
       '~/lib/barTitle': { headingShown },
@@ -191,12 +205,14 @@ async function open() {
         liveSessionModel: () => session,
         useFocusStore: create(() => ({ exerciseId: null, focus: vi.fn() })),
         usePreviousNotes: () => notes,
+        usePreviousHistory: () => history,
         usePreviousTargets: () => previous,
         useSessionModel: () => session,
         useStartSession: () => ({ starting: null, start: vi.fn() }),
       },
       '~/lib/sessionModel': { afterLoggedSet: () => ({ nextExerciseId: null, rest: false }) },
       '~/lib/setEntry': setEntry,
+      '~/lib/setTargets': nativeSetTargets,
       '~/lib/today': { useFinishedToday: () => undefined, useTodayPlan: () => ({}) },
       '~/lib/warmup': { useBarWeight: () => 45 },
       '~/platform/devLaunch': { devScrollTrace: { enabled: false } },
@@ -229,6 +245,7 @@ beforeEach(() => {
   note = null;
   notes = {};
   previous = { row: { 1: { weight: 80, reps: 8, rpe: null }, 2: { weight: 80, reps: 8, rpe: null }, 3: { weight: 80, reps: 8, rpe: null } } };
+  history = {};
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -274,15 +291,135 @@ describe('the "last" captions under Train\'s figures', () => {
   });
 });
 
+describe('the set card\'s target', () => {
+  const targetLine = () => [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent?.startsWith('Target'));
+
+  beforeEach(() => {
+    fresh = true;
+    previous = { row: { 1: { weight: 80, reps: 9, rpe: null }, 2: { weight: 80, reps: 9, rpe: null }, 3: { weight: 80, reps: 8, rpe: null } } };
+    history = { row: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 80, reps: 9 }, { weight: 80, reps: 9 }, { weight: 80, reps: 8 }] }] };
+  });
+
+  it('fills the fields with the target and says why in one line, with no last-time captions', async () => {
+    await open();
+    expect(host.querySelector('[data-field="Weight in pounds"]')?.textContent).toBe('80');
+    expect(host.querySelector('[data-field="Reps"]')?.textContent).toBe('10');
+    expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
+    expect(captions().map((caption) => caption.shown)).toEqual([false, false]);
+    const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
+    expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
+  });
+
+  it('shows the target under a field edited away from it, in place of last time', async () => {
+    await open();
+    await type('Reps', '12');
+    expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
+    expect(captions()[1]).toEqual({ text: 'target 10', spoken: 'Target, 10 reps', shown: true });
+  });
+
+  it('keeps the header block\'s fade with the target line inside it', async () => {
+    await open();
+    const faded = [...host.querySelectorAll<HTMLElement>('[data-fades]')];
+    expect(faded[0].textContent).toContain('Target · one more rep than last time');
+  });
+
+  it('keeps the reason at the accessibility sizes, free to wrap', async () => {
+    largeText = true;
+    try {
+      await open();
+      expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
+    } finally {
+      largeText = false;
+    }
+  });
+
+  it('gives the one quiet line to a note, the reason still in the spoken name', async () => {
+    notes = { row: { note: 'Straps on the last set', workoutId: 'w0' } };
+    await open();
+    expect(targetLine()).toBeUndefined();
+    expect(host.textContent).toContain('Straps on the last set');
+    const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
+    expect(name.getAttribute('aria-label')).toContain('Target, one more rep than last time');
+  });
+
+  it('shows last time\'s note only when it was written the last time, labelled as such', async () => {
+    notes = { row: { note: 'Smith today.', workoutId: 'w-august' } };
+    await open();
+    expect(host.textContent).not.toContain('Smith today.');
+    expect(targetLine()?.textContent).toBe('Target · one more rep than last time');
+    act(() => root.unmount());
+    root = createRoot(host);
+    notes = { row: { note: 'Smith today.', workoutId: 'w0' } };
+    await open();
+    const shown = textNamed('Last time · Smith today.')!;
+    expect(shown.getAttribute('aria-label')).toBe('Your note last time: Smith today.');
+  });
+
+  it('shows no target under a weight far from it', async () => {
+    await open();
+    await type('Weight in pounds', '30');
+    expect(captions().map((caption) => caption.shown)).toEqual([false, false]);
+    await type('Weight in pounds', '75');
+    expect(captions()[0]).toEqual({ text: 'target 80', spoken: 'Target, 80 pounds', shown: true });
+  });
+
+  it('names a later movement\'s target in its row, spoken with units', async () => {
+    const press = { ...set('p1', 1, false), exercise_id: 'press', exercise: { id: 'press', name: 'Overhead Press', equipment: 'Barbell' } } as unknown as WorkoutSet;
+    laterMovements = [{
+      exerciseId: 'press', name: 'Overhead Press', sets: [press], done: 0, plan: { target_reps_min: 8, target_reps_max: 12 },
+      superset: null, substitutesFor: null, note: null, skipped: false, endedEarly: false,
+    }];
+    history = { ...history, press: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 60, reps: 10 }] }] };
+    try {
+      await open();
+      const row = [...host.querySelectorAll<HTMLElement>('[aria-label]')].find((element) => element.getAttribute('aria-label')?.startsWith('Overhead Press'))!;
+      expect(row.textContent).toContain('target 60 × 11');
+      expect(row.getAttribute('aria-label')).toContain('target 60 pounds × 11 reps');
+    } finally {
+      laterMovements = [];
+    }
+  });
+
+  it('is absent with no history, leaving last time in the fields', async () => {
+    history = {};
+    await open();
+    expect(targetLine()).toBeUndefined();
+    expect(host.querySelector('[data-field="Reps"]')?.textContent).toBe('9');
+  });
+});
+
+describe('finishing', () => {
+  const headerLabels = () => screenOptions.unstable_headerRightItems?.().map((item) => item.label) ?? [];
+
+  it('keeps Finish in the bar while sets are left, to end early', async () => {
+    await open();
+    expect(headerLabels()).toContain('Finish');
+  });
+
+  it('gives one finish action once every set is logged: the card\'s, not the bar\'s', async () => {
+    everySetLogged = true;
+    try {
+      await open();
+      expect(host.textContent).toContain('All sets logged');
+      expect(host.textContent).toContain('Finish workout');
+      expect(headerLabels()).not.toContain('Finish');
+      expect(headerLabels()).toContain('Rest timer');
+    } finally {
+      everySetLogged = false;
+    }
+  });
+});
+
 describe('the set card under the collapsed bar', () => {
   it('fades its whole header block (name, set line and notes) together, and not the figures', async () => {
     note = 'Bench at notch 4';
-    notes = { row: { note: 'Straps on the last set' } };
+    notes = { row: { note: 'Straps on the last set', workoutId: 'w0' } };
+    history = { row: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 80, reps: 8 }] }] };
     await open();
     const faded = [...host.querySelectorAll<HTMLElement>('[data-fades]')];
     expect(faded).toHaveLength(1);
     const block = faded[0].textContent ?? '';
-    for (const words of ['Barbell Row', 'Set 3 of 3', '8–10 reps', 'Bench at notch 4', 'Straps on the last set']) expect(block).toContain(words);
+    for (const words of ['Barbell Row', 'Set 3 of 3', '8–10 reps', 'Bench at notch 4', 'Last time · Straps on the last set']) expect(block).toContain(words);
     expect(faded[0].querySelector('[data-field]')).toBeNull();
   });
 });
@@ -304,12 +441,13 @@ describe('the set card\'s rep target', () => {
 describe('the set card\'s type', () => {
   it('sets the notes at the set line\'s size and tone', async () => {
     note = 'Bench at notch 4';
-    notes = { row: { note: 'Straps on the last set' } };
+    notes = { row: { note: 'Straps on the last set', workoutId: 'w0' } };
+    history = { row: [{ workoutId: 'w0', date: '2026-11-03', sets: [{ weight: 80, reps: 8 }] }] };
     await open();
     const line = [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent?.startsWith('Set 3 of 3'))!;
     expect(line.dataset.variant).toBe('secondary');
     expect(line.dataset.tone).toBe('graphite');
-    for (const words of ['Bench at notch 4', 'Straps on the last set']) {
+    for (const words of ['Bench at notch 4', 'Last time · Straps on the last set']) {
       const shown = textNamed(words)!;
       expect({ variant: shown.dataset.variant, tone: shown.dataset.tone }).toEqual({ variant: line.dataset.variant, tone: line.dataset.tone });
     }
@@ -352,20 +490,27 @@ describe('the set card\'s warm-up and plates', () => {
   it('offers warm-ups before a barbell movement\'s first set, opening them at the weight typed', async () => {
     fresh = true;
     await open();
-    expect(chips()).toEqual(['Add RPE', 'Warm-up', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Warm-up', 'Log set']);
     expect(chip('Warm-up').getAttribute('aria-label')).toBe('Warm-up sets');
     await act(async () => chip('Warm-up').click());
     expect(push).toHaveBeenCalledWith({ pathname: '/warm-up', params: { id: 'row', weight: '80' } });
   });
 
+  it('never carries an RPE over from last time: the person rates each set', async () => {
+    fresh = true;
+    previous = { row: { 1: { weight: 80, reps: 8, rpe: 8 }, 2: { weight: 80, reps: 8, rpe: 8.5 }, 3: { weight: 80, reps: 8, rpe: 9 } } };
+    await open();
+    expect(chips()[0]).toBe('Add RIR');
+  });
+
   it('offers the plates on later sets, and nothing at or under the bar', async () => {
     await open();
-    expect(chips()).toEqual(['Add RPE', 'Plates', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Plates', 'Log set']);
     expect(chip('Plates').getAttribute('aria-label')).toBe('Plates for 80 pounds');
     await type('Weight in pounds', '45');
-    expect(chips()).toEqual(['Add RPE', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Log set']);
     await type('Weight in pounds', '');
-    expect(chips()).toEqual(['Add RPE', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Log set']);
   });
 
   it('keeps warm-ups off a first set too light to ramp up to', async () => {
@@ -373,6 +518,6 @@ describe('the set card\'s warm-up and plates', () => {
     await open();
     await type('Weight in pounds', '50');
     // Only 5 lb over the bar: no warm-up, but the plates still help.
-    expect(chips()).toEqual(['Add RPE', 'Plates', 'Log set']);
+    expect(chips()).toEqual(['Add RIR', 'Plates', 'Log set']);
   });
 });

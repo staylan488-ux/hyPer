@@ -72,7 +72,7 @@ describe('Finish keeps the confirmed workout and account', () => {
       './haptics': { haptics: { error: vi.fn(), success: vi.fn() } },
       './notes': { flushNotes },
       './rest': { stopRest: vi.fn() },
-      './session': { liveSessionModel: () => currentSession, previousTargetsFor: () => ({}) },
+      './session': { liveSessionModel: () => currentSession, previousHistoryFor: () => ({}), previousTargetsFor: () => ({}) },
       './records': { priorRecordsFor: () => ({}) },
       './sessionModel': { skippedLine: () => '' },
     }));
