@@ -1,7 +1,18 @@
-import type { MuscleGroup, SplitTemplate } from '@/types';
+/**
+ * Turns the builder's five answers into a program: the built-in program for
+ * the day count (src/lib/programBlueprints.ts), with sets shared out by
+ * muscle. Each muscle has a number of sets a week to aim at, set by
+ * experience and emphasis; each session has room for only so many sets, set
+ * by its length. Sets go one at a time to whichever muscle is furthest from
+ * its aim until the aims are met or the sessions are full.
+ *
+ * What every number rests on is in docs/program-design.md.
+ */
+import { normalizeExerciseName } from '@/lib/customExercises';
 import { DESIGNER_MOVEMENTS } from '@/lib/designerMovements';
-import { beardsleyEvidenceSnapshot } from '@/lib/evidence/snapshot';
-import type { ExerciseProfile } from '@/lib/evidence/types';
+import { MAIN_MUSCLES, VOLUME_BAND_EDGES, addMovementSets, formatSetCount, isMainMuscle, volumeMuscle, type MuscleSets } from '@/lib/muscleVolume';
+import { PROGRAM_BLUEPRINTS, type BlueprintRow, type ProgramBlueprint, type RepRange } from '@/lib/programBlueprints';
+import type { MuscleGroup, SplitTemplate } from '@/types';
 
 export type ProgramFocus = 'no_focus' | 'upper_focus' | 'lower_focus';
 export type EquipmentProfile = 'full_gym' | 'dumbbell_only';
@@ -17,498 +28,368 @@ export interface ProgramDesignAnswers {
   experience: ExperienceLevel;
 }
 
-const exerciseProfileByName = new Map(
-  beardsleyEvidenceSnapshot.exercise_profiles.map((profile) => [normalizeExerciseName(profile.name), profile])
-);
-
-type EquipmentTier = 'barbell' | 'cable' | 'machine' | 'dumbbells' | 'bodyweight' | 'unknown';
-
-const AMBIGUOUS_EQUIPMENT_HINTS: Record<string, EquipmentTier> = {
-  'romanian deadlift': 'barbell',
-  'hip thrust': 'barbell',
-  'leg press': 'machine',
-  'leg extension': 'machine',
-  'leg curl': 'machine',
-  'lying leg curl': 'machine',
-  'seated leg curl': 'machine',
-  'calf raise': 'machine',
-  'lateral raise': 'dumbbells',
-  'rear delt fly': 'dumbbells',
-  'overhead tricep extension': 'dumbbells',
-  'dumbbell curl': 'dumbbells',
-  'hammer curl': 'dumbbells',
-  'incline dumbbell curl': 'dumbbells',
-  'goblet squat': 'dumbbells',
-  lunge: 'dumbbells',
-  'bulgarian split squat': 'dumbbells',
-};
-
-const EQUIPMENT_FALLBACKS: Record<EquipmentProfile, Record<string, string[]>> = {
-  full_gym: {},
-  dumbbell_only: {
-    'barbell back squat': ['Goblet Squat', 'Bulgarian Split Squat', 'Lunge'],
-    'romanian deadlift': ['Bulgarian Split Squat', 'Lunge', 'Goblet Squat'],
-    'barbell deadlift': ['Goblet Squat', 'Bulgarian Split Squat', 'Lunge'],
-    'flat barbell bench press': ['Push-Up', 'Dips', 'Flat Dumbbell Bench Press'],
-    'incline barbell bench press': ['Push-Up', 'Incline Dumbbell Bench Press', 'Dips'],
-    'flat dumbbell bench press': ['Push-Up', 'Dips'],
-    'incline dumbbell bench press': ['Push-Up', 'Dips'],
-    'overhead barbell press': ['Overhead Dumbbell Press', 'Arnold Press', 'Push-Up'],
-    'overhead dumbbell press': ['Arnold Press', 'Push-Up'],
-    'lat pulldown': ['Pull-Up', 'Chin-Up', 'One-Arm Dumbbell Row'],
-    'seated cable row': ['One-Arm Dumbbell Row', 'Pull-Up', 'Chin-Up'],
-    'barbell row': ['One-Arm Dumbbell Row', 'Pull-Up'],
-    'cable fly': ['Push-Up', 'Flat Dumbbell Bench Press'],
-    'pec deck machine fly': ['Push-Up', 'Flat Dumbbell Bench Press'],
-    'tricep pushdown': ['Dips', 'Overhead Tricep Extension'],
-    'cable curl': ['Dumbbell Curl', 'Hammer Curl', 'Incline Dumbbell Curl'],
-    'leg press': ['Goblet Squat', 'Bulgarian Split Squat', 'Lunge'],
-    'leg extension': ['Goblet Squat', 'Lunge', 'Bulgarian Split Squat'],
-    'lying leg curl': ['Lunge', 'Bulgarian Split Squat', 'Goblet Squat'],
-    'seated leg curl': ['Lunge', 'Bulgarian Split Squat', 'Goblet Squat'],
-    'leg curl': ['Lunge', 'Bulgarian Split Squat', 'Goblet Squat'],
-    'hip thrust': ['Lunge', 'Bulgarian Split Squat', 'Goblet Squat'],
-    'calf raise': ['Standing Calf Raise'],
-    'cable crunch': ['Plank', 'Hanging Leg Raise', 'Russian Twist'],
-  },
-};
+// ── The numbers ─────────────────────────────────────────────────────
 
 /**
- * Evidence substitutions spelled differently from the exercise library. The
- * snapshot is generated (docs/evidence-pipeline.md), so names are mapped here.
+ * Most working sets in one session. A working set with its rest takes about
+ * 3 minutes, after about 5 minutes of warm-up: 45 minutes holds 13, 60 holds
+ * 18 and 75 holds 23.
  */
-const LIBRARY_NAME_ALIASES: Record<string, string> = {
-  'single arm cable row': 'One-Arm Cable Row',
+export const SESSION_SET_CAPS: Readonly<Record<SessionLength, number>> = {
+  short: 13,
+  moderate: 18,
+  long: 23,
 };
 
-function libraryName(name: string): string {
-  return LIBRARY_NAME_ALIASES[normalizeExerciseName(name)] ?? name;
-}
+export const SESSION_MINUTES: Readonly<Record<SessionLength, number>> = {
+  short: 45,
+  moderate: 60,
+  long: 75,
+};
 
-/** An evidence profile's substitutions, in the library's spelling. */
-function profileSubstitutions(exerciseName: string): string[] {
-  return (getExerciseProfile(exerciseName)?.substitutions || []).map(libraryName);
-}
-
-function normalizeEquipmentProfile(equipment: EquipmentProfile | LegacyEquipmentProfile): EquipmentProfile {
-  if (equipment === 'full_gym') return 'full_gym';
-  return 'dumbbell_only';
-}
-
-function normalizeExerciseName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function inferEquipmentTier(exerciseName: string): EquipmentTier {
-  const normalized = normalizeExerciseName(exerciseName);
-
-  if (normalized.includes('barbell')) return 'barbell';
-  if (normalized.includes('cable') || normalized.includes('pulldown') || normalized.includes('pushdown')) return 'cable';
-  if (normalized.includes('machine') || normalized.includes('pec deck')) return 'machine';
-  if (normalized.includes('dumbbell') || normalized.includes('arnold') || normalized.includes('goblet')) return 'dumbbells';
-  if (/(push up|pull up|chin up|bodyweight|dip|plank|hanging|ab wheel|russian twist)/.test(normalized)) return 'bodyweight';
-
-  return AMBIGUOUS_EQUIPMENT_HINTS[normalized] || 'unknown';
-}
-
-function isExerciseCompatible(exerciseName: string, equipment: EquipmentProfile): boolean {
-  if (equipment === 'full_gym') return true;
-
-  const tier = inferEquipmentTier(exerciseName);
-  if (tier === 'unknown') return false;
-
-  return tier === 'dumbbells' || tier === 'bodyweight';
-}
-
-function getExerciseProfile(exerciseName: string): ExerciseProfile | undefined {
-  const normalized = normalizeExerciseName(exerciseName);
-  return exerciseProfileByName.get(normalized);
-}
+const WARM_UP_MINUTES = 5;
+const MINUTES_PER_SET = 3;
 
 /**
- * What a movement the designer emits trains, as the seeded library files it:
- * its main and second muscle and whether it is a compound. Null for any other
- * name.
+ * Sets a week the plan aims each main muscle at, counted as the app counts
+ * them (1 for a movement's main muscle, half for its second). A beginner
+ * starts just above the smallest dose that grows muscle; 10 is the top of the
+ * tier where each added set buys the most; 14 sits in the next tier, for
+ * someone the easy gains have left. The plan lands under these when the
+ * sessions cannot hold them, never over on purpose.
+ */
+export const WEEKLY_SET_TARGETS: Readonly<Record<ExperienceLevel, number>> = {
+  beginner: 6,
+  intermediate: 10,
+  advanced: 14,
+};
+
+/** Under an emphasis the favoured half of the body aims this much higher, and the other half this much lower. */
+export const EMPHASIS = { favoured: 1.3, other: 0.75 } as const;
+
+/**
+ * Glutes aim a little lower than the other main muscles. Squats, leg presses
+ * and Romanian deadlifts grow them about as well as hip thrusts do, and the
+ * app counts those as half a set each, so a plan that chased the full number
+ * would pile on hip thrusts.
+ */
+const GLUTE_SHARE = 0.8;
+
+/**
+ * The smaller muscles the plan also feeds, as a share of a main muscle's aim,
+ * and how long they wait: a muscle with a wait of 0.6 gets its first set once
+ * the main muscles are 60% of the way to theirs, and its last after they have
+ * arrived. Presses already train the front delts and rows the rear delts, so
+ * their direct work comes when there is room to spare.
+ */
+const SUPPORT_MUSCLES: Readonly<Record<string, { share: number; wait: number }>> = {
+  calves: { share: 0.6, wait: 0.6 },
+  rear_delts: { share: 0.6, wait: 0.6 },
+  front_delts: { share: 0.6, wait: 0.7 },
+  core: { share: 0.4, wait: 0.7 },
+};
+
+/** Fewest movements a training day holds. */
+const MIN_DAY_MOVEMENTS = 3;
+
+/** Sets a movement has when it is in a plan. */
+const MOVEMENT_SETS = { min: 2, usual: 3, max: 4 } as const;
+
+/**
+ * Most sets one muscle gets in one session. More sets in a session keep
+ * helping up to about 11 (docs/program-design.md); the plan stops short of it.
+ */
+const SESSION_MUSCLE_SETS = 10;
+
+/** The half of the body the Lower emphasis favours. Abs belong to neither half. */
+export const LOWER_BODY: ReadonlySet<string> = new Set(['quads', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors', 'tibialis', 'hip_flexors']);
+
+function emphasisFactor(muscle: string, focus: ProgramFocus): number {
+  if (focus === 'no_focus' || muscle === 'core') return 1;
+  const favoured = (focus === 'lower_focus') === LOWER_BODY.has(muscle);
+  return favoured ? EMPHASIS.favoured : EMPHASIS.other;
+}
+
+/** Sets a week the plan aims a muscle at for these answers; 0 for a muscle it does not plan for. */
+export function weeklySetTarget(muscle: string, answers: Pick<ProgramDesignAnswers, 'experience' | 'focus'>): number {
+  const base = WEEKLY_SET_TARGETS[answers.experience] * emphasisFactor(muscle, answers.focus);
+  if (!isMainMuscle(muscle)) return base * (SUPPORT_MUSCLES[muscle]?.share ?? 0);
+  // No main muscle is aimed under the smallest dose that grows it.
+  return Math.max(VOLUME_BAND_EDGES.solidFrom, base * (muscle === 'glutes' ? GLUTE_SHARE : 1));
+}
+
+// ── Movements ───────────────────────────────────────────────────────
+
+const movementByName = new Map(Object.entries(DESIGNER_MOVEMENTS).map(([name, row]) => [normalizeExerciseName(name), row]));
+
+/**
+ * What a movement in the built-in programs trains, as the seeded library
+ * files it: its main and second muscle and whether it is a compound. Null for
+ * any other name.
  */
 export function designerMovementMuscles(exerciseName: string): { muscle_group: MuscleGroup; muscle_group_secondary: MuscleGroup | null; is_compound: boolean } | null {
-  const normalized = normalizeExerciseName(exerciseName);
-  const row = Object.entries(DESIGNER_MOVEMENTS).find(([name]) => normalizeExerciseName(name) === normalized)?.[1];
+  const row = movementByName.get(normalizeExerciseName(exerciseName));
   return row ? { muscle_group: row[0] as MuscleGroup, muscle_group_secondary: row[1] as MuscleGroup | null, is_compound: row[2] } : null;
 }
 
-function resolveExerciseForEquipment(
-  exerciseName: string,
-  equipment: EquipmentProfile,
-  usedInDay: Set<string>,
-  visited = new Set<string>()
-): string {
-  if (isExerciseCompatible(exerciseName, equipment) && !usedInDay.has(normalizeExerciseName(exerciseName))) {
-    return exerciseName;
-  }
-
-  const normalized = normalizeExerciseName(exerciseName);
-  if (visited.has(normalized)) {
-    return exerciseName;
-  }
-  visited.add(normalized);
-
-  const profileFallbacks = profileSubstitutions(exerciseName);
-  const ruleFallbacks = EQUIPMENT_FALLBACKS[equipment][normalized] || [];
-  const fallbackCandidates = [...profileFallbacks, ...ruleFallbacks];
-
-  for (const candidate of fallbackCandidates) {
-    if (!candidate) continue;
-
-    if (isExerciseCompatible(candidate, equipment) && !usedInDay.has(normalizeExerciseName(candidate))) {
-      return candidate;
-    }
-
-    const nested = resolveExerciseForEquipment(candidate, equipment, usedInDay, visited);
-    if (isExerciseCompatible(nested, equipment) && !usedInDay.has(normalizeExerciseName(nested))) {
-      return nested;
-    }
-  }
-
-  for (const candidate of fallbackCandidates) {
-    if (!candidate) continue;
-    if (!usedInDay.has(normalizeExerciseName(candidate))) {
-      return candidate;
-    }
-  }
-
-  return exerciseName;
+function dumbbellName(row: BlueprintRow): string | null {
+  if (row.dumbbell === undefined) return row.name;
+  if (row.dumbbell === null) return null;
+  return typeof row.dumbbell === 'string' ? row.dumbbell : row.dumbbell.name;
 }
 
-function scoreTemplateEquipmentFit(template: SplitTemplate, equipment: EquipmentProfile): number {
-  if (equipment === 'full_gym') return 24;
-
-  const allExercises = template.days.flatMap((day) => day.exercises.map((exercise) => exercise.name));
-  if (allExercises.length === 0) return 0;
-
-  let compatible = 0;
-  let recoverable = 0;
-
-  for (const exerciseName of allExercises) {
-    if (isExerciseCompatible(exerciseName, equipment)) {
-      compatible += 1;
-      continue;
-    }
-
-    const replacement = resolveExerciseForEquipment(exerciseName, equipment, new Set<string>());
-    if (replacement !== exerciseName && isExerciseCompatible(replacement, equipment)) {
-      recoverable += 1;
-    }
-  }
-
-  const compatibilityRatio = compatible / allExercises.length;
-  const recoverableRatio = recoverable / allExercises.length;
-  return Math.round((compatibilityRatio * 20) + (recoverableRatio * 10));
-}
-
-function isUpperSpecialization(template: SplitTemplate): boolean {
-  return /upper\s*focus|specialization\s*upper|upper\s*priority/i.test(
-    `${template.name} ${template.description}`
-  );
-}
-
-function isLowerSpecialization(template: SplitTemplate): boolean {
-  return /lower\s*focus|specialization\s*lower|lower\s*priority|quad\s*focus|quad\s*priority/i.test(
-    `${template.name} ${template.description}`
-  );
-}
-
-function isEvidenceTemplate(template: SplitTemplate): boolean {
-  return Boolean(template.evidence);
-}
-
-function isUpperDay(dayName: string): boolean {
-  return /upper|push|pull|chest|back|shoulder/i.test(dayName);
-}
-
-function isLowerDay(dayName: string): boolean {
-  return /lower|leg|quad|ham|glute/i.test(dayName);
-}
-
-function isHighSkillExercise(exerciseName: string): boolean {
-  return /barbell|squat|deadlift|overhead press|pull-up/i.test(exerciseName);
-}
-
-function clampSets(sets: number): number {
-  return Math.max(1, Math.min(6, sets));
-}
-
-function isCoreExercise(exerciseName: string, exerciseIndex: number): boolean {
-  if (exerciseIndex < 2) return true;
-  return /squat|deadlift|bench|row|press|pull.up|chin.up|hip thrust/i.test(exerciseName);
-}
-
-type TemplateExercise = { name: string; sets: number; reps_min: number; reps_max: number };
-
-const SESSION_ACCESSORY_POOL: Record<string, TemplateExercise[]> = {
-  upper: [
-    { name: 'Lateral Raise', sets: 2, reps_min: 12, reps_max: 15 },
-    { name: 'Rear Delt Fly', sets: 2, reps_min: 12, reps_max: 15 },
-    { name: 'Tricep Pushdown', sets: 2, reps_min: 10, reps_max: 12 },
-    { name: 'Dumbbell Curl', sets: 2, reps_min: 10, reps_max: 12 },
-  ],
-  lower: [
-    { name: 'Leg Curl', sets: 2, reps_min: 10, reps_max: 12 },
-    { name: 'Leg Extension', sets: 2, reps_min: 10, reps_max: 12 },
-    { name: 'Calf Raise', sets: 2, reps_min: 12, reps_max: 15 },
-  ],
-  full: [
-    { name: 'Calf Raise', sets: 2, reps_min: 12, reps_max: 15 },
-    { name: 'Lateral Raise', sets: 2, reps_min: 12, reps_max: 15 },
-    { name: 'Dumbbell Curl', sets: 2, reps_min: 10, reps_max: 12 },
-  ],
-};
-
-/**
- * Every movement name the designer can put in a plan: the templates' own,
- * the long-session accessories, and every equipment fallback and evidence
- * substitution reachable from them. Tests check each against the seeded
- * library.
- */
-export function designerMovementNames(templates: readonly SplitTemplate[]): string[] {
+/** Every movement name a built-in program can hold, for any answers. Tests check each against the seeded library. */
+export function designerMovementNames(): string[] {
   const names = new Set<string>();
-  const queue = [
-    ...templates.flatMap((template) => template.days.flatMap((day) => day.exercises.map((exercise) => exercise.name))),
-    ...Object.values(SESSION_ACCESSORY_POOL).flatMap((pool) => pool.map((exercise) => exercise.name)),
-    ...Object.values(EQUIPMENT_FALLBACKS).flatMap((rules) => Object.values(rules).flat()),
-  ];
-  while (queue.length) {
-    const name = queue.shift()!;
-    if (names.has(name)) continue;
-    names.add(name);
-    const normalized = normalizeExerciseName(name);
-    queue.push(...profileSubstitutions(name), ...(EQUIPMENT_FALLBACKS.dumbbell_only[normalized] ?? []));
+  for (const blueprint of PROGRAM_BLUEPRINTS) {
+    for (const day of blueprint.days) {
+      for (const row of day.rows) {
+        names.add(row.name);
+        const stand = dumbbellName(row);
+        if (stand) names.add(stand);
+      }
+    }
   }
   return [...names].sort();
 }
 
-function getDayCategory(dayName: string): 'upper' | 'lower' | 'full' {
-  if (isUpperDay(dayName)) return 'upper';
-  if (isLowerDay(dayName)) return 'lower';
-  return 'full';
+/** Rows that also train the rear delts, which the library's one second muscle (biceps) cannot say. */
+const ROWS = new Set(['seated cable row', 'one arm dumbbell row']);
+
+// ── Sharing out the sets ────────────────────────────────────────────
+
+interface Slot {
+  day: number;
+  order: number;
+  name: string;
+  reps: RepRange;
+  pick: BlueprintRow['pick'];
+  /** The favoured half's work on the other half's day: used once that half's own days can take no more. */
+  spill: boolean;
+  /** Light work for the other half of the body in a plan with no emphasis on it: joins only into room the day's own muscles leave. */
+  spare: boolean;
+  primary: string;
+  /** Sets each muscle is fed by one set of this movement, the designer's own view. */
+  feeds: ReadonlyArray<readonly [muscle: string, share: number]>;
+  sets: number;
 }
 
-function applySessionLengthStructure(
-  exercises: TemplateExercise[],
-  dayName: string,
-  sessionLength: SessionLength
-): TemplateExercise[] {
-  if (sessionLength === 'moderate') return exercises;
-
-  if (sessionLength === 'short') {
-    const minExercises = 4;
-    let result = [...exercises];
-
-    // Remove accessories from the end
-    while (result.length > minExercises) {
-      const lastIndex = result.length - 1;
-      if (isCoreExercise(result[lastIndex].name, lastIndex)) break;
-      result = result.slice(0, -1);
-      if (exercises.length - result.length >= 2) break;
-    }
-
-    // Reduce sets on remaining accessories
-    return result.map((exercise, index) => {
-      if (!isCoreExercise(exercise.name, index) && exercise.sets > 1) {
-        return { ...exercise, sets: exercise.sets - 1 };
-      }
-      return exercise;
-    });
-  }
-
-  // Long: add an accessory if day has room
-  if (exercises.length <= 6) {
-    const category = getDayCategory(dayName);
-    const pool = SESSION_ACCESSORY_POOL[category];
-    const existingNames = new Set(exercises.map((e) => normalizeExerciseName(e.name)));
-
-    for (const candidate of pool) {
-      if (!existingNames.has(normalizeExerciseName(candidate.name))) {
-        return [
-          ...exercises.map((exercise, index) => {
-            // +1 set on lead compound
-            if (index === 0 && exercise.sets < 6) {
-              return { ...exercise, sets: exercise.sets + 1 };
-            }
-            return exercise;
-          }),
-          candidate,
-        ];
-      }
-    }
-  }
-
-  // Fallback: just boost lead compound set
-  return exercises.map((exercise, index) => {
-    if (index === 0 && exercise.sets < 6) {
-      return { ...exercise, sets: exercise.sets + 1 };
-    }
-    return exercise;
-  });
-}
-
-export function recommendProgramTemplate(
-  templates: SplitTemplate[],
-  answers: ProgramDesignAnswers
-): SplitTemplate {
-  const equipment = normalizeEquipmentProfile(answers.equipment);
-
-  const ranked = [...templates]
-    .map((template, index) => {
-      let score = 0;
-
-      const dayDistance = Math.abs(template.days_per_week - answers.daysPerWeek);
-      score += Math.max(0, 40 - dayDistance * 10);
-
-      // The day count is the person's own choice: a template with it always
-      // wins over one without, whatever its focus. Emphasis is then given room
-      // by the fill (src/lib/programFill.ts).
-      if (template.days_per_week === answers.daysPerWeek) {
-        score += 100;
-      }
-
-      if (isEvidenceTemplate(template)) {
-        score += 15;
-      }
-
-      if (answers.focus === 'upper_focus') {
-        if (isUpperSpecialization(template)) score += 35;
-        if (isLowerSpecialization(template)) score -= 20;
-        if (/upper|push|chest|back/i.test(template.name)) score += 8;
-      } else if (answers.focus === 'lower_focus') {
-        if (isLowerSpecialization(template)) score += 35;
-        if (isUpperSpecialization(template)) score -= 20;
-        if (/lower|legs|full body/i.test(template.name)) score += 8;
-      } else {
-        if (isUpperSpecialization(template) || isLowerSpecialization(template)) score -= 25;
-      }
-
-      if (answers.experience === 'beginner' && template.days_per_week > 5) {
-        score -= 8;
-      }
-
-      if (answers.sessionLength === 'short' && template.days_per_week > 4) {
-        score -= 6;
-      }
-
-      score += scoreTemplateEquipmentFit(template, equipment);
-
-      return { template, score, index };
-    })
-    .sort((a, b) => {
-      if (a.score !== b.score) return b.score - a.score;
-      return a.index - b.index;
-    });
-
-  return ranked[0]?.template || templates[0];
-}
-
-export function buildGuidedTemplate(
-  baseTemplate: SplitTemplate,
-  answers: ProgramDesignAnswers
-): SplitTemplate {
-  const equipment = normalizeEquipmentProfile(answers.equipment);
-
-  // 1. Session-length structural changes first (add/remove exercises)
-  const structuredDays = baseTemplate.days.map((day) => ({
-    ...day,
-    exercises: applySessionLengthStructure(day.exercises, day.day_name, answers.sessionLength),
+function slotsFor(blueprint: ProgramBlueprint, equipment: EquipmentProfile, focus: ProgramFocus): Slot[] {
+  return blueprint.days.flatMap((day, dayIndex) => day.rows.flatMap((row, order): Slot[] => {
+    const spare = Boolean(row.only && row.only !== focus);
+    if (spare && !row.spare) return [];
+    const name = equipment === 'dumbbell_only' ? dumbbellName(row) : row.name;
+    if (!name) return [];
+    const movement = movementByName.get(normalizeExerciseName(name));
+    const primary = volumeMuscle(movement?.[0]);
+    if (!movement || !primary) throw new Error(`${name} is not in DESIGNER_MOVEMENTS`);
+    const secondary = volumeMuscle(movement[1]);
+    const feeds: Array<readonly [string, number]> = [[primary, 1]];
+    if (secondary && secondary !== primary) feeds.push([secondary, 0.5]);
+    // A press is also front-delt work and a row rear-delt work. Counted here
+    // only so the plan does not pile direct work on top of them.
+    if (primary === 'chest' && movement[2]) feeds.push(['front_delts', 0.5]);
+    if (ROWS.has(normalizeExerciseName(name))) feeds.push(['rear_delts', 0.5]);
+    const reps = equipment === 'dumbbell_only' && row.dumbbell && typeof row.dumbbell !== 'string' ? row.dumbbell.reps : row.reps;
+    return [{ day: dayIndex, order, name, reps, pick: row.pick, spill: row.only === focus, spare, primary, feeds, sets: 0 }];
   }));
+}
 
-  // 2. Set adjustments for focus, experience, and equipment
-  const adjustedDays = structuredDays.map((day) => ({
-    ...day,
-    exercises: day.exercises.map((exercise, exerciseIndex) => {
-      let sets = exercise.sets;
+function fedBy(slot: Slot, muscle: string): number {
+  return slot.feeds.find(([fed]) => fed === muscle)?.[1] ?? 0;
+}
 
-      if (answers.experience === 'beginner' && sets > 2) {
-        sets -= 1;
-      }
+function shareOut(slots: Slot[], dayCount: number, answers: ProgramDesignAnswers): void {
+  const cap = SESSION_SET_CAPS[answers.sessionLength];
+  const muscles = [...MAIN_MUSCLES, ...Object.keys(SUPPORT_MUSCLES)];
+  const target = new Map(muscles.map((muscle) => [muscle, weeklySetTarget(muscle, answers)]));
 
-      if (answers.focus === 'upper_focus') {
-        if (isUpperDay(day.day_name) && exerciseIndex < 2) {
-          sets += 1;
-        }
-        if (isLowerDay(day.day_name) && exerciseIndex >= 2 && sets > 1) {
-          sets -= 1;
-        }
-      }
+  const weekly = (muscle: string) => slots.reduce((sum, slot) => sum + slot.sets * fedBy(slot, muscle), 0);
+  const onDay = (muscle: string, day: number) => slots.reduce((sum, slot) => (slot.day === day ? sum + slot.sets * fedBy(slot, muscle) : sum), 0);
+  const room = (day: number) => cap - slots.reduce((sum, slot) => (slot.day === day ? sum + slot.sets : sum), 0);
 
-      if (answers.focus === 'lower_focus') {
-        if (isLowerDay(day.day_name) && exerciseIndex < 2) {
-          sets += 1;
-        }
-        if (isUpperDay(day.day_name) && exerciseIndex >= 2 && sets > 1) {
-          sets -= 1;
-        }
-      }
-
-      if (equipment === 'dumbbell_only' && isHighSkillExercise(exercise.name) && sets > 2) {
-        sets -= 1;
-      }
-
-      return {
-        ...exercise,
-        sets: clampSets(sets),
-      };
-    }),
-  }));
-
-  const equipmentAdjustedDays = adjustedDays.map((day) => {
-    const usedNames = new Set<string>();
-
-    return {
-      ...day,
-      exercises: day.exercises.map((exercise) => {
-        const resolvedName = resolveExerciseForEquipment(exercise.name, equipment, usedNames);
-        usedNames.add(normalizeExerciseName(resolvedName));
-
-        return {
-          ...exercise,
-          name: resolvedName,
-        };
-      }),
-    };
-  });
-
-  const focusLabel =
-    answers.focus === 'upper_focus'
-      ? 'Upper Focus'
-      : answers.focus === 'lower_focus'
-        ? 'Lower Focus'
-        : 'No Specific Focus';
-
-  const sessionLabel =
-    answers.sessionLength === 'short'
-      ? 'short sessions'
-      : answers.sessionLength === 'long'
-        ? 'long sessions'
-        : 'moderate sessions';
-
-  const experienceLabel =
-    answers.experience === 'beginner'
-      ? 'beginner-friendly volume'
-      : answers.experience === 'advanced'
-        ? 'advanced progression headroom'
-        : 'intermediate progression';
-
-  const equipmentLabel =
-    equipment === 'full_gym'
-      ? 'full-gym selection'
-      : 'dumbbell-and-bodyweight substitutions';
-
-  return {
-    ...baseTemplate,
-    name: `${baseTemplate.name} · Guided`,
-    description: `${focusLabel} setup for ${answers.daysPerWeek} days/week with ${sessionLabel}, ${experienceLabel}, and ${equipmentLabel}.`,
-    days: equipmentAdjustedDays,
+  /**
+   * More for `muscle`, short by `short` sets, on one of `rows`: a movement
+   * joins at 2 sets, or one already in gets one more. First-choice movements
+   * join first. Then a third set, or a second-choice movement, whichever
+   * lands on the day with less of this muscle. Then a fourth set, then the
+   * third choices, and last the emphasis rows on the other half's days. A
+   * muscle one set short gets a set, not another movement.
+   */
+  const give = (muscle: string, short: number, rows: Slot[]): boolean => {
+    // A smaller muscle's movement never takes a main muscle it also trains more than a set past its aim.
+    const overfeeds = (slot: Slot, sets: number) => !isMainMuscle(muscle) && slot.feeds.some(([fed, share]) => (
+      isMainMuscle(fed) && weekly(fed) + sets * share > target.get(fed)! + 1
+    ));
+    const fits = (slot: Slot, sets: number) => room(slot.day) >= sets
+      && onDay(muscle, slot.day) + sets * fedBy(slot, muscle) <= SESSION_MUSCLE_SETS
+      && !overfeeds(slot, sets);
+    const home = rows.filter((slot) => !slot.spill);
+    const away = rows.filter((slot) => slot.spill);
+    const joins = (from: Slot[], pick?: BlueprintRow['pick']) => from
+      .filter((slot) => slot.sets === 0 && (pick === undefined || slot.pick === pick) && fits(slot, MOVEMENT_SETS.min))
+      .map((slot) => ({ slot, add: MOVEMENT_SETS.min as number }));
+    const raises = (from: Slot[], to: number) => from
+      .filter((slot) => slot.sets > 0 && slot.sets < to && fits(slot, 1))
+      .map((slot) => ({ slot, add: 1 }));
+    // A smaller muscle's movement stops at 3 sets.
+    const most = isMainMuscle(muscle) ? MOVEMENT_SETS.max : MOVEMENT_SETS.usual;
+    const steps = short > 1
+      ? [joins(home, 1), [...raises(home, MOVEMENT_SETS.usual), ...joins(home, 2)], raises(home, most), joins(home, 3), joins(away), raises(away, MOVEMENT_SETS.usual)]
+      : [joins(home, 1), raises(home, most), joins(home, 2), joins(home, 3), raises(away, MOVEMENT_SETS.usual), joins(away)];
+    const moves = steps.find((step) => step.length > 0);
+    if (!moves) return false;
+    // The day with the least of this muscle, so the week's sets spread over
+    // its days; then the day with the most room, so the days stay even.
+    const { slot, add } = [...moves].sort((a, b) => (
+      onDay(muscle, a.slot.day) - onDay(muscle, b.slot.day)
+      || a.add - b.add
+      || room(b.slot.day) - room(a.slot.day)
+      || a.slot.sets - b.slot.sets
+      || a.slot.day - b.slot.day
+      || a.slot.order - b.slot.order
+    ))[0];
+    slot.sets += add;
+    return true;
   };
+
+  /** Shares out sets over `open` rows until every muscle has arrived or can take no more. */
+  const run = (open: Slot[]) => {
+    const done = new Set<string>();
+    for (let guard = 0; guard < dayCount * cap + muscles.length; guard += 1) {
+      const sets = new Map(muscles.map((muscle) => [muscle, weekly(muscle)]));
+      // Whoever is furthest from their aim goes next. A main muscle under the
+      // smallest useful dose goes before everyone, and a muscle within half a
+      // set of its aim has arrived.
+      const turn = (muscle: string) => {
+        const have = sets.get(muscle)!;
+        if (isMainMuscle(muscle) && have < VOLUME_BAND_EDGES.solidFrom) return have / VOLUME_BAND_EDGES.solidFrom - 1;
+        return have / target.get(muscle)! + (SUPPORT_MUSCLES[muscle]?.wait ?? 0);
+      };
+      const waiting = muscles
+        .filter((muscle) => !done.has(muscle) && target.get(muscle)! - sets.get(muscle)! > 0.5)
+        .map((muscle) => ({ muscle, turn: turn(muscle) }))
+        .sort((a, b) => a.turn - b.turn);
+      if (!waiting.length) break;
+
+      let given = false;
+      for (const { muscle } of waiting) {
+        const short = target.get(muscle)! - sets.get(muscle)!;
+        // Its own movements first. A main muscle with none left takes a compound
+        // that trains it second, unless that movement's own muscle is already
+        // well past its aim.
+        const own = open.filter((slot) => slot.primary === muscle);
+        const shared = isMainMuscle(muscle)
+          ? open.filter((slot) => slot.primary !== muscle && fedBy(slot, muscle) > 0 && sets.get(slot.primary)! < (target.get(slot.primary) ?? 0) * 1.2)
+          : [];
+        if (give(muscle, short, own) || give(muscle, short, shared)) { given = true; break; }
+        done.add(muscle);
+      }
+      if (!given) break;
+    }
+  };
+  // The day's own work first. Spare rows take what room is left.
+  run(slots.filter((slot) => !slot.spare));
+  run(slots);
+
+  // A day left with one or two movements, as a beginner's can be when the
+  // week is spread over many days, takes another: the one whose muscle is
+  // furthest from its aim.
+  for (let day = 0; day < dayCount; day += 1) {
+    for (let guard = 0; guard < MIN_DAY_MOVEMENTS; guard += 1) {
+      if (slots.filter((slot) => slot.day === day && slot.sets > 0).length >= MIN_DAY_MOVEMENTS) break;
+      const next = slots
+        .filter((slot) => slot.day === day && slot.sets === 0 && room(day) >= MOVEMENT_SETS.min && target.get(slot.primary))
+        .sort((a, b) => weekly(a.primary) / target.get(a.primary)! - weekly(b.primary) / target.get(b.primary)! || a.pick - b.pick || a.order - b.order)[0];
+      if (!next) break;
+      next.sets = MOVEMENT_SETS.min;
+    }
+  }
+}
+
+// ── The plan ────────────────────────────────────────────────────────
+
+function normalizeEquipment(equipment: ProgramDesignAnswers['equipment']): EquipmentProfile {
+  return equipment === 'full_gym' ? 'full_gym' : 'dumbbell_only';
+}
+
+/** The built-in program for a day count: the one with that many days, or the nearest. */
+export function programBlueprintFor(daysPerWeek: number): ProgramBlueprint {
+  return [...PROGRAM_BLUEPRINTS].sort((a, b) => (
+    Math.abs(a.days.length - daysPerWeek) - Math.abs(b.days.length - daysPerWeek) || a.days.length - b.days.length
+  ))[0];
+}
+
+/** The program the five answers call for. */
+export function designProgram(answers: ProgramDesignAnswers): SplitTemplate {
+  const blueprint = programBlueprintFor(answers.daysPerWeek);
+  const slots = slotsFor(blueprint, normalizeEquipment(answers.equipment), answers.focus);
+  shareOut(slots, blueprint.days.length, answers);
+
+  const days = blueprint.days.map((day, dayIndex) => ({
+    day_name: day.name,
+    exercises: slots
+      .filter((slot) => slot.day === dayIndex && slot.sets > 0)
+      .map((slot) => ({ name: slot.name, sets: slot.sets, reps_min: slot.reps[0], reps_max: slot.reps[1] })),
+  }));
+  return {
+    name: blueprint.name,
+    description: describeProgram(days, answers),
+    days_per_week: days.length,
+    days,
+  };
+}
+
+// ── What the plan says about itself ─────────────────────────────────
+
+/** Sets a week for each muscle as the app counts them, and how many days train each main muscle. */
+function programFacts(days: SplitTemplate['days']) {
+  const weekly: MuscleSets = new Map();
+  const daysTraining = new Map<string, number>();
+  for (const day of days) {
+    const today: MuscleSets = new Map();
+    for (const exercise of day.exercises) addMovementSets(today, designerMovementMuscles(exercise.name), exercise.sets);
+    for (const [muscle, sets] of today) {
+      weekly.set(muscle, (weekly.get(muscle) ?? 0) + sets);
+      if (sets >= 1) daysTraining.set(muscle, (daysTraining.get(muscle) ?? 0) + 1);
+    }
+  }
+  const daySets = days.map((day) => day.exercises.reduce((sum, exercise) => sum + exercise.sets, 0));
+  return { weekly, daysTraining, shortest: Math.min(...daySets), longest: Math.max(...daySets) };
+}
+
+const TIMES = ['', 'once', 'twice', '3 times', '4 times', '5 times', '6 times'];
+
+function setsPhrase(counts: number[]): string {
+  const low = Math.round(Math.min(...counts));
+  const high = Math.round(Math.max(...counts));
+  if (high - low > 1) return `${low} to ${high} sets each`;
+  return `about ${formatSetCount(Math.round(counts.reduce((sum, value) => sum + value, 0) / counts.length))} sets each`;
+}
+
+/**
+ * How the plan is built, in plain words and from its own numbers: "Planned by
+ * sets per muscle: every main muscle twice a week, 8 to 10 sets each.
+ * Sessions take 55 to 60 minutes." A new program starts with it as its
+ * description.
+ */
+export function describeProgram(days: SplitTemplate['days'], answers: Pick<ProgramDesignAnswers, 'focus'>): string {
+  const { weekly, daysTraining, shortest, longest } = programFacts(days);
+  const count = (muscle: string) => weekly.get(muscle) ?? 0;
+  const trained = MAIN_MUSCLES.map((muscle) => daysTraining.get(muscle) ?? 0);
+  const least = Math.min(...trained);
+  const often = least === Math.max(...trained) ? TIMES[least] : `at least ${TIMES[least]}`;
+
+  const upper = MAIN_MUSCLES.filter((muscle) => !LOWER_BODY.has(muscle)).map(count);
+  const lower = MAIN_MUSCLES.filter((muscle) => LOWER_BODY.has(muscle)).map(count);
+  const mean = (counts: number[]) => formatSetCount(Math.round(counts.reduce((sum, value) => sum + value, 0) / counts.length));
+  const sets = answers.focus === 'upper_focus'
+    ? ` a week. Upper body leads at about ${mean(upper)} sets for each muscle, and legs hold at about ${mean(lower)}.`
+    : answers.focus === 'lower_focus'
+      ? ` a week. Legs lead at about ${mean(lower)} sets for each muscle, and upper body holds at about ${mean(upper)}.`
+      : ` a week, ${setsPhrase(MAIN_MUSCLES.map(count))}.`;
+
+  const minutesFor = (daySets: number) => Math.round((WARM_UP_MINUTES + daySets * MINUTES_PER_SET) / 5) * 5;
+  const minutes = minutesFor(shortest) === minutesFor(longest) ? `about ${minutesFor(longest)}` : `${minutesFor(shortest)} to ${minutesFor(longest)}`;
+  return `Planned by sets per muscle: every main muscle ${often}${sets} Sessions take ${minutes} minutes.`;
 }

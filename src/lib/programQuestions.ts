@@ -5,9 +5,8 @@
  */
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import {
-  buildGuidedTemplate,
+  designProgram,
   designerMovementMuscles,
-  recommendProgramTemplate,
   type EquipmentProfile,
   type ExperienceLevel,
   type ProgramDesignAnswers,
@@ -16,7 +15,6 @@ import {
 } from '@/lib/programDesigner';
 import { SESSION_SET_CAPS, STAND_IN_PREFIX, fillByMuscle, fitToLibrary, keepCurrentMovements, thinLine, thinMuscles } from '@/lib/programFill';
 import { templateSplitDraft } from '@/lib/splitDraftSeed';
-import { splitTemplates } from '@/lib/splitTemplates';
 import type { DraftSplit } from '@/lib/splitDraft';
 import type { Exercise, SplitTemplate } from '@/types';
 
@@ -59,9 +57,9 @@ export const DEFAULT_PROGRAM_ANSWERS: ProgramDesignAnswers = {
 export const BLANK_DAY_OPTIONS = ['1', '2', '3', '4', '5', '6', '7'].map((value) => ({ value, label: value }));
 export const DEFAULT_BLANK_DAYS = 4;
 
-/** The plan the guided answers recommend. */
+/** The plan the guided answers call for. */
 export function guidedTemplate(answers: ProgramDesignAnswers): SplitTemplate {
-  return buildGuidedTemplate(recommendProgramTemplate(splitTemplates, answers), answers);
+  return designProgram(answers);
 }
 
 export function templateExerciseCount(template: Pick<SplitTemplate, 'days'>): number {

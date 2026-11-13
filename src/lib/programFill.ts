@@ -19,29 +19,24 @@ import {
   type MainMuscle,
   type MuscleSets,
 } from '@/lib/muscleVolume';
-import type { EquipmentProfile, ExperienceLevel, ProgramFocus, SessionLength } from '@/lib/programDesigner';
+import {
+  LOWER_BODY,
+  SESSION_MINUTES,
+  SESSION_SET_CAPS,
+  WEEKLY_SET_TARGETS,
+  weeklySetTarget,
+  type EquipmentProfile,
+  type ExperienceLevel,
+  type ProgramFocus,
+  type SessionLength,
+} from '@/lib/programDesigner';
 import { createTempId, type DraftExercise, type DraftSplit } from '@/lib/splitDraft';
 import { SUGGESTED_MOVEMENTS, applyVolumeSuggestion, volumeSuggestions } from '@/lib/volumeSuggestions';
 import type { Exercise } from '@/types';
 
 // ── Limits ──────────────────────────────────────────────────────────
 
-/**
- * Most working sets in one session. A working set with its rest takes about
- * 3 minutes, after about 5 minutes of warm-up: 45 minutes holds 13, 60 holds
- * 18 and 75 holds 23.
- */
-export const SESSION_SET_CAPS: Readonly<Record<SessionLength, number>> = {
-  short: 13,
-  moderate: 18,
-  long: 23,
-};
-
-export const SESSION_MINUTES: Readonly<Record<SessionLength, number>> = {
-  short: 45,
-  moderate: 60,
-  long: 75,
-};
+export { SESSION_MINUTES, SESSION_SET_CAPS };
 
 /**
  * Where a beginner's guided plan starts each main muscle: about this many
@@ -49,14 +44,12 @@ export const SESSION_MINUTES: Readonly<Record<SessionLength, number>> = {
  * plan the builder hands over and nothing else; the person can add any
  * number of sets, and no screen holds them to it.
  */
-export const BEGINNER_STARTING_SETS = 6;
+export const BEGINNER_STARTING_SETS = WEEKLY_SET_TARGETS.beginner;
 
 /** Weekly sets a muscle keeps when sets are taken away for room: solid for a main muscle, 2 for the rest. */
 function floorOf(muscle: string): number {
   return isMainMuscle(muscle) ? VOLUME_BAND_EDGES.solidFrom : 2;
 }
-
-const LOWER_BODY = new Set(['quads', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors', 'tibialis', 'hip_flexors']);
 
 /** True for a muscle the Emphasis answer does not favour: it gives up sets first and gets room last. */
 function outsideFocus(muscle: string, focus: ProgramFocus): boolean {
@@ -166,23 +159,29 @@ export function trimToCap(draft: DraftSplit, cap: number, focus: ProgramFocus): 
   return current;
 }
 
-/** Main muscles past the starting count lose sets from their own movements, never taking another muscle under its floor. */
-export function trimToStartingSets(draft: DraftSplit, startingSets: number): DraftSplit {
+/**
+ * Main muscles past the starting count lose sets from their own movements,
+ * never taking another muscle under its floor. The count is one number for
+ * every muscle, or each muscle's own.
+ */
+export function trimToStartingSets(draft: DraftSplit, startingSets: number | ((muscle: MainMuscle) => number)): DraftSplit {
+  const limit = typeof startingSets === 'number' ? () => startingSets : startingSets;
   let current = draft;
   for (let guard = 0; guard < 200; guard += 1) {
     const sets = programVolume(current);
     const over = MAIN_MUSCLES
-      .filter((muscle) => (sets.get(muscle) ?? 0) > startingSets)
+      .filter((muscle) => (sets.get(muscle) ?? 0) > limit(muscle))
       .sort((a, b) => (sets.get(b) ?? 0) - (sets.get(a) ?? 0));
     let next: DraftSplit | null = null;
     for (const muscle of over) {
-      // The movement of this muscle with the most sets (2 or more), latest on a tie.
+      // The movement of this muscle with the most sets (3 or more), latest on a tie.
       let pick: { dayIndex: number; at: number; sets: number } | null = null;
       current.days.forEach((day, dayIndex) => day.exercises.forEach((exercise, at) => {
         const { primary, secondary } = musclesOf(exercise);
         if (primary !== muscle) return;
         const movementSets = plannedMovementSets(exercise);
-        if (movementSets < 2) return;
+        // A movement keeps at least 2 sets.
+        if (movementSets <= 2) return;
         if (secondary && (sets.get(secondary) ?? 0) - 0.5 < floorOf(secondary)) return;
         if (!pick || movementSets >= pick.sets) pick = { dayIndex, at, sets: movementSets };
       }));
@@ -317,7 +316,9 @@ export function fillByMuscle(draft: DraftSplit, library: readonly Exercise[], an
   const offered = builderLibrary(library, answers.equipment);
 
   let current = trimToCap(draft, cap, answers.focus);
-  if (answers.experience === 'beginner') current = trimToStartingSets(current, BEGINNER_STARTING_SETS);
+  // A beginner's own movements can bring more sets than a starting plan holds.
+  // A set past the aim is left alone: that is as close as whole movements land.
+  if (answers.experience === 'beginner') current = trimToStartingSets(current, (muscle) => weeklySetTarget(muscle, answers) + 1);
 
   for (let round = 0; round < 64; round += 1) {
     current = applySuggestions(current, offered, cap, answers.focus);

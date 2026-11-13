@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MAIN_MUSCLES, programVolume, volumeBand } from '@/lib/muscleVolume';
 import { newDraftDay, newDraftExercise, type DraftSplit } from '@/lib/splitDraft';
 import { templateSplitDraft } from '@/lib/splitDraftSeed';
-import { splitTemplates } from '@/lib/splitTemplates';
+import { designProgram } from '@/lib/programDesigner';
 import {
   MAX_SUGGESTED_SETS,
   SUGGESTED_MOVEMENTS,
@@ -196,18 +196,13 @@ describe('applying suggestions', () => {
     expect(applyAllVolumeSuggestions(none, library)).toBe(none);
   });
 
-  it("every built-in program ends with every main muscle solid", () => {
-    expect(splitTemplates).toHaveLength(7);
-    const before: Record<string, string[]> = {};
-    for (const template of splitTemplates) {
+  it('every built-in program has every main muscle solid as written, so nothing is suggested', () => {
+    for (const daysPerWeek of [3, 4, 5, 6]) {
+      const template = designProgram({ daysPerWeek, focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' });
       const { draft: program, missing } = templateSplitDraft(template, library);
       expect(missing, template.name).toEqual([]);
-      before[template.name] = lowMain(program);
-      const filled = applyAllVolumeSuggestions(program, library);
-      expect(lowMain(filled), template.name).toEqual([]);
-      expect(volumeSuggestions(filled, library), template.name).toEqual([]);
+      expect(lowMain(program), template.name).toEqual([]);
+      expect(volumeSuggestions(program, library), template.name).toEqual([]);
     }
-    // The templates as written leave some main muscles low; the builder piece fixes that.
-    expect(Object.values(before).flat().length).toBeGreaterThan(0);
   });
 });

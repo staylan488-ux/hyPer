@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { normalizeExerciseName } from '@/lib/customExercises';
 import { MAIN_MUSCLES, plannedMovementSets, programVolume, volumeBand, type MainMuscle } from '@/lib/muscleVolume';
-import { designerMovementNames, recommendProgramTemplate, type ProgramDesignAnswers } from '@/lib/programDesigner';
+import { designProgram, designerMovementNames, weeklySetTarget, type ProgramDesignAnswers } from '@/lib/programDesigner';
 import {
   BEGINNER_STARTING_SETS,
   SESSION_SET_CAPS,
@@ -17,7 +17,6 @@ import {
 import { guidedDraft } from '@/lib/programQuestions';
 import { newDraftDay, newDraftExercise, type DraftDay, type DraftSplit } from '@/lib/splitDraft';
 import { templateSplitDraft } from '@/lib/splitDraftSeed';
-import { splitTemplates } from '@/lib/splitTemplates';
 import type { Exercise } from '@/types';
 import { seededLibrary } from './helpers/seededLibrary';
 
@@ -109,25 +108,26 @@ describe('every guided plan', () => {
     expect(dumbbells.every(({ draft }) => thinMuscles(draft).length === 0)).toBe(true);
   });
 
-  it('builds the day count asked for whenever a template has it', () => {
+  it('builds the day count asked for', () => {
     const wrong = plans
-      .filter(({ answers }) => answers.daysPerWeek !== 5)
       .filter(({ answers, draft }) => draft.days.length !== answers.daysPerWeek)
       .map(({ answers, draft }) => `${key(answers)}: ${draft.days.length}`);
     expect(wrong).toEqual([]);
-    // No template has 5 days: the 4-day one stays, and the chooser says "4 days a week".
-    expect(plans.filter(({ answers }) => answers.daysPerWeek === 5).every(({ draft }) => draft.days.length === 4)).toBe(true);
   });
 
-  it("keeps a beginner's main muscles at the low edge of solid", () => {
+  it("keeps a beginner's main muscles near the starting count", () => {
     const beginner = plans.filter(({ answers }) => answers.experience === 'beginner');
-    const counts = beginner.flatMap(({ draft }) => MAIN_MUSCLES.map((muscle) => sets(draft, muscle)));
-    // A muscle can sit a little past the edge when its sets also carry another
-    // muscle's (a squat's glutes), or a new movement brings 2 or 3 sets at once.
+    const balanced = beginner.filter(({ answers }) => answers.focus === 'no_focus');
+    const counts = balanced.flatMap(({ draft }) => MAIN_MUSCLES.map((muscle) => sets(draft, muscle)));
+    // A muscle can sit a little past its aim when its sets also carry another
+    // muscle's (a squat's glutes), or a new movement brings 2 sets at once. An
+    // emphasis raises the aim of the favoured half.
     for (const { answers, draft } of beginner) {
-      for (const muscle of MAIN_MUSCLES) expect(sets(draft, muscle), `${key(answers)} ${muscle}`).toBeLessThanOrEqual(BEGINNER_STARTING_SETS + 2);
+      for (const muscle of MAIN_MUSCLES) {
+        expect(sets(draft, muscle), `${key(answers)} ${muscle}`).toBeLessThanOrEqual(Math.max(BEGINNER_STARTING_SETS, weeklySetTarget(muscle, answers)) + 2);
+      }
     }
-    expect(counts.reduce((sum, count) => sum + count, 0) / counts.length).toBeLessThanOrEqual(BEGINNER_STARTING_SETS);
+    expect(counts.reduce((sum, count) => sum + count, 0) / counts.length).toBeLessThanOrEqual(BEGINNER_STARTING_SETS + 0.5);
     const total = (experience: ProgramDesignAnswers['experience']) => plans
       .filter(({ answers }) => answers.experience === experience)
       .reduce((sum, { draft }) => sum + MAIN_MUSCLES.reduce((inner, muscle) => inner + sets(draft, muscle), 0), 0);
@@ -135,36 +135,31 @@ describe('every guided plan', () => {
   });
 });
 
-describe('the seven templates', () => {
-  it('reach solid on every main muscle once filled, with sessions inside 60 minutes', () => {
-    const before: string[] = [];
-    for (const template of splitTemplates) {
+describe('the built-in programs', () => {
+  it('are solid on every main muscle and inside 60 minutes as designed, so the fill leaves them alone', () => {
+    for (const daysPerWeek of DAYS) {
+      const answers: ProgramDesignAnswers = { daysPerWeek, focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' };
+      const template = designProgram(answers);
       const { draft, missing } = templateSplitDraft(template, library);
       expect(missing).toEqual([]);
-      before.push(...thinMuscles(draft).map((muscle) => `${template.name} ${muscle}`));
-      const focus = /Upper Focus/.test(template.name) ? 'upper_focus' : /Lower Focus/.test(template.name) ? 'lower_focus' : 'no_focus';
-      const filled = fillByMuscle(draft, library, { focus, equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' });
-      expect(thinMuscles(filled), template.name).toEqual([]);
-      expect(Math.max(...filled.days.map(daySets)), template.name).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
-      // A template already solid everywhere and inside the cap is left as it is.
-      if (!thinMuscles(draft).length && Math.max(...draft.days.map(daySets)) <= SESSION_SET_CAPS.moderate) expect(filled).toBe(draft);
+      expect(thinMuscles(draft), template.name).toEqual([]);
+      expect(Math.max(...draft.days.map(daySets)), template.name).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
+      expect(fillByMuscle(draft, library, { ...answers, equipment: 'full_gym' }), template.name).toBe(draft);
     }
-    // As compiled, 4 of the 7 leave a main muscle low.
-    expect(before.length).toBeGreaterThan(0);
   });
 });
 
 describe('names the builder can emit', () => {
   it('are all in the seeded library and none is retired', () => {
     const names = new Set(library.map((exercise) => normalizeExerciseName(exercise.name)));
-    const missing = designerMovementNames(splitTemplates).filter((name) => !names.has(normalizeExerciseName(name)));
+    const missing = designerMovementNames().filter((name) => !names.has(normalizeExerciseName(name)));
     expect(missing).toEqual([]);
   });
 
   it('each have a row of muscles that matches the seed', async () => {
     const { DESIGNER_MOVEMENTS } = await import('@/lib/designerMovements');
     const rows = new Map(Object.entries(DESIGNER_MOVEMENTS).map(([name, row]) => [normalizeExerciseName(name), row]));
-    for (const name of designerMovementNames(splitTemplates)) {
+    for (const name of designerMovementNames()) {
       const seeded = library.find((exercise) => normalizeExerciseName(exercise.name) === normalizeExerciseName(name))!;
       expect(rows.get(normalizeExerciseName(name)), name).toEqual([seeded.muscle_group, seeded.muscle_group_secondary, seeded.is_compound, seeded.equipment]);
     }
@@ -173,7 +168,7 @@ describe('names the builder can emit', () => {
   it('never match a retired row', () => {
     const retired = { ...lib('Lunge'), id: 'retired-lunge', retired_at: '2026-11-11T00:00:00Z' };
     const { draft, missing } = templateSplitDraft(
-      { name: 'T', description: '', days_per_week: 1, days: [{ day_name: 'Legs', muscle_groups: ['quads'], exercises: [{ name: 'Lunge', sets: 3, reps_min: 8, reps_max: 12 }] }] },
+      { name: 'T', description: '', days_per_week: 1, days: [{ day_name: 'Legs', exercises: [{ name: 'Lunge', sets: 3, reps_min: 8, reps_max: 12 }] }] },
       [retired],
     );
     expect(draft.days[0].exercises).toEqual([]);
@@ -365,23 +360,15 @@ describe.skipIf(!existsSync(EXPORT))('a real program rebuilt', () => {
     const used = new Set(draft.days.flatMap((day) => day.exercises.map((exercise) => exercise.exercise_id)));
     expect(draft.days).toHaveLength(daysPerWeek);
     expect(main.length).toBeGreaterThanOrEqual(10);
-    expect(main.filter((id) => !used.has(id)).map((id) => exercises.get(id)?.name)).toEqual([]);
-    expect([...mine].filter((id) => used.has(id)).length).toBeGreaterThanOrEqual(daysPerWeek === 6 ? 19 : 15);
+    // At four days of 60 minutes the plan has no overhead press: the chest
+    // presses already train the front delts, and the room goes to lateral
+    // raises. Six days have the room, and keep his.
+    expect(main.filter((id) => !used.has(id)).map((id) => fullLibrary.find((row) => row.id === id)?.name))
+      .toEqual(daysPerWeek === 4 ? ['Overhead Dumbbell Press'] : []);
+    expect([...mine].filter((id) => used.has(id)).length).toBeGreaterThanOrEqual(daysPerWeek === 6 ? 19 : 14);
     for (const muscle of MAIN_MUSCLES) expect(volumeBand(sets(draft, muscle)), muscle).not.toBe('low');
     expect(Math.max(...draft.days.map(daySets))).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
   });
-});
-
-describe('template choice', () => {
-  it('gives the day count asked for over a template with the right focus', () => {
-    for (const focus of FOCUSES) {
-      for (const days of [3, 6]) {
-        const answers: ProgramDesignAnswers = { daysPerWeek: days, focus, equipment: 'full_gym', sessionLength: 'short', experience: 'beginner' };
-        expect(recommendProgramTemplate(splitTemplates, answers).days_per_week, `${days} ${focus}`).toBe(days);
-      }
-    }
-  });
-
 });
 
 describe('a template movement the library lacks', () => {

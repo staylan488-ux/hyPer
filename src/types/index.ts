@@ -347,14 +347,8 @@ export interface SplitTemplate {
   name: string;
   description: string;
   days_per_week: number;
-  evidence?: {
-    label: string;
-    confidence: 'solid' | 'emerging' | 'speculative';
-    public_note: string;
-  };
   days: {
     day_name: string;
-    muscle_groups: MuscleGroup[];
     exercises: {
       name: string;
       sets: number;

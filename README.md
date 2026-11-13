@@ -56,8 +56,10 @@ Notes in `docs/`:
   daily AI budget and the other limits, and the switches for each.
 - [serving-entry.md](docs/serving-entry.md): how an amount typed in any unit
   (250 g, 200 ml, 6 pieces) turns into servings.
-- [evidence-pipeline.md](docs/evidence-pipeline.md): where program templates
-  come from and how to refresh their research snapshot.
+- [program-design.md](docs/program-design.md): the built-in programs, how
+  the builder sizes them and the research each choice rests on.
+- [evidence-pipeline.md](docs/evidence-pipeline.md): the research notes
+  snapshot and how to refresh it.
 - [fatsecret-premier-free-application.md](docs/fatsecret-premier-free-application.md):
   the FatSecret Premier Free application and its go/no-go checks.
 - [agent-workflows.md](docs/agent-workflows.md): how the agent instructions
