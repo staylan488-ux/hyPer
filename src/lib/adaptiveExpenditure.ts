@@ -63,8 +63,9 @@ export interface ExpenditureEstimate {
 
 /** Long enough to average out a bad week, short enough to still be current. */
 export const WINDOW_DAYS = 21;
-const MIN_LOGGED_DAYS = 14;
-const MIN_WEIGH_IN_DAYS = 10;
+/** The gates the measurement must pass before it counts. Shown while learning. */
+export const MIN_LOGGED_DAYS = 14;
+export const MIN_WEIGH_IN_DAYS = 10;
 
 /**
  * The first days of a new phase are glycogen and water rather than tissue.
@@ -271,7 +272,17 @@ export function estimateExpenditure(input: ExpenditureInput): ExpenditureEstimat
   };
 }
 
-/** Whether enough time has passed to recompute. Targets update weekly. */
+/** Midnight at the start of the local week holding `now`. Weeks start on Monday. */
+export function startOfLocalWeek(now: Date): Date {
+  const daysSinceMonday = (now.getDay() + 6) % 7;
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceMonday);
+}
+
+/**
+ * Whether to recompute. Targets update on Mondays: due once a Monday has begun
+ * (the person's local day) since the last update, so at most once a week, and
+ * on the first visit of a week that started while the app was closed.
+ */
 export function shouldRefreshExpenditure(
   lastUpdatedAt: string | null | undefined,
   now: Date = new Date(),
@@ -279,5 +290,5 @@ export function shouldRefreshExpenditure(
   if (!lastUpdatedAt) return true;
   const last = Date.parse(lastUpdatedAt);
   if (!Number.isFinite(last)) return true;
-  return now.getTime() - last >= 7 * MS_PER_DAY;
+  return last < startOfLocalWeek(now).getTime();
 }
