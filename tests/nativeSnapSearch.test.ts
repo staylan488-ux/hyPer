@@ -73,7 +73,12 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: strin
     retireSavedMeal: vi.fn(),
   },
   '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
-  '@/lib/usdaClient': { searchUsdaFoodsSecureStrict: (query: string) => usda(query), withUsdaPortion: () => detail.promise },
+  '@/lib/usdaClient': {
+    // the reason a failed search carries, as the real client reads it
+    foodLookupFailure: (error: { reason?: string }) => error.reason ?? 'offline',
+    searchUsdaFoodsSecureStrict: (query: string) => usda(query),
+    withUsdaPortion: () => detail.promise,
+  },
   '~/components/BlancText': { BlancText: ({ children }: PropsWithChildren) => createElement('span', null, children) },
   // Retry, kept so a case can press it
   '~/components/Capsule': { Capsule: (props: { title: string; onPress: () => void }) => { if (props.title === 'Retry') retry = props.onPress; return null; } },
@@ -250,5 +255,26 @@ describe('Search: results belong to the words in the field', () => {
     expect(host.querySelector('progress')).not.toBeNull();
     await act(async () => { await vi.advanceTimersByTimeAsync(350); });
     expect(host.textContent).toContain(milk.name);
+  });
+
+  it('blames the connection only when the search got no answer', async () => {
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    const search = async (reason?: string) => {
+      usda = async () => { throw Object.assign(new Error('failed'), { reason }); };
+      await act(async () => { root.render(createElement(SearchTab, { query: `${milk.name} ${reason}` })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+      return host.textContent ?? '';
+    };
+    expect(await search('offline')).toContain('Check your connection.');
+    // hyPer answered and the lookup behind it failed: the connection is fine
+    const unavailable = await search('unavailable');
+    expect(unavailable).toContain('The food database didn’t answer.');
+    expect(unavailable).not.toContain('connection');
+    const limited = await search('limited');
+    expect(limited).toContain('Too many searches for now.');
+    expect(limited).not.toContain('connection');
+    expect(retry).toBeDefined();
   });
 });
