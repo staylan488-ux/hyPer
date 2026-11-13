@@ -104,8 +104,11 @@ describe('which coach answers', () => {
     hosted.mode = 'gemini';
     expect(coachSource()).toBe('gemini');
     const result = await requestTargetSuggestion({ goals: 'Gain muscle steadily.', context: coachContext, accessToken: 't' });
-    // 3,000 kcal disagrees with its own macros (2,510), so the macros win.
-    expect(result).toMatchObject({ calories: 2510, provider: 'gemini', reconciled: true });
+    // 3,000 kcal disagrees with its own macros (2,510), so the macros win. Then
+    // the person's own ranges: at 59 kg with a learned burn of 2,060, the most
+    // the calculator would set is 20% over it (2,472) and 2.4 g of protein per kg (142).
+    expect(result).toMatchObject({ calories: 2474, protein: 142, provider: 'gemini', reconciled: true, held: ['calories', 'protein'] });
+    expect(result.cautions).toBe('Calories and protein were brought inside the ranges the calculator uses, so the reasoning may name other figures.');
     expect(hosted.ask).toHaveBeenCalledWith('Gain muscle steadily.', coachContext, 't');
   });
 
