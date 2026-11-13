@@ -97,7 +97,8 @@ export default function MovementSheet() {
 /** "Plan: 3 sets" or "Plan: 3–4 sets", for reference; the count can still change. */
 function rangeLine(movement: Movement): string | null {
   const range = movement.range;
-  if (!range) return null;
+  // A movement added during the workout has no plan to quote.
+  if (!range || movement.added) return null;
   return range.minSets === range.maxSets
     ? `Plan: ${range.maxSets} ${range.maxSets === 1 ? 'set' : 'sets'}`
     : `Plan: ${range.minSets}–${range.maxSets} sets`;
