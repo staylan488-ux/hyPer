@@ -162,7 +162,15 @@ Settled; do not reopen or "improve" them without being asked.
   Skip skips a movement for this workout only and stays on the set card.
   Reorder is in place (hold and drag), with no Reorder sheet. Warm-up rows are
   never logged. Corrections never celebrate.
-- Session complete names new records and "N sets beat last time".
+- Set targets (approved 2026-11-11): Train fills each set with its target
+  (one weight for the movement) and one line says only why, never the
+  figures; a note takes that line. After a log it says "Target hit" or
+  "Beat target · +1 rep", and a missed target says nothing.
+- Sets are rated in reps in reserve by default (Sinan, 2026-11-13), stored
+  as RPE (2 in reserve = RPE 8); RPE is a per-phone choice in You › App. A
+  rating is never carried over from another set: only a tap saves one.
+- Session complete names new records and "N targets hit" (Sinan's pick,
+  2026-11-12, over "N of M"); with no targets in the session, "N sets beat last time".
 - Editing targets: a new calorie figure carries carbs and fat with it;
   protein never moves.
 - The tab bar shrinks on scroll on every tab

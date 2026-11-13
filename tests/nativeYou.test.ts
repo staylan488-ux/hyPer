@@ -858,6 +858,11 @@ function loadYouScreen(you: YouModule, seen: Seen, harness: ReturnType<typeof yo
     '~/lib/earlyAccess': { useEarlyAccess: () => false },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': { dayKey: (date: Date) => dateFns.format(date, 'yyyy-MM-dd') },
+    '~/lib/setEntry': {
+      chooseEffortScale: vi.fn(),
+      EFFORT_SCALE_LABELS: { rir: 'Reps in reserve', rpe: 'RPE' },
+      useEffortScaleStore: create(() => ({ scale: 'rir' })),
+    },
   };
   return loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/index.tsx', imports, options).default;
 }
