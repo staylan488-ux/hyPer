@@ -90,12 +90,14 @@ function suggestedDraft(current: Current, previous: PreviousWorkoutSetMap, targe
     previousWorkoutSetsByExercise: previous,
   });
   const target = setTargetFor(current.set, current.movement.sets, targets);
-  const rpe = current.set.rpe ?? (autofill?.rpe ? Number(autofill.rpe) : null);
+  // RPE is never carried from last time or the set before: a carried value
+  // saved as if the person rated the set, and the targets read RPE.
+  const rpe = current.set.rpe;
   return {
     setId: current.set.id,
     weight: current.set.weight !== null ? String(current.set.weight) : target ? String(target.weight) : (autofill?.weight ?? ''),
     reps: current.set.reps !== null ? String(current.set.reps) : target ? String(target.reps) : (autofill?.reps ?? ''),
-    rpe: rpe !== null && Number.isFinite(rpe) ? rpe : null,
+    rpe: rpe !== null && rpe !== undefined && Number.isFinite(rpe) ? rpe : null,
     touched: false,
   };
 }

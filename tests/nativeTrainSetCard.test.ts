@@ -494,6 +494,13 @@ describe('the set card\'s warm-up and plates', () => {
     expect(push).toHaveBeenCalledWith({ pathname: '/warm-up', params: { id: 'row', weight: '80' } });
   });
 
+  it('never carries an RPE over from last time: the person rates each set', async () => {
+    fresh = true;
+    previous = { row: { 1: { weight: 80, reps: 8, rpe: 8 }, 2: { weight: 80, reps: 8, rpe: 8.5 }, 3: { weight: 80, reps: 8, rpe: 9 } } };
+    await open();
+    expect(chips()[0]).toBe('Add RPE');
+  });
+
   it('offers the plates on later sets, and nothing at or under the bar', async () => {
     await open();
     expect(chips()).toEqual(['Add RPE', 'Plates', 'Log set']);
