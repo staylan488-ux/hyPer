@@ -1,38 +1,31 @@
 # Current state
 
-Recorded 2026-11-07 (Pacific), at main b3f61df (through PR #188). Write-ups
-of merged branches were removed that day; each PR's description and Git
-history keep them (this file at commit b3f61df has the long version).
+Recorded 2026-11-13 (Pacific), at main 9211699 (through PRs #226 and #227).
+Write-ups of merged branches are removed as they merge; each PR's description
+and Git history keep them.
 
 ## Where things stand
 
-- The released app is the React Native app in `native/`: hyPer 2.0,
-  `app.hyper.mobile`, which replaced the Capacitor app on 2026-10-28
-  (PR #152). The Capacitor shell (`ios/`) and the web UI were removed on
-  2026-10-30; `src/` holds only the shared code the app imports. The Vercel
-  project `hy-per` that hosted the web app no longer builds (`vercel.json`
-  turns its Git deployments off); its last web build stays online until the
-  project is deleted in Vercel. Delete `vercel.json` after that.
-- 2026-11-07 repo refresh (branch `claude/laughing-brown-2eg222`): the
-  Capacitor packages, shims and web-only code left in `src/` were removed and
-  the docs brought up to date, with no change to the app. The tracked
-  Supabase CLI cache (`supabase/.temp`) is gone: name the project with
-  `--project-ref`, or run `supabase link` again. An older checkout may still
-  hold an untracked `ios/` folder from the Capacitor app; it can be deleted.
+- The Vercel project `hy-per` that hosted the retired web app no longer builds
+  (`vercel.json` turns its Git deployments off); its last web build stays
+  online until the project is deleted in Vercel. Delete `vercel.json` after
+  that.
+- The tracked Supabase CLI cache (`supabase/.temp`) is gone: name the project
+  with `--project-ref`, or run `supabase link` again. An older checkout may
+  still hold an untracked `ios/` folder from the Capacitor app; it can be
+  deleted.
 - Left on purpose (runtime config, change only as a planned deploy): the
   Supabase dashboard's Auth site URL and redirect list may still name the web
-  app. The `.env` names keep their `VITE_` prefix. (The `capacitor:` origin and
-  `whoop-oauth`'s `APP_BASE_URL` fallback are gone on the public sign-up
-  branch below; the `APP_BASE_URL` secret is then unused.)
-- Merged since the last TestFlight upload recorded here: #181–#190, among
-  them the full weigh-in history (#185), the design council's Blanc
-  refinements with a custom camera (`expo-camera`, #186) and a quicker launch
-  intro (#188) and the Analysis card's live steps (#190, shipped to
-  TestFlight on 2026-11-07). #186 adds a native module, so a phone needs a
-  full native build, not an over-the-air update.
-- TestFlight: the last upload recorded here is 2.0.3 build 68 (main at
-  24ba2fe, through #180) on 2026-11-04 Pacific; the Team group gets every
-  build. Check App Store Connect before assuming nothing newer exists.
+  app. The `.env` names keep their `VITE_` prefix. Main no longer reads the
+  `capacitor:` origin or `whoop-oauth`'s `APP_BASE_URL` fallback; once main's
+  functions are deployed the `APP_BASE_URL` secret is unused.
+- TestFlight: the last upload recorded here is 2.0.11 build 76 (tag
+  `v2.0.11`, main at efa962f, through #210) on 2026-11-09 Pacific; the Team
+  group gets every build. Check App Store Connect before assuming nothing
+  newer exists. Nothing merged after that tag is in TestFlight
+  (`git log v2.0.11..origin/main`). #226 adds a native module
+  (`@sentry/react-native`), so a phone needs a full native build, not an
+  over-the-air update.
 - Ship pipeline: since PR #156, `scripts/ship.sh` hands over to the build
   clone's own copy and cleans up after every run. The running bot keeps its
   old code until it is restarted with `scripts/ship-bot/install-launchd.sh`
@@ -42,8 +35,8 @@ history keep them (this file at commit b3f61df has the long version).
   must be on the Mac's Wi-Fi).
 - Food AI defaults to Gemini through `analyze-food-trial`. On Hypertrophy-App
   that function is version 5 (2026-11-07, from PR #190; main has since moved
-  its records to the database ledger, which is not deployed, see Account
-  deletion below): the live steps for the Analysis card (`progress: true`), per-step
+  its records to the database ledger, which is not deployed, see the next
+  section): the live steps for the Analysis card (`progress: true`), per-step
   timings in `usage.stepMs`, low thinking for picking search results, and
   main's parallel Tavily searches. Older app builds are unaffected. Planner
   and finalizer stay on medium thinking until a side-by-side test on real
@@ -51,16 +44,8 @@ history keep them (this file at commit b3f61df has the long version).
   photo worker (`deploy/photo-worker`) still runs on the VM with the
   2026-09-29 models and serves only a device set to the worker.
 
-## Account deletion and forgot password (branch `claude/project-thread-a2w5po`)
+## Production is behind main
 
-- You › Account has Delete account (one confirm), backed by the new
-  `delete-account` Edge Function: it removes the account's food analysis
-  ledger files, deletes the auth user (every table's rows go with it: they
-  all cascade from `auth.users` through `profiles`), then tells WHOOP, so a
-  deletion that fails leaves WHOOP connected. Sign-in has
-  Forgot password?: the reset link returns to `<scheme>://auth/callback`
-  (the URL email confirmation already uses), signs in on this phone and shows
-  the New password screen (`native/src/app/new-password.tsx`) before the app.
 - Live on Hypertrophy-App is `delete-account` version 1, the first version
   from PR #197 (read from the deployed source on 2026-11-09): Delete account
   works there, but removing the food analysis records is best-effort, so a
@@ -72,110 +57,48 @@ history keep them (this file at commit b3f61df has the long version).
   before the `food_analysis_ledger` migration is applied. Check that the Auth
   redirect list still names `app.hyper.mobile://auth/callback` (sign-up
   confirmation needs it too).
-- Revoking the Sign in with Apple token on deletion is on the public sign-up
-  branch below (the app now hands the server Apple's refresh token).
+- Open sign-up (#225, migration
+  `20261111120000_public_signup_hardening.sql`) is not deployed either. How
+  it works and every switch: [sign-up-and-limits.md](../sign-up-and-limits.md).
+  Production lacks the ledger migration, and its migration history has
+  drifted from the repo, so the cutover applies the migrations by hand in the
+  order in [the ledger notes](../food-analysis-ledger.md).
+- The app side of the public release (#226) is merged. Still empty:
+  `APP_STORE_ID` in `native/src/lib/links.ts`, until the listing exists (the
+  Update hyPer button opens an App Store search until then). Crash reporting
+  is off without `SENTRY_DSN` in `.env`; without `SENTRY_AUTH_TOKEN` (and
+  `SENTRY_ORG`, `SENTRY_PROJECT`) the build uploads no source maps.
 
-## Public sign-up with brakes (branch `claude/project-thread-4fczbz`)
+## Today's groups (#220) and the molten glass (#210): what is left
 
-- Built on #219 (`t3/invite-only-ai-spend-cap`, which rebuilt stale PR #143):
-  the approved list and the "Not on the list yet" screen stay, and migration
-  `20261111120000_public_signup_hardening.sql` adds open sign-up with
-  invite-only as the emergency switch, private custom exercises, per-person
-  USDA foods, a $5/day AI budget across everyone with per-account limits and
-  an off-switch, food lookup limits, Sign in with Apple revocation on
-  deletion, size limits and no table access for signed-out callers. How it
-  works and every switch: [sign-up-and-limits.md](../sign-up-and-limits.md).
-- Not deployed. Production lacks the ledger migration, and its migration
-  history has drifted from the repo, so the cutover applies the migrations by
-  hand in the order in [the ledger notes](../food-analysis-ledger.md).
-- Also fixes the recorded cost of a meal analysis (it was always empty, so no
-  real cost was ever logged).
-
-## App changes for the public release (branch `claude/project-thread-izn9r7`)
-
-- Piece 3 of the release plan, on top of the public sign-up backend above.
-  The app reads `my_beta_access().early_access` (kept per account on the
-  phone) and `app_public_config()` (at launch and on each return, at most
-  every five minutes). Anything unclear changes nothing.
-- WHOOP, the Mac worker and GPS runs show only to early-access accounts; a
-  WHOOP connection that exists stays visible so it can be disconnected. A
-  phone left on the worker goes back to Gemini for an account without early
-  access. App Store builds (`scripts/ship.sh`) no longer bake in the worker
-  address.
-- Before anything goes to Gemini (Analyze meal, Describe amount when it needs
-  the AI, Suggest targets) an alert asks once per account on the phone, with
-  the privacy policy one tap away; You › Food analysis can withdraw it.
-- Log food's AI tab says when the daily limit, the limit for everyone or the
-  off-switch stops an estimate, and offers Enter it yourself (Manual with the
-  meal's words as the name). AI results say they're Gemini estimates.
-- `min_app_version` newer than the build shows Update hyPer before anything
-  else. `APP_STORE_ID` in `native/src/lib/links.ts` is empty until the
-  listing exists; the button opens an App Store search until then.
-- About has Privacy policy, Terms of use and Support (the addresses from PR
-  #223) and the food data credits; Scan credits FatSecret too. Sign-in says
-  18 or older and links the terms. The calculator refuses ages under 18. New
-  passwords need 8 characters; sign-in still takes an older 6.
-- Crash reporting: `@sentry/react-native` (Expo's pinned ~8.28). Off without
-  `SENTRY_DSN` in `.env`; without `SENTRY_AUTH_TOKEN` (and `SENTRY_ORG`,
-  `SENTRY_PROJECT`) the build uploads no source maps. No user ids, screenshots
-  or tracing. A new native module: a phone needs a full build.
-- Not run in a simulator or on a phone yet (built in a cloud session):
-  type-checked, unit-tested, and the iOS bundle exported.
-
-## Today's groups, and holding one to move it (branch `t3/native-ui-clutter-review`)
-
-- The rules are in the blanc-native skill (Design, and the owner's
-  decisions): a page grouped by space, bold for headings only, a glass
-  capsule for whatever is pressed, and Today cut to training, Fuel and
-  Progress. Train and Fuel follow the same spacing and weights.
-- Holding a group on Today brings glass cards in behind all three; it is
-  dragged into place and the cards fade. The order is kept on the phone, per
-  account, and does not sync. The owner approved it on his phone on
-  2026-11-09 in the test app.
-- A heading's action is now a small glass capsule everywhere a Section has
-  one. Seen: Today and You. Not opened: a meal's Ingredients (Add) and the
-  program editor (Reorder).
-- Checked in the simulator: Today, Train and Fuel in dark and light; Today
-  and Fuel at the largest text size and Today with Increase Contrast, before
-  the reorder was added. Not checked with the reorder: the largest text size,
-  Increase Contrast, Reduce Motion, VoiceOver's Move up and Move down.
+- The owner approved both on his phone on 2026-11-09 in the test app. Their
+  rules are in the blanc-native skill (Design, and the owner's decisions).
+- Today's groups, not checked with the reorder: the largest text size,
+  Increase Contrast, Reduce Motion, VoiceOver's Move up and Move down. A
+  heading's action is now a small glass capsule everywhere a Section has one;
+  not opened: a meal's Ingredients (Add) and the program editor (Reorder).
 - Left for the owner: Train still has a Start button on every other day
   (removing them changes how an off-plan day starts).
 - Read in the code, not reproduced: the live workout's reorder trades places
   by a rule that assumes rows of similar height, so lifting a tall block (a
   superset) may trade it with its neighbour at once. Today's groups use a
   rule of their own (DragList's `cards`).
-
-## Molten glass and the card-less pages (merged, PR #210)
-
-- The look and its rules are in the blanc-native skill (Design). The owner
-  judged it on his phone on 2026-11-09 in the test app: the first build (a
-  field per tab, 30 to 60 fps, full strength) was rejected as laggy and
-  distracting; the rewrite (one shared field at 120 fps, the "faint" level)
-  was approved.
-- It adds a native module (`native/modules/hyper-glass-field`), so a phone
-  needs a full native build, not an over-the-air update.
-- Checked in the simulator: every screen in dark and light, the largest text
-  size, Increase Contrast, Reduce Motion, swipe back, leaving and returning.
-  Measured on the phone: 120 fps with no late frames over 40 s, about 1.2 ms
-  of GPU a frame.
-- Battery: the glass draws at 120 fps only while the app is being used; 15 s
-  after the last touch, scroll, press or tab change it fades away and stops
-  drawing on the bare page, and any use fades it back in. Not measured: what the remaining cost is over a day, and Low
-  Power Mode on the phone (meant to cap it at 60). Not checked: VoiceOver.
-- Known and left as is: in light, a darker line passing behind small grey
-  text lowers that text's contrast where they cross; during a swipe back the
-  page's content hides until the slide ends; sheets' round close buttons are a
-  flat fill, not glass.
-- Also in the branch, unrelated to glass: SwiftUI pickers ignore the safe
-  area (a segmented picker used to stick under a sheet's header and overlap
-  the text below while scrolling).
+- The glass, not measured: what it costs over a day, and Low Power Mode on
+  the phone (meant to cap it at 60). Not checked: VoiceOver.
+- The glass, known and left as is: in light, a darker line passing behind
+  small grey text lowers that text's contrast where they cross; during a
+  swipe back the page's content hides until the slide ends; sheets' round
+  close buttons are a flat fill, not glass.
 
 ## Not yet checked on a phone
 
 Each of these passed tests and, where noted in its PR, the simulator with
 sample data. None has been seen on a phone.
 
+- Public release app changes (#226): the consent alert before anything goes
+  to Gemini, the limit messages on Log food's AI tab, the Update hyPer screen,
+  what an account without early access sees, About's links, and crash
+  reporting once its keys exist.
 - For the owner to confirm: sign-in carried over from the Capacitor app.
 - For Alex, whose features these are: WHOOP connect under the new identity,
   saving a real GPS run (runs were saved only against a local test database),
