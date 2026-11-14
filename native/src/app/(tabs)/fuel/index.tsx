@@ -294,8 +294,18 @@ export default function FuelScreen() {
       <Stack.Screen
         options={{
           title: 'Fuel',
-          // The date under the title opens the month, so + stands alone.
+          // The date under the title opens the month; the clock opens the
+          // logged days by week, in Train's History's place, with + at the edge.
           unstable_headerRightItems: () => [
+            {
+              type: 'button',
+              label: 'History',
+              icon: { type: 'sfSymbol', name: 'clock.arrow.circlepath' },
+              onPress: () => {
+                haptics.tap();
+                router.push('/fuel/history');
+              },
+            },
             {
               type: 'button',
               label: 'Log food',
