@@ -1,0 +1,36 @@
+hyPer is a training log and food tracker for people who lift to build muscle. Your workouts, your meals and your weekly training volume live in one place, so you can see whether you're doing enough of both.
+
+TRAIN
+• Follow a program or start a free session, and log each set with weight and reps.
+• See last session's numbers beside every set.
+• Rest timer on the lock screen, with supersets, swaps and skips.
+• Weekly sets for each muscle, measured against research-based ranges, so you know what needs more work and what's already covered.
+• Edit any past workout.
+• Record runs and sprint sessions with distance, pace and splits.
+
+FUEL
+• Log food by search, barcode, saved foods and meals, or by hand.
+• Describe a meal or take a photo for an AI estimate of calories and protein. You review and adjust it before anything is saved.
+• Calorie and protein targets from a calculator, adjusted over time from what you eat and how your weight moves.
+• Log the time of every meal, and save meals you eat often.
+
+PROGRESS
+• Every workout and every day of food, editable after the fact.
+• Weight trend, with weigh-ins from Apple Health or entered by hand.
+• Home and lock screen widgets for today's food and training.
+
+MADE FOR IPHONE
+• Works with VoiceOver, every text size, Increase Contrast and Reduce Motion.
+• Light and dark appearance.
+
+PRIVATE BY DEFAULT
+No ads, no tracking and no data sales. Run routes stay on your phone. You can delete your account and all of its data inside the app.
+
+GOOD TO KNOW
+• hyPer is free, with no in-app purchases.
+• For adults 18 and over. hyPer is not medical advice; talk to a doctor before changing your diet or training.
+• AI estimates are guesses and have a daily limit. Logging by hand always works.
+• Food data from Open Food Facts (ODbL), USDA FoodData Central and fatsecret (powered by fatsecret). AI estimates by Google Gemini.
+
+Privacy Policy: https://staylan488-ux.github.io/hyPer/privacy/
+Terms of Use: https://staylan488-ux.github.io/hyPer/terms/
