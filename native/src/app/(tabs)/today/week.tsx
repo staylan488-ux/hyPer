@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, View } from 'react-native';
 
+import { targetForWeekBefore } from '@/lib/targetChanges';
 import { checkInWeekLabel, goalPaceKg, hasCheckIn, paceCall } from '@/lib/weekCheckIn';
 import { formatWeight } from '@/lib/weightDisplayCore';
 import { useAppStore } from '@/stores/appStore';
@@ -12,6 +13,7 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { TargetChangeRow, dayFromKey, useShownTargetChange } from '~/components/TargetChangeRow';
 import { useAnnounce } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { formatSet, formatWhole } from '~/lib/format';
@@ -22,8 +24,9 @@ import { space, useBlanc } from '~/theme/blanc';
 /**
  * Last week (from Monday's card on Today): the training week before this one,
  * Monday to Sunday. Body weight against the goal's pace, calories and protein
- * a day, sets per muscle and the records set. Each section shows only when the
- * week holds it.
+ * a day, sets per muscle and the records set, then this week's calorie
+ * target change when Monday's update made one. Each section shows only when
+ * there is something in it.
  */
 export default function LastWeekScreen() {
   const todayKey = useCurrentDayKey();
@@ -31,6 +34,11 @@ export default function LastWeekScreen() {
   const unit = useWeightStore((state) => state.unit);
   const target = useAppStore((state) => state.macroTarget);
   const profile = useAppStore((state) => state.nutritionProfile);
+  const targetChange = useShownTargetChange();
+  // Last week is graded against the target that applied then, not one
+  // Monday's update has since replaced.
+  const recordedChange = useAppStore((state) => state.targetChange);
+  const weekTarget = targetForWeekBefore(recordedChange, target, dayFromKey(todayKey));
   const [refreshing, setRefreshing] = useState(false);
 
   // Read again on opening, so an edit made in History since shows.
@@ -94,12 +102,23 @@ export default function LastWeekScreen() {
             ) : null}
 
             {checkIn.eating ? (
-              // Past target is never red here: averages say how the week went, not a warning.
+              // Past target is never red here: averages say how the week went,
+              // not a warning. Graded against the target that applied that week.
               <Section title="Fuel" note={`${checkIn.eating.days} of 7 days logged`}>
                 <Label style={{ overflow: 'hidden' }}>
-                  <Row title="Calories a day" value={target ? `${formatWhole(checkIn.eating.calories)} of ${formatWhole(target.calories)} kcal` : `${formatWhole(checkIn.eating.calories)} kcal`} />
+                  <Row title="Calories a day" value={weekTarget ? `${formatWhole(checkIn.eating.calories)} of ${formatWhole(weekTarget.calories)} kcal` : `${formatWhole(checkIn.eating.calories)} kcal`} />
                   <Hairline />
-                  <Row title="Protein a day" value={target ? `${formatWhole(checkIn.eating.protein)} of ${formatWhole(target.protein)} g` : `${formatWhole(checkIn.eating.protein)} g`} />
+                  <Row title="Protein a day" value={weekTarget ? `${formatWhole(checkIn.eating.protein)} of ${formatWhole(weekTarget.protein)} g` : `${formatWhole(checkIn.eating.protein)} g`} />
+                </Label>
+              </Section>
+            ) : null}
+
+            {targetChange ? (
+              // Not part of last week's results: Monday's update for the week
+              // ahead, already applied, with Undo. Plain news, never red.
+              <Section title="This week’s target">
+                <Label style={{ overflow: 'hidden' }}>
+                  <TargetChangeRow />
                 </Label>
               </Section>
             ) : null}

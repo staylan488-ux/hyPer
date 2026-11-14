@@ -4,6 +4,7 @@ import {
   WINDOW_DAYS,
   estimateExpenditure,
   shouldRefreshExpenditure,
+  startOfLocalWeek,
   type DailyIntake,
   type ExpenditureInput,
 } from '@/lib/adaptiveExpenditure';
@@ -431,12 +432,34 @@ describe('refresh cadence', () => {
     expect(shouldRefreshExpenditure('not-a-date', TODAY)).toBe(true);
   });
 
-  it('waits a week between updates', () => {
-    const sixDaysAgo = new Date(TODAY.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
-    const eightDaysAgo = new Date(TODAY.getTime() - 8 * 24 * 60 * 60 * 1000).toISOString();
+  it('is due once a Monday has begun since the last update', () => {
+    // 25 Jul 2026 is a Saturday; its week began on Monday 20 Jul.
+    const saturday = TODAY;
+    const mondayMorning = new Date(2026, 6, 20, 0, 30).toISOString();
+    const sundayNight = new Date(2026, 6, 19, 23, 30).toISOString();
 
-    expect(shouldRefreshExpenditure(sixDaysAgo, TODAY)).toBe(false);
-    expect(shouldRefreshExpenditure(eightDaysAgo, TODAY)).toBe(true);
+    expect(shouldRefreshExpenditure(mondayMorning, saturday)).toBe(false);
+    expect(shouldRefreshExpenditure(sundayNight, saturday)).toBe(true);
+  });
+
+  it('updates at most once a week, whatever day the app opens', () => {
+    const mondayNoon = new Date(2026, 6, 20, 12, 0);
+    const updatedThatMonday = new Date(2026, 6, 20, 8, 0).toISOString();
+    // Later that Monday and through Sunday night: not again.
+    expect(shouldRefreshExpenditure(updatedThatMonday, mondayNoon)).toBe(false);
+    expect(shouldRefreshExpenditure(updatedThatMonday, new Date(2026, 6, 26, 23, 59))).toBe(false);
+    // Next Monday, from its first minute.
+    expect(shouldRefreshExpenditure(updatedThatMonday, new Date(2026, 6, 27, 0, 1))).toBe(true);
+    // A week missed: due on whichever day the app opens next.
+    expect(shouldRefreshExpenditure(updatedThatMonday, new Date(2026, 7, 5, 18, 0))).toBe(true);
+  });
+
+  it('counts the week from local midnight, across a clock change', () => {
+    // Europe and the US change clocks on Sundays in late March and early
+    // November; the week still starts at the Monday's local midnight.
+    expect(startOfLocalWeek(new Date(2026, 2, 31, 9, 0))).toEqual(new Date(2026, 2, 30));
+    expect(startOfLocalWeek(new Date(2026, 10, 2, 0, 0))).toEqual(new Date(2026, 10, 2));
+    expect(startOfLocalWeek(new Date(2026, 10, 8, 23, 59))).toEqual(new Date(2026, 10, 2));
   });
 });
 
