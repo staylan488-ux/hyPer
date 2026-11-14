@@ -13,7 +13,7 @@ import {
   type ProgramFocus,
   type SessionLength,
 } from '@/lib/programDesigner';
-import { SESSION_SET_CAPS, STAND_IN_PREFIX, fillByMuscle, fitToLibrary, keepCurrentMovements, thinLine, thinMuscles } from '@/lib/programFill';
+import { SESSION_SET_CAPS, STAND_IN_PREFIX, fillByMuscle, fitToLibrary, keepCurrentMovements, thinLine, thinMuscles, topUpToAim } from '@/lib/programFill';
 import { templateSplitDraft } from '@/lib/splitDraftSeed';
 import type { DraftSplit } from '@/lib/splitDraft';
 import type { Exercise, SplitTemplate } from '@/types';
@@ -77,11 +77,18 @@ export interface GuidedDraft {
   notice: string | null;
 }
 
+/** Whether two drafts hold the same movements at the same sets on the same days. */
+function sameMovements(a: DraftSplit, b: DraftSplit): boolean {
+  const rows = (draft: DraftSplit) => draft.days.map((day) => day.exercises.map((exercise) => `${exercise.exercise_id}:${exercise.target_sets}`).join(','));
+  return rows(a).join('|') === rows(b).join('|');
+}
+
 /**
  * The guided plan as a draft: the template matched to the exercise library,
  * the current program's movements kept in its slots, then filled by muscle
- * inside the session length (src/lib/programFill.ts). Main muscles that still
- * sit low are named in the description. Names the library lacks are left out
+ * inside the session length (src/lib/programFill.ts), and, when it holds the
+ * person's own movements, topped up to the weekly sets a designed plan gets.
+ * Main muscles that still sit low are named in the description. Names the library lacks are left out
  * and named in `notice`.
  */
 export function guidedDraft(
@@ -102,7 +109,11 @@ export function guidedDraft(
   const dropped: string[] = [];
   const fitted = fitToLibrary(kept, library, equipment, dropped);
   const left = [...new Set([...missing, ...dropped])];
-  const filled = fillByMuscle(fitted, library, { ...answers, equipment });
+  const toFloor = fillByMuscle(fitted, library, { ...answers, equipment });
+  // A plan that is still the designer's, movement for movement, was shared
+  // out to its aim with the whole week in view. Once the person's movements
+  // or the library changed it, it is topped up to the same aim.
+  const filled = sameMovements(fitted, seeded) ? toFloor : topUpToAim(toFloor, library, { ...answers, equipment });
   const thin = thinLine(thinMuscles(filled), filled.days.length, answers.sessionLength);
   return {
     draft: { ...filled, description: [filled.description, thin].filter(Boolean).join(' ') || null },

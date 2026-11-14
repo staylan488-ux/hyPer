@@ -106,6 +106,12 @@ past the floor a plan goes is decided where the plan is designed, not in the
 fill: a flat aim added afterwards would undo choices the design makes muscle
 by muscle.
 
+A rebuild that keeps the person's own movements is not the designer's plan
+any more, so it gets one more step, `topUpToAim`: each main muscle is taken
+toward the designer's own aim for the answers, by the designer's limits. See
+[program-design.md](program-design.md), "A program that keeps your own
+movements".
+
 ## Muscle tags
 
 Counts are only as good as the tags on each movement. The audit of

@@ -10,6 +10,7 @@
 import {
   MAIN_MUSCLES,
   VOLUME_BAND_EDGES,
+  dayVolume,
   isMainMuscle,
   lowMainMuscles,
   muscleLabel,
@@ -21,16 +22,20 @@ import {
 } from '@/lib/muscleVolume';
 import {
   LOWER_BODY,
+  MOVEMENT_SETS,
   SESSION_MINUTES,
+  SESSION_MUSCLE_SETS,
   SESSION_SET_CAPS,
   WEEKLY_SET_TARGETS,
+  designerSlots,
   weeklySetTarget,
   type EquipmentProfile,
   type ExperienceLevel,
   type ProgramFocus,
   type SessionLength,
 } from '@/lib/programDesigner';
-import { createTempId, type DraftExercise, type DraftSplit } from '@/lib/splitDraft';
+import { normalizeExerciseName } from '@/lib/customExercises';
+import { createTempId, newDraftExercise, type DraftExercise, type DraftSplit } from '@/lib/splitDraft';
 import { SUGGESTED_MOVEMENTS, applyVolumeSuggestion, volumeSuggestions } from '@/lib/volumeSuggestions';
 import type { Exercise } from '@/types';
 
@@ -339,6 +344,142 @@ export function fillByMuscle(draft: DraftSplit, library: readonly Exercise[], an
     for (const muscle of low) {
       next = makeRoom(current, offered, cap, answers.focus, muscle);
       if (next) break;
+    }
+    if (!next) break;
+    current = next;
+  }
+  return keepFixedSets(draft, current);
+}
+
+// ── Topping up a person's own program ───────────────────────────────
+
+/** A muscle within this of its aim has arrived, as in the designer. */
+const AIM_REACHED_WITHIN = 0.5;
+
+function regionOf(muscle: string | null): 'upper' | 'lower' | null {
+  if (!muscle || muscle === 'core') return null;
+  return LOWER_BODY.has(muscle) ? 'lower' : 'upper';
+}
+
+/**
+ * A program that holds the person's own movements, taken toward the weekly
+ * sets a designed plan gets for the same answers (`weeklySetTarget`: 6, 10 or
+ * 14 by experience, shifted by an emphasis). Owner decision, 2026-11-13.
+ *
+ * It follows the designer's order and limits. The muscle furthest from its
+ * aim goes next. A day where the built-in program trains that muscle and
+ * this program has nothing for it takes a movement at 2 sets, the built-in
+ * program's own choice for that day, so a curl lands on a pull day and not a
+ * push day. Then the program's movements for it go to 3 sets and then to 4,
+ * and only then does another movement join. No session passes its cap, no
+ * muscle gets more than 10 sets in a session, and nothing is taken from any
+ * movement. A muscle within half a set of its aim is left alone, and one a
+ * set short gets a set, not a new movement.
+ *
+ * `guidedDraft` skips this for a plan that is still the designer's own: that
+ * one was shared out to the same aim with the whole week in view.
+ */
+export function topUpToAim(draft: DraftSplit, library: readonly Exercise[], answers: FillAnswers): DraftSplit {
+  const cap = SESSION_SET_CAPS[answers.sessionLength];
+  const offered = builderLibrary(library, answers.equipment);
+  const byName = new Map(offered.map((exercise) => [normalizeExerciseName(exercise.name), exercise]));
+  const mainOf = (exercise: Exercise) => volumeMuscle(exercise.muscle_group);
+
+  /** Fallback movements for a muscle when the built-in program's own are used up or not in the library: the suggestion staples, then anything filed under it. */
+  const others = (muscle: MainMuscle): Exercise[] => {
+    const staples = SUGGESTED_MOVEMENTS[muscle].flatMap((name) => byName.get(normalizeExerciseName(name)) ?? []);
+    const rest = offered.filter((exercise) => mainOf(exercise) === muscle).sort((a, b) => a.name.localeCompare(b.name));
+    const seen = new Set<string>();
+    return [...staples, ...rest].filter((exercise) => mainOf(exercise) === muscle && !seen.has(exercise.id) && Boolean(seen.add(exercise.id)));
+  };
+
+  const room = (plan: DraftSplit, dayIndex: number) => cap - daySets(plan.days[dayIndex].exercises);
+  const onDay = (plan: DraftSplit, dayIndex: number, muscle: string) => dayVolume(plan.days[dayIndex]).get(muscle) ?? 0;
+
+  /** One more set on a movement the program has for the muscle: the one with the fewest sets, on the day with the least of it. */
+  const raise = (plan: DraftSplit, muscle: MainMuscle, to: number): DraftSplit | null => {
+    const rows = plan.days.flatMap((day, dayIndex) => day.exercises.flatMap((exercise, at) => {
+      const sets = plannedMovementSets(exercise);
+      const fits = musclesOf(exercise).primary === muscle && sets < to
+        && room(plan, dayIndex) >= 1 && onDay(plan, dayIndex, muscle) + 1 <= SESSION_MUSCLE_SETS;
+      return fits ? [{ dayIndex, at, sets }] : [];
+    }));
+    const pick = rows.sort((a, b) => a.sets - b.sets
+      || onDay(plan, a.dayIndex, muscle) - onDay(plan, b.dayIndex, muscle)
+      || room(plan, b.dayIndex) - room(plan, a.dayIndex)
+      || a.dayIndex - b.dayIndex || a.at - b.at)[0];
+    if (!pick) return null;
+    const day = plan.days[pick.dayIndex];
+    return replaceDay(plan, pick.dayIndex, day.exercises.map((exercise, index) => (index === pick.at ? withSets(exercise, pick.sets + 1) : exercise)));
+  };
+
+  /**
+   * A movement for the muscle joins at 2 sets where the built-in program
+   * trains that muscle: its first choice first, on the day with the least of
+   * the muscle. With those used up, a library movement joins one of the same
+   * days. A program with a day count no built-in program has takes it on a
+   * day that already trains that half of the body.
+   */
+  const add = (plan: DraftSplit, muscle: MainMuscle, { onlyDaysWithout = false }: { onlyDaysWithout?: boolean } = {}): DraftSplit | null => {
+    const trains = (dayIndex: number) => plan.days[dayIndex].exercises.some((exercise) => musclesOf(exercise).primary === muscle);
+    const fits = (dayIndex: number) => dayIndex < plan.days.length
+      && room(plan, dayIndex) >= MOVEMENT_SETS.min
+      && onDay(plan, dayIndex, muscle) + MOVEMENT_SETS.min <= SESSION_MUSCLE_SETS
+      && !(onlyDaysWithout && trains(dayIndex));
+    const has = (dayIndex: number, exercise: Exercise) => plan.days[dayIndex].exercises.some((entry) => entry.exercise_id === exercise.id);
+    const byNeed = (a: number, b: number) => onDay(plan, a, muscle) - onDay(plan, b, muscle) || room(plan, b) - room(plan, a) || a - b;
+    const join = (dayIndex: number, exercise: Exercise, reps?: readonly [number, number]) => {
+      const day = plan.days[dayIndex];
+      const sets = MOVEMENT_SETS.min;
+      return replaceDay(plan, dayIndex, [...day.exercises, newDraftExercise(exercise, day.exercises.length, {
+        target_sets: sets, target_sets_min: sets, target_sets_max: sets,
+        ...(reps ? { target_reps_min: reps[0], target_reps_max: reps[1] } : {}),
+      })]);
+    };
+
+    const inProgram = new Set(plan.days.flatMap((day) => day.exercises.map((exercise) => exercise.exercise_id)));
+    const slots = designerSlots(muscle, { daysPerWeek: plan.days.length, equipment: answers.equipment, focus: answers.focus });
+    // The designer's own order, and a movement the program does not have yet
+    // before a second helping of one it has.
+    const designed = slots
+      .flatMap((slot) => { const exercise = byName.get(normalizeExerciseName(slot.name)); return exercise && mainOf(exercise) === muscle ? [{ ...slot, exercise }] : []; })
+      .filter((slot) => fits(slot.day) && !has(slot.day, slot.exercise) && !(onlyDaysWithout && slot.last))
+      .sort((a, b) => Number(a.last) - Number(b.last) || Number(inProgram.has(a.exercise.id)) - Number(inProgram.has(b.exercise.id))
+        || a.pick - b.pick || byNeed(a.day, b.day))[0];
+    if (designed) return join(designed.day, designed.exercise, designed.reps);
+
+    const home = slots.length
+      ? [...new Set(slots.filter((slot) => !slot.last).map((slot) => slot.day))]
+      : plan.days.flatMap((day, dayIndex) => (day.exercises.some((exercise) => regionOf(musclesOf(exercise).primary) === regionOf(muscle)) ? [dayIndex] : []));
+    const days = home.filter(fits).sort(byNeed);
+    const all = others(muscle);
+    for (const exercise of [...all.filter((entry) => !inProgram.has(entry.id)), ...all.filter((entry) => inProgram.has(entry.id))]) {
+      const dayIndex = days.find((index) => !has(index, exercise));
+      if (dayIndex !== undefined) return join(dayIndex, exercise);
+    }
+    return null;
+  };
+
+  let current = draft;
+  const done = new Set<MainMuscle>();
+  for (let guard = 0; guard < draft.days.length * cap + MAIN_MUSCLES.length; guard += 1) {
+    const weekly = programVolume(current);
+    const short = (muscle: MainMuscle) => weeklySetTarget(muscle, answers) - (weekly.get(muscle) ?? 0);
+    const waiting = MAIN_MUSCLES
+      .filter((muscle) => !done.has(muscle) && short(muscle) > AIM_REACHED_WITHIN)
+      .sort((a, b) => (weekly.get(a) ?? 0) / weeklySetTarget(a, answers) - (weekly.get(b) ?? 0) / weeklySetTarget(b, answers));
+    if (!waiting.length) break;
+    let next: DraftSplit | null = null;
+    for (const muscle of waiting) {
+      // More than a set short: first a movement on a day of its own that has
+      // none, so the week's sets sit on more than one day, as in a designed
+      // plan. Then the program's own movements grow, to 3 sets and then to 4,
+      // and only then does another movement join.
+      next = short(muscle) > 1
+        ? add(current, muscle, { onlyDaysWithout: true }) ?? raise(current, muscle, MOVEMENT_SETS.usual) ?? raise(current, muscle, MOVEMENT_SETS.max) ?? add(current, muscle)
+        : raise(current, muscle, MOVEMENT_SETS.max);
+      if (next) break;
+      done.add(muscle);
     }
     if (!next) break;
     current = next;

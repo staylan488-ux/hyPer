@@ -195,6 +195,32 @@ each. Sessions take 55 to 60 minutes."
 - The shares for calves, rear delts, front delts and abs.
 - Leaving the overhead press for last.
 
+## A program that keeps your own movements
+
+When someone with a program rebuilds it, the builder keeps their movements in
+the new plan's slots. That plan is no longer the designer's, and before
+2026-11-13 it was only brought up to the floor of 4 sets a muscle. Now
+`topUpToAim` (`src/lib/programFill.ts`) takes each main muscle toward the same
+weekly aim a designed plan gets for those answers (owner decision,
+2026-11-13).
+
+It works by the designer's order and limits:
+
+1. The muscle furthest from its aim goes next. One within half a set has
+   arrived.
+2. A day where the built-in program trains that muscle, and this program has
+   nothing for it, takes a movement at 2 sets: the built-in program's own
+   choice for that day, with its rep range. A curl lands on a pull day.
+3. Then the person's movements for the muscle go to 3 sets, then to 4.
+4. Only then does another movement join.
+5. A muscle one set short gets a set, not a movement.
+6. No session passes its length, no muscle gets more than 10 sets in a
+   session, and nothing is taken from any movement.
+
+A plan that is still the designer's, movement for movement, skips this: it
+was already shared out to the same aim with the whole week in view. A plan
+whose sessions are full stays under the aim, as a designed plan does.
+
 ## What the designer does not do
 
 - It does not grade attendance, count missed days or shrink a plan.
@@ -210,3 +236,4 @@ sets a movement, every main muscle on two days with 4 sets or more, a
 pulldown and a row, balance, dumbbell plans using only dumbbells and
 bodyweight, and the plan reaching the editor unchanged. It also pins the
 default plan movement by movement, so a change to it is a deliberate one.
+`tests/programFill.test.ts` covers the top-up of a person's own program.

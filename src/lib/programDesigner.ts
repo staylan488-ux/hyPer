@@ -93,13 +93,13 @@ const SUPPORT_MUSCLES: Readonly<Record<string, { share: number; wait: number }>>
 const MIN_DAY_MOVEMENTS = 3;
 
 /** Sets a movement has when it is in a plan. */
-const MOVEMENT_SETS = { min: 2, usual: 3, max: 4 } as const;
+export const MOVEMENT_SETS = { min: 2, usual: 3, max: 4 } as const;
 
 /**
  * Most sets one muscle gets in one session. More sets in a session keep
  * helping up to about 11 (docs/program-design.md); the plan stops short of it.
  */
-const SESSION_MUSCLE_SETS = 10;
+export const SESSION_MUSCLE_SETS = 10;
 
 /** The half of the body the Lower emphasis favours. Abs belong to neither half. */
 export const LOWER_BODY: ReadonlySet<string> = new Set(['quads', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors', 'tibialis', 'hip_flexors']);
@@ -151,6 +151,26 @@ export function designerMovementNames(): string[] {
     }
   }
   return [...names].sort();
+}
+
+/**
+ * Where the built-in program for these answers trains a muscle: each row of
+ * its own for that muscle, with its day, rep range and choice rank. `last`
+ * marks the rows the designer itself uses last (the favoured half's work on
+ * the other half's days, and light work on a balanced plan's leg days). The
+ * builder adds from these when it tops up a person's own program, so a new
+ * movement lands where a designed plan would have put it. Empty when no
+ * built-in program has that many days.
+ */
+export function designerSlots(
+  muscle: string,
+  answers: Pick<ProgramDesignAnswers, 'daysPerWeek' | 'equipment' | 'focus'>,
+): Array<{ day: number; name: string; reps: RepRange; pick: BlueprintRow['pick']; last: boolean }> {
+  const blueprint = programBlueprintFor(answers.daysPerWeek);
+  if (blueprint.days.length !== answers.daysPerWeek) return [];
+  return slotsFor(blueprint, normalizeEquipment(answers.equipment), answers.focus)
+    .filter((slot) => slot.primary === muscle)
+    .map((slot) => ({ day: slot.day, name: slot.name, reps: slot.reps, pick: slot.pick, last: slot.spill || slot.spare }));
 }
 
 /** Rows that also train the rear delts, which the library's one second muscle (biceps) cannot say. */
