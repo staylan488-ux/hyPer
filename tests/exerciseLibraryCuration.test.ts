@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { exerciseCategory } from '@/lib/exerciseSearch';
-import { splitTemplates } from '@/lib/splitTemplates';
+import { designerMovementNames } from '@/lib/programDesigner';
 import type { MuscleGroup } from '@/types';
 import { MUSCLE_GROUP_LABELS } from '@/types';
 
@@ -43,7 +43,7 @@ describe('the curated exercise library migration', () => {
   });
 
   it('never retires or moves a movement the guided plans use', () => {
-    const planned = new Set(splitTemplates.flatMap((template) => template.days.flatMap((day) => day.exercises.map((exercise) => exercise.name))));
+    const planned = new Set(designerMovementNames());
     expect(planned.size).toBeGreaterThan(10);
     for (const name of [...retired, ...moved]) expect(planned.has(name), name).toBe(false);
   });

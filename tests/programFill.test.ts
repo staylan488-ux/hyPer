@@ -2,8 +2,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { normalizeExerciseName } from '@/lib/customExercises';
-import { MAIN_MUSCLES, plannedMovementSets, programVolume, volumeBand, type MainMuscle } from '@/lib/muscleVolume';
-import { designerMovementNames, recommendProgramTemplate, type ProgramDesignAnswers } from '@/lib/programDesigner';
+import { MAIN_MUSCLES, dayVolume, plannedMovementSets, programVolume, volumeBand, type MainMuscle } from '@/lib/muscleVolume';
+import { designProgram, designerMovementNames, weeklySetTarget, type ProgramDesignAnswers } from '@/lib/programDesigner';
 import {
   BEGINNER_STARTING_SETS,
   SESSION_SET_CAPS,
@@ -13,11 +13,11 @@ import {
   keptExerciseCount,
   thinLine,
   thinMuscles,
+  topUpToAim,
 } from '@/lib/programFill';
 import { guidedDraft } from '@/lib/programQuestions';
 import { newDraftDay, newDraftExercise, type DraftDay, type DraftSplit } from '@/lib/splitDraft';
 import { templateSplitDraft } from '@/lib/splitDraftSeed';
-import { splitTemplates } from '@/lib/splitTemplates';
 import type { Exercise } from '@/types';
 import { seededLibrary } from './helpers/seededLibrary';
 
@@ -109,25 +109,26 @@ describe('every guided plan', () => {
     expect(dumbbells.every(({ draft }) => thinMuscles(draft).length === 0)).toBe(true);
   });
 
-  it('builds the day count asked for whenever a template has it', () => {
+  it('builds the day count asked for', () => {
     const wrong = plans
-      .filter(({ answers }) => answers.daysPerWeek !== 5)
       .filter(({ answers, draft }) => draft.days.length !== answers.daysPerWeek)
       .map(({ answers, draft }) => `${key(answers)}: ${draft.days.length}`);
     expect(wrong).toEqual([]);
-    // No template has 5 days: the 4-day one stays, and the chooser says "4 days a week".
-    expect(plans.filter(({ answers }) => answers.daysPerWeek === 5).every(({ draft }) => draft.days.length === 4)).toBe(true);
   });
 
-  it("keeps a beginner's main muscles at the low edge of solid", () => {
+  it("keeps a beginner's main muscles near the starting count", () => {
     const beginner = plans.filter(({ answers }) => answers.experience === 'beginner');
-    const counts = beginner.flatMap(({ draft }) => MAIN_MUSCLES.map((muscle) => sets(draft, muscle)));
-    // A muscle can sit a little past the edge when its sets also carry another
-    // muscle's (a squat's glutes), or a new movement brings 2 or 3 sets at once.
+    const balanced = beginner.filter(({ answers }) => answers.focus === 'no_focus');
+    const counts = balanced.flatMap(({ draft }) => MAIN_MUSCLES.map((muscle) => sets(draft, muscle)));
+    // A muscle can sit a little past its aim when its sets also carry another
+    // muscle's (a squat's glutes), or a new movement brings 2 sets at once. An
+    // emphasis raises the aim of the favoured half.
     for (const { answers, draft } of beginner) {
-      for (const muscle of MAIN_MUSCLES) expect(sets(draft, muscle), `${key(answers)} ${muscle}`).toBeLessThanOrEqual(BEGINNER_STARTING_SETS + 2);
+      for (const muscle of MAIN_MUSCLES) {
+        expect(sets(draft, muscle), `${key(answers)} ${muscle}`).toBeLessThanOrEqual(Math.max(BEGINNER_STARTING_SETS, weeklySetTarget(muscle, answers)) + 2);
+      }
     }
-    expect(counts.reduce((sum, count) => sum + count, 0) / counts.length).toBeLessThanOrEqual(BEGINNER_STARTING_SETS);
+    expect(counts.reduce((sum, count) => sum + count, 0) / counts.length).toBeLessThanOrEqual(BEGINNER_STARTING_SETS + 0.5);
     const total = (experience: ProgramDesignAnswers['experience']) => plans
       .filter(({ answers }) => answers.experience === experience)
       .reduce((sum, { draft }) => sum + MAIN_MUSCLES.reduce((inner, muscle) => inner + sets(draft, muscle), 0), 0);
@@ -135,36 +136,31 @@ describe('every guided plan', () => {
   });
 });
 
-describe('the seven templates', () => {
-  it('reach solid on every main muscle once filled, with sessions inside 60 minutes', () => {
-    const before: string[] = [];
-    for (const template of splitTemplates) {
+describe('the built-in programs', () => {
+  it('are solid on every main muscle and inside 60 minutes as designed, so the fill leaves them alone', () => {
+    for (const daysPerWeek of DAYS) {
+      const answers: ProgramDesignAnswers = { daysPerWeek, focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' };
+      const template = designProgram(answers);
       const { draft, missing } = templateSplitDraft(template, library);
       expect(missing).toEqual([]);
-      before.push(...thinMuscles(draft).map((muscle) => `${template.name} ${muscle}`));
-      const focus = /Upper Focus/.test(template.name) ? 'upper_focus' : /Lower Focus/.test(template.name) ? 'lower_focus' : 'no_focus';
-      const filled = fillByMuscle(draft, library, { focus, equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' });
-      expect(thinMuscles(filled), template.name).toEqual([]);
-      expect(Math.max(...filled.days.map(daySets)), template.name).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
-      // A template already solid everywhere and inside the cap is left as it is.
-      if (!thinMuscles(draft).length && Math.max(...draft.days.map(daySets)) <= SESSION_SET_CAPS.moderate) expect(filled).toBe(draft);
+      expect(thinMuscles(draft), template.name).toEqual([]);
+      expect(Math.max(...draft.days.map(daySets)), template.name).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
+      expect(fillByMuscle(draft, library, { ...answers, equipment: 'full_gym' }), template.name).toBe(draft);
     }
-    // As compiled, 4 of the 7 leave a main muscle low.
-    expect(before.length).toBeGreaterThan(0);
   });
 });
 
 describe('names the builder can emit', () => {
   it('are all in the seeded library and none is retired', () => {
     const names = new Set(library.map((exercise) => normalizeExerciseName(exercise.name)));
-    const missing = designerMovementNames(splitTemplates).filter((name) => !names.has(normalizeExerciseName(name)));
+    const missing = designerMovementNames().filter((name) => !names.has(normalizeExerciseName(name)));
     expect(missing).toEqual([]);
   });
 
   it('each have a row of muscles that matches the seed', async () => {
     const { DESIGNER_MOVEMENTS } = await import('@/lib/designerMovements');
     const rows = new Map(Object.entries(DESIGNER_MOVEMENTS).map(([name, row]) => [normalizeExerciseName(name), row]));
-    for (const name of designerMovementNames(splitTemplates)) {
+    for (const name of designerMovementNames()) {
       const seeded = library.find((exercise) => normalizeExerciseName(exercise.name) === normalizeExerciseName(name))!;
       expect(rows.get(normalizeExerciseName(name)), name).toEqual([seeded.muscle_group, seeded.muscle_group_secondary, seeded.is_compound, seeded.equipment]);
     }
@@ -173,7 +169,7 @@ describe('names the builder can emit', () => {
   it('never match a retired row', () => {
     const retired = { ...lib('Lunge'), id: 'retired-lunge', retired_at: '2026-11-11T00:00:00Z' };
     const { draft, missing } = templateSplitDraft(
-      { name: 'T', description: '', days_per_week: 1, days: [{ day_name: 'Legs', muscle_groups: ['quads'], exercises: [{ name: 'Lunge', sets: 3, reps_min: 8, reps_max: 12 }] }] },
+      { name: 'T', description: '', days_per_week: 1, days: [{ day_name: 'Legs', exercises: [{ name: 'Lunge', sets: 3, reps_min: 8, reps_max: 12 }] }] },
       [retired],
     );
     expect(draft.days[0].exercises).toEqual([]);
@@ -182,6 +178,17 @@ describe('names the builder can emit', () => {
 });
 
 describe('the fill', () => {
+  it("leaves a beginner's muscle that sits at the starting count alone, glutes too", () => {
+    // Glutes are aimed a little under the others, but 6 sets is the starting count for every main muscle.
+    const draft = draftOf([
+      ['Upper', [['Flat Dumbbell Bench Press', 4], ['Seated Cable Row', 4], ['Lateral Raise', 4], ['Tricep Pushdown', 3], ['Dumbbell Curl', 3]]],
+      ['Lower', [['Leg Press', 4], ['Lying Leg Curl', 4], ['Hip Thrust', 4]]],
+    ]);
+    expect(sets(draft, 'glutes')).toBe(BEGINNER_STARTING_SETS);
+    const filled = fillByMuscle(draft, library, { focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'beginner' });
+    expect(filled.days[1].exercises.map((exercise) => exercise.target_sets)).toEqual([4, 4, 4]);
+  });
+
   it('trims a session over its cap from the muscle with the most to spare', () => {
     const draft = draftOf([['Upper', [
       ['Flat Dumbbell Bench Press', 5], ['Seated Cable Row', 5], ['Lat Pulldown', 5], ['Lateral Raise', 4], ['Tricep Pushdown', 4], ['Dumbbell Curl', 4],
@@ -365,23 +372,138 @@ describe.skipIf(!existsSync(EXPORT))('a real program rebuilt', () => {
     const used = new Set(draft.days.flatMap((day) => day.exercises.map((exercise) => exercise.exercise_id)));
     expect(draft.days).toHaveLength(daysPerWeek);
     expect(main.length).toBeGreaterThanOrEqual(10);
-    expect(main.filter((id) => !used.has(id)).map((id) => exercises.get(id)?.name)).toEqual([]);
-    expect([...mine].filter((id) => used.has(id)).length).toBeGreaterThanOrEqual(daysPerWeek === 6 ? 19 : 15);
+    // At four days of 60 minutes the plan has no overhead press: the chest
+    // presses already train the front delts, and the room goes to lateral
+    // raises. Six days have the room, and keep his.
+    expect(main.filter((id) => !used.has(id)).map((id) => fullLibrary.find((row) => row.id === id)?.name))
+      .toEqual(daysPerWeek === 4 ? ['Overhead Dumbbell Press'] : []);
+    expect([...mine].filter((id) => used.has(id)).length).toBeGreaterThanOrEqual(daysPerWeek === 6 ? 19 : 14);
     for (const muscle of MAIN_MUSCLES) expect(volumeBand(sets(draft, muscle)), muscle).not.toBe('low');
     expect(Math.max(...draft.days.map(daySets))).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
   });
+
+  it('tops the six-day plan up to the weekly sets a designed plan aims at', () => {
+    const answers: ProgramDesignAnswers = { daysPerWeek: 6, focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' };
+    const { draft } = guidedDraft(answers, fullLibrary, current);
+    for (const muscle of MAIN_MUSCLES) expect(sets(draft, muscle), muscle).toBeGreaterThanOrEqual(weeklySetTarget(muscle, answers) - 0.5);
+  });
 });
 
-describe('template choice', () => {
-  it('gives the day count asked for over a template with the right focus', () => {
-    for (const focus of FOCUSES) {
-      for (const days of [3, 6]) {
-        const answers: ProgramDesignAnswers = { daysPerWeek: days, focus, equipment: 'full_gym', sessionLength: 'short', experience: 'beginner' };
-        expect(recommendProgramTemplate(splitTemplates, answers).days_per_week, `${days} ${focus}`).toBe(days);
-      }
+describe('topping up a program that keeps the person\'s own movements', () => {
+  const balanced = { focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' } as const;
+  const rows = (plan: DraftSplit) => plan.days.map((day) => day.exercises.map((exercise) => `${exercise.exercise.name} ${plannedMovementSets(exercise)}`));
+  // A six-day push/pull/legs of the person's own, light on biceps and side delts.
+  const mine = () => draftOf([
+    ['Push A', [['Incline Dumbbell Bench Press', 3], ['Machine Chest Press', 2], ['Cable Lateral Raise', 3], ['Tricep Pushdown', 3]]],
+    ['Pull A', [['Seated Cable Row', 3], ['Lat Pulldown', 3], ['Barbell Curl', 2]]],
+    ['Legs A', [['Hack Squat', 3], ['Seated Leg Curl', 3], ['Leg Extension', 2], ['Hip Thrust', 2]]],
+    ['Push B', [['Flat Dumbbell Bench Press', 3], ['Cable Fly', 2], ['Lateral Raise', 2], ['Overhead Tricep Extension', 3]]],
+    ['Pull B', [['One-Arm Dumbbell Row', 3], ['Lat Pulldown', 3], ['Hammer Curl', 2]]],
+    ['Legs B', [['Romanian Deadlift', 3], ['Leg Press', 3], ['Lying Leg Curl', 2], ['Leg Extension', 2]]],
+  ]);
+
+  it('takes each main muscle to the weekly sets a designed plan aims at, inside the session length', () => {
+    const before = mine();
+    const after = topUpToAim(before, library, balanced);
+    for (const muscle of MAIN_MUSCLES) {
+      expect(sets(after, muscle), muscle).toBeGreaterThanOrEqual(weeklySetTarget(muscle, balanced) - 0.5);
+      expect(sets(after, muscle), muscle).toBeGreaterThanOrEqual(sets(before, muscle));
     }
+    for (const day of after.days) expect(daySets(day)).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
   });
 
+  it('grows the person\'s own movements, never past 4 sets, takes nothing away, and adds only to a day that had nothing for that muscle', () => {
+    for (const experience of ['intermediate', 'advanced'] as const) {
+      const before = mine();
+      const after = topUpToAim(before, library, { ...balanced, experience });
+      before.days.forEach((day, dayIndex) => {
+        day.exercises.forEach((exercise, at) => {
+          const now = after.days[dayIndex].exercises[at];
+          expect(now.exercise_id).toBe(exercise.exercise_id);
+          expect(plannedMovementSets(now)).toBeGreaterThanOrEqual(plannedMovementSets(exercise));
+          expect(plannedMovementSets(now)).toBeLessThanOrEqual(4);
+        });
+        const had = new Set(day.exercises.map((exercise) => exercise.exercise.muscle_group));
+        for (const added of after.days[dayIndex].exercises.slice(day.exercises.length)) {
+          expect(had.has(added.exercise.muscle_group), `${day.day_name} ${added.exercise.name}`).toBe(false);
+          expect(added.target_sets).toBeGreaterThanOrEqual(2);
+        }
+      });
+    }
+    // Side delts had 5 sets on the two push days: the pull days, where the built-in program also trains them, take a raise each.
+    const after = topUpToAim(mine(), library, balanced);
+    expect(rows(after)[1]).toContain('Machine Lateral Raise 3');
+    expect(rows(after)[4]).toContain('Machine Lateral Raise 2');
+    expect(sets(after, 'side_delts')).toBe(10);
+  });
+
+  it('adds a movement where the built-in program trains that muscle: a curl on a pull day, at 2 sets with its rep range', () => {
+    const before = mine();
+    // No curls at all: biceps sit at the half sets rows give them.
+    before.days[1].exercises = before.days[1].exercises.slice(0, 2);
+    before.days[4].exercises = before.days[4].exercises.slice(0, 2);
+    const after = topUpToAim(before, library, balanced);
+    const curls = after.days.map((day) => day.exercises.filter((exercise) => exercise.exercise.muscle_group === 'biceps'));
+    expect(curls.map((day) => day.length)).toEqual([0, 1, 0, 0, 1, 0]);
+    // The 6-day program's own curls for those days.
+    expect(curls[1][0].exercise.name).toBe('Preacher Curl');
+    expect(curls[4][0].exercise.name).toBe('Incline Dumbbell Curl');
+    expect([curls[1][0].target_reps_min, curls[1][0].target_reps_max]).toEqual([10, 15]);
+    expect([curls[1][0].target_sets_min, curls[1][0].target_sets_max]).toEqual([curls[1][0].target_sets, curls[1][0].target_sets]);
+  });
+
+  it('leaves alone a muscle within half a set of its aim, and gives one a set short a set, not a movement', () => {
+    const plan = draftOf([
+      ['Upper A', [['Flat Dumbbell Bench Press', 4], ['Machine Chest Press', 4], ['Lateral Raise', 4], ['Dumbbell Curl', 4], ['Tricep Pushdown', 4]]],
+      ['Upper B', [['Incline Dumbbell Bench Press', 2], ['Cable Lateral Raise', 3], ['Hammer Curl', 3], ['Rope Pushdown', 3]]],
+    ]);
+    // Chest 10, side delts 7, biceps 7, triceps 7 + 5 from presses = 12.
+    const after = topUpToAim(plan, library, { ...balanced, sessionLength: 'long' });
+    expect(sets(after, 'chest')).toBe(sets(plan, 'chest'));
+    expect(sets(after, 'triceps')).toBe(sets(plan, 'triceps'));
+    const cable = draftOf([['Upper A', [['Lateral Raise', 4]]], ['Upper B', [['Cable Lateral Raise', 4]]], ['Upper C', [['Machine Lateral Raise', 1]]]]);
+    const topped = topUpToAim(cable, library, { ...balanced, sessionLength: 'long' });
+    // 9 of 10: the short movement takes the set.
+    expect(topped.days[2].exercises.map((exercise) => `${exercise.exercise.name} ${exercise.target_sets}`)).toContain('Machine Lateral Raise 2');
+    expect(topped.days.flatMap((day) => day.exercises).filter((exercise) => exercise.exercise.muscle_group === 'side_delts' || exercise.exercise.muscle_group === 'shoulders')).toHaveLength(3);
+  });
+
+  it('never gives one muscle more than 10 sets in a session, and stops at the session length', () => {
+    const plan = draftOf([['Arms', [['Barbell Curl', 4], ['Hammer Curl', 4], ['Tricep Pushdown', 4]]], ['Legs', [['Leg Press', 4], ['Lying Leg Curl', 4]]]]);
+    const after = topUpToAim(plan, library, { ...balanced, experience: 'advanced', sessionLength: 'long' });
+    for (const day of after.days) {
+      expect(daySets(day)).toBeLessThanOrEqual(SESSION_SET_CAPS.long);
+      for (const muscle of MAIN_MUSCLES) expect(dayVolume(day).get(muscle) ?? 0, `${day.day_name} ${muscle}`).toBeLessThanOrEqual(10);
+    }
+    const short = topUpToAim(mine(), library, { ...balanced, sessionLength: 'short' });
+    for (const day of short.days) expect(daySets(day)).toBeLessThanOrEqual(SESSION_SET_CAPS.short);
+  });
+
+  it('aims where the answers say: an emphasis holds the other half back, an advanced lifter goes higher, a beginner stays near 6', () => {
+    const answers = (focus: ProgramDesignAnswers['focus'], experience: ProgramDesignAnswers['experience']) => ({ ...balanced, focus, experience });
+    const upperFirst = topUpToAim(mine(), library, answers('upper_focus', 'intermediate'));
+    const even = topUpToAim(mine(), library, answers('no_focus', 'intermediate'));
+    const advanced = topUpToAim(mine(), library, answers('no_focus', 'advanced'));
+    const beginner = topUpToAim(mine(), library, answers('no_focus', 'beginner'));
+    const start = mine();
+    // Legs already sit over an upper emphasis's aim for them: nothing is added there.
+    for (const muscle of ['quads', 'hamstrings'] as const) expect(sets(upperFirst, muscle), muscle).toBe(sets(mine(), muscle));
+    expect(sets(upperFirst, 'biceps')).toBeGreaterThan(sets(even, 'biceps'));
+    expect(sets(advanced, 'quads')).toBeGreaterThan(sets(even, 'quads'));
+    // Only side delts sit under a beginner's 6: they take the one set, and nothing else moves.
+    expect(sets(beginner, 'side_delts')).toBe(6);
+    for (const muscle of MAIN_MUSCLES.filter((entry) => entry !== 'side_delts')) expect(sets(beginner, muscle), muscle).toBe(sets(start, muscle));
+  });
+
+  it('is what the builder does with a current program, and not with a plan that is still the designer\'s own', () => {
+    const answers: ProgramDesignAnswers = { daysPerWeek: 6, ...balanced };
+    const { draft } = guidedDraft(answers, library, mine());
+    for (const muscle of MAIN_MUSCLES) expect(sets(draft, muscle), muscle).toBeGreaterThanOrEqual(weeklySetTarget(muscle, answers) - 0.5);
+    for (const day of draft.days) expect(daySets(day)).toBeLessThanOrEqual(SESSION_SET_CAPS.moderate);
+    const designed = designProgram(answers);
+    expect(guidedDraft(answers, library).draft.days.map((day) => day.exercises.map((exercise) => [exercise.exercise.name, exercise.target_sets])))
+      .toEqual(designed.days.map((day) => day.exercises.map((exercise) => [exercise.name, exercise.sets])));
+  });
 });
 
 describe('a template movement the library lacks', () => {

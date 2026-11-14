@@ -1,41 +1,38 @@
-# Evidence pipeline
+# Research notes snapshot
 
-The program templates hyPer suggests are compiled from a snapshot of training
-research, so the rules behind them can be audited and refreshed.
+[src/lib/evidence/snapshot.ts](../src/lib/evidence/snapshot.ts) is a generated
+copy of the training rules in the owner's notes repository
+(`staylan488-ux/hypertrophy-coach`, `references/`), each with its confidence
+and source links. Its header records the commit and the import time.
 
-## Where it lives
+It is a record to read and cite. No app code runs on it:
 
-- Snapshot: [src/lib/evidence/snapshot.ts](../src/lib/evidence/snapshot.ts),
-  generated, with the research rules, exercise profiles and template
-  blueprints. Its header records the source repository, commit and import
-  time.
-- Compiler: [src/lib/evidence/compiler.ts](../src/lib/evidence/compiler.ts)
-  turns the blueprints into templates.
-- [src/lib/splitTemplates.ts](../src/lib/splitTemplates.ts) exposes the
-  compiled templates. The app's program editor (`native/src/app/program-edit`)
-  asks its questions through `programQuestions`, and `programDesigner`
-  recommends a template from the answers and builds the program.
+- The built-in programs are written by hand in
+  [src/lib/programBlueprints.ts](../src/lib/programBlueprints.ts) and sized by
+  [src/lib/programDesigner.ts](../src/lib/programDesigner.ts). What they rest
+  on is in [program-design.md](program-design.md).
+- [training-volume.md](training-volume.md) cites three of the snapshot's rules
+  by id.
 
-## How templates present their evidence
+The notes are one author's reading (Chris Beardsley's articles). Check a rule
+against pooled research before building on it. Two that do not hold up as
+stated: a fixed 4 to 5 day gap between sessions for a muscle, and a hard cap
+on sets per session.
 
-- Templates carry a neutral public label (`Evidence-informed`) and a blended
-  note (research digest plus coaching synthesis), never a single author.
-- Source URLs stay in the snapshot for audits; the app does not show them.
-- Personalized or specialization variants must be clearly labeled and never
-  replace the default template.
+Until 2026-11-13 the importer also generated seven program templates and a
+set of exercise profiles, and a compiler turned them into the builder's
+templates. The templates were typed into the importer, not read from the
+notes, and the profiles mis-filed movements (a pushdown under biceps). Both
+are removed.
 
 ## Refreshing the snapshot
 
-The importer reads the reference notes in the
-`staylan488-ux/hypertrophy-coach` repository (`references/` on `main`) and
-rewrites the snapshot. It sends `GITHUB_TOKEN` when one is set.
-
 ```sh
-npm run evidence:import                          # rewrite the snapshot
-node scripts/import-evidence.mjs --dry-run       # print it without writing
+npm run evidence:import                                   # from GitHub; sends GITHUB_TOKEN when set
+node scripts/import-evidence.mjs --from ../hypertrophy-coach   # from a local checkout
+node scripts/import-evidence.mjs --dry-run                # print it without writing
 ```
 
-`--owner`, `--repo`, `--ref`, `--path` and `--out` override the defaults.
-Keep confidence labels conservative (`solid`, `emerging`, `speculative`),
-review the snapshot diff, then run `npm run test`, `npm run lint` and
-`npm run build`. A changed snapshot reaches people only in a new app build.
+`--owner`, `--repo`, `--ref`, `--path` and `--out` override the defaults. Do
+not edit the snapshot by hand. Review its diff, then run `npm run test`,
+`npm run lint` and `npm run build`.

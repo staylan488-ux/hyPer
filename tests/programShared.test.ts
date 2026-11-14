@@ -166,11 +166,14 @@ describe('new program chooser', () => {
     expect(template.days).toHaveLength(4);
     expect(templateExerciseCount(template)).toBeGreaterThan(0);
     const names = template.days.flatMap((day) => day.exercises.map((entry) => entry.name));
-    const library = names.slice(1).map((name, index) => exercise(`e${index}`, name));
+    // Every row of this library is filed under chest, so the row has no stand-in.
+    const gone = 'Seated Cable Row';
+    expect(names).toContain(gone);
+    const library = names.filter((name) => name !== gone).map((name, index) => exercise(`e${index}`, name));
     const { draft, notice } = await seedGuidedDraft(DEFAULT_PROGRAM_ANSWERS, { loadLibrary: async () => library });
     expect(draft._isNew).toBe(true);
     expect(draft.days).toHaveLength(4);
-    expect(notice).toBe(`Not in your exercise library, so left out: ${names[0]}.`);
+    expect(notice).toBe(`Not in your exercise library, so left out: ${gone}.`);
     await expect(seedGuidedDraft(DEFAULT_PROGRAM_ANSWERS, { loadLibrary: async () => names.map((name, index) => exercise(`e${index}`, name)) })).resolves.toMatchObject({ notice: null });
   });
 
