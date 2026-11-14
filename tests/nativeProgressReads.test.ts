@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 import * as dates from 'date-fns';
-import { act, createElement, Fragment, useEffect, type PropsWithChildren, type ReactNode } from 'react';
+import { act, Children, createElement, Fragment, isValidElement, useEffect, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as zustand from 'zustand';
 import { create } from 'zustand';
 
 import * as fuelSummary from '@/lib/fuelSummary';
+import * as nutritionRange from '@/lib/nutritionRange';
 import * as todayModel from '@/lib/todayModel';
 import * as volumeCoaching from '@/lib/volumeCoaching';
 import * as volumeStatus from '@/lib/volumeStatus';
@@ -131,6 +133,7 @@ const trained = () => workoutSessions.buildWeeklyTrainingHours([
 type Day = { date: string; calories: number; protein: number };
 let nutrition: Day[] = [];
 let askedFor: Array<string | undefined> = [];
+let askedDays: Array<number | undefined> = [];
 const averageLoggedDays = (days: Day[], key: 'calories' | 'protein') => {
   const logged = days.filter((day) => day[key] > 0);
   return logged.length ? logged.reduce((sum, day) => sum + day[key], 0) / logged.length : 0;
@@ -167,12 +170,31 @@ async function open() {
     '@/lib/todayModel': todayModel,
     '@/hooks/useWeeklyNutrition': {
       averageLoggedDays,
-      useWeeklyNutrition: (lastDay?: string) => {
+      useWeeklyNutrition: (lastDay?: string, days?: number) => {
         askedFor.push(lastDay);
+        askedDays.push(days);
         return { weeklyNutrition: nutritionLoading ? [] : nutrition, loading: nutritionLoading, error: null };
       },
     },
     '@/lib/fuelSummary': fuelSummary,
+    '@/lib/nutritionRange': nutritionRange,
+    // The range picker: a button per option, which chooses it.
+    '@expo/ui/swift-ui': {
+      Host: Wrap,
+      Picker: ({ children, selection, onSelectionChange }: PropsWithChildren<{ selection: string; onSelectionChange: (value: string) => void }>) =>
+        createElement(
+          'div',
+          { 'data-picker': selection },
+          Children.map(children, (child) =>
+            isValidElement<PropsWithChildren<{ modifiers: Array<{ tag: string }> }>>(child)
+              ? createElement('button', { 'data-option': child.props.modifiers[0].tag, onClick: () => onSelectionChange(child.props.modifiers[0].tag) }, child.props.children)
+              : null,
+          ),
+        ),
+      Text: Wrap,
+    },
+    '@expo/ui/swift-ui/modifiers': { pickerStyle: () => ({}), tag: (value: string) => ({ tag: value }) },
+    zustand,
     '@/lib/trainingHours': { fetchTrainingHours },
     '@/lib/volumeCoaching': volumeCoaching,
     '@/lib/volumeStatus': volumeStatus,
@@ -206,7 +228,8 @@ beforeEach(() => {
   nutrition = [];
   nutritionLoading = false;
   askedFor = [];
-  appStore.setState({ macroTarget: null });
+  askedDays = [];
+  appStore.setState({ macroTarget: null, nutritionProfile: null });
   accountDay.setState({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') });
   appStore.setState({ weeklyVolume: initialAppData.weeklyVolume });
   fetchTrainingHours.mockReset().mockResolvedValue(trained());
@@ -416,6 +439,89 @@ describe("Progress's nutrition window", () => {
     nutrition = weekBefore({ 1: 500, 2: 2000, 3: 2000, 4: 2000, 5: 2000, 6: 2000, 7: 2000 }).map((day) => ({ ...day, protein: 150 }));
     await open();
     expect(shown()).not.toContain('No entry');
+  });
+});
+
+describe("Progress's nutrition ranges", () => {
+  /** Days before `today` as the hook gives them, oldest first: calories eaten so many days ago, protein a tenth of it. */
+  const daysBefore = (count: number, eaten: (ago: number) => number, today = accountDay.getState().dayKey): Day[] =>
+    Array.from({ length: count }, (_, index) => count - index).map((ago) => ({
+      date: dates.format(dates.subDays(dates.parseISO(today), ago), 'yyyy-MM-dd'),
+      calories: eaten(ago),
+      protein: eaten(ago) / 10,
+    }));
+  const choose = (range: string) => act(async () => { (host.querySelector(`[data-option="${range}"]`) as HTMLButtonElement).click(); });
+  const spoken = (macro: string) => host.querySelector(`[aria-label="${macro}"]`)?.getAttribute('data-value');
+
+  it('reads the longest range once, ending yesterday, and opens on the week', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    await open();
+    expect(askedFor.at(-1)).toBe('2026-11-13');
+    // Thirteen weeks from a Monday: Aug 17 to Nov 13.
+    expect(askedDays.at(-1)).toBe(89);
+    expect(host.querySelector('[data-picker]')).toBeNull();
+    nutrition = daysBefore(89, () => 2000);
+    act(() => root.unmount());
+    root = createRoot(host);
+    await open();
+    expect(host.querySelector('[data-picker]')?.getAttribute('data-picker')).toBe('week');
+    expect([...host.querySelectorAll('[data-option]')].map((option) => option.textContent)).toEqual(['Week', '2 weeks', 'Month', '3 months']);
+  });
+
+  it('averages two weeks of logged days, leaving out a day with nothing logged', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    nutrition = daysBefore(89, (ago) => (ago === 5 ? 0 : ago <= 14 ? (ago % 2 ? 2600 : 2800) : 1000));
+    await open();
+    await choose('twoWeeks');
+    expect(shown()).toContain('Nutrition Oct 31–Nov 13 · 13 days logged');
+    // 7 days at 2,600 (odd days ago, but not the 5th) and 6 at 2,800, over 13 days.
+    expect(shown()).toContain('Avg 2708 kcal');
+    expect(spoken('Calories')).toContain(`${Math.round((6 * 2600 + 7 * 2800) / 13)} calories, the daily average of the logged days, October 31 to November 13`);
+    // Dated at its two ends, not by weekday.
+    expect(shown()).toContain('Oct 31');
+    expect(shown()).toContain('Nov 13');
+  });
+
+  it('starts a range longer than the logging at the first day logged, and says since when', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    nutrition = daysBefore(89, (ago) => (ago <= 14 ? 2600 : 0));
+    await open();
+    await choose('month');
+    expect(shown()).toContain('Nutrition Since Oct 31');
+    expect(shown()).not.toContain('days logged');
+    expect(shown()).not.toContain('No entry');
+    expect(spoken('Calories')).toContain('2600 calories, the daily average of the logged days, since October 31');
+  });
+
+  it('draws three months as a bar per week, each the average of its logged days', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    // The week of Nov 9 (Mon to Fri) at 2,500 on average; the week of Nov 2 at 2,500 with Thursday unlogged.
+    nutrition = daysBefore(89, (ago) => (ago <= 4 ? (ago % 2 ? 3000 : 2000) : ago <= 12 ? (ago === 9 ? 0 : 2500) : 0));
+    await open();
+    await choose('threeMonths');
+    expect(shown()).toContain('Nutrition Since Nov 2');
+    expect(shown()).toContain('Each bar is a week: the average of its logged days.');
+    const step = (actionName: string) => actions.get(host.querySelector('[aria-label="Calories"]')!)!({ nativeEvent: { actionName } });
+    // VoiceOver's first step reads the latest week.
+    await act(async () => { step('increment'); });
+    expect(spoken('Calories')).toContain('Week of November 9, average 2500 calories');
+    await act(async () => { step('decrement'); });
+    expect(spoken('Calories')).toContain('Week of November 2, average 2500 calories');
+  });
+
+  it('never colours a bulking week past target, as a cutting one is', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    appStore.setState({ macroTarget: { calories: 2000, protein: 100 } as never, nutritionProfile: { goal: 'bulk' } as never });
+    nutrition = daysBefore(89, (ago) => (ago <= 14 ? 3000 : 0));
+    await open();
+    await choose('threeMonths');
+    expect(host.querySelectorAll('[data-fill="live"]').length).toBe(0);
+    act(() => root.unmount());
+    root = createRoot(host);
+    appStore.setState({ nutritionProfile: { goal: 'cut' } as never });
+    await open();
+    await choose('threeMonths');
+    expect(host.querySelectorAll('[data-fill="live"]').length).toBeGreaterThan(0);
   });
 });
 

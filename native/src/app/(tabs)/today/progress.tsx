@@ -1,14 +1,28 @@
-import { format, isSameMonth, parseISO, startOfWeek, subDays } from 'date-fns';
+import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
+import { pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { format, parseISO, startOfWeek } from 'date-fns';
 import { Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import Svg, { Line } from 'react-native-svg';
+import { create } from 'zustand';
 
 import { summarizeWeekVolume } from '@/lib/todayModel';
 import { averageLoggedDays, useWeeklyNutrition, type DailyNutrition } from '@/hooks/useWeeklyNutrition';
 import { warnsOverTarget } from '@/lib/fuelSummary';
+import {
+  daysInRange,
+  fromFirstLogged,
+  loggedDays,
+  longestNutritionSpan,
+  NUTRITION_RANGES,
+  nutritionRangeSpan,
+  spanWords,
+  weeklyAverages,
+  type NutritionRange,
+} from '@/lib/nutritionRange';
 import { fetchTrainingHours } from '@/lib/trainingHours';
 import { coachMuscles, type CoachingCall } from '@/lib/volumeCoaching';
 import { TRAINING_WEEK, type TrainingHoursPoint } from '@/lib/workoutSessions';
@@ -34,7 +48,8 @@ const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
 
 /**
  * Progress: this week's volume by muscle, training time over eight weeks, and
- * eating over the seven days before today. Each section names its own span, since they differ.
+ * eating over the days before today (a week unless another range is chosen).
+ * Each section names its own span, since they differ.
  */
 export default function ProgressScreen() {
   const volume = useAppStore((state) => state.weeklyVolume);
@@ -794,33 +809,49 @@ function HoursChart({ points }: { points: TrainingHoursPoint[] }) {
   );
 }
 
-/**
- * The seven days Progress's nutrition charts show: the seven before today
- * (Today and Fuel already show today). Named by its dates, "Oct 29–Nov 4" or,
- * within one month, "Nov 1–7"; spoken in full, "October 29 to November 4".
- */
-function weekBefore(todayKey: string) {
-  const last = subDays(parseISO(todayKey), 1);
-  const first = subDays(last, 6);
-  return {
-    lastKey: format(last, 'yyyy-MM-dd'),
-    written: `${format(first, 'MMM d')}–${format(last, isSameMonth(first, last) ? 'd' : 'MMM d')}`,
-    spoken: `${format(first, 'MMMM d')} to ${format(last, 'MMMM d')}`,
-  };
-}
+/** The range the nutrition charts show: a week until another is chosen, kept while the app runs. */
+const useNutritionRange = create<{ range: NutritionRange }>(() => ({ range: 'week' }));
 
+/** Between bars, by range: fewer, wider bars sit further apart. */
+const RANGE_BAR_GAP: Record<NutritionRange, number> = { week: MACRO_BAR_GAP, twoWeeks: 6, month: 3, threeMonths: 6 };
+
+/**
+ * Eating over the days before today: one read of the longest range (thirteen
+ * weeks), from which each range takes its days, so changing range is instant.
+ * A week shows each of its seven days. A longer range starts at the first day
+ * with food logged when the logging began inside it ("Since Oct 31"), and
+ * three months draws a bar per week. Every average counts logged days only:
+ * a day with nothing logged is never a 0.
+ */
 function NutritionSection({ todayKey }: { todayKey: string }) {
-  const week = weekBefore(todayKey);
-  const { weeklyNutrition, loading, error } = useWeeklyNutrition(week.lastKey);
+  const longest = longestNutritionSpan(todayKey);
+  const { weeklyNutrition: read, loading, error } = useWeeklyNutrition(longest.lastKey, longest.days);
+  const range = useNutritionRange((state) => state.range);
   const target = useAppStore((state) => state.macroTarget);
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
   const failed = "Couldn't load your nutrition. Pull down to try again.";
-  // The week arrives after the screen does; a failure would pass unheard.
+  // The days arrive after the screen does; a failure would pass unheard.
   useAnnounce(!loading && error ? failed : null);
-  // How many of the seven days have anything logged, said once for both charts while some are missing.
-  const logged = weeklyNutrition.filter((day) => day.calories > 0 || day.protein > 0).length;
-  const shown = !loading && !error && logged > 0 && logged < weeklyNutrition.length;
-  const note = `${week.written}${shown ? ` · ${logged} ${logged === 1 ? 'day' : 'days'} logged` : ''}`;
+  const span = nutritionRangeSpan(todayKey, range);
+  const inRange = daysInRange(read, todayKey, range);
+  const days = range === 'week' ? inRange : fromFirstLogged(inRange);
+  const logged = loggedDays(days);
+  // Started later than the range: named by its first day.
+  const since = range !== 'week' && days.length > 0 && days[0].date > span.firstKey ? parseISO(days[0].date) : null;
+  const words = spanWords(span.firstKey, span.lastKey);
+  const written = since ? `Since ${format(since, 'MMM d')}` : words.written;
+  const spoken = since ? `since ${format(since, 'MMMM d')}` : words.spoken;
+  // How many of the days have anything logged, said once for both charts while some are missing.
+  const shown = !loading && !error && logged > 0 && logged < days.length;
+  const note = `${written}${shown ? ` · ${logged} ${logged === 1 ? 'day' : 'days'} logged` : ''}`;
+  const weekly = range === 'threeMonths';
+  const bars = weekly ? weeklyAverages(days) : days;
+  const gap = RANGE_BAR_GAP[range];
+  const choose = (next: NutritionRange) => {
+    if (next === range) return;
+    haptics.select();
+    useNutritionRange.setState({ range: next });
+  };
   return (
     <Section title="Nutrition" note={note}>
       <Label style={{ paddingLeft: 18, paddingRight: 16, paddingVertical: 16 }}>
@@ -830,21 +861,44 @@ function NutritionSection({ todayKey }: { todayKey: string }) {
           <BlancText variant="secondary" tone="live">
             {failed}
           </BlancText>
-        ) : weeklyNutrition.length === 0 ? (
-          // Today's meals are in Fuel; a day shows here from the next.
-          <BlancText variant="secondary" tone="graphite">
-            Days you log in Fuel show here once they’re over.
-          </BlancText>
         ) : (
           <View>
-            <View style={{ gap: 22 }}>
-              <MacroBars days={weeklyNutrition} span={week.spoken} macro="calories" label="Calories" unit="kcal" target={target?.calories ?? 0} warnOver={warnsOverTarget('calories', goal)} />
-              <MacroBars days={weeklyNutrition} span={week.spoken} macro="protein" label="Protein" unit="g" target={target?.protein ?? 0} warnOver={warnsOverTarget('protein', goal)} />
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 16 }}>
-              {(target?.calories ?? 0) > 0 || (target?.protein ?? 0) > 0 ? <TargetKey /> : null}
-              {weeklyNutrition.some((day) => day.calories <= 0 || day.protein <= 0) ? <NothingKey>No entry</NothingKey> : null}
-            </View>
+            {/* The ranges, once there is anything logged in the longest of them. */}
+            {read.length > 0 ? (
+              <View style={{ marginBottom: 18 }}>
+                <Host ignoreSafeArea="all" matchContents={{ vertical: true }}>
+                  <Picker selection={range} onSelectionChange={(value: NutritionRange) => choose(value)} modifiers={[pickerStyle('segmented')]}>
+                    {NUTRITION_RANGES.map((option) => (
+                      <SwiftText key={option.id} modifiers={[tag(option.id)]}>
+                        {option.label}
+                      </SwiftText>
+                    ))}
+                  </Picker>
+                </Host>
+              </View>
+            ) : null}
+            {logged === 0 ? (
+              // Today's meals are in Fuel; a day shows here from the next.
+              <BlancText variant="secondary" tone="graphite">
+                Days you log in Fuel show here once they’re over.
+              </BlancText>
+            ) : (
+              <>
+                <View style={{ gap: 22 }}>
+                  <MacroBars key={`calories:${range}`} days={days} bars={bars} weekly={weekly} gap={gap} span={spoken} macro="calories" label="Calories" unit="kcal" target={target?.calories ?? 0} warnOver={warnsOverTarget('calories', goal)} />
+                  <MacroBars key={`protein:${range}`} days={days} bars={bars} weekly={weekly} gap={gap} span={spoken} macro="protein" label="Protein" unit="g" target={target?.protein ?? 0} warnOver={warnsOverTarget('protein', goal)} />
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 16 }}>
+                  {(target?.calories ?? 0) > 0 || (target?.protein ?? 0) > 0 ? <TargetKey /> : null}
+                  {bars.some((bar) => bar.calories <= 0 || bar.protein <= 0) ? <NothingKey>No entry</NothingKey> : null}
+                </View>
+                {weekly ? (
+                  <BlancText variant="footnote" tone="graphite" style={{ marginTop: 12 }}>
+                    Each bar is a week: the average of its logged days.
+                  </BlancText>
+                ) : null}
+              </>
+            )}
           </View>
         )}
       </Label>
@@ -853,19 +907,25 @@ function NutritionSection({ todayKey }: { todayKey: string }) {
 }
 
 /**
- * One macro across the seven days before today, against its daily target
- * (dashed, named on its line, "2,600 target"). Every day is a past one, so
- * every bar is `mark` (3:1 or more on the card in every palette), and a day
- * with nothing logged is marked by the hollow ring (unlogged isn't 0 kcal). A
- * day well past target is red only where that is a warning for the goal. The
+ * One macro across the days before today, against its daily target (dashed,
+ * named on its line, "2,600 target"). Every day is a past one, so every bar
+ * is `mark` (3:1 or more on the card in every palette), and a day with
+ * nothing logged is marked by the hollow ring (unlogged isn't 0 kcal). A day
+ * well past target is red only where that is a warning for the goal. The
  * header is the daily average of the logged days ("Avg 2,410 kcal"); a single
  * logged day is given as its figure, named by its date ("Nov 3 1,342 kcal"),
  * since an average of one day is no average. How many days are logged is
- * said once, in the section's note. Any day reads in the header line
+ * said once, in the section's note. Any bar reads in the header line
  * (useBarReading), "Tue, Nov 3 · 2,410 kcal", its bar in ink while it is read.
+ * `weekly` bars are weeks, each its logged days' average, read as "Week of
+ * Oct 6 · Avg 2,540 kcal". A week's seven bars are named by their weekdays;
+ * more are dated at their two ends, as the training chart is.
  */
 function MacroBars({
   days,
+  bars,
+  weekly,
+  gap,
   span,
   macro,
   label,
@@ -873,8 +933,14 @@ function MacroBars({
   target,
   warnOver,
 }: {
+  /** The days, for the average. */
   days: DailyNutrition[];
-  /** The seven days in words, for VoiceOver: "October 29 to November 4". */
+  /** What each bar shows, oldest first: the days, or the weeks' averages when `weekly`. */
+  bars: DailyNutrition[];
+  weekly: boolean;
+  /** Between bars, in points. */
+  gap: number;
+  /** The days in words, for VoiceOver: "October 29 to November 4". */
   span: string;
   macro: 'calories' | 'protein';
   label: string;
@@ -895,24 +961,24 @@ function MacroBars({
     : counted > 0
       ? `${figure}, the daily average of the logged days, ${span}`
       : `none logged, ${span}`;
-  const max = Math.max(1, target * 1.3, ...days.map((day) => day[macro]));
+  const max = Math.max(1, target * 1.3, ...bars.map((bar) => bar[macro]));
   const isOver = (day: DailyNutrition) => warnOver && target > 0 && day[macro] > target * 1.05;
   // The target's figure sits at its line's height in the column at the
   // plot's right, so it names the right height and no bar can reach it.
   const column = target > 0 ? TARGET_COLUMN : 0;
-  const read = useBarReading(days.map((day) => day.date), MACRO_BAR_GAP);
-  // The day read; with none, the header reads the average.
-  const chosen = read.index >= 0 ? days[read.index] : null;
+  const read = useBarReading(bars.map((bar) => bar.date), gap);
+  // The bar read; with none, the header reads the average.
+  const chosen = read.index >= 0 ? bars[read.index] : null;
   const spokenValue = speak(
     chosen
-      ? `${format(parseISO(chosen.date), 'EEEE, MMMM d')}, ${chosen[macro] > 0 ? `${formatWhole(chosen[macro])} ${unit}` : 'nothing logged'}${isOver(chosen) ? ', over' : ''}`
+      ? `${weekly ? `Week of ${format(parseISO(chosen.date), 'MMMM d')}` : format(parseISO(chosen.date), 'EEEE, MMMM d')}, ${chosen[macro] > 0 ? `${weekly ? 'average ' : ''}${formatWhole(chosen[macro])} ${unit}` : 'nothing logged'}${isOver(chosen) ? ', over' : ''}`
       : `${headline}${target > 0 ? ` · target ${formatWhole(target)}` : ''}`,
   );
   return (
     <View
       accessible
       accessibilityLabel={label}
-      accessibilityHint={days.length > 0 ? 'Swipe up or down to read a day.' : undefined}
+      accessibilityHint={bars.length > 0 ? `Swipe up or down to read a ${weekly ? 'week' : 'day'}.` : undefined}
       accessibilityValue={{ text: spokenValue }}
       {...read.adjustable}>
       {/* At the accessibility text sizes the average wraps under the name. */}
@@ -923,10 +989,11 @@ function MacroBars({
         {chosen ? (
           // The dot stays with the date when the line wraps at the largest text sizes.
           <BlancText variant="secondary" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
-            {format(parseISO(chosen.date), 'EEE, MMM d')}
+            {weekly ? `Week of ${format(parseISO(chosen.date), 'MMM d')}` : format(parseISO(chosen.date), 'EEE, MMM d')}
             {'\u00a0· '}
             {chosen[macro] > 0 ? (
               <>
+                {weekly ? 'Avg ' : null}
                 <BlancText variant="secondary" weight="500">
                   {formatWhole(chosen[macro])}
                 </BlancText>{' '}
@@ -965,8 +1032,8 @@ function MacroBars({
             <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, backgroundColor: c.hairline }} />
             {/* The target in `mark`, at full strength: read, but never ahead of the bars. */}
             {target > 0 ? <DashedLine bottom={`${(target / max) * 100}%`} color={c.mark} /> : null}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: MACRO_BAR_GAP, height: '100%' }}>
-              {days.map((day, index) => (
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap, height: '100%' }}>
+              {bars.map((day, index) => (
                 <View key={day.date} style={{ flex: 1, height: '100%', justifyContent: 'flex-end' }}>
                   {day[macro] > 0 ? (
                     <View
@@ -993,13 +1060,25 @@ function MacroBars({
           ) : null}
         </View>
       </GestureDetector>
-      <View style={{ flexDirection: 'row', gap: MACRO_BAR_GAP, marginTop: 6, marginRight: column }}>
-        {days.map((day) => (
-          <BlancText key={day.date} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
-            {format(parseISO(day.date), 'EEEEE')}
+      {bars.length <= 7 && !weekly ? (
+        <View style={{ flexDirection: 'row', gap, marginTop: 6, marginRight: column }}>
+          {bars.map((day) => (
+            <BlancText key={day.date} variant="footnote" tone="graphite" style={{ flex: 1, textAlign: 'center' }}>
+              {format(parseISO(day.date), 'EEEEE')}
+            </BlancText>
+          ))}
+        </View>
+      ) : (
+        // The first bar's date and the last's, at the plot's two ends; any other reads in the header.
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6, marginRight: column, ...(large ? { flexWrap: 'wrap', columnGap: 12 } : null) }}>
+          <BlancText variant="footnote" tone="graphite" style={{ fontVariant: ['tabular-nums'] }}>
+            {bars[0] ? format(parseISO(bars[0].date), 'MMM d') : ''}
           </BlancText>
-        ))}
-      </View>
+          <BlancText variant="footnote" tone="graphite" style={[{ fontVariant: ['tabular-nums'] }, large ? { flexGrow: 1, textAlign: 'right' } : null]}>
+            {bars.length > 1 ? format(parseISO(bars[bars.length - 1].date), 'MMM d') : ''}
+          </BlancText>
+        </View>
+      )}
     </View>
   );
 }
