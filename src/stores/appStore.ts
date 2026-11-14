@@ -443,11 +443,22 @@ interface AppState {
   setWorkoutMode: (mode: WorkoutMode) => Promise<{ ok: boolean; reason?: string }>;
   fetchCurrentWorkoutDayPlan: (workoutId?: string) => Promise<void>;
   setFlexibleWorkoutLabel: (label: string) => Promise<void>;
-  addFlexibleExercise: (exercise: Exercise) => Promise<void>;
+  /**
+   * Adds a movement with three sets to the live workout, flexible or planned;
+   * a planned session's program is untouched.
+   */
+  addSessionExercise: (exercise: Exercise) => Promise<void>;
   addFlexibleSuperset: (baseExerciseId: string, partner: Exercise) => Promise<void>;
   clearFlexibleSuperset: (exerciseId: string) => Promise<void>;
   updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
-  removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
+  /** Takes a movement out of the live workout (its logged sets stay); the program is untouched. */
+  removeSessionExercise: (exerciseId: string) => Promise<void>;
+  /**
+   * Adds an exercise to the end of a program day (3 × 8–12, as a movement
+   * added in a workout starts), unless the day already has it; throws when
+   * it doesn't save. The programs are read again after.
+   */
+  addExerciseToProgramDay: (splitDayId: string, exerciseId: string) => Promise<void>;
   /** force: read again even if a read is running; pass it after a write. */
   fetchFlexTemplates: (options?: { force?: boolean }) => Promise<void>;
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
@@ -682,6 +693,24 @@ function markHydrated(userId: string, part: HydrationPart) {
   if (hydration.loaded.size === 3 && useAppStore.getState().hydratedForUserId !== userId) {
     useAppStore.setState({ hydratedForUserId: userId });
   }
+}
+
+/**
+ * The live workout with its own session plan, which adding or removing a
+ * movement edits. A planned session gets one from its program day the first
+ * time it needs it, as a swap does; a flexible session always has one. Both
+ * are null when there is no open workout or no plan for it.
+ */
+async function liveSessionPlan(get: () => AppState): Promise<{ currentWorkout: Workout | null; currentWorkoutDayPlan: WorkoutDayPlan | null }> {
+  const none = { currentWorkout: null, currentWorkoutDayPlan: null };
+  const { currentWorkout, currentWorkoutDayPlan } = get();
+  if (!currentWorkout || currentWorkout.completed) return none;
+  if (currentWorkoutDayPlan?.workout_id === currentWorkout.id) return { currentWorkout, currentWorkoutDayPlan };
+  if (currentWorkout.split_day_id === null) return none;
+  const plan = await get().ensureWorkoutDayPlan(currentWorkout.id);
+  const latest = get().currentWorkout;
+  if (!plan || latest?.id !== currentWorkout.id || latest.completed) return none;
+  return { currentWorkout: latest, currentWorkoutDayPlan: plan };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -1497,10 +1526,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   }),
 
-  addFlexibleExercise: writesWorkout(async (exercise) => {
+  addSessionExercise: writesWorkout(async (exercise) => {
     const isCurrentAccount = captureAccountScope();
-    const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+    const { currentWorkout, currentWorkoutDayPlan } = await liveSessionPlan(get);
+    if (!currentWorkout || !currentWorkoutDayPlan) return;
 
     const existing = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exercise.id);
 
@@ -1538,7 +1567,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .single();
 
     if (planError || !updatedPlan) {
-      if (planError) console.error('Error adding flexible exercise:', planError);
+      if (planError) console.error('Error adding a movement to the workout:', planError);
       throw new Error('Could not add the exercise. Try again.');
     }
 
@@ -1552,7 +1581,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
 
       if (setsError) {
-        console.error('Error creating flexible exercise sets:', setsError);
+        console.error('Error creating the added movement\'s sets:', setsError);
         throw new Error('Could not add the exercise sets. Try again.');
       } else {
         // Merge instead of refetching so a set logged meanwhile stays logged.
@@ -1791,10 +1820,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   }),
 
-  removeFlexibleExerciseFromPlan: writesWorkout(async (exerciseId) => {
+  addExerciseToProgramDay: async (splitDayId, exerciseId) => {
+    const failed = 'Could not add it to your program. Try again.';
+    const { data: rows, error: readError } = await supabase
+      .from('split_exercises')
+      .select('exercise_id, exercise_order')
+      .eq('split_day_id', splitDayId);
+    if (readError || !rows) throw new Error(failed);
+    if (!rows.some((row) => row.exercise_id === exerciseId)) {
+      const lastOrder = rows.reduce((highest, row) => Math.max(highest, Number(row.exercise_order) || 0), -1);
+      const { error } = await supabase.from('split_exercises').insert({
+        split_day_id: splitDayId,
+        exercise_id: exerciseId,
+        target_sets: 3,
+        target_reps_min: 8,
+        target_reps_max: 12,
+        exercise_order: lastOrder + 1,
+        notes: null,
+        superset_group_id: null,
+      });
+      if (error) throw new Error(failed);
+    }
+    await get().fetchSplits({ force: true });
+  },
+
+  removeSessionExercise: writesWorkout(async (exerciseId) => {
     const isCurrentAccount = captureAccountScope();
-    const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+    const { currentWorkout, currentWorkoutDayPlan } = await liveSessionPlan(get);
+    if (!currentWorkout || !currentWorkoutDayPlan) return;
 
     const removing = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exerciseId);
     const removingGroupId = removing?.superset_group_id || null;
@@ -1819,7 +1872,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .single();
 
     if (planError || !updatedPlan) {
-      if (planError) console.error('Error removing flexible exercise from plan:', planError);
+      if (planError) console.error('Error removing a movement from the workout:', planError);
       throw new Error('Could not remove the exercise. Try again.');
     }
 

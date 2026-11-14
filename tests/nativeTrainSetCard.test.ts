@@ -84,6 +84,7 @@ function liveSession(total = 3) {
     note,
     skipped: false,
     endedEarly: false,
+    added: false,
     ...pairing,
   };
   return {
