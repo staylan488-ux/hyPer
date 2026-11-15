@@ -331,7 +331,8 @@ export function ExercisePicker({ title, subtitle, initialMuscle, replacing = nul
 
         {/* The list sits in a white label on the chalk, like every other list. */}
         {canCreate || rest.length > 0 || (skills.length > 0 && !skillsOpen) ? (
-          <Label style={{ marginTop: matches.length > 0 ? 0 : 4, overflow: 'hidden' }}>
+          // Under "More movements" the list follows its heading; with nothing more to list, the skills row stands clear of the note.
+          <Label style={{ marginTop: matches.length === 0 ? 4 : rest.length > 0 ? 0 : 14, overflow: 'hidden' }}>
             {canCreate ? (
               <Pressable
                 accessibilityRole="button"
