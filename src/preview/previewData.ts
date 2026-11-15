@@ -54,6 +54,15 @@ const exCalf = ex('ex_calf', 'Standing Calf Raise', 'calves', null, 'Machine', f
 // Library-only rows (not in the program) so the picker shows its sections
 const libraryOnly: Exercise[] = [
   ex('ex_hack', 'Hack Squat', 'quads', 'glutes', 'Machine', true),
+  // Enough squats, presses and curls for a swap to show its closest matches
+  ex('ex_smith_squat', 'Smith Machine Squat', 'quads', 'glutes', 'Smith machine', true),
+  ex('ex_front_squat', 'Front Squat', 'quads', 'glutes', 'Barbell', true),
+  ex('ex_leg_press', 'Leg Press', 'quads', 'glutes', 'Machine', true),
+  ex('ex_split_squat', 'Bulgarian Split Squat', 'quads', 'glutes', 'Dumbbell', true),
+  ex('ex_db_bench', 'Flat Dumbbell Bench Press', 'chest', 'triceps', 'Dumbbell', true),
+  ex('ex_smith_bench', 'Smith Machine Bench Press', 'chest', 'triceps', 'Smith machine', true),
+  ex('ex_lying_legcurl', 'Lying Leg Curl', 'hamstrings', null, 'Machine', false),
+  ex('ex_overhead_ext', 'Cable Overhead Tricep Extension', 'triceps', null, 'Cable', false),
   ex('ex_machine_chest', 'Machine Chest Press', 'chest', 'triceps', 'Machine', true),
   ex('ex_hyper', 'Weighted Hyperextension', 'hamstrings', 'glutes', 'Machine', true),
   ex('ex_back_ext', '45° Back Extension', 'glutes', 'hamstrings', 'Machine', true),

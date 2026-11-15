@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { movementProfile } from '@/lib/movementProfiles';
 import { SWAP_MATCH_LIMIT, SWAP_NOTES, suggestSwaps, swapNoteLine } from '@/lib/swapSuggestions';
+import { previewExercises } from '@/preview/previewData';
 import type { Exercise, MuscleGroup } from '@/types';
 
 const root = join(__dirname, '..');
@@ -135,6 +136,13 @@ describe('suggestSwaps', () => {
     expect(lineFor('Barbell Back Squat', 'Leg Press')).toBe('Same muscles · machine, easier on the lower back');
     expect(lineFor('Barbell Back Squat', 'Bulgarian Split Squat')).toBe('Same muscles · dumbbells, one side at a time');
     expect(swaps('Barbell Back Squat').note).toBe(SWAP_NOTES.machines);
+  });
+
+  it('has matches to show in the sample account a development build opens on', () => {
+    const squat = previewExercises.find((exercise) => exercise.name === 'Back Squat')!;
+    const { matches, note } = suggestSwaps(squat, previewExercises);
+    expect(matches.map((match) => match.exercise.name)).toEqual(['Hack Squat', 'Smith Machine Squat', 'Front Squat', 'Leg Press', 'Bulgarian Split Squat']);
+    expect(note).toBe(SWAP_NOTES.machines);
   });
 
   it('never calls a leg extension or a hip thrust a match for a squat', () => {
