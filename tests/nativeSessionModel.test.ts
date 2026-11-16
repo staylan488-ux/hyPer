@@ -531,6 +531,60 @@ describe('buildSessionModel with skipped movements', () => {
   });
 });
 
+describe('buildSessionModel with a movement added to a planned session', () => {
+  const curl = exercise('curl', 'Dumbbell Curl');
+  const item = (exerciseRow: Exercise, order: number, extra: Partial<FlexiblePlanItem> = {}): FlexiblePlanItem => ({
+    exercise_id: exerciseRow.id,
+    exercise_name: exerciseRow.name,
+    order,
+    target_sets: 3,
+    target_reps_min: 8,
+    target_reps_max: 12,
+    notes: null,
+    hidden: false,
+    ...extra,
+  });
+  const dayPlan = (items: FlexiblePlanItem[]): WorkoutDayPlan => ({ id: 'plan-1', workout_id: 'workout-1', day_label: 'Upper A', items });
+  const planned = [item(bench, 0), item(row, 1), item(incline, 2)];
+
+  it('lists the added movement last, marked as added, with zero-weight sets that log like any other', () => {
+    const sets = [...midSession().sets, { ...set(curl, 1, false), weight: 0, reps: 0 }, set(curl, 2, false), set(curl, 3, false)];
+    const model = buildSessionModel(workout(sets), { split, plan: dayPlan([...planned, item(curl, 3)]) }, null);
+    expect(model?.flexible).toBe(false);
+    expect(model?.movements.map((movement) => [movement.exerciseId, movement.added])).toEqual([
+      ['bench', false],
+      ['row', false],
+      ['incline', false],
+      ['curl', true],
+    ]);
+    expect(model?.sets).toHaveLength(12);
+    expect(model?.current?.set.id).toBe('row-1');
+    // Chosen to do next, it is up now.
+    expect(buildSessionModel(workout(sets), { split, plan: dayPlan([...planned, item(curl, 3)]) }, 'curl')?.current?.set.id).toBe('curl-1');
+  });
+
+  it('never marks a swap or a program movement as added', () => {
+    const swapped = planExerciseSubstitution({
+      items: planned,
+      sets: midSession().sets,
+      sourceId: 'row',
+      replacement: curl,
+      splitSession: true,
+    }).items;
+    const sets = [...midSession().sets.filter((entry) => entry.exercise_id !== 'row'), set(curl, 1, false), set(curl, 2, false)];
+    const model = buildSessionModel(workout(sets), { split, plan: dayPlan(swapped) }, null);
+    expect(model?.movements.find((movement) => movement.exerciseId === 'curl')).toMatchObject({ added: false, substitutesFor: { exercise_id: 'row' } });
+    expect(model?.movements.every((movement) => !movement.added)).toBe(true);
+  });
+
+  it('leaves an added movement taken out of the list, keeping its logged sets in the totals', () => {
+    const sets = [...midSession().sets, set(curl, 1, true)];
+    const model = buildSessionModel(workout(sets), { split, plan: dayPlan([...planned, item(curl, 3, { hidden: true })]) }, null);
+    expect(model?.movements.map((movement) => movement.exerciseId)).toEqual(['bench', 'row', 'incline']);
+    expect(model?.doneCount).toBe(4);
+  });
+});
+
 describe('mealForTime', () => {
   const at = (hours: number, minutes: number) => new Date(2026, 9, 26, hours, minutes);
 
