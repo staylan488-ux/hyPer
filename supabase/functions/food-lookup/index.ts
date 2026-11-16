@@ -265,11 +265,13 @@ serve(async (req) => {
     });
     if (answer.status !== 200) return jsonResponse(answer.payload, answer.status);
     const foodId = String((answer.payload as { food_id?: unknown } | null)?.food_id ?? '');
-    if (!/^\d{1,20}$/.test(foodId)) return jsonResponse({ food: null });
+    if (!/^\d{1,20}$/.test(foodId)) return jsonResponse({ configured: true, food: null });
     // The app maps this food with mapFatSecretBarcodeFood.
     const food = await getFood(foodId).then(fatSecretFoodAnswer, () => null);
-    if (food?.kind === 'found') return jsonResponse({ food: food.food });
-    if (food?.kind === 'missing') return jsonResponse({ food: null });
+    // `configured: true` tells the app this function can also read the food
+    // again by ID, which a food kept as IDs depends on.
+    if (food?.kind === 'found') return jsonResponse({ configured: true, food: food.food });
+    if (food?.kind === 'missing') return jsonResponse({ configured: true, food: null });
     console.error('FatSecret food.get failed for a barcode:', food?.code ?? 'no answer');
     return jsonResponse({ error: 'FatSecret lookup failed' }, 502);
   }

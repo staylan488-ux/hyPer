@@ -91,11 +91,16 @@ const DEVICE_KEEPS = { keeps: 'device' } as const;
 // Returns null when FatSecret is not configured, the barcode is unknown, or the
 // payload lacks complete macros — so the caller falls through to the next
 // provider. Never merges FatSecret fields with another source.
+//
+// An answer counts only when it says `configured: true`. A food-lookup from
+// before this rule answers without it and cannot read a food again by ID
+// (fetchFatSecretFoodsSecure), so a food saved from its answer as IDs alone
+// could never be shown on another phone: such an answer is passed over.
 export async function searchFatSecretByBarcodeSecure(barcode: string): Promise<Food | null> {
   const response = await invokeFoodLookup({ action: 'fatsecret-barcode', barcode, ...DEVICE_KEEPS });
   const payload = await response.json().catch(() => null) as
     (FatSecretBarcodeResponse & { configured?: boolean }) | null;
-  if (!payload || payload.configured === false || !payload.food) return null;
+  if (!payload || payload.configured !== true || !payload.food) return null;
   return mapFatSecretBarcodeFood(payload);
 }
 

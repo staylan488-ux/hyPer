@@ -43,6 +43,11 @@ nutritional values locally on the user's device inside the app indefinitely."
 - `food-lookup` answers FatSecret lookups only for builds that send
   `keeps: 'device'`. An older build, which saved FatSecret's name and numbers
   on the server, is told FatSecret is off and uses the other providers.
+- The app takes a FatSecret barcode answer only when it says
+  `configured: true`. An older `food-lookup` answers without it and cannot
+  read a food again by ID, so the app passes its answer over and uses the
+  other providers. Either side can therefore ship first: FatSecret is in use
+  only when both the app and the function are the new ones.
 
 Two edges are judgment calls rather than settled: a saved meal's name is
 prefilled from its foods' names and the user keeps or edits it, and a meal

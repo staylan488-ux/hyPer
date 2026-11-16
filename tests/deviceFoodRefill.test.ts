@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase', () => ({ supabase: { functions: { invoke: mocks.invoke
 
 import { refillDeviceFoods, refillDeviceFoodsFor, resetDeviceFoodRefillForTest, resolveDeviceFoods } from '@/lib/deviceFoodRefill';
 import { deviceFoodStub, forgetDeviceFoodsForTest, isDeviceFoodStub, readDeviceFood } from '@/lib/deviceFoods';
-import { FATSECRET_FOODS_PER_REQUEST, fetchFatSecretFoodsSecure, searchFatSecretFoodsSecure } from '@/lib/usdaClient';
+import { FATSECRET_FOODS_PER_REQUEST, fetchFatSecretFoodsSecure, searchFatSecretByBarcodeSecure, searchFatSecretFoodsSecure } from '@/lib/usdaClient';
 
 const fsFood = (foodId: string, servingIds: string[]) => ({
   food_id: foodId, food_name: `Food ${foodId}`, brand_name: 'Brand', food_type: 'Brand',
@@ -32,6 +32,20 @@ describe('asking FatSecret through food-lookup', () => {
       { action: 'fatsecret-search', query: 'chobani', keeps: 'device' },
       { action: 'fatsecret-foods', ids: '1', keeps: 'device' },
     ]);
+  });
+
+  it('takes a barcode answer only from a food-lookup that can read the food again by ID', async () => {
+    const food = fsFood('1', ['2']);
+    mocks.invoke.mockResolvedValueOnce(answer({ configured: true, food }));
+    expect(await searchFatSecretByBarcodeSecure('0123456789012')).toMatchObject({ external_id: '1:2', calories: 200 });
+    expect(mocks.invoke.mock.calls[0][1].body).toEqual({ action: 'fatsecret-barcode', barcode: '0123456789012', keeps: 'device' });
+    // a function from before this rule answers with the food alone
+    mocks.invoke.mockResolvedValueOnce(answer({ food }));
+    expect(await searchFatSecretByBarcodeSecure('0123456789012')).toBeNull();
+    mocks.invoke.mockResolvedValueOnce(answer({ configured: false }));
+    expect(await searchFatSecretByBarcodeSecure('0123456789012')).toBeNull();
+    mocks.invoke.mockResolvedValueOnce(answer({ configured: true, food: null }));
+    expect(await searchFatSecretByBarcodeSecure('0123456789012')).toBeNull();
   });
 
   it('has no brand results when FatSecret is switched off', async () => {

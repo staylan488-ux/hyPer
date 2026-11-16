@@ -112,6 +112,11 @@ describe('what the function keeps of FatSecret', () => {
     expect(source).toContain("payload: { food_id: found.foodId }");
   });
 
+  it('marks a barcode answer as coming from a function that can read the food again by ID', () => {
+    expect(source).toContain('jsonResponse({ configured: true, food: food.food })');
+    expect(source).not.toMatch(/jsonResponse\(\{ food:/);
+  });
+
   it('answers FatSecret lookups only for builds that keep the details on the phone', () => {
     expect(source).toContain("Deno.env.get('FATSECRET_ENABLED') !== '1' || body.keeps !== 'device'");
   });
