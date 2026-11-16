@@ -83,8 +83,8 @@ export type TargetOptions = {
   stallSessions: number;
   /**
    * Ratings logged before this day (yyyy-MM-dd) are not read. Until the build
-   * of 2026-11-13 the set card carried a rating over from the set before, so
-   * older ones were mostly never chosen. Null reads every rating.
+   * merged on 2026-11-16 the set card carried a rating over from the set
+   * before, so older ones were mostly never chosen. Null reads every rating.
    */
   ratingsFrom: string | null;
   /** Which logged set later sets move with during a session: set 1 (the replay's pick), or the latest. */
@@ -98,7 +98,7 @@ export const DEFAULT_TARGET_OPTIONS: TargetOptions = {
   longBreakDays: 35,
   layoffDays: 84,
   stallSessions: 3,
-  ratingsFrom: '2026-11-13',
+  ratingsFrom: '2026-11-16',
   follow: 'first',
 };
 

@@ -322,9 +322,9 @@ describe('set targets: the rating sets the pace', () => {
   });
 
   it('does not read a rating from before ratings were only ever chosen', () => {
-    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-12'))).toEqual(['100×10', '100×8', '100×6']);
-    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-13'))).toEqual(['100×11', '100×9', '100×7']);
-    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-12', { ratingsFrom: null }))).toEqual(['100×11', '100×9', '100×7']);
+    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-15'))).toEqual(['100×10', '100×8', '100×6']);
+    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-16'))).toEqual(['100×11', '100×9', '100×7']);
+    expect(figures(rated([9, 8, 6], [7, 8, 8], '2026-11-15', { ratingsFrom: null }))).toEqual(['100×11', '100×9', '100×7']);
   });
 
   it('works without any rating', () => {

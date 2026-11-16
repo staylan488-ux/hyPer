@@ -1,8 +1,34 @@
 # Current state
 
-Recorded 2026-11-13 (Pacific), at main 9211699 (through PRs #226 and #227).
-Write-ups of merged branches are removed as they merge; each PR's description
-and Git history keep them.
+Recorded 2026-11-13 (Pacific), at main 9211699 (through PRs #226 and #227);
+the 2026-11-16 merge below was added that day. Write-ups of merged branches
+are removed as they merge; each PR's description and Git history keep them.
+
+## Merged 2026-11-16, not in TestFlight yet
+
+- On the owner's word (he was done with testing in the separate test app),
+  twelve open PRs merged together: smart set targets (#229, #231), calorie
+  target changes (#230), weekly sets per muscle (#232, #234), the builder by
+  muscle (#233), the training science audit (#240), the designed programs
+  (#239), add a movement mid-workout (#235), the cleaned-up food list (#238),
+  nutrition averages and Fuel history (#241) and swap suggestions (#242).
+- The merged code, before the two edits below, is byte for byte the tree of
+  the test build installed on the owner's iPhone on 2026-11-15 (the Mac's
+  local branch `claude/phone-build-swaps-2026-11-15`, tree `136b252`). He used
+  that build against production. It has not run as the released app
+  (`app.hyper.mobile`), and nobody has checked Alex's features on it.
+- Edited on top: `ratingsFrom` in `src/lib/setTargets.ts` moved to 2026-11-16
+  (see docs/set-targets.md; move it again if the first TestFlight build with
+  the fix goes out on a later day), and this file.
+- Nothing in it needs the backend changed. `macro_target_changes`
+  (20261111190000) is already applied in production. The muscle tag fix
+  (20261113120000) is not applied anywhere: it needs the owner's own go and a
+  read of the live library first, and should wait until 2.0.11 is out of use,
+  since that build has no name for "adductors" or "lower_back".
+- Left open on purpose: FatSecret brand search (#243, never run, and it needs
+  its backend switched on in the order in its description), first-use hints
+  (#228, copy predates the adaptive screens), the legal pages (#223, waiting
+  on the owner's read) and Dependabot's #218. #143 is superseded.
 
 ## Where things stand
 

@@ -98,11 +98,12 @@ The same reps count toward the weight gate: a set 1 two short of the top with
 **A target is a floor.** The line on the movement's last set opens
 "Target, or more", where going past the figure costs no later set.
 
-**Old ratings are not read.** Until the build of 2026-11-13 the set card
+**Old ratings are not read.** Until the fix merged on 2026-11-16 the set card
 carried a rating over from the set before, so earlier ratings were mostly
-never chosen. `ratingsFrom` skips them. Someone still logging on an older
-build keeps writing carried-over ratings after that day; move the date when
-the fixed build is the one in use.
+never chosen. `ratingsFrom` (2026-11-16) skips them. TestFlight 2.0.11 still
+carries ratings over, so someone logging on it keeps writing them after that
+day: if the first TestFlight build with the fix goes out later than
+2026-11-16, move the date to that day.
 
 ## Breaks
 
