@@ -10,6 +10,7 @@ import * as todayModel from '@/lib/todayModel';
 import * as types from '@/types';
 import type { MacroTarget, MuscleVolume } from '@/types';
 import { todayTotalsShown } from '../native/src/lib/fuel';
+import * as nativeSetTargets from '../native/src/lib/setTargets';
 import { movedTodayOrder, TODAY_SECTIONS, type TodaySection } from '../native/src/lib/todayOrder';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
@@ -142,7 +143,8 @@ async function open() {
     '~/lib/openTrain': { openTrain: () => undefined },
     '~/lib/fuel': { today: () => DAY, todayTotalsShown, useFuelStore: fuelStore },
     '~/lib/motion': { figureLayout: undefined },
-    '~/lib/session': { useNow: () => Date.now(), useSessionModel: () => null },
+    '~/lib/session': { useNow: () => Date.now(), usePreviousHistory: () => ({}), useSessionModel: () => null },
+    '~/lib/setTargets': nativeSetTargets,
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, ...week }) },
     '~/theme/blanc': { space: { gutter: 20, labelPad: 18, group: 40 }, useBlanc: () => ({ pressed: '#E7E6E1', upcoming: '#707069' }), figureLead: () => 0, restingFigure: {} },
   });
@@ -324,11 +326,10 @@ describe('Today’s groups, set apart by space', () => {
 });
 
 describe('Today’s Progress group, named for the screen it opens', () => {
-  const landmark = { id: 'l', user_id: 'me', mv: 6, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
   const trained: MuscleVolume[] = [
-    { muscle_group: 'chest', weekly_sets: 12, landmark: { ...landmark, muscle_group: 'chest' }, status: 'mav' },
-    { muscle_group: 'hamstrings', weekly_sets: 4, landmark: { ...landmark, muscle_group: 'hamstrings' }, status: 'below_mev' },
-  ] as MuscleVolume[];
+    { muscle_group: 'chest', weekly_sets: 12 },
+    { muscle_group: 'hamstrings', weekly_sets: 4 },
+  ];
   const progress = () => sections.filter((section) => section.title === 'Progress').at(-1);
   const thisWeek = () => rows.filter((entry) => entry.title === 'This week').at(-1)!;
 
@@ -339,7 +340,7 @@ describe('Today’s Progress group, named for the screen it opens', () => {
     // The heading is the name alone: no note beside it and no action of its own.
     expect(progress()?.note).toBeUndefined();
     expect(progress()?.action).toBeUndefined();
-    // One line, as You's rows: the week's sessions; the muscles out of range are what Progress opens on.
+    // One line, as You's rows: the week's sessions; each muscle's sets are on Progress.
     expect(thisWeek().value).toBe('3 of 4 sessions');
     expect(thisWeek().detail).toBeUndefined();
     expect(thisWeek().chevron).toBe(true);
@@ -353,11 +354,11 @@ describe('Today’s Progress group, named for the screen it opens', () => {
     expect(thisWeek().value).toBe('1 session');
   });
 
-  it('says the trained muscles in range before a session is finished', async () => {
+  it('never grades the muscles before a session is finished', async () => {
     week = { weekDone: 0, weekTarget: null };
     appStore.setState({ weeklyVolume: trained });
     await open();
-    expect(thisWeek().value).toBe('1 of 2 muscles in range');
+    expect(thisWeek().value).toBeUndefined();
   });
 
   it('has no figure until the week is counted, and still opens Progress', async () => {

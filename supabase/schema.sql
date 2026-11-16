@@ -336,6 +336,35 @@ CREATE TABLE IF NOT EXISTS nutrition_profiles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Calorie target changes: one row each time the adaptive loop moves the
+-- target, with the reason, so the app can say what changed and why and Undo
+-- can put the old target back (20261111190000_add_macro_target_changes.sql).
+CREATE TABLE IF NOT EXISTS public.macro_target_changes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE CASCADE,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  old_calories INTEGER NOT NULL CHECK (old_calories BETWEEN 0 AND 20000),
+  old_protein INTEGER NOT NULL CHECK (old_protein BETWEEN 0 AND 2000),
+  old_carbs INTEGER NOT NULL CHECK (old_carbs BETWEEN 0 AND 3000),
+  old_fat INTEGER NOT NULL CHECK (old_fat BETWEEN 0 AND 2000),
+  new_calories INTEGER NOT NULL CHECK (new_calories BETWEEN 0 AND 20000),
+  new_protein INTEGER NOT NULL CHECK (new_protein BETWEEN 0 AND 2000),
+  new_carbs INTEGER NOT NULL CHECK (new_carbs BETWEEN 0 AND 3000),
+  new_fat INTEGER NOT NULL CHECK (new_fat BETWEEN 0 AND 2000),
+  expenditure_kcal INTEGER NOT NULL CHECK (expenditure_kcal BETWEEN 500 AND 10000),
+  expenditure_confidence TEXT NOT NULL CHECK (expenditure_confidence IN ('learning', 'measured')),
+  old_expenditure_kcal INTEGER CHECK (old_expenditure_kcal IS NULL OR old_expenditure_kcal BETWEEN 500 AND 10000),
+  kg_per_week NUMERIC(6, 3) CHECK (kg_per_week IS NULL OR kg_per_week BETWEEN -10 AND 10),
+  goal_kg_per_week NUMERIC(6, 3) CHECK (goal_kg_per_week IS NULL OR goal_kg_per_week BETWEEN -10 AND 10),
+  mean_intake_kcal INTEGER CHECK (mean_intake_kcal IS NULL OR mean_intake_kcal BETWEEN 0 AND 20000),
+  logged_days SMALLINT NOT NULL CHECK (logged_days BETWEEN 0 AND 366),
+  weigh_in_days SMALLINT NOT NULL CHECK (weigh_in_days BETWEEN 0 AND 366),
+  undone_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS macro_target_changes_user_changed_idx
+  ON public.macro_target_changes(user_id, changed_at DESC);
+
 -- Volume Landmarks (Beardsley-based)
 CREATE TABLE IF NOT EXISTS volume_landmarks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -574,6 +603,21 @@ CREATE POLICY "Users can insert own nutrition profile" ON nutrition_profiles FOR
 CREATE POLICY "Users can update own nutrition profile" ON nutrition_profiles FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can delete own nutrition profile" ON nutrition_profiles FOR DELETE USING (auth.uid() = user_id);
 
+-- Macro target changes: own rows only, nothing signed out; a client can change only undone_at (Undo)
+ALTER TABLE public.macro_target_changes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.macro_target_changes FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON public.macro_target_changes TO authenticated;
+GRANT UPDATE (undone_at) ON public.macro_target_changes TO authenticated;
+GRANT ALL ON public.macro_target_changes TO service_role;
+CREATE POLICY "Users can view own macro target changes" ON public.macro_target_changes
+  FOR SELECT TO authenticated USING (user_id = (SELECT auth.uid()));
+CREATE POLICY "Users can insert own macro target changes" ON public.macro_target_changes
+  FOR INSERT TO authenticated WITH CHECK (user_id = (SELECT auth.uid()));
+CREATE POLICY "Users can update own macro target changes" ON public.macro_target_changes
+  FOR UPDATE TO authenticated
+  USING (user_id = (SELECT auth.uid()))
+  WITH CHECK (user_id = (SELECT auth.uid()));
+
 -- Volume landmarks policies
 CREATE POLICY "Users can view own volume landmarks" ON volume_landmarks FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own volume landmarks" ON volume_landmarks FOR INSERT WITH CHECK (auth.uid() = user_id);
@@ -809,7 +853,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'activity_segments', 'activity_sessions', 'body_weight_measurements',
     'exercise_rest_preferences', 'exercises', 'flex_day_templates', 'foods',
-    'macro_targets', 'nutrition_groups', 'nutrition_import_batches',
+    'macro_target_changes', 'macro_targets', 'nutrition_groups', 'nutrition_import_batches',
     'nutrition_logs', 'nutrition_profiles', 'plan_schedules', 'profiles',
     'program_preferences', 'sets', 'split_days', 'split_exercises', 'splits',
     'volume_landmarks', 'whoop_connections', 'whoop_tokens',
@@ -1392,7 +1436,7 @@ INSERT INTO exercises (name, muscle_group, muscle_group_secondary, equipment, is
 ('Push-Up', 'chest', 'triceps', 'bodyweight', true),
 
 -- Back
-('Barbell Deadlift', 'back', 'legs', 'barbell', true),
+('Barbell Deadlift', 'glutes', 'hamstrings', 'barbell', true),
 ('Barbell Row', 'back', 'biceps', 'barbell', true),
 ('One-Arm Dumbbell Row', 'back', 'biceps', 'dumbbells', true),
 ('Lat Pulldown', 'back', 'biceps', 'cable', true),

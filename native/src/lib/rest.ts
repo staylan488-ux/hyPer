@@ -2,7 +2,8 @@
 // rest that runs, pauses or runs out, and outlives screens and app launches.
 // It starts after a set saves or from the timer button in Train's header. Each
 // movement keeps its own length (the shared src/lib/restPreferences): its own,
-// else the last chosen, else 90 s.
+// else the last chosen on a movement of its kind, else 2 min 30 for a
+// multi-joint lift and 90 s for a single-joint movement.
 //
 // While a rest runs, a "Rest over" notification is scheduled for its end and
 // the workout's Live Activity counts it down on the lock screen. Both follow
@@ -13,6 +14,7 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { create } from 'zustand';
 
+import { peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import {
   DEFAULT_REST_SECONDS,
   getLastUsedRestSeconds,
@@ -69,13 +71,23 @@ function commit(session: RestTimerSession | null) {
   useRestStore.setState({ session });
 }
 
+/**
+ * Whether a movement is a multi-joint lift, from the workout in progress or
+ * the library already on the phone; null when neither knows it.
+ */
+function isCompoundMovement(exerciseId: string): boolean | null {
+  const inWorkout = useAppStore.getState().currentWorkout?.sets.find((set) => set.exercise_id === exerciseId && set.exercise)?.exercise;
+  const exercise = inWorkout ?? peekExerciseLibrary()?.find((row) => row.id === exerciseId);
+  return exercise ? Boolean(exercise.is_compound) : null;
+}
+
 /** A movement's rest length; with no movement, the last length chosen. */
 export function restSecondsFor(
   exerciseId: string | null,
   prefs = useRestStore.getState().prefs,
   chosen = useRestStore.getState().chosen,
 ): number {
-  if (exerciseId) return resolveRestSeconds(prefs, exerciseId);
+  if (exerciseId) return resolveRestSeconds(prefs, exerciseId, DEFAULT_REST_SECONDS, isCompoundMovement);
   return chosen ?? getLastUsedRestSeconds(prefs) ?? DEFAULT_REST_SECONDS;
 }
 

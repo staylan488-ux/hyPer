@@ -9,7 +9,7 @@ import { receiveLaunchPress } from '~/lib/launchActions';
 import { setSkipped } from '~/lib/movement';
 import { startRest } from '~/lib/rest';
 import { priorRecordsFor } from '~/lib/records';
-import { liveSessionModel, previousTargetsFor, useFocusStore } from '~/lib/session';
+import { liveSessionModel, previousHistoryFor, previousTargetsFor, useFocusStore } from '~/lib/session';
 import { buildSessionModel } from '~/lib/sessionModel';
 import { devScrollTrace, readDevLaunch } from '~/platform/devLaunch';
 
@@ -106,7 +106,7 @@ export function DevLaunchRunner() {
           const app = useAppStore.getState();
           const session = buildSessionModel(app.currentWorkout, { split: app.activeSplit, plan: app.currentWorkoutDayPlan }, null);
           if (!session) return;
-          const summary = summarize(session, previousTargetsFor(session.workoutId), new Date(), priorRecordsFor(session.workoutId));
+          const summary = summarize(session, previousTargetsFor(session.workoutId), new Date(), priorRecordsFor(session.workoutId), previousHistoryFor(session.workoutId));
           void app.completeWorkout().then(() => {
             useFinishedStore.getState().set(summary);
             router.push('/session-done');

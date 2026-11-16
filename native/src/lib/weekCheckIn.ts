@@ -6,14 +6,11 @@ import { create } from 'zustand';
 
 import { captureAccountScope } from '@/lib/accountScope';
 import { estimatedMax } from '@/lib/movementHistory';
-import { summarizeWeekVolume } from '@/lib/todayModel';
 import {
   checkInWeek, paceCall, readWeekCheckIn, type WeekCheckIn, type WeekRecord, type WeekWeight,
 } from '@/lib/weekCheckIn';
 import { formatWeight, kgToUnit, type WeightUnit } from '@/lib/weightDisplayCore';
-import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
-import type { MuscleVolume } from '@/types';
 
 import { formatLoad, formatWhole } from './format';
 
@@ -63,7 +60,7 @@ export async function loadWeekCheckIn(todayKey: string): Promise<void> {
     ...(kept.key === key ? null : { checkIn: null }),
   });
   try {
-    const checkIn = await readWeekCheckIn({ userId, todayKey, landmarks: useAppStore.getState().volumeLandmarks });
+    const checkIn = await readWeekCheckIn({ userId, todayKey });
     if (!isCurrent() || read !== readsStarted) return;
     useWeekCheckInStore.setState({ checkIn, loading: false, failed: false });
   } catch {
@@ -138,20 +135,6 @@ export function recordDetail(record: WeekRecord): string {
   return `Most reps · was ${record.previous.reps}`;
 }
 
-/** "Under its minimum of 8", "Over its ceiling of 22", or nothing in range. */
-export function muscleNote(volume: MuscleVolume): string | undefined {
-  if (!volume.landmark) return undefined;
-  if (volume.status === 'below_mev') return `Under its minimum of ${volume.landmark.mev}`;
-  if (volume.status === 'above_mrv') return `Over its ceiling of ${volume.landmark.mrv}`;
-  return undefined;
-}
-
-/** "9 of 11 muscles in range", over the graded muscles trained. */
-export function musclesInRange(muscles: MuscleVolume[]): string | null {
-  const week = summarizeWeekVolume(muscles);
-  return week.trained > 0 ? `${week.inRange} of ${week.trained} muscles in range` : null;
-}
-
 export type CheckInLine = { label: string; value: string; after: string };
 
 /**
@@ -165,10 +148,8 @@ export function checkInLines(checkIn: WeekCheckIn, unit: WeightUnit, target: { c
     lines.push({ label: 'Calories a day', value: formatWhole(checkIn.eating.calories), after: target ? ` of ${formatWhole(target.calories)} kcal` : ' kcal' });
     lines.push({ label: 'Protein a day', value: formatWhole(checkIn.eating.protein), after: target ? ` of ${formatWhole(target.protein)} g` : ' g' });
   }
-  if (checkIn.sets > 0) {
-    const range = musclesInRange(checkIn.muscles);
-    lines.push({ label: 'Sets', value: formatWhole(checkIn.sets), after: range ? ` · ${range}` : '' });
-  }
+  // What was done, as a plain count, never set against the plan.
+  if (checkIn.sets > 0) lines.push({ label: 'Sets', value: formatWhole(checkIn.sets), after: '' });
   if (checkIn.records.length > 0) lines.push({ label: 'Records', value: formatWhole(checkIn.records.length), after: ' new' });
   return lines;
 }

@@ -167,23 +167,17 @@ function palette(name: string): Record<string, string> {
   return Object.fromEntries([...body.matchAll(/(\w+): '(#[0-9A-F]{6})'/g)].map((match) => [match[1], match[2]]));
 }
 
-// In range is the palette's `mark` on the figure, the key and the rails' band;
-// below range is outlined in the palette's graphite.
-describe('Progress\'s in-range tone', () => {
+// Done is the palette's `mark` on the figure and the key; under way is
+// outlined in the palette's graphite.
+describe('Progress\'s figure tones', () => {
   for (const name of Object.keys(MUSCLE_TONES) as Array<keyof typeof MUSCLE_TONES>) {
-    it(`draws the rail's band in the figure's in-range tone, at 3:1 against its track and the card (${name})`, () => {
-      const tones = MUSCLE_TONES[name];
-      const { mark, fill, label } = palette(name);
-      expect(mark && fill && label, name).toBeTruthy();
-      // The rail's track is `fill`: against `track` the band would fall short of 3:1.
-      expect(contrast(mark, fill), name).toBeGreaterThanOrEqual(3);
+    it(`fills a muscle whose planned sets are done in mark, at 3:1 against the card (${name})`, () => {
+      const { mark, label } = palette(name);
+      expect(mark && label, name).toBeTruthy();
       expect(contrast(mark, label), name).toBeGreaterThanOrEqual(3);
-      // The best range, a deeper step of the same tone, stands out from the band and reads on the card.
-      expect(contrast(tones.best, mark), name).toBeGreaterThanOrEqual(2);
-      expect(contrast(tones.best, label), name).toBeGreaterThanOrEqual(3);
     });
 
-    it(`outlines a muscle below range in graphite, at 3:1 or more against the body and its own light fill (${name})`, () => {
+    it(`outlines a muscle under way in graphite, at 3:1 or more against the body and its own light fill (${name})`, () => {
       const tones = MUSCLE_TONES[name];
       const { graphite, mark } = palette(name);
       expect(contrast(graphite, tones.body), name).toBeGreaterThanOrEqual(3);
@@ -215,9 +209,9 @@ describe('Progress\'s in-range tone', () => {
 
   it('draws an untrained muscle as the body alone, with no fill or outline of its own', () => {
     const source = readFileSync(path.join(__dirname, '../native/src/components/MuscleFigure.tsx'), 'utf8');
-    // Its fill and seams are left out, and only below range is outlined.
+    // Its fill and seams are left out, and only a muscle under way is outlined.
     expect(source.match(/bare\(region\.muscle\) \? null/g)?.length).toBe(2);
-    expect(source).toContain("if (stateOf(shades.get(muscle)) !== 'below') return null;");
+    expect(source).toContain("if (stateOf(muscle) !== 'under_way') return null;");
   });
 
   it("keeps the body's edge readable on the dark cards", () => {

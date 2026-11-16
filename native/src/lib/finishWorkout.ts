@@ -12,7 +12,7 @@ import { haptics } from './haptics';
 import { flushNotes } from './notes';
 import { stopRest } from './rest';
 import { priorRecordsFor } from './records';
-import { liveSessionModel, previousTargetsFor } from './session';
+import { liveSessionModel, previousHistoryFor, previousTargetsFor } from './session';
 import { skippedLine, type SessionModel } from './sessionModel';
 
 // One finish at a time across every Finish button (Today and Train are both
@@ -60,7 +60,7 @@ export function useFinishWorkout(session: SessionModel | null) {
       }
       if (prepared.kind === 'changed') return;
       const finished = prepared.session;
-      const summary = summarize(finished, previousTargetsFor(finished.workoutId), new Date(), priorRecordsFor(finished.workoutId));
+      const summary = summarize(finished, previousTargetsFor(finished.workoutId), new Date(), priorRecordsFor(finished.workoutId), previousHistoryFor(finished.workoutId));
       const skipped = finished.movements.filter((movement) => movement.skipped).map((movement) => movement.exerciseId);
       const store = useAppStore.getState();
       try {

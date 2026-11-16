@@ -2,6 +2,8 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useRef, useState, type ComponentProps } from 'react';
 import { View } from 'react-native';
 
+import { programVolumeLine } from '@/lib/muscleProgress';
+import { lowMainMuscles, programVolume } from '@/lib/muscleVolume';
 import { exerciseTotal, plural } from '@/lib/programSummary';
 import { exerciseBlocks } from '@/lib/splitDraft';
 import { useAppStore } from '@/stores/appStore';
@@ -185,6 +187,18 @@ function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) 
             </Section>
           );
         })}
+
+        {/* The program's sets per muscle, read-only; the editor is where they change. */}
+        <Section title="Sets per week">
+          <Label>
+            <Row
+              title="All muscles"
+              detail={programVolumeLine(lowMainMuscles(programVolume(split)).map((row) => row.label))}
+              chevron
+              onPress={() => router.push({ pathname: '/train/program-muscles', params: { id: split.id } })}
+            />
+          </Label>
+        </Section>
       </TabScroll>
     </>
   );

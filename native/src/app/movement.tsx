@@ -28,7 +28,7 @@ import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes'
 import { usePriorRecordsStore } from '~/lib/records';
 import { usePreviousNotesStore, usePreviousTargets, useSessionModel, type Movement } from '~/lib/session';
 import { movementLine } from '~/lib/sessionModel';
-import { chooseRpe, parseNumber } from '~/lib/setEntry';
+import { chooseRpe, effortChip, parseNumber, useEffortScaleStore } from '~/lib/setEntry';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
@@ -387,6 +387,7 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
   const [weight, setWeight] = useState(set.weight === null ? '' : String(set.weight));
   const [reps, setReps] = useState(set.reps === null ? '' : String(set.reps));
   const [rpe, setRpe] = useState<number | null>(set.rpe);
+  const effortScale = useEffortScaleStore((state) => state.scale);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const weightValue = parseNumber(weight);
@@ -421,12 +422,7 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
     <View style={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <BlancText variant="bodyStrong">Set {number}</BlancText>
-        <Chip
-          label={rpe ? `RPE ${rpe}` : 'Add RPE'}
-          accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
-          haptic={false}
-          onPress={() => chooseRpe(setRpe)}
-        />
+        <Chip {...effortChip(rpe, effortScale)} haptic={false} onPress={() => chooseRpe(setRpe)} />
       </View>
 
       {/* The fields name themselves and their units; "×" and the units are only drawn. */}

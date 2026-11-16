@@ -121,8 +121,16 @@ export default function SessionDone() {
       : []),
   ];
   const tally = summary.marks.length > 0;
-  // Only when some set beat the same set last time: no zero.
-  const beats = summary.beat > 0 ? `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'} beat last time` : null;
+  // With set targets, how many were hit (the tally already gives the sets, so
+  // no "of"); without any, the sets that beat last time. Only when some did: no zero.
+  const targets = summary.targets && summary.targets.total > 0 ? summary.targets : null;
+  const beats = targets
+    ? targets.hit > 0
+      ? `${targets.hit} ${targets.hit === 1 ? 'target' : 'targets'} hit`
+      : null
+    : summary.beat > 0
+      ? `${summary.beat} ${summary.beat === 1 ? 'set' : 'sets'} beat last time`
+      : null;
   const lead = tally || beats || records.length > 0;
 
   return (

@@ -140,23 +140,23 @@ export const GOAL_RATE_RANGES: Record<NutritionGoal, [number, number]> = {
 export const KCAL_PER_KG_LOST = 7700;
 export const KCAL_PER_KG_GAINED = 7700;
 
-const MAX_DEFICIT_FRACTION = 0.25;
-const MAX_SURPLUS_FRACTION = 0.2;
+export const MAX_DEFICIT_FRACTION = 0.25;
+export const MAX_SURPLUS_FRACTION = 0.2;
 /** Alpert: sustainable ceiling on energy drawn from the fat store, per day. */
 const MAX_DEFICIT_KCAL_PER_KG_FAT = 31;
-const ABSOLUTE_CALORIE_FLOOR: Record<BiologicalSex, number> = { female: 1200, male: 1500 };
+export const ABSOLUTE_CALORIE_FLOOR: Record<BiologicalSex, number> = { female: 1200, male: 1500 };
 
 /** Protein basis is capped at the weight this BMI implies, so higher body fat
  *  does not inflate the target. */
 const PROTEIN_BASIS_MAX_BMI = 27.5;
 const PROTEIN_G_PER_KG_FFM: Record<'cut' | 'other', number> = { cut: 2.4, other: 2 };
 const PROTEIN_G_PER_KG_REFERENCE: Record<'cut' | 'other', number> = { cut: 2.2, other: 1.8 };
-const MAX_PROTEIN_CALORIE_FRACTION = 0.4;
+export const MAX_PROTEIN_CALORIE_FRACTION = 0.4;
 
 const FAT_CALORIE_FRACTION: Record<'cut' | 'other', number> = { cut: 0.22, other: 0.25 };
-const MIN_FAT_G_PER_KG_REFERENCE = 0.6;
-const MIN_FAT_CALORIE_FRACTION = 0.2;
-const MAX_FAT_CALORIE_FRACTION = 0.35;
+export const MIN_FAT_G_PER_KG_REFERENCE = 0.6;
+export const MIN_FAT_CALORIE_FRACTION = 0.2;
+export const MAX_FAT_CALORIE_FRACTION = 0.35;
 
 const LOW_CARB_WARNING_GRAMS = 100;
 

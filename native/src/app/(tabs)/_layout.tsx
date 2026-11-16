@@ -104,7 +104,7 @@ export default function TabsLayout() {
       useFinishedStore.setState({ summary: null });
       useAccountDay.setState({ loading: true });
       usePreviousNotesStore.setState({ workoutId: null, notes: {} });
-      usePreviousTargetsStore.setState({ workoutId: null, targets: {} });
+      usePreviousTargetsStore.setState({ workoutId: null, targets: {}, history: {} });
       usePriorRecordsStore.setState({ workoutId: null, records: {} });
     },
     [],
