@@ -28,7 +28,10 @@ version="$(plist_value CFBundleShortVersionString "$PLIST")"
 [ -z "$BUILD" ] || [ "$build" = "$BUILD" ] || { echo "Build number $build, expected $BUILD"; exit 1; }
 [ -z "$VERSION" ] || [ "$version" = "$VERSION" ] || { echo "Version $version, expected $VERSION"; exit 1; }
 "$GREP" -a -q -F "$PROJECT_HOST" "$APP/main.jsbundle" || { echo "The bundle has no production host."; exit 1; }
-if "$GREP" -a -q -E ':54321|192\.168\.|host\.docker' "$APP/main.jsbundle"; then
+# A local backend is a 192.168 address after http(s):// or ws(s)://, Supabase's
+# local port or Docker's host name. A bare 192.168 is not enough: Sentry's
+# crash reporting carries 192.168.0.1 and 192.168.1.1 as documentation examples.
+if "$GREP" -a -q -E ':54321|host\.docker|(https?|wss?)://192\.168\.' "$APP/main.jsbundle"; then
   echo "The bundle mentions a local test backend."
   exit 1
 fi
