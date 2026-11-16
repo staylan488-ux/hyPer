@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, TextInput, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, TextInput, View, type ViewStyle } from 'react-native';
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { ensureFoodRow } from '@/lib/foodPersistence';
@@ -12,7 +12,7 @@ import { createPendingEntryId } from '@/lib/pendingEntryId';
 import { chosenFoodLogSource } from '@/lib/saveNutritionEntry';
 import { filterSavedMeals, retireSavedMeal } from '@/lib/savedMeals';
 import { getSessionUserId } from '@/lib/sessionUser';
-import { foodLookupFailure, searchUsdaFoodsSecureStrict, withUsdaPortion, type FoodLookupFailure } from '@/lib/usdaClient';
+import { foodLookupFailure, searchFatSecretFoodsSecure, searchUsdaFoodsSecureStrict, withUsdaPortion, type FoodLookupFailure } from '@/lib/usdaClient';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -39,6 +39,15 @@ const QUICK_ADD_UNCONFIRMED = "Couldn't confirm. Tap + to try again.";
 const USDA_CACHE_LIMIT = 50;
 /** How many foods a search lists before Show more. */
 const SEARCH_FIRST = 8;
+/** How many brand results a search lists before Show more. */
+const BRANDS_FIRST = 6;
+/** Words shorter than this are not sent to FatSecret: too few letters to name a brand. */
+const BRANDS_MIN_LETTERS = 3;
+/** After FatSecret answers that it is switched off, it is not asked again for this long. */
+const BRANDS_OFF_FOR_MS = 10 * 60_000;
+/** Brand results by the exact query sent. They stay on the phone, as FatSecret's terms allow. */
+const brandResults = new Map<string, Food[]>();
+let brandsOffUntil = 0;
 /** USDA results by the exact query sent, so typing back to a query needs no new lookup. */
 const usdaResults = new Map<string, Food[]>();
 /** A result with its household portion, by fdc_id, with the result it was read for. */
@@ -60,6 +69,30 @@ function searchUsda(query: string): Promise<Food[]> {
     if (foods.length > 0) remember(usdaResults, query, foods);
     return foods;
   });
+}
+
+/** True while FatSecret is known to be switched off. */
+function brandsAreOff(): boolean {
+  return Date.now() < brandsOffUntil;
+}
+
+/**
+ * Packaged and restaurant food for the typed words, from FatSecret. Null when
+ * there is none to show because FatSecret is off or did not answer: brand
+ * results are an extra under the plain food, so their failure says nothing.
+ */
+async function searchBrands(query: string): Promise<Food[] | null> {
+  const kept = brandResults.get(query);
+  if (kept) return kept;
+  if (brandsAreOff()) return null;
+  try {
+    const foods = await searchFatSecretFoodsSecure(query);
+    if (foods === null) brandsOffUntil = Date.now() + BRANDS_OFF_FOR_MS;
+    else if (foods.length > 0) remember(brandResults, query, foods);
+    return foods;
+  } catch {
+    return null;
+  }
 }
 
 /** A result with its household portion, read once per food this session. */
@@ -668,16 +701,32 @@ export function SearchTab({ query }: { query: string }) {
     ? { query: trimmed, foods: more === trimmed ? local : local.slice(0, SEARCH_FIRST) }
     : trimmed.length >= 2 && found?.query === trimmed ? found : null;
   const results = answer?.foods ?? null;
-  const failure = answer !== null && answer.foods === null ? SEARCH_FAILURES[answer.failure ?? 'offline'] : null;
+  // Packaged and restaurant food, from FatSecret, under the plain food. Its
+  // answer is for the words it was asked with; no foods means none to show
+  // (FatSecret is off or did not answer), which is said nowhere.
+  const [brandsFound, setBrandsFound] = useState<{ query: string; foods: Food[] | null } | null>(null);
+  // Once FatSecret has said it is off, this sheet asks no more and waits for nothing.
+  const [brandsOff, setBrandsOff] = useState(brandsAreOff);
+  const brandsWanted = !brandsOff && trimmed.length >= BRANDS_MIN_LETTERS;
+  const brandAnswer = brandsWanted && brandsFound?.query === trimmed ? brandsFound : null;
+  const brandsPending = brandsWanted && brandAnswer === null;
+  const allBrands = brandAnswer?.foods ?? [];
+  const brands = more === trimmed ? allBrands : allBrands.slice(0, BRANDS_FIRST);
+  // Brand results are an answer too: USDA's failure is only said when there are none.
+  const failure = answer !== null && answer.foods === null && !brandsPending && allBrands.length === 0 ? SEARCH_FAILURES[answer.failure ?? 'offline'] : null;
   const searching = trimmed.length >= 2 && answer === null;
+  const count = (results?.length ?? 0) + brands.length;
+  // Nothing anywhere, once every search asked has answered.
+  const nothing = results !== null && count === 0 && !brandsPending;
+  const nothingText = brandAnswer?.foods ? 'No matches.' : 'No USDA matches.';
   // Results land a moment after typing stops: VoiceOver says how many.
   useAnnounce(
     failure ??
-      (results !== null
-        ? results.length === 0
-          ? 'No USDA matches.'
-          : `${results.length} result${results.length === 1 ? '' : 's'}`
-        : null),
+      (nothing
+        ? nothingText
+        : count > 0 && !brandsPending && !searching
+          ? `${count} result${count === 1 ? '' : 's'}`
+          : null),
   );
 
   useEffect(() => {
@@ -698,6 +747,24 @@ export function SearchTab({ query }: { query: string }) {
     };
   }, [trimmed, attempt, listed]);
 
+  useEffect(() => {
+    if (brandsOff || trimmed.length < BRANDS_MIN_LETTERS) return;
+    let current = true;
+    const ask = () => {
+      void searchBrands(trimmed).then((foods) => {
+        if (!current) return;
+        if (foods === null && brandsAreOff()) setBrandsOff(true);
+        setBrandsFound({ query: trimmed, foods });
+      });
+    };
+    // Words answered before need no pause for typing to stop.
+    const timer = brandResults.has(trimmed) ? (ask(), undefined) : setTimeout(ask, 350);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [trimmed, attempt, brandsOff]);
+
   // Your own saved meals that match come first, found as you type; USDA's follow.
   const saved = trimmed.length >= 2 ? filterSavedMeals(logger.savedMeals ?? [], trimmed) : [];
   const openSaved = (meal: Food) => {
@@ -707,8 +774,8 @@ export function SearchTab({ query }: { query: string }) {
 
   const open = async (food: Food) => {
     if (opening) return;
-    // A food from the app's list carries its serving already: nothing to read first.
-    if (listed) {
+    // A food from the app's list, or a brand result, carries its serving already: nothing to read first.
+    if (listed || food.source === 'fatsecret') {
       logger.chooseFood(food);
       return;
     }
@@ -720,8 +787,10 @@ export function SearchTab({ query }: { query: string }) {
   const add = (key: string, food: Food) => void quickAdd(key, food);
   const takeOut = (key: string) => void quickTakeOut(key);
 
-  // Named only while both kinds show, so a list of one kind carries no heading.
-  const both = saved.length > 0 && Boolean(results && results.length > 0);
+  // Named only while more than one kind shows, so a list of one kind carries no heading.
+  const foodsShown = Boolean(results && results.length > 0);
+  const both = Number(saved.length > 0) + Number(foodsShown) + Number(brands.length > 0) > 1;
+  const canShowMore = more !== trimmed && ((listed && local.length > SEARCH_FIRST) || allBrands.length > BRANDS_FIRST);
   return (
     <View>
       {saved.length > 0 ? (
@@ -747,7 +816,7 @@ export function SearchTab({ query }: { query: string }) {
           </Label>
         </>
       ) : null}
-      {both ? <GroupCaption>Foods</GroupCaption> : null}
+      {both && foodsShown ? <GroupCaption>Foods</GroupCaption> : null}
       {results && results.length > 0 ? (
         // 14 points under the field, past the sheet header's own 8.
         <Label style={{ marginTop: 6, overflow: 'hidden' }}>
@@ -771,14 +840,45 @@ export function SearchTab({ query }: { query: string }) {
           })}
         </Label>
       ) : null}
-      {listed && more !== trimmed && local.length > SEARCH_FIRST ? (
+      {brands.length > 0 ? (
+        <>
+          {both ? <GroupCaption>Brands</GroupCaption> : null}
+          <Label style={{ marginTop: 6, overflow: 'hidden' }}>
+            {brands.map((food, index) => (
+              <SearchRow
+                key={food.id}
+                food={food}
+                rowKey={food.id}
+                divided={index > 0}
+                state={added[food.id]}
+                opening={false}
+                dimmed={Boolean(opening)}
+                quickAdd={enabled}
+                onOpen={open}
+                onAdd={add}
+                onTakeOut={takeOut}
+              />
+            ))}
+          </Label>
+          {/* FatSecret's credit, where its results show (docs/fatsecret.md). */}
+          <BlancText
+            variant="footnote"
+            tone="graphite"
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL('https://platform.fatsecret.com')}
+            style={{ marginTop: 8, marginHorizontal: 20 }}>
+            Powered by fatsecret Platform API
+          </BlancText>
+        </>
+      ) : null}
+      {canShowMore ? (
         <Capsule title="Show more" variant="quiet" onPress={() => setMore(trimmed)} style={{ alignSelf: 'center', marginTop: 14 }} />
       ) : null}
-      {searching ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
+      {searching || (brandsPending && count === 0 && saved.length === 0) ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
       {trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
-      {results !== null && results.length === 0 && saved.length === 0 ? (
+      {nothing && saved.length === 0 ? (
         <>
-          <Empty text="No USDA matches." />
+          <Empty text={nothingText} />
           {/* Not a dead end: the food can still go in by hand, with its name already typed. */}
           {logger.purpose === 'log' && logger.enterManually ? (
             <Capsule title="Enter it manually" variant="quiet" onPress={() => logger.enterManually?.(trimmed)} style={{ alignSelf: 'center', marginTop: 14 }} />

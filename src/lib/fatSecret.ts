@@ -13,13 +13,31 @@ interface FatSecretServing {
   fat?: string | number;
 }
 
-interface FatSecretFood {
+export interface FatSecretFood {
   food_id?: string | number;
   food_name?: string;
   brand_name?: string;
+  /** "Brand" (packaged and restaurant food) or "Generic". */
+  food_type?: string;
   servings?: {
     serving?: FatSecretServing | FatSecretServing[];
   };
+}
+
+/** food-lookup's answer to a brand search: FatSecret's foods, trimmed. */
+export interface FatSecretSearchResponse {
+  configured?: boolean;
+  foods?: FatSecretFood[];
+}
+
+/**
+ * food-lookup's answer to a lookup by ID: the foods FatSecret returned and the
+ * food IDs it no longer has.
+ */
+export interface FatSecretFoodsResponse {
+  configured?: boolean;
+  foods?: FatSecretFood[];
+  missing?: (string | number)[];
 }
 
 export interface FatSecretBarcodeResponse {
@@ -79,24 +97,27 @@ function servingBasis(serving: FatSecretServing): { size: number; unit: string; 
 }
 
 /**
- * Maps FatSecret's `food.get.v2` JSON response (what the food-lookup function
- * returns for a barcode, after `food.find_id_for_barcode`) into Hyper's
- * provider-neutral food shape. The API call itself stays behind that server
- * proxy; FatSecret credentials must never be shipped to clients.
+ * One FatSecret food as hyPer's provider-neutral food: the named serving, or
+ * FatSecret's default one. Null when the food, that serving or its four macros
+ * are missing. The API call itself stays behind the food-lookup function;
+ * FatSecret credentials must never be shipped to clients.
+ *
+ * The result carries FatSecret's name and numbers, which only the phone may
+ * keep (src/lib/deviceFoods.ts); `external_id` holds the two IDs hyPer's
+ * server keeps.
  */
-export function mapFatSecretBarcodeFood(
-  payload: FatSecretBarcodeResponse | null | undefined,
-): Food | null {
-  const food = payload?.food;
+export function mapFatSecretFood(food: FatSecretFood | null | undefined, servingId?: string): Food | null {
   const foodId = String(food?.food_id ?? '').trim();
   const foodName = food?.food_name?.trim();
   if (!food || !foodId || !foodName) return null;
 
-  const serving = selectServing(food);
+  const serving = servingId === undefined
+    ? selectServing(food)
+    : servingList(food).filter(hasCompleteMacros).find((candidate) => String(candidate.serving_id ?? '').trim() === servingId) ?? null;
   if (!serving) return null;
 
-  const servingId = String(serving.serving_id ?? '').trim();
-  if (!servingId) return null;
+  const chosenId = String(serving.serving_id ?? '').trim();
+  if (!chosenId) return null;
 
   const calories = finiteNonNegative(serving.calories);
   const protein = finiteNonNegative(serving.protein);
@@ -111,7 +132,7 @@ export function mapFatSecretBarcodeFood(
   const basis = servingBasis(serving);
 
   return {
-    id: `fatsecret:${foodId}:${servingId}`,
+    id: `fatsecret:${foodId}:${chosenId}`,
     user_id: null,
     name,
     calories: roundMacro(calories),
@@ -125,6 +146,31 @@ export function mapFatSecretBarcodeFood(
     fdc_id: null,
     external_source: 'fatsecret',
     // Both identifiers are explicitly listed as indefinitely storable.
-    external_id: `${foodId}:${servingId}`,
+    external_id: `${foodId}:${chosenId}`,
   };
+}
+
+/** The food a barcode resolved to (food-lookup returns FatSecret's `food.get` answer). */
+export function mapFatSecretBarcodeFood(
+  payload: FatSecretBarcodeResponse | null | undefined,
+): Food | null {
+  return mapFatSecretFood(payload?.food);
+}
+
+/**
+ * A brand search's answer as foods, in FatSecret's order: packaged and
+ * restaurant food only (plain food comes from the app's own list), each at its
+ * default serving, each food once.
+ */
+export function mapFatSecretSearch(payload: FatSecretSearchResponse | null | undefined): Food[] {
+  const seen = new Set<string>();
+  const foods: Food[] = [];
+  for (const item of Array.isArray(payload?.foods) ? payload.foods : []) {
+    if (String(item?.food_type ?? '').trim().toLowerCase() !== 'brand') continue;
+    const food = mapFatSecretFood(item);
+    if (!food || seen.has(food.id)) continue;
+    seen.add(food.id);
+    foods.push(food);
+  }
+  return foods;
 }

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Food } from '@/types';
+import { DEVICE_ONLY_FOOD_NAME, forgetDeviceFoodsForTest, isDeviceFoodStub } from '@/lib/deviceFoods';
 import {
-  clearMealDraft, createMealIngredient, decodeMealComposition, encodeMealComposition,
+  clearMealDraft, createMealIngredient, decodeMealComposition, deviceFoodKeysInDescription, encodeMealComposition,
   getMealTotals, loadMealDraft, MEAL_COMPOSITION_PREFIX, saveMealDraft, scaleMealIngredients,
   type MealDraft,
 } from '@/lib/mealComposition';
@@ -128,5 +129,50 @@ describe('meal draft persistence', () => {
     expect(saveMealDraft('user-a', draft)).toBe(false);
     expect(loadMealDraft('user-a')).toBeNull();
     expect(() => clearMealDraft('user-a')).not.toThrow();
+  });
+});
+
+describe('a built meal with a brand food in it', () => {
+  const yogurt: Food = {
+    id: 'fatsecret:4411:5522', user_id: null, name: 'Greek Yogurt · Chobani', calories: 120, protein: 16, carbs: 6, fat: 3,
+    serving_size: 150, serving_unit: 'g', serving_label: '1 container', source: 'fatsecret', fdc_id: null,
+    external_source: 'fatsecret', external_id: '4411:5522',
+  };
+  const parts = [createMealIngredient(milk, 1, 'a'), createMealIngredient(yogurt, 2, 'b')];
+  beforeEach(() => forgetDeviceFoodsForTest());
+
+  it("stores the brand food as its IDs alone: FatSecret's name and numbers stay on the phone", () => {
+    const encoded = encodeMealComposition(parts);
+    expect(encoded).not.toContain('Chobani');
+    expect(encoded).not.toContain('"calories":120,"protein":16');
+    const stored = JSON.parse(encoded.slice(MEAL_COMPOSITION_PREFIX.length)).ingredients;
+    expect(stored[0].food).toEqual(milk);
+    expect(stored[1]).toEqual({
+      id: 'b', servings: 2,
+      food: {
+        id: 'fatsecret:4411:5522', user_id: null, name: DEVICE_ONLY_FOOD_NAME, calories: 0, protein: 0, carbs: 0, fat: 0,
+        serving_size: 1, serving_unit: 'serving', source: 'fatsecret', fdc_id: null, external_source: 'fatsecret', external_id: '4411:5522',
+      },
+    });
+    expect(deviceFoodKeysInDescription(encoded)).toEqual(['fatsecret:4411:5522']);
+    expect(deviceFoodKeysInDescription(encodeMealComposition([parts[0]]))).toEqual([]);
+    expect(deviceFoodKeysInDescription('Greek "fatsecret" yogurt, typed by hand')).toEqual([]);
+  });
+
+  it('reads the meal back whole on the phone that built it', () => {
+    const decoded = decodeMealComposition(encodeMealComposition(parts));
+    expect(decoded?.ingredients).toEqual(parts);
+    expect(getMealTotals(decoded!.ingredients)).toEqual(getMealTotals(parts));
+  });
+
+  it('reads the brand food as a stub on a phone that does not hold it', () => {
+    const encoded = encodeMealComposition(parts);
+    forgetDeviceFoodsForTest();
+    vi.stubGlobal('localStorage', undefined);
+    const decoded = decodeMealComposition(encoded);
+    expect(decoded?.ingredients[0].food).toEqual(milk);
+    expect(isDeviceFoodStub(decoded!.ingredients[1].food)).toBe(true);
+    // saving it again from that phone still stores IDs only
+    expect(encodeMealComposition(decoded!.ingredients)).toBe(encoded);
   });
 });

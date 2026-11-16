@@ -411,6 +411,15 @@ export default function SignIn() {
           </BlancText>
           .
         </BlancText>
+        {/* FatSecret asks for its credit on a screen reached without signing in (docs/fatsecret.md). */}
+        <BlancText
+          variant="footnote"
+          tone="graphite"
+          accessibilityRole="link"
+          onPress={() => void openPage('https://platform.fatsecret.com')}
+          style={{ marginHorizontal: space.gutter, marginTop: 10, textAlign: 'center' }}>
+          Brand food data powered by fatsecret Platform API
+        </BlancText>
       </Animated.View>
     </KeyboardAwareScrollView>
   );

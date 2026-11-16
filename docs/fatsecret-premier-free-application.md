@@ -1,5 +1,9 @@
 # FatSecret Premier Free application package
 
+Approved on 2026-11-16. FatSecret's written answers and how hyPer keeps to
+them are in [fatsecret.md](fatsecret.md); what follows is the application as
+prepared, kept for the record.
+
 Verified against FatSecret's published forms and documentation on 2026-07-19.
 
 ## Before applying

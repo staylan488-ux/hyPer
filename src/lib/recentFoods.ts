@@ -13,6 +13,7 @@ import {
   servingsForAmount,
   type MeasurementUnit,
 } from '@/lib/foodUnits';
+import { isDeviceFoodStub } from '@/lib/deviceFoods';
 import { fetchNutritionLogsWithFoods } from '@/lib/nutritionLogQueries';
 import type { Food } from '@/types';
 
@@ -188,7 +189,8 @@ export async function loadRecentLogs(userId: string, now = new Date()): Promise<
     RECENT_FOOD_COLUMNS,
   );
   if (error || !data) return { logs: null, error: error ?? new Error('No logs') };
-  const logs = data.map((log): RecentLog => ({
+  // A brand food this phone has no details for yet has nothing to offer again.
+  const logs = data.filter((log) => !(log.food && isDeviceFoodStub(log.food))).map((log): RecentLog => ({
     ...log,
     servings: Number(log.servings) || 0,
     food: log.food

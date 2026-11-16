@@ -71,12 +71,43 @@ const PREVIEW_USDA_FOODS = [
   },
 ] as const;
 
+/** A made-up brand food in FatSecret's shape (src/lib/fatSecret.ts). */
+const PREVIEW_FATSECRET_FOOD = {
+  food_id: '900001',
+  food_name: 'Preview Greek Yogurt',
+  brand_name: 'Hyper Test Kitchen',
+  food_type: 'Brand',
+  servings: {
+    serving: [{
+      serving_id: '900002',
+      serving_description: '1 container',
+      metric_serving_amount: '150',
+      metric_serving_unit: 'g',
+      is_default: '1',
+      calories: '120',
+      carbohydrate: '6',
+      protein: '16',
+      fat: '3',
+    }],
+  },
+};
+
 function mockFoodLookup(body: Record<string, unknown> | undefined): unknown {
   if (body?.action === 'detail') {
     return PREVIEW_USDA_FOODS.find((food) => String(food.fdcId) === String(body.fdcId)) ?? null;
   }
 
   if (body?.action === 'barcode') return { foods: [] };
+  // FatSecret is off in preview, except for one sample brand so the Brands
+  // section and its credit can be seen: search "preview".
+  if (body?.action === 'fatsecret-search') {
+    return { configured: true, foods: String(body.query ?? '').toLowerCase().includes('preview') ? [PREVIEW_FATSECRET_FOOD] : [] };
+  }
+  if (body?.action === 'fatsecret-foods') {
+    const ids = String(body.ids ?? '').split(',');
+    return { configured: true, foods: ids.includes(PREVIEW_FATSECRET_FOOD.food_id) ? [PREVIEW_FATSECRET_FOOD] : [], missing: ids.filter((id) => id !== PREVIEW_FATSECRET_FOOD.food_id) };
+  }
+  if (body?.action === 'fatsecret-barcode') return { configured: false };
   if (body?.action === 'open-food-facts-barcode') {
     return {
       code: String(body.barcode || '0041570054161'),

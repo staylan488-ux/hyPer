@@ -5,13 +5,29 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { approvalRefusal } from '../_shared/approval.ts';
 import { corsHeaders, jsonResponse } from '../_shared/oauth.ts';
 import { LOOKUP_LIMITED, cachedBarcodeAnswer, type LookupStore, type ProviderAnswer } from './guard.ts';
+import {
+  extraLookupClaims,
+  fatSecretBarcodeId,
+  fatSecretError,
+  fatSecretFoodAnswer,
+  fatSecretFoodParams,
+  fatSecretFoods,
+  fatSecretSearchFoods,
+  fatSecretSearchParams,
+  parseFoodIds,
+} from './fatsecret.ts';
 import { usdaSearchRequest } from './usda.ts';
 
+// `keeps: 'device'` is how a build says it keeps a FatSecret food's name and
+// numbers on the phone and only its IDs on the server (src/lib/deviceFoods.ts).
+type KeepsOnDevice = { keeps?: string };
 type FoodLookupRequest =
   | { action: 'search'; query?: string }
   | { action: 'barcode'; barcode?: string }
   | { action: 'open-food-facts-barcode'; barcode?: string }
-  | { action: 'fatsecret-barcode'; barcode?: string }
+  | ({ action: 'fatsecret-barcode'; barcode?: string } & KeepsOnDevice)
+  | ({ action: 'fatsecret-search'; query?: string } & KeepsOnDevice)
+  | ({ action: 'fatsecret-foods'; ids?: string } & KeepsOnDevice)
   | { action: 'detail'; fdcId?: string };
 
 // A slow provider must degrade to the next one rather than stalling the scan.
@@ -19,9 +35,10 @@ const PROVIDER_TIMEOUT_MS = 5_000;
 
 // FatSecret OAuth2 client-credentials token, cached per function instance. The
 // client id/secret stay in Edge Function secrets and are never shipped to the
-// app. NOTE: if the FatSecret OAuth2 app enforces IP allowlisting, Edge
-// Function egress IPs are dynamic and calls will be rejected — either disable
-// IP restriction on the FatSecret app or proxy through a static-egress host.
+// app. NOTE: FatSecret only issues tokens to the addresses listed for the key
+// in its developer console, and Edge Function egress addresses are dynamic:
+// the key must allow them (Premier keys take address ranges), or the token
+// request has to go through a host with a fixed address.
 let fatSecretToken: { value: string; expiresAt: number } | null = null;
 
 async function fatSecretAccessToken(): Promise<string | null> {
@@ -32,14 +49,16 @@ async function fatSecretAccessToken(): Promise<string | null> {
   const now = Date.now();
   if (fatSecretToken && fatSecretToken.expiresAt > now + 60_000) return fatSecretToken.value;
 
-  const scope = Deno.env.get('FATSECRET_SCOPE')?.trim() || 'basic barcode';
+  // With no scope named, FatSecret grants every scope the key has (brand
+  // search needs "premier", the scanner "barcode").
+  const scope = Deno.env.get('FATSECRET_SCOPE')?.trim();
   const response = await fetch('https://oauth.fatsecret.com/connect/token', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
     },
-    body: new URLSearchParams({ grant_type: 'client_credentials', scope }),
+    body: new URLSearchParams({ grant_type: 'client_credentials', ...(scope ? { scope } : {}) }),
     signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -181,38 +200,78 @@ serve(async (req) => {
     return jsonResponse(answer.payload, answer.status);
   }
 
-  if (body.action === 'fatsecret-barcode') {
-    // FatSecret enforces IP allowlisting; this project's key allows all IPs so
-    // Supabase's dynamic egress works. FATSECRET_ENABLED gates the provider so
-    // it can be switched off without a redeploy if the key or quota lapses.
-    if (Deno.env.get('FATSECRET_ENABLED') !== '1') return jsonResponse({ configured: false });
-    const gtin = toGtin13(body.barcode ?? '');
-    if (!gtin) return jsonResponse({ error: 'Invalid barcode' }, 400);
-    const token = await fatSecretAccessToken();
-    // Not configured (no credentials/scope): tell the client to skip this
-    // provider rather than surface an error.
+  if (body.action === 'fatsecret-barcode' || body.action === 'fatsecret-search' || body.action === 'fatsecret-foods') {
+    // FATSECRET_ENABLED gates the provider so it can be switched off without
+    // a redeploy if the key or quota lapses. A build that does not say it
+    // keeps FatSecret's details on the phone would save them on the server,
+    // which FatSecret's terms forbid, so it is told the provider is off too.
+    if (Deno.env.get('FATSECRET_ENABLED') !== '1' || body.keeps !== 'device') return jsonResponse({ configured: false });
+
+    const gtin = body.action === 'fatsecret-barcode' ? toGtin13(body.barcode ?? '') : null;
+    if (body.action === 'fatsecret-barcode' && !gtin) return jsonResponse({ error: 'Invalid barcode' }, 400);
+    const query = body.action === 'fatsecret-search' ? body.query?.trim() ?? '' : '';
+    if (body.action === 'fatsecret-search' && (query.length < 2 || query.length > 120)) return jsonResponse({ error: 'Invalid search query' }, 400);
+    const ids = body.action === 'fatsecret-foods' ? parseFoodIds(body.ids) : null;
+    if (body.action === 'fatsecret-foods' && !ids) return jsonResponse({ error: 'Invalid food IDs' }, 400);
+
+    // Not configured (no credentials, or a scope the key lacks): tell the
+    // client to skip this provider rather than surface an error.
+    const token = await fatSecretAccessToken().catch(() => null);
     if (!token) return jsonResponse({ configured: false });
-    const answer = await cachedBarcodeAnswer(store, `fatsecret:${gtin}`, async (): Promise<ProviderAnswer> => {
+    const getFood = (foodId: string) => fatSecretCall(token, fatSecretFoodParams(foodId));
+
+    // Nothing FatSecret says about a food is cached or stored here: its terms
+    // allow that for 24 hours at most, and the phone keeps what it needs.
+    if (body.action === 'fatsecret-search') {
       try {
-        const idResult = await fatSecretCall(token, { method: 'food.find_id_for_barcode', barcode: gtin }) as
-          { food_id?: { value?: string | number }; error?: { code?: number; message?: string } };
-        // Surface FatSecret API-level errors (returned with HTTP 200) instead of
-        // masking them as "not found".
-        if (idResult?.error) {
-          console.error('FatSecret find_id_for_barcode error:', idResult.error);
-          return { kind: 'error', status: 502, payload: { error: 'FatSecret error', detail: idResult.error } };
+        const payload = await fatSecretCall(token, fatSecretSearchParams(query));
+        const error = fatSecretError(payload);
+        if (error) {
+          console.error('FatSecret foods.search error:', error.code, error.message);
+          return jsonResponse({ error: 'FatSecret search failed' }, 502);
         }
-        const foodId = String(idResult?.food_id?.value ?? '').trim();
-        if (!foodId || foodId === '0') return { kind: 'missing', payload: { food: null } };
-        // food.get.v2 returns the full food object (name, brand, servings) that
-        // the client maps via mapFatSecretBarcodeFood.
-        return { kind: 'found', payload: await fatSecretCall(token, { method: 'food.get.v2', food_id: foodId }) };
+        return jsonResponse({ configured: true, foods: fatSecretSearchFoods(payload) });
+      } catch (error) {
+        console.error('FatSecret search failed:', error instanceof Error ? error.message : error);
+        return jsonResponse({ error: 'FatSecret search failed' }, 502);
+      }
+    }
+
+    if (body.action === 'fatsecret-foods') {
+      // Each food is a FatSecret call of its own, so a long list counts as
+      // several lookups against the account's limit.
+      for (let extra = extraLookupClaims(ids?.length ?? 0); extra > 0; extra -= 1) {
+        if (!await store.claimLookup(authData.user.id).catch(() => false)) return jsonResponse(LOOKUP_LIMITED, 429);
+      }
+      return jsonResponse({ configured: true, ...await fatSecretFoods(ids ?? [], getFood) });
+    }
+
+    // A barcode's food ID is an ID, which may be kept: cache that (and "no
+    // such product"), and read the food itself from FatSecret every time.
+    const answer = await cachedBarcodeAnswer(store, `fatsecret-id:${gtin}`, async (): Promise<ProviderAnswer> => {
+      try {
+        const found = fatSecretBarcodeId(await fatSecretCall(token, { method: 'food.find_id_for_barcode', barcode: gtin ?? '' }));
+        // Surface FatSecret API-level errors (returned with HTTP 200) instead
+        // of masking them as "not found".
+        if (found.kind === 'error') {
+          console.error('FatSecret find_id_for_barcode error:', found.code);
+          return { kind: 'error', status: 502, payload: { error: 'FatSecret error' } };
+        }
+        return found.kind === 'found' ? { kind: 'found', payload: { food_id: found.foodId } } : { kind: 'missing', payload: { food_id: null } };
       } catch (error) {
         console.error('FatSecret barcode lookup failed:', error instanceof Error ? error.message : error);
         return { kind: 'error', status: 502, payload: { error: 'FatSecret lookup failed' } };
       }
     });
-    return jsonResponse(answer.payload, answer.status);
+    if (answer.status !== 200) return jsonResponse(answer.payload, answer.status);
+    const foodId = String((answer.payload as { food_id?: unknown } | null)?.food_id ?? '');
+    if (!/^\d{1,20}$/.test(foodId)) return jsonResponse({ food: null });
+    // The app maps this food with mapFatSecretBarcodeFood.
+    const food = await getFood(foodId).then(fatSecretFoodAnswer, () => null);
+    if (food?.kind === 'found') return jsonResponse({ food: food.food });
+    if (food?.kind === 'missing') return jsonResponse({ food: null });
+    console.error('FatSecret food.get failed for a barcode:', food?.code ?? 'no answer');
+    return jsonResponse({ error: 'FatSecret lookup failed' }, 502);
   }
 
   const apiKey = Deno.env.get('USDA_API_KEY') ?? '';

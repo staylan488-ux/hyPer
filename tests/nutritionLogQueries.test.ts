@@ -10,10 +10,21 @@ const calls = {
   failLogs: false,
   // while set, the logs request has not answered yet
   logsGate: null as Promise<void> | null,
+  // food-lookup requests, and whether they fail
+  lookups: [] as Record<string, unknown>[],
+  failLookup: false,
 };
 
 vi.mock('@/lib/supabase', () => ({ supabase: {
   auth: { getUser: () => client.auth.getUser(), getSession: () => client.auth.getSession() },
+  functions: {
+    invoke: (name: string, options: { body: Record<string, unknown> }) => {
+      calls.lookups.push(options.body);
+      return calls.failLookup
+        ? Promise.resolve({ data: null, error: { name: 'FunctionsFetchError', message: 'offline' } })
+        : client.functions.invoke(name, options);
+    },
+  },
   from: (table: string) => {
     const builder = client.from(table);
     const select = builder.select.bind(builder);
@@ -54,8 +65,12 @@ vi.mock('@/lib/supabase', () => ({ supabase: {
 } }));
 vi.mock('@/preview/flag', () => ({ isPreviewActive: () => true }));
 
-import { FOOD_ID_CHUNK_SIZE, fetchNutritionLogsWithFoods, type NutritionLogDateRange } from '@/lib/nutritionLogQueries';
+import { resetDeviceFoodRefillForTest } from '@/lib/deviceFoodRefill';
+import { DEVICE_ONLY_FOOD_NAME, deviceFoodStub, forgetDeviceFoodsForTest, keepDeviceFood, readDeviceFood } from '@/lib/deviceFoods';
+import { createMealIngredient, encodeMealComposition } from '@/lib/mealComposition';
+import { FOOD_ID_CHUNK_SIZE, fetchNutritionLogsWithFoods, withDeviceFoodColumns, type NutritionLogDateRange } from '@/lib/nutritionLogQueries';
 import { getDailyIntake } from '@/lib/nutritionIntake';
+import { loadRecentLogs } from '@/lib/recentFoods';
 
 let client = createMockClient();
 const fixture = structuredClone(previewTables);
@@ -86,6 +101,11 @@ beforeEach(() => {
   calls.failNextFoods = 0;
   calls.failLogs = false;
   calls.logsGate = null;
+  calls.lookups = [];
+  calls.failLookup = false;
+  forgetDeviceFoodsForTest();
+  resetDeviceFoodRefillForTest();
+  vi.stubGlobal('localStorage', undefined);
 });
 
 describe('shared nutrition log query', () => {
@@ -228,5 +248,103 @@ describe('adaptive daily intake', () => {
   it('still throws when a request fails', async () => {
     calls.failFoods = true;
     await expect(getDailyIntake('u1', '2026-09-01')).rejects.toThrow('foods unavailable');
+  });
+});
+
+describe('brand foods kept on the phone', () => {
+  // The sample backend's one FatSecret food: Preview Greek Yogurt, 120 kcal a container.
+  const stub = (id: string, externalId = '900001:900002') => ({ id, user_id: 'u1', description: null, ...deviceFoodStub(externalId) });
+  const yogurt = { name: 'Greek Yogurt · Chobani', calories: 120, protein: 16, carbs: 6, fat: 3, serving_size: 150, serving_unit: 'g' };
+  const read = () => fetchNutritionLogsWithFoods<{ id: string; food_id: string; servings: number }, { id: string; name: string; calories: number }>(
+    'u1', { from: '2026-09-01', to: '2026-09-01' }, 'id, food_id, servings', 'id, calories',
+  );
+
+  beforeEach(() => {
+    previewTables.foods = [food('oats', 150), stub('brand')];
+    previewTables.nutrition_logs = [log('l1', '2026-09-01', 'oats', 1), log('l2', '2026-09-01', 'brand', 2)];
+    client = createMockClient();
+  });
+
+  it('reads the columns a brand food is recognised by with every food', () => {
+    expect(withDeviceFoodColumns('id, calories')).toBe('id, calories, name, source, external_source, external_id');
+    expect(withDeviceFoodColumns('id, name, source, external_source, external_id')).toBe('id, name, source, external_source, external_id');
+    expect(withDeviceFoodColumns('*')).toBe('*');
+  });
+
+  it("fills a brand food in from the phone, and asks FatSecret nothing", async () => {
+    keepDeviceFood({ ...yogurt, source: 'fatsecret', external_id: '900001:900002' });
+    const { data, incomplete } = await read();
+    expect(data?.map((row) => [row.id, row.food?.name, row.food?.calories])).toEqual([['l1', 'oats', 150], ['l2', 'Greek Yogurt · Chobani', 120]]);
+    expect(incomplete).toBeUndefined();
+    expect(calls.lookups).toEqual([]);
+  });
+
+  it('asks FatSecret again, by ID, for a food this phone does not hold, and keeps the answer', async () => {
+    const { data, incomplete } = await read();
+    expect(data?.[1].food).toMatchObject({ id: 'brand', name: 'Preview Greek Yogurt · Hyper Test Kitchen', calories: 120 });
+    expect(incomplete).toBeUndefined();
+    expect(calls.lookups).toEqual([{ action: 'fatsecret-foods', ids: '900001', keeps: 'device' }]);
+    expect(readDeviceFood('fatsecret:900001:900002')?.name).toBe('Preview Greek Yogurt · Hyper Test Kitchen');
+
+    await read();
+    expect(calls.lookups).toHaveLength(1);
+  });
+
+  it('says the read is incomplete when the food could not be fetched, and does not ask again at once', async () => {
+    calls.failLookup = true;
+    const first = await read();
+    expect(first.error).toBeNull();
+    expect(first.incomplete).toBe(true);
+    expect(first.data?.[1].food).toMatchObject({ name: DEVICE_ONLY_FOOD_NAME, calories: 0 });
+
+    calls.failLookup = false;
+    expect((await read()).incomplete).toBe(true);
+    expect(calls.lookups).toHaveLength(1);
+  });
+
+  it('shows a food FatSecret no longer has as a stub, and calls the read complete', async () => {
+    previewTables.foods = [food('oats', 150), stub('brand', '555:666')];
+    client = createMockClient();
+    const { data, incomplete } = await read();
+    expect(data?.[1].food).toMatchObject({ name: DEVICE_ONLY_FOOD_NAME, calories: 0 });
+    expect(incomplete).toBeUndefined();
+    await read();
+    expect(calls.lookups).toHaveLength(1);
+  });
+
+  it("reads a built meal's brand ingredients again too", async () => {
+    const ingredient = createMealIngredient({ id: 'fatsecret:900001:900002', user_id: null, ...yogurt, source: 'fatsecret', fdc_id: null, external_source: 'fatsecret', external_id: '900001:900002' }, 1, 'i1');
+    const description = encodeMealComposition([ingredient]);
+    // another phone built the meal: this one holds nothing
+    forgetDeviceFoodsForTest();
+    previewTables.foods = [{ ...food('meal', 120), description }];
+    previewTables.nutrition_logs = [log('l1', '2026-09-01', 'meal', 1)];
+    client = createMockClient();
+
+    await fetchNutritionLogsWithFoods('u1', { from: '2026-09-01', to: '2026-09-01' }, 'food_id', 'id, description, calories');
+    expect(calls.lookups).toEqual([{ action: 'fatsecret-foods', ids: '900001', keeps: 'device' }]);
+    expect(readDeviceFood('fatsecret:900001:900002')?.calories).toBe(120);
+  });
+
+  it('leaves a brand food out of Recents until this phone can show it', async () => {
+    calls.failLookup = true;
+    const unread = await loadRecentLogs('u1', new Date('2026-09-02T12:00:00'));
+    expect(unread.logs?.map((entry) => entry.food?.name)).toEqual(['oats']);
+
+    calls.failLookup = false;
+    resetDeviceFoodRefillForTest();
+    const read = await loadRecentLogs('u1', new Date('2026-09-02T12:00:00'));
+    expect(read.logs?.map((entry) => entry.food?.name)).toEqual(['oats', 'Preview Greek Yogurt · Hyper Test Kitchen']);
+    expect(read.logs?.[1].food).toMatchObject({ source: 'fatsecret', external_id: '900001:900002', serving_size: 150, serving_unit: 'g' });
+  });
+
+  it('holds the weekly calorie estimate back while a brand food is unread, and counts it once read', async () => {
+    previewTables.nutrition_logs = [log('l1', '2026-09-01', 'oats', 1), log('l2', '2026-09-01', 'brand', 2)];
+    calls.failLookup = true;
+    await expect(getDailyIntake('u1', '2026-09-01')).rejects.toThrow('Some logged foods could not be read');
+
+    calls.failLookup = false;
+    resetDeviceFoodRefillForTest();
+    expect(await getDailyIntake('u1', '2026-09-01')).toEqual([{ date: '2026-09-01', calories: 390 }]);
   });
 });

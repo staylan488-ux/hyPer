@@ -1,3 +1,4 @@
+import { deviceFoodKey, deviceFoodStub, keepDeviceFood, withDeviceFood } from '@/lib/deviceFoods';
 import type { Food } from '@/types';
 
 /** Each food retains its original nutrient/serving basis; servings is the amount used. */
@@ -114,26 +115,54 @@ export function getMealTotals(ingredients: MealIngredient[]): MealTotals {
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 }
 
+/**
+ * An ingredient as the server may keep it. A device-only food (FatSecret's)
+ * leaves its details on this phone and goes out as its IDs alone; the meal's
+ * own totals, an aggregate, are what the server keeps of it.
+ */
+function storedIngredient(item: MealIngredient): MealIngredient {
+  const { food } = item;
+  if (!deviceFoodKey(food) || !food.external_id) return item;
+  keepDeviceFood(food);
+  return { ...item, food: { id: food.id, user_id: food.user_id, ...deviceFoodStub(food.external_id) } };
+}
+
 /** Encodes one complete meal's ingredients in the existing description column. */
 export function encodeMealComposition(ingredients: MealIngredient[]): string {
   const valid = parseIngredients(ingredients);
   if (!valid) throw new Error('Add valid ingredients before logging the meal.');
-  const result = MEAL_COMPOSITION_PREFIX + JSON.stringify({ version: 1, ingredients: valid } satisfies MealComposition);
+  const result = MEAL_COMPOSITION_PREFIX + JSON.stringify({ version: 1, ingredients: valid.map(storedIngredient) } satisfies MealComposition);
   if (result.length > MAX_PAYLOAD_LENGTH) throw new Error('This meal contains too much detail to save.');
   return result;
 }
 
-/** Ordinary prose descriptions and malformed/future payloads are not compositions. */
-export function decodeMealComposition(description: string | null | undefined): MealComposition | null {
+function parseComposition(description: string | null | undefined): MealIngredient[] | null {
   if (!description?.startsWith(MEAL_COMPOSITION_PREFIX) || description.length > MAX_PAYLOAD_LENGTH) return null;
   try {
     const parsed: unknown = JSON.parse(description.slice(MEAL_COMPOSITION_PREFIX.length));
     if (!record(parsed) || parsed.version !== 1) return null;
-    const ingredients = parseIngredients(parsed.ingredients);
-    return ingredients ? { version: 1, ingredients } : null;
+    return parseIngredients(parsed.ingredients);
   } catch {
     return null;
   }
+}
+
+/**
+ * Ordinary prose descriptions and malformed/future payloads are not
+ * compositions. Device-only ingredients come back with this phone's details;
+ * one the phone does not hold stays a stub (isDeviceFoodStub) until
+ * deviceFoodRefill has read it again.
+ */
+export function decodeMealComposition(description: string | null | undefined): MealComposition | null {
+  const ingredients = parseComposition(description);
+  return ingredients ? { version: 1, ingredients: ingredients.map((item) => ({ ...item, food: withDeviceFood(item.food) })) } : null;
+}
+
+/** The device-only foods a built meal's description names, by their deviceFoods keys. */
+export function deviceFoodKeysInDescription(description: string | null | undefined): string[] {
+  // most descriptions name none: skip the parse
+  if (!description?.includes('"fatsecret"')) return [];
+  return (parseComposition(description) ?? []).flatMap((item) => deviceFoodKey(item.food) ?? []);
 }
 
 /** Expands a logged/saved meal quantity into its actual ingredient quantities. */
