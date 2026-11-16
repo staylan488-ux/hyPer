@@ -161,6 +161,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
           : programDayId ? (keep ? `This workout and ${session?.dayName ?? 'your program'}` : 'For this workout only') : null
       }
       initialMuscle={sourceMuscle}
+      replacing={mode === 'swap' ? movement?.sets[0]?.exercise ?? null : null}
       exclude={inWorkout}
       busyId={swapping}
       onPick={(exercise) => void choose(exercise)}
@@ -240,6 +241,7 @@ function ProgramPick({ mode, dayId, exerciseId }: { mode: ProgramPickMode; dayId
       title={PROGRAM_PICKER_TITLES[mode]}
       subtitle={source ? (mode === 'swap' ? `Replacing ${source.exercise.name}` : `With ${source.exercise.name}`) : null}
       initialMuscle={target.initialMuscleGroup}
+      replacing={mode === 'swap' ? source?.exercise ?? null : null}
       exclude={exclude}
       extras={extras}
       selected={mode === 'add' ? selected : undefined}

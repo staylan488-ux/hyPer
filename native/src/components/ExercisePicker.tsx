@@ -6,9 +6,11 @@ import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, TextInput, Vi
 import { customExercise, normalizeExerciseName } from '@/lib/customExercises';
 import { getExerciseLibrary, peekExerciseLibrary } from '@/lib/exerciseLibrary';
 import { exerciseCategory, offeredInPicker, searchExercises } from '@/lib/exerciseSearch';
+import { suggestSwaps, swapNoteLine, type SwapMatch } from '@/lib/swapSuggestions';
 import { MUSCLE_GROUP_LABELS, type Exercise, type MuscleGroup } from '@/types';
 import { announce, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { haptics } from '~/lib/haptics';
+import { speak } from '~/lib/spoken';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
@@ -22,11 +24,17 @@ import { Hairline } from './Row';
 const MUSCLES = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
 // The library rarely changes: cached rows show at once, refreshed at most this often.
 const LIBRARY_MAX_AGE_MS = 5 * 60_000;
+const NO_MATCHES: SwapMatch[] = [];
 
 type PickerProps = {
   title: string;
   subtitle?: string | null;
   initialMuscle?: MuscleGroup;
+  /**
+   * The movement being swapped out. The picker then opens on its closest
+   * matches (src/lib/swapSuggestions.ts), ahead of the usual list.
+   */
+  replacing?: Pick<Exercise, 'id' | 'name' | 'equipment' | 'category'> | null;
   /** Exercise ids never offered (already in the workout or day). */
   exclude: ReadonlySet<string>;
   /** Rows the library does not have yet (custom exercises), offered first. */
@@ -46,9 +54,11 @@ type PickerProps = {
 
 /**
  * The one exercise picker: search, muscle chips, everyday gym movements
- * first and bodyweight skills on request.
+ * first and bodyweight skills on request. A swap leads with the closest
+ * matches for the movement it replaces, until a search or another muscle
+ * asks for something else.
  */
-export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action, accessory }: PickerProps) {
+export function ExercisePicker({ title, subtitle, initialMuscle, replacing = null, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action, accessory }: PickerProps) {
   const c = useBlanc();
   const large = useLargeText();
   const [library, setLibrary] = useState<Exercise[] | null>(() => peekExerciseLibrary());
@@ -76,6 +86,13 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   }, [attempt]);
 
   const searching = search.trim().length > 0;
+  // A swap's closest matches come from the whole library, whatever muscle is chosen.
+  const swap = useMemo(
+    () => (replacing ? suggestSwaps(replacing, [...extras, ...(library ?? [])].filter((exercise) => !exclude.has(exercise.id))) : null),
+    [replacing, library, extras, exclude],
+  );
+  // They lead the picker as it opens; a search or another muscle is a request for the plain list.
+  const matches = swap && !searching && muscle === (initialMuscle ?? 'all') ? swap.matches : NO_MATCHES;
   const { gym, skills } = useMemo(() => {
     const seen = new Set<string>();
     const rows = [...extras, ...(library ?? [])].filter((exercise) => {
@@ -110,9 +127,15 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   // Everyday gym movements first; bodyweight skills on request, or whenever a search finds them.
   const skillsOpen = showSkills || searching || gym.length === 0;
 
+  // A match is listed once: under Closest matches, not again below them.
+  const rest = useMemo(() => {
+    if (matches.length === 0) return gym;
+    const matched = new Set(matches.map((match) => match.exercise.id));
+    return gym.filter((exercise) => !matched.has(exercise.id));
+  }, [gym, matches]);
   // A muscle chosen changes the list below the chips without a word: say
   // how many it shows. None is the empty line's to say.
-  const shown = gym.length + (skillsOpen ? skills.length : 0);
+  const shown = matches.length + rest.length + (skillsOpen ? skills.length : 0);
   const announcedMuscle = useRef(muscle);
   const onMuscleChange = useEffectEvent(() => {
     if (library !== null && shown > 0) announce(`${shown} ${shown === 1 ? 'movement' : 'movements'}`);
@@ -131,7 +154,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
   );
   const typed = query.trim().replace(/\s+/g, ' ');
   const canCreate = allowCustom && typed.length > 0 && takenNames !== null && !takenNames.has(normalizeExerciseName(typed));
-  const empty = library !== null && gym.length === 0 && skills.length === 0 && !canCreate;
+  const empty = library !== null && matches.length === 0 && rest.length === 0 && skills.length === 0 && !canCreate;
   const emptyLine = searching ? 'Nothing matches.' : 'No other movements for this muscle.';
   // Silent while a pick saves or the sheet closes: the picked exercise leaves
   // the list then, which can empty it.
@@ -286,9 +309,45 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
           </View>
         ) : null}
 
+        {/* A swap opens on the movements that train the same muscles the same way. */}
+        {matches.length > 0 ? (
+          <>
+            <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 8, marginBottom: 6, marginHorizontal: space.gutter }}>
+              Closest matches
+            </BlancText>
+            <Label style={{ overflow: 'hidden' }}>
+              {matches.map((match, index) => (
+                <ExerciseRow
+                  key={match.exercise.id}
+                  exercise={match.exercise}
+                  first={index === 0}
+                  selectable={false}
+                  ticked={false}
+                  locked={busyId !== null}
+                  busy={busyId === match.exercise.id}
+                  showMuscle={false}
+                  detail={match.line}
+                  onPick={onPick}
+                />
+              ))}
+            </Label>
+            {swap?.note ? (
+              <BlancText variant="footnote" tone="graphite" style={{ marginTop: 10, marginHorizontal: space.gutter }}>
+                {swapNoteLine(swap.note)}
+              </BlancText>
+            ) : null}
+            {rest.length > 0 ? (
+              <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 22, marginBottom: 6, marginHorizontal: space.gutter }}>
+                More movements
+              </BlancText>
+            ) : null}
+          </>
+        ) : null}
+
         {/* The list sits in a white label on the chalk, like every other list. */}
-        {canCreate || gym.length > 0 ? (
-          <Label style={{ marginTop: 4, overflow: 'hidden' }}>
+        {canCreate || rest.length > 0 || (skills.length > 0 && !skillsOpen) ? (
+          // Under "More movements" the list follows its heading; with nothing more to list, the skills row stands clear of the note.
+          <Label style={{ marginTop: matches.length === 0 ? 4 : rest.length > 0 ? 0 : 14, overflow: 'hidden' }}>
             {canCreate ? (
               <Pressable
                 accessibilityRole="button"
@@ -315,12 +374,12 @@ export function ExercisePicker({ title, subtitle, initialMuscle, exclude, extras
               </Pressable>
             ) : null}
 
-            {rows(gym, canCreate)}
+            {rows(rest, canCreate)}
 
             {/* Skills stay folded only while there are gym movements above them. */}
             {skills.length > 0 && !skillsOpen ? (
               <>
-                <Hairline />
+                {canCreate || rest.length > 0 ? <Hairline /> : null}
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => {
@@ -376,19 +435,22 @@ type RowProps = {
   /** This row's pick is the one saving. */
   busy: boolean;
   showMuscle: boolean;
+  /** A closest match's line: what stays the same and what changes. It takes the muscle's place. */
+  detail?: string;
   onPick: (exercise: Exercise) => void;
 };
 
-const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, ticked, locked, busy, showMuscle, onPick }: RowProps) {
+const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, ticked, locked, busy, showMuscle, detail, onPick }: RowProps) {
   const c = useBlanc();
   const large = useLargeText();
+  const muscleLine = showMuscle ? MUSCLE_GROUP_LABELS[exercise.muscle_group] : null;
   return (
     <View>
       {first ? null : <Hairline />}
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ ...(selectable ? { selected: ticked } : null), ...(busy ? { busy: true } : null) }}
-        accessibilityLabel={showMuscle ? `${exercise.name}, ${MUSCLE_GROUP_LABELS[exercise.muscle_group]}` : exercise.name}
+        accessibilityLabel={detail ? `${exercise.name}, ${speak(detail)}` : muscleLine ? `${exercise.name}, ${muscleLine}` : exercise.name}
         disabled={locked}
         onPress={() => {
           if (selectable) haptics.select();
@@ -410,9 +472,10 @@ const ExerciseRow = memo(function ExerciseRow({ exercise, first, selectable, tic
           <BlancText variant="bodyStrong" numberOfLines={large ? undefined : 1}>
             {exercise.name}
           </BlancText>
-          {showMuscle ? (
-            <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 1} style={{ marginTop: 1 }}>
-              {MUSCLE_GROUP_LABELS[exercise.muscle_group]}
+          {detail ?? muscleLine ? (
+            // A match's line may wrap once on a narrow phone; a muscle never needs to.
+            <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : detail ? 2 : 1} style={{ marginTop: 1 }}>
+              {detail ?? muscleLine}
             </BlancText>
           ) : null}
         </View>
