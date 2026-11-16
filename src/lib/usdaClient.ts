@@ -11,9 +11,41 @@ import {
 import { mapOpenFoodFactsProduct } from '@/lib/openFoodFacts';
 import { mapFatSecretBarcodeFood, type FatSecretBarcodeResponse } from '@/lib/fatSecret';
 
+/**
+ * Why a food lookup got no answer, so a screen can say what is true: the
+ * request never reached hyPer (`offline`), the account's lookups are spent for
+ * the moment (`limited`), or the request arrived and the lookup behind it
+ * failed (`unavailable`), which is no fault of the phone's connection.
+ */
+export type FoodLookupFailure = 'offline' | 'limited' | 'unavailable';
+
+export class FoodLookupError extends Error {
+  readonly reason: FoodLookupFailure;
+
+  constructor(reason: FoodLookupFailure, detail: string) {
+    super(`Food lookup failed: ${detail}`);
+    this.name = 'FoodLookupError';
+    this.reason = reason;
+  }
+}
+
+/** The reason behind a failed lookup; anything that is not a FoodLookupError got no answer at all. */
+export function foodLookupFailure(error: unknown): FoodLookupFailure {
+  return error instanceof FoodLookupError ? error.reason : 'offline';
+}
+
+// supabase-js names the failure: FunctionsFetchError when the request got no
+// answer, FunctionsHttpError (with the response as its context) when the
+// function answered with an error status.
+function failureReason(error: { name?: string; context?: unknown }): FoodLookupFailure {
+  if (error.name === 'FunctionsFetchError') return 'offline';
+  const status = (error.context as { status?: unknown } | null | undefined)?.status;
+  return status === 429 ? 'limited' : 'unavailable';
+}
+
 async function invokeFoodLookup(body: Record<string, string>): Promise<Response> {
   const { data, error } = await supabase.functions.invoke('food-lookup', { body });
-  if (error) throw new Error(`Food lookup failed: ${error.message}`);
+  if (error) throw new FoodLookupError(failureReason(error), error.message);
   return new Response(JSON.stringify(data), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
