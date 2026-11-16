@@ -1,0 +1,129 @@
+{
+  "about": "Hand-set rows where USDA's name, serving or place in the order is not what a person expects, mostly foods weighed dry or raw. id is the fdcId of any USDA record in the row; name, grams and label replace what the build worked out; prior sets how early the row comes (the plain cooked food of the same kind is usually 45 to 75); words adds search words.",
+  "staples": [
+    {
+      "id": 2708489,
+      "name": "Oats, dry",
+      "grams": 40,
+      "label": "1/2 cup",
+      "words": "rolled oatmeal uncooked porridge"
+    },
+    {
+      "id": 169756,
+      "name": "Rice, white, dry",
+      "grams": 45,
+      "label": "1/4 cup",
+      "prior": 48,
+      "words": "uncooked"
+    },
+    {
+      "id": 169703,
+      "name": "Rice, brown, dry",
+      "grams": 45,
+      "label": "1/4 cup",
+      "prior": 40,
+      "words": "uncooked"
+    },
+    {
+      "id": 169736,
+      "name": "Pasta, dry",
+      "grams": 57,
+      "label": "2 oz",
+      "prior": 33,
+      "words": "uncooked spaghetti penne macaroni"
+    },
+    {
+      "id": 169738,
+      "name": "Pasta, whole-wheat, dry",
+      "grams": 57,
+      "label": "2 oz",
+      "prior": 22,
+      "words": "uncooked spaghetti penne"
+    },
+    {
+      "id": 168874,
+      "name": "Quinoa, dry",
+      "grams": 43,
+      "label": "1/4 cup",
+      "prior": 30,
+      "words": "uncooked"
+    },
+    {
+      "id": 172420,
+      "name": "Lentils, dry",
+      "grams": 48,
+      "label": "1/4 cup",
+      "prior": 30,
+      "words": "uncooked"
+    },
+    {
+      "id": 2646170,
+      "name": "Chicken breast, raw, skinless",
+      "grams": 113,
+      "label": "4 oz",
+      "prior": 60,
+      "words": "boneless uncooked"
+    },
+    {
+      "id": 2646171,
+      "name": "Chicken thigh, raw, skinless",
+      "grams": 113,
+      "label": "4 oz",
+      "prior": 55,
+      "words": "boneless uncooked"
+    },
+    {
+      "id": 171790,
+      "name": "Ground beef, 95% lean, raw",
+      "grams": 113,
+      "label": "4 oz",
+      "prior": 30
+    },
+    {
+      "id": 173110,
+      "name": "Ground beef, 93% lean, raw",
+      "grams": 113,
+      "label": "4 oz",
+      "prior": 32
+    },
+    {
+      "id": 174030,
+      "name": "Ground beef, 90% lean, raw",
+      "grams": 113,
+      "label": "4 oz",
+      "prior": 34
+    },
+    {
+      "id": 174036,
+      "name": "Ground beef, 80% lean, raw",
+      "grams": 113,
+      "label": "4 oz",
+      "prior": 36
+    },
+    {
+      "id": 2705424,
+      "name": "Yogurt, Greek, nonfat, plain",
+      "prior": 44
+    },
+    {
+      "id": 2710281,
+      "grams": 20,
+      "label": "1 tablespoon"
+    },
+    {
+      "id": 2710536,
+      "name": "Soft drink, cola",
+      "words": "soda coke pepsi pop"
+    },
+    {
+      "id": 2710537,
+      "name": "Soft drink, diet cola",
+      "words": "soda coke pepsi pop zero"
+    },
+    {
+      "id": 2709223,
+      "grams": 75,
+      "label": "1/2 avocado"
+    }
+  ]
+}

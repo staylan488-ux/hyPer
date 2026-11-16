@@ -526,6 +526,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     const listImports = {
       ...imports,
       '@/lib/foodUnits': foodUnits,
+      '@/lib/genericFoods': { prepareGenericFoods: () => {}, searchGenericFoods: () => [] },
       '@/lib/nutritionLedger': nutritionLedger,
       '@/lib/saveNutritionEntry': saveNutrition,
       '@/lib/usdaClient': {},
