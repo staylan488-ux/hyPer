@@ -9,12 +9,13 @@ import { useFuelStore } from './fuel';
 
 const noNewDayWork = () => {};
 
-/** Program, live workout, targets, weekly volume, workout mode, profile and the day's food. */
+/** Program, live workout, targets and their last change, weekly volume, workout mode, profile and the day's food. */
 async function loadAccount(day: string, force = false) {
   const app = useAppStore.getState();
   await Promise.all([
     app.fetchSplits(force ? { force: true } : undefined),
     app.fetchMacroTarget(),
+    app.fetchTargetChange(),
     app.calculateWeeklyVolume(),
     app.fetchCurrentWorkout(),
     app.fetchWorkoutMode(),

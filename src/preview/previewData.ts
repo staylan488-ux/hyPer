@@ -9,7 +9,6 @@ import type {
   Workout,
   WorkoutSet,
   MacroTarget,
-  VolumeLandmark,
   MuscleVolume,
   Food,
   ActivitySession,
@@ -54,8 +53,17 @@ const exCalf = ex('ex_calf', 'Standing Calf Raise', 'calves', null, 'Machine', f
 // Library-only rows (not in the program) so the picker shows its sections
 const libraryOnly: Exercise[] = [
   ex('ex_hack', 'Hack Squat', 'quads', 'glutes', 'Machine', true),
+  // Enough squats, presses and curls for a swap to show its closest matches
+  ex('ex_smith_squat', 'Smith Machine Squat', 'quads', 'glutes', 'Smith machine', true),
+  ex('ex_front_squat', 'Front Squat', 'quads', 'glutes', 'Barbell', true),
+  ex('ex_leg_press', 'Leg Press', 'quads', 'glutes', 'Machine', true),
+  ex('ex_split_squat', 'Bulgarian Split Squat', 'quads', 'glutes', 'Dumbbell', true),
+  ex('ex_db_bench', 'Flat Dumbbell Bench Press', 'chest', 'triceps', 'Dumbbell', true),
+  ex('ex_smith_bench', 'Smith Machine Bench Press', 'chest', 'triceps', 'Smith machine', true),
+  ex('ex_lying_legcurl', 'Lying Leg Curl', 'hamstrings', null, 'Machine', false),
+  ex('ex_overhead_ext', 'Cable Overhead Tricep Extension', 'triceps', null, 'Cable', false),
   ex('ex_machine_chest', 'Machine Chest Press', 'chest', 'triceps', 'Machine', true),
-  ex('ex_hyper', 'Weighted Hyperextension', 'hamstrings', 'glutes', 'Machine', true),
+  ex('ex_hyper', 'Weighted Hyperextension', 'glutes', 'hamstrings', 'Machine', true),
   ex('ex_back_ext', '45° Back Extension', 'glutes', 'hamstrings', 'Machine', true),
   ex('ex_pullup', 'Pull-Up', 'back', 'biceps', 'Bodyweight', true),
   ex('ex_front_lever_row', 'Front Lever Row', 'back', 'biceps', 'Bodyweight', true),
@@ -109,23 +117,10 @@ export const previewCurrentWorkout: Workout = {
 /* ── Macros ── */
 export const previewMacroTarget: MacroTarget = { id: 'mt1', user_id: PREVIEW_USER_ID, calories: 2600, protein: 190, carbs: 280, fat: 80 };
 
-/* ── Volume landmarks + this-week volume ── */
-type LMSeed = [VolumeLandmark['muscle_group'], number, number, number, number, number, number, MuscleVolume['status']];
-const lmSeeds: LMSeed[] = [
-  // muscle, mv, mev, mav_low, mav_high, mrv, weekly_sets, status
-  ['chest', 6, 10, 12, 18, 22, 15, 'mav'],
-  ['back', 8, 12, 14, 20, 25, 18, 'mav'],
-  ['quads', 6, 8, 10, 16, 20, 9, 'mev_mav'],
-  ['hamstrings', 4, 6, 8, 12, 16, 5, 'below_mev'],
-  ['side_delts', 6, 10, 12, 18, 22, 24, 'above_mrv'],
-  ['biceps', 6, 8, 10, 16, 20, 12, 'mav'],
-  ['triceps', 6, 8, 10, 16, 20, 10, 'mav'],
-  ['glutes', 4, 6, 8, 14, 18, 11, 'mav'],
-];
-export const previewLandmarks: VolumeLandmark[] = lmSeeds.map(([mg, mv, mev, mavLow, mavHigh, mrv], i) =>
-  ({ id: `lm${i}`, user_id: PREVIEW_USER_ID, muscle_group: mg, mv, mev, mav_low: mavLow, mav_high: mavHigh, mrv }));
-export const previewWeeklyVolume: MuscleVolume[] = lmSeeds.map(([mg, , , , , , weekly, status], i) =>
-  ({ muscle_group: mg, weekly_sets: weekly, status, landmark: previewLandmarks[i] }));
+/* ── This week's volume, part way through the week ── */
+export const previewWeeklyVolume: MuscleVolume[] = ([
+  ['chest', 6], ['back', 7], ['front_delts', 3], ['side_delts', 4], ['triceps', 3], ['biceps', 3.5], ['quads', 4], ['glutes', 2], ['hamstrings', 2],
+] as const).map(([muscle_group, weekly_sets]) => ({ muscle_group, weekly_sets }));
 
 /* ── Foods + today's nutrition log ── */
 const food = (id: string, name: string, cal: number, p: number, c: number, f: number, size: number, unit: string, source: Food['source'] = 'usda'): Food =>
@@ -429,7 +424,6 @@ export const previewTables: Record<string, Record<string, unknown>[]> = {
   split_days: previewSplit.days.map((d) => ({ id: d.id, split_id: 'split1', day_name: d.day_name, day_order: d.day_order, created_at: iso(daysAgo(40)) })),
   split_exercises: stamp(previewSplit.days.flatMap((d) => d.exercises.map((x) => ({ id: x.id, split_day_id: d.id, exercise_id: x.exercise_id, target_sets: x.target_sets, target_reps_min: x.target_reps_min, target_reps_max: x.target_reps_max, exercise_order: x.exercise_order, notes: x.notes, superset_group_id: x.superset_group_id ?? null })))),
   macro_targets: [{ ...previewMacroTarget, created_at: iso(daysAgo(40)) }],
-  volume_landmarks: previewLandmarks.map((l) => ({ ...l, created_at: iso(daysAgo(40)) })),
   foods: stamp(previewFoods.map((f) => ({ ...f }))),
   nutrition_groups: previewNutritionGroups.map((group) => ({ ...group })),
   nutrition_import_batches: [],

@@ -1,17 +1,19 @@
 // @vitest-environment happy-dom
 import * as dates from 'date-fns';
-import { act, createElement, Fragment, useEffect, type PropsWithChildren, type ReactNode } from 'react';
+import { act, Children, createElement, Fragment, isValidElement, useEffect, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as zustand from 'zustand';
 import { create } from 'zustand';
 
 import * as fuelSummary from '@/lib/fuelSummary';
-import * as todayModel from '@/lib/todayModel';
-import * as volumeCoaching from '@/lib/volumeCoaching';
-import * as volumeStatus from '@/lib/volumeStatus';
+import * as muscleProgress from '@/lib/muscleProgress';
+import * as muscleVolume from '@/lib/muscleVolume';
+import type { UsualWeek } from '@/lib/muscleVolume';
+import * as nutritionRange from '@/lib/nutritionRange';
+import * as weeklyVolume from '@/lib/weeklyVolume';
 import * as workoutSessions from '@/lib/workoutSessions';
-import * as types from '@/types';
-import type { MuscleVolume } from '@/types';
+import type { MuscleVolume, Split, SplitDay } from '@/types';
 import { formatMinutes } from '../native/src/lib/format';
 import { loadNativeModule } from './helpers/loadNativeModule';
 import { silentAccessibility } from './helpers/silentAccessibility';
@@ -113,11 +115,20 @@ const calculateWeeklyVolume = vi.fn();
 const initialAppData = { weeklyVolume: [] as MuscleVolume[] };
 const appStore = create(() => ({
   weeklyVolume: initialAppData.weeklyVolume,
+  activeSplit: null as Split | null,
+  workoutMode: 'split' as 'split' | 'flexible',
   macroTarget: null as { calories: number; protein: number } | null,
   nutritionProfile: null,
   calculateWeeklyVolume,
   fetchMacroTarget: async () => {},
 }));
+
+// Today's plan for the week, as Today reads it.
+let plan: { weekDone: number | null; weekTarget: number | null; upNext: SplitDay | null; schedule: null; scheduleWorkouts: never[]; adaptiveSchedulingEnabled: boolean } = {
+  weekDone: null, weekTarget: null, upNext: null, schedule: null, scheduleWorkouts: [], adaptiveSchedulingEnabled: true,
+};
+// The usual week's read: none by default.
+const readUsualWeek = vi.fn<(userId: string, dayKey: string) => Promise<UsualWeek | null>>();
 
 // The account's day, which the midnight refresh moves on.
 const accountDay = create(() => ({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') }));
@@ -131,6 +142,7 @@ const trained = () => workoutSessions.buildWeeklyTrainingHours([
 type Day = { date: string; calories: number; protein: number };
 let nutrition: Day[] = [];
 let askedFor: Array<string | undefined> = [];
+let askedDays: Array<number | undefined> = [];
 const averageLoggedDays = (days: Day[], key: 'calories' | 'protein') => {
   const logged = days.filter((day) => day[key] > 0);
   return logged.length ? logged.reduce((sum, day) => sum + day[key], 0) / logged.length : 0;
@@ -150,7 +162,8 @@ async function open() {
     'expo-symbols': { SymbolView: Empty },
     'react-native': {
       ActivityIndicator: Spinner,
-      Pressable: Wrap,
+      Pressable: ({ children, onPress, accessibilityLabel }: { children: ReactNode | ((state: { pressed: boolean }) => ReactNode); onPress?: () => void; accessibilityLabel?: string }) =>
+        createElement('div', { onClick: onPress, ...(accessibilityLabel ? { 'aria-label': accessibilityLabel, 'data-press': 'true' } : null) }, typeof children === 'function' ? children({ pressed: false }) : children),
       RefreshControl: ({ onRefresh }: { onRefresh: () => void }) => {
         pull = onRefresh;
         return null;
@@ -164,21 +177,41 @@ async function open() {
       FadeIn: { duration: () => undefined },
       LinearTransition: { duration: () => undefined },
     },
-    '@/lib/todayModel': todayModel,
     '@/hooks/useWeeklyNutrition': {
       averageLoggedDays,
-      useWeeklyNutrition: (lastDay?: string) => {
+      useWeeklyNutrition: (lastDay?: string, days?: number) => {
         askedFor.push(lastDay);
+        askedDays.push(days);
         return { weeklyNutrition: nutritionLoading ? [] : nutrition, loading: nutritionLoading, error: null };
       },
     },
     '@/lib/fuelSummary': fuelSummary,
+    '@/lib/nutritionRange': nutritionRange,
+    // The range picker: a button per option, which chooses it.
+    '@expo/ui/swift-ui': {
+      Host: Wrap,
+      Picker: ({ children, selection, onSelectionChange }: PropsWithChildren<{ selection: string; onSelectionChange: (value: string) => void }>) =>
+        createElement(
+          'div',
+          { 'data-picker': selection },
+          Children.map(children, (child) =>
+            isValidElement<PropsWithChildren<{ modifiers: Array<{ tag: string }> }>>(child)
+              ? createElement('button', { 'data-option': child.props.modifiers[0].tag, onClick: () => onSelectionChange(child.props.modifiers[0].tag) }, child.props.children)
+              : null,
+          ),
+        ),
+      Text: Wrap,
+    },
+    '@expo/ui/swift-ui/modifiers': { pickerStyle: () => ({}), tag: (value: string) => ({ tag: value }) },
+    zustand,
     '@/lib/trainingHours': { fetchTrainingHours },
-    '@/lib/volumeCoaching': volumeCoaching,
-    '@/lib/volumeStatus': volumeStatus,
+    '@/lib/muscleProgress': muscleProgress,
+    '@/lib/muscleVolume': muscleVolume,
+    '@/lib/usualWeekRead': { readUsualWeek },
+    '@/lib/weeklyVolume': weeklyVolume,
     '@/lib/workoutSessions': workoutSessions,
     '@/stores/appStore': { initialAppData, useAppStore: appStore },
-    '@/types': types,
+    '@/stores/authStore': { useAuthStore: create(() => ({ user: { id: 'me' } })) },
     '~/components/BlancText': { BlancText: Text },
     '~/components/Capsule': { Capsule: ({ title, onPress }: { title: string; onPress: () => void }) => createElement('button', { onClick: onPress }, title) },
     '~/components/Disclosure': { Disclosure: Empty },
@@ -196,7 +229,8 @@ async function open() {
     '~/lib/haptics': { haptics: { select: noop } },
     '~/lib/openTrain': { openTrain: () => undefined },
     '~/theme/blanc': { space: { gutter: 20 }, useBlanc: () => palette },
-    '~/theme/useMuscleTones': { useMuscleTones: () => ({}) },
+    '~/lib/today': { useTodayPlan: () => plan },
+    '~/components/Track': { Track: ({ progress, warnOver }: { progress: number; warnOver?: boolean }) => createElement('meter', { 'data-progress': String(progress), 'data-warn': String(warnOver ?? true) }) },
   });
   await act(async () => { root.render(createElement(ProgressScreen)); });
 }
@@ -206,9 +240,12 @@ beforeEach(() => {
   nutrition = [];
   nutritionLoading = false;
   askedFor = [];
-  appStore.setState({ macroTarget: null });
+  askedDays = [];
+  appStore.setState({ macroTarget: null, nutritionProfile: null });
   accountDay.setState({ dayKey: dates.format(new Date(), 'yyyy-MM-dd') });
-  appStore.setState({ weeklyVolume: initialAppData.weeklyVolume });
+  appStore.setState({ weeklyVolume: initialAppData.weeklyVolume, activeSplit: null, workoutMode: 'split' });
+  plan = { weekDone: null, weekTarget: null, upNext: null, schedule: null, scheduleWorkouts: [], adaptiveSchedulingEnabled: true };
+  readUsualWeek.mockReset().mockResolvedValue(null);
   fetchTrainingHours.mockReset().mockResolvedValue(trained());
   // A read that worked writes a new list, even an empty one.
   calculateWeeklyVolume.mockReset().mockImplementation(async () => { appStore.setState({ weeklyVolume: [] }); });
@@ -300,8 +337,7 @@ describe('Progress after a failed read', () => {
   });
 
   it('keeps a week already read when its refresh fails: no failure line over it', async () => {
-    const landmark = { id: 'side', user_id: 'me', muscle_group: 'side_delts' as const, mv: 6, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
-    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 14, landmark, status: 'mav' }] });
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 14 }] });
     calculateWeeklyVolume.mockImplementation(async () => {});
     await open();
     expect(shown()).toContain('Side delts');
@@ -419,6 +455,89 @@ describe("Progress's nutrition window", () => {
   });
 });
 
+describe("Progress's nutrition ranges", () => {
+  /** Days before `today` as the hook gives them, oldest first: calories eaten so many days ago, protein a tenth of it. */
+  const daysBefore = (count: number, eaten: (ago: number) => number, today = accountDay.getState().dayKey): Day[] =>
+    Array.from({ length: count }, (_, index) => count - index).map((ago) => ({
+      date: dates.format(dates.subDays(dates.parseISO(today), ago), 'yyyy-MM-dd'),
+      calories: eaten(ago),
+      protein: eaten(ago) / 10,
+    }));
+  const choose = (range: string) => act(async () => { (host.querySelector(`[data-option="${range}"]`) as HTMLButtonElement).click(); });
+  const spoken = (macro: string) => host.querySelector(`[aria-label="${macro}"]`)?.getAttribute('data-value');
+
+  it('reads the longest range once, ending yesterday, and opens on the week', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    await open();
+    expect(askedFor.at(-1)).toBe('2026-11-13');
+    // Thirteen weeks from a Monday: Aug 17 to Nov 13.
+    expect(askedDays.at(-1)).toBe(89);
+    expect(host.querySelector('[data-picker]')).toBeNull();
+    nutrition = daysBefore(89, () => 2000);
+    act(() => root.unmount());
+    root = createRoot(host);
+    await open();
+    expect(host.querySelector('[data-picker]')?.getAttribute('data-picker')).toBe('week');
+    expect([...host.querySelectorAll('[data-option]')].map((option) => option.textContent)).toEqual(['Week', '2 weeks', 'Month', '3 months']);
+  });
+
+  it('averages two weeks of logged days, leaving out a day with nothing logged', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    nutrition = daysBefore(89, (ago) => (ago === 5 ? 0 : ago <= 14 ? (ago % 2 ? 2600 : 2800) : 1000));
+    await open();
+    await choose('twoWeeks');
+    expect(shown()).toContain('Nutrition Oct 31–Nov 13 · 13 days logged');
+    // 7 days at 2,600 (odd days ago, but not the 5th) and 6 at 2,800, over 13 days.
+    expect(shown()).toContain('Avg 2708 kcal');
+    expect(spoken('Calories')).toContain(`${Math.round((6 * 2600 + 7 * 2800) / 13)} calories, the daily average of the logged days, October 31 to November 13`);
+    // Dated at its two ends, not by weekday.
+    expect(shown()).toContain('Oct 31');
+    expect(shown()).toContain('Nov 13');
+  });
+
+  it('starts a range longer than the logging at the first day logged, and says since when', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    nutrition = daysBefore(89, (ago) => (ago <= 14 ? 2600 : 0));
+    await open();
+    await choose('month');
+    expect(shown()).toContain('Nutrition Since Oct 31');
+    expect(shown()).not.toContain('days logged');
+    expect(shown()).not.toContain('No entry');
+    expect(spoken('Calories')).toContain('2600 calories, the daily average of the logged days, since October 31');
+  });
+
+  it('draws three months as a bar per week, each the average of its logged days', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    // The week of Nov 9 (Mon to Fri) at 2,500 on average; the week of Nov 2 at 2,500 with Thursday unlogged.
+    nutrition = daysBefore(89, (ago) => (ago <= 4 ? (ago % 2 ? 3000 : 2000) : ago <= 12 ? (ago === 9 ? 0 : 2500) : 0));
+    await open();
+    await choose('threeMonths');
+    expect(shown()).toContain('Nutrition Since Nov 2');
+    expect(shown()).toContain('Each bar is a week: the average of its logged days.');
+    const step = (actionName: string) => actions.get(host.querySelector('[aria-label="Calories"]')!)!({ nativeEvent: { actionName } });
+    // VoiceOver's first step reads the latest week.
+    await act(async () => { step('increment'); });
+    expect(spoken('Calories')).toContain('Week of November 9, average 2500 calories');
+    await act(async () => { step('decrement'); });
+    expect(spoken('Calories')).toContain('Week of November 2, average 2500 calories');
+  });
+
+  it('never colours a bulking week past target, as a cutting one is', async () => {
+    accountDay.setState({ dayKey: '2026-11-14' });
+    appStore.setState({ macroTarget: { calories: 2000, protein: 100 } as never, nutritionProfile: { goal: 'bulk' } as never });
+    nutrition = daysBefore(89, (ago) => (ago <= 14 ? 3000 : 0));
+    await open();
+    await choose('threeMonths');
+    expect(host.querySelectorAll('[data-fill="live"]').length).toBe(0);
+    act(() => root.unmount());
+    root = createRoot(host);
+    appStore.setState({ nutritionProfile: { goal: 'cut' } as never });
+    await open();
+    await choose('threeMonths');
+    expect(host.querySelectorAll('[data-fill="live"]').length).toBeGreaterThan(0);
+  });
+});
+
 describe("Progress's chart marks", () => {
   const fills = (token: string) => host.querySelectorAll(`[data-fill="${token}"]`).length;
 
@@ -467,61 +586,81 @@ describe("Progress's chart marks", () => {
   });
 });
 
-describe("Progress's muscle rows", () => {
-  const landmark = { id: 'side', user_id: 'me', muscle_group: 'side_delts' as const, mv: 6, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 };
+describe("Progress's muscles, done of planned", () => {
+  const movement = (id: string, name: string, muscle_group: string, muscle_group_secondary: string | null, target_sets: number) => ({
+    id, split_day_id: 'day', exercise_id: id, target_sets, target_reps_min: 8, target_reps_max: 12, exercise_order: 0, notes: null,
+    exercise: { id, name, muscle_group, muscle_group_secondary, equipment: 'dumbbells', is_compound: true },
+  }) as unknown as SplitDay['exercises'][number];
+  const pushA: SplitDay = { id: 'push-a', split_id: 'ppl', day_name: 'Push A', day_order: 0, exercises: [movement('bench', 'Bench', 'chest', 'triceps', 3)] };
+  const legsA: SplitDay = { id: 'legs-a', split_id: 'ppl', day_name: 'Legs A', day_order: 1, exercises: [movement('squat', 'Squat', 'quads', 'glutes', 4)] };
+  const pushB: SplitDay = { ...pushA, id: 'push-b', day_name: 'Push B', day_order: 2 };
+  const split = { id: 'ppl', user_id: 'me', name: 'PPL', description: null, days_per_week: 3, is_active: true, days: [pushA, legsA, pushB] } as Split;
+  const row = (label: string) => [...host.querySelectorAll<HTMLElement>('[data-press]')].find((element) => element.getAttribute('aria-label')?.startsWith(`${label},`));
 
-  it('says how far over its ceiling a muscle is, as one fragment with no full stop', async () => {
-    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 24, landmark, status: 'above_mrv' }] });
+  beforeEach(() => {
     calculateWeeklyVolume.mockImplementation(async () => {});
-    await open();
-    // 24 sets against a ceiling of 22.
-    expect(shown()).toContain('About 2 sets over its ceiling');
-    expect(shown()).not.toContain('Over its ceiling, pull back');
-    expect(shown()).not.toContain('ceiling.');
+    appStore.setState({ activeSplit: split, weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 3 }, { muscle_group: 'triceps', weekly_sets: 1.5 }] });
+    plan = { ...plan, weekDone: 1, weekTarget: 3, upNext: legsA };
   });
 
-  it('rounds a part set over up to one, as the line below range does, and says when it is right at the ceiling', async () => {
-    calculateWeeklyVolume.mockImplementation(async () => {});
-    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 22.5, landmark, status: 'above_mrv' }] });
+  it('says what is done and what is next', async () => {
     await open();
-    expect(shown()).toContain('About 1 set over its ceiling');
+    expect(shown()).toContain('1 session done. Legs A is next.');
     act(() => root.unmount());
     root = createRoot(host);
-    // The shared rule counts the ceiling itself as over; there is no set to count.
-    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 22, landmark, status: 'above_mrv' }] });
+    plan = { ...plan, weekDone: 3, upNext: pushA };
     await open();
-    expect(shown()).toContain('At its ceiling, pull back a little');
-    expect(shown()).not.toContain('0 sets over');
+    expect(shown()).toContain('All 3 sessions done.');
   });
 
-  it("keys the rails once, above the first muscle's row", async () => {
-    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 24, landmark, status: 'above_mrv' }] });
-    calculateWeeklyVolume.mockImplementation(async () => {});
+  it('shows each muscle as done of planned with a track that never warns', async () => {
     await open();
-    const text = shown();
-    expect(text.split('This week').length - 1).toBe(1);
-    expect(text.indexOf('In range')).toBeGreaterThan(-1);
-    expect(text.indexOf('In range')).toBeLessThan(text.indexOf('Side delts'));
+    // The week is Push A, Legs A, Push B once: chest 6, quads 4, triceps 3, glutes 2.
+    expect(shown()).toContain('3 of 6 planned');
+    expect(shown()).toContain('0 of 4 planned');
+    const meters = [...host.querySelectorAll<HTMLElement>('meter')];
+    expect(meters.map((meter) => meter.dataset.progress)).toContain('0.5');
+    expect(meters.every((meter) => meter.dataset.warn === 'false')).toBe(true);
+    expect(row('Chest')?.getAttribute('aria-label')).toBe('Chest, 3 of 6 planned');
   });
 
-  it("draws the rail's band in mark, the figure's in-range tone, on a fill track", async () => {
-    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 14, landmark, status: 'mav' }] });
-    calculateWeeklyVolume.mockImplementation(async () => {});
-    // Training time left unread, so its weeks' marks don't count here.
-    fetchTrainingHours.mockResolvedValue(null);
+  it('opens a row on the program’s week with its band, and the usual week as a plain figure', async () => {
+    readUsualWeek.mockResolvedValue({ weekStarts: ['2026-11-02', '2026-10-26'], sets: new Map([['chest', 3.5]]) });
     await open();
-    // The key's band and the row's band.
-    expect(host.querySelectorAll('[data-fill="mark"]').length).toBe(2);
-    expect(host.querySelectorAll('[data-fill="fill"]').length).toBe(1);
-    expect(host.querySelectorAll('[data-fill="track"]').length).toBe(0);
+    expect(shown()).not.toContain('a week in the program');
+    await act(async () => { row('Chest')!.click(); });
+    expect(shown()).toContain('6 sets a week in the program, solid');
+    expect(shown()).toContain('About 3.5 sets a week lately');
+    expect(readUsualWeek).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the shared coaching line as it is written', async () => {
-    appStore.setState({ weeklyVolume: [{ muscle_group: 'side_delts', weekly_sets: 5, landmark, status: 'below_mev' }] });
-    calculateWeeklyVolume.mockImplementation(async () => {});
+  it('shows no usual week when its read fails, and no failure either', async () => {
+    readUsualWeek.mockRejectedValue(new Error('offline'));
     await open();
-    expect(shown()).toContain('Add about 3 sets this week');
-    expect(shown()).not.toContain('this week.');
+    await act(async () => { row('Chest')!.click(); });
+    expect(shown()).toContain('6 sets a week in the program, solid');
+    expect(shown()).not.toContain('lately');
+    expect(shown()).not.toContain('couldn’t');
+  });
+
+  it('with no plan, counts what was done', async () => {
+    appStore.setState({ workoutMode: 'flexible' });
+    plan = { ...plan, weekDone: 2, weekTarget: null, upNext: null };
+    await open();
+    expect(shown()).toContain('2 sessions done.');
+    expect(shown()).toContain('3 sets');
+    expect(shown()).not.toContain('planned');
+    expect(host.querySelectorAll('meter').length).toBe(0);
+  });
+
+  it('never grades the week, and draws nothing in red', async () => {
+    plan = { ...plan, weekDone: 0, upNext: pushA };
+    appStore.setState({ weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 12 }] });
+    await open();
+    expect(shown()).toContain('Push A is next.');
+    expect(shown()).toContain('12 of 6 planned');
+    expect(shown()).not.toMatch(/ceiling|range|under|behind|missed|low\b/i);
+    expect(host.querySelectorAll('[data-fill="live"]').length).toBe(0);
   });
 });
 

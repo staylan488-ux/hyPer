@@ -5,7 +5,8 @@ import { Alert } from 'react-native';
 import { create } from 'zustand';
 
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
-import { fetchPreviousMovementNotes, fetchPreviousSetTargets, type PreviousMovementNotes } from '@/lib/previousSetTargets';
+import { fetchPreviousMovementNotes, fetchPreviousTraining, type PreviousMovementNotes } from '@/lib/previousSetTargets';
+import type { MovementHistoryMap } from '@/lib/setTargets';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -81,15 +82,18 @@ export function useWorkoutDayPlan() {
 
 /**
  * Last time's weight, reps and RPE per exercise and set number for the live
- * workout. Kept in a store so Train, the movement sheet and Finish (on Today
+ * workout, and each movement's recent sessions (for set targets), from one
+ * read. Kept in a store so Train, the movement sheet and Finish (on Today
  * too) read the same lookup.
  */
-export const usePreviousTargetsStore = create<{ workoutId: string | null; targets: PreviousWorkoutSetMap }>(() => ({
+export const usePreviousTargetsStore = create<{ workoutId: string | null; targets: PreviousWorkoutSetMap; history: MovementHistoryMap }>(() => ({
   workoutId: null,
   targets: {},
+  history: {},
 }));
 
 const NO_TARGETS: PreviousWorkoutSetMap = {};
+const NO_HISTORY: MovementHistoryMap = {};
 
 /**
  * Mounted once (tab layout): looks up last time's numbers while a workout is
@@ -107,9 +111,9 @@ export function usePreviousTargetsLookup(session: SessionModel | null) {
   useEffect(() => {
     if (!userId || !workoutId || !date || !exerciseKey) return;
     let cancelled = false;
-    void fetchPreviousSetTargets({ userId, workoutId, date, exerciseIds: exerciseKey.split(',') }).then((result) => {
+    void fetchPreviousTraining({ userId, workoutId, date, exerciseIds: exerciseKey.split(',') }).then((result) => {
       if (cancelled) return;
-      if (result) usePreviousTargetsStore.setState({ workoutId, targets: result });
+      if (result) usePreviousTargetsStore.setState({ workoutId, targets: result.targets, history: result.history });
       setFailed(!result);
     });
     return () => {
@@ -127,6 +131,17 @@ export function usePreviousTargets(workoutId: string | null): PreviousWorkoutSet
 export function previousTargetsFor(workoutId: string): PreviousWorkoutSetMap {
   const state = usePreviousTargetsStore.getState();
   return state.workoutId === workoutId ? state.targets : NO_TARGETS;
+}
+
+/** Each movement's recent sessions for this workout, for set targets ({} until the lookup lands). */
+export function usePreviousHistory(workoutId: string | null): MovementHistoryMap {
+  return usePreviousTargetsStore((state) => (workoutId && state.workoutId === workoutId ? state.history : NO_HISTORY));
+}
+
+/** The same, outside a component (Finish). */
+export function previousHistoryFor(workoutId: string): MovementHistoryMap {
+  const state = usePreviousTargetsStore.getState();
+  return state.workoutId === workoutId ? state.history : NO_HISTORY;
 }
 
 /**

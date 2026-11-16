@@ -58,8 +58,7 @@ const bodies = (): Record<string, unknown> => ({
   templates: { templates: [{ id: 'q1', user_id: USER, label: 'Arms', items: [] }] },
   volume: {
     weekStart: '2026-11-02',
-    weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 8, status: 'mav' }],
-    volumeLandmarks: [{ id: 'l1', user_id: USER, muscle_group: 'chest', mv: 4, mev: 6, mav_low: 8, mav_high: 14, mrv: 20 }],
+    weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 8 }],
   },
   target: { value: target },
   profile: { value: { user_id: USER, goal: 'lean_bulk' } },
@@ -67,7 +66,7 @@ const bodies = (): Record<string, unknown> => ({
   month: { month: '2026-11', dayKey: DAY, logs: [log('a', DAY, 500, 30), log('b', DAY, 360, 22)], groups: [] },
   training: { workout: null, today: seed },
 });
-const stamp = (part: string, userId = USER) => ({ v: 1, part, userId, backend: BACKEND, build: BUILD, savedAt: NOW.getTime() - 3_600_000 });
+const stamp = (part: string, userId = USER) => ({ v: 2, part, userId, backend: BACKEND, build: BUILD, savedAt: NOW.getTime() - 3_600_000 });
 
 function spyStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -478,30 +477,29 @@ describe('saving only what this launch read', () => {
     install(modules, storage);
     await signIn(modules);
     vi.setSystemTime(new Date(2026, 10, 9, 0, 0, 30));
-    modules.app.setState({ weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 8, status: 'mav' }] });
+    modules.app.setState({ weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 8 }] });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(saved(storage, 'volume')).toBeNull();
 
     vi.setSystemTime(new Date(2026, 10, 9, 0, 5));
-    modules.app.setState({ weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 2, status: 'below_mev' }] });
+    modules.app.setState({ weeklyVolume: [{ muscle_group: 'chest', weekly_sets: 2 }] });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(saved(storage, 'volume')?.body).toMatchObject({ weekStart: '2026-11-09', weeklyVolume: [{ weekly_sets: 2 }] });
   });
 
-  it('saves volume when only the landmarks changed, never the copy alone', async () => {
+  it('saves volume once a read brings a new week, never the copy alone', async () => {
     const modules = await load();
     const storage = savedCopy();
     install(modules, storage);
     await signIn(modules);
-    const restored = modules.app.getState().weeklyVolume;
     modules.app.setState({ hydratedForUserId: USER });
     await vi.advanceTimersByTimeAsync(1_000);
     expect(writesOf(storage, 'volume')).toBe(0);
 
-    const landmarks = [{ id: 'l1', user_id: USER, muscle_group: 'chest' as const, mv: 4, mev: 6, mav_low: 9, mav_high: 15, mrv: 22 }];
-    modules.app.setState({ volumeLandmarks: landmarks });
+    const read = [{ muscle_group: 'chest' as const, weekly_sets: 9 }];
+    modules.app.setState({ weeklyVolume: read });
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(saved(storage, 'volume')?.body).toEqual({ weekStart: '2026-11-02', weeklyVolume: restored, volumeLandmarks: landmarks });
+    expect(saved(storage, 'volume')?.body).toEqual({ weekStart: '2026-11-02', weeklyVolume: read });
   });
 
   it('never saves the month while Fuel shows the copy', async () => {

@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeWeeklyVolume, DEFAULT_VOLUME_LANDMARKS, trainingWeekRange, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
-import type { MuscleGroup, VolumeLandmark } from '@/types';
-
-function landmark(muscle_group: MuscleGroup): VolumeLandmark {
-  return { id: `lm-${muscle_group}`, user_id: 'user-1', muscle_group, mv: 4, mev: 6, mav_low: 10, mav_high: 16, mrv: 20 };
-}
+import { computeWeeklyVolume, trainingWeekRange, volumeSets, type WeeklyVolumeWorkoutRow } from '@/lib/weeklyVolume';
+import type { MuscleGroup } from '@/types';
 
 function sets(
   count: number,
@@ -17,66 +13,26 @@ function sets(
 }
 
 describe('computeWeeklyVolume', () => {
-  it('grades every status band with the existing thresholds', () => {
-    const workouts: WeeklyVolumeWorkoutRow[] = [
-      {
-        sets: [
-          ...sets(5, 'chest'),
-          ...sets(6, 'back'),
-          ...sets(16, 'quads'),
-          ...sets(19, 'hamstrings'),
-          ...sets(20, 'glutes'),
-        ],
-      },
-    ];
-    const landmarks = (['chest', 'back', 'quads', 'hamstrings', 'glutes'] as MuscleGroup[]).map(landmark);
-
-    expect(computeWeeklyVolume(workouts, landmarks).map(({ muscle_group, status }) => [muscle_group, status])).toEqual([
-      ['chest', 'below_mev'],
-      ['back', 'mev_mav'],
-      ['quads', 'mav'],
-      ['hamstrings', 'approaching_mrv'],
-      ['glutes', 'above_mrv'],
-    ]);
-  });
-
   it('counts a half set for the secondary muscle and skips incomplete sets', () => {
     const workouts: WeeklyVolumeWorkoutRow[] = [
       { sets: [...sets(3, 'chest', 'triceps'), ...sets(2, 'chest', 'triceps', false)] },
       { sets: [{ completed: true, exercise: null }, ...sets(1, 'triceps')] },
     ];
-
-    expect(computeWeeklyVolume(workouts, [landmark('chest')])).toEqual([
-      { muscle_group: 'chest', weekly_sets: 3, landmark: landmark('chest'), status: 'below_mev' },
-      { muscle_group: 'triceps', weekly_sets: 2.5, landmark: expect.objectContaining({ muscle_group: 'triceps', mev: 6 }), status: 'below_mev' },
+    expect(computeWeeklyVolume(workouts)).toEqual([
+      { muscle_group: 'chest', weekly_sets: 3 },
+      { muscle_group: 'triceps', weekly_sets: 2.5 },
     ]);
   });
 
-  // A new account has no landmark rows (only the schema's one-time seed made
-  // them), so every muscle used to read "Under-stimulated · Add ~1 set".
-  it('grades a muscle with no landmark row against the schema seed’s defaults', () => {
-    const [biceps] = computeWeeklyVolume([{ sets: sets(30, 'biceps') }], []);
-    expect(biceps).toMatchObject({
-      muscle_group: 'biceps', weekly_sets: 30, status: 'above_mrv',
-      landmark: { muscle_group: 'biceps', mv: 0, mev: 6, mav_low: 10, mav_high: 14, mrv: 20 },
-    });
-    const [quads] = computeWeeklyVolume([{ sets: sets(10, 'quads') }], []);
-    expect(quads).toMatchObject({ status: 'mav' });
-  });
-
-  it('keeps the account’s own landmark over the default', () => {
-    const [chest] = computeWeeklyVolume([{ sets: sets(9, 'chest') }], [landmark('chest')]);
-    expect(chest).toMatchObject({ status: 'mev_mav', landmark: landmark('chest') });
-  });
-
-  it('leaves a muscle with no landmark anywhere ungraded', () => {
-    const [traps] = computeWeeklyVolume([{ sets: sets(4, 'traps') }], []);
-    expect(traps).toEqual({ muscle_group: 'traps', weekly_sets: 4, landmark: undefined, status: null });
-  });
-
-  it('has the schema seed’s defaults for every muscle but traps', () => {
-    expect(Object.keys(DEFAULT_VOLUME_LANDMARKS).sort()).toEqual([
-      'back', 'biceps', 'calves', 'chest', 'core', 'front_delts', 'glutes', 'hamstrings', 'quads', 'rear_delts', 'shoulders', 'side_delts', 'triceps',
+  it('counts shoulders as front delts, and names the live library’s other values as the app does', () => {
+    const workouts: WeeklyVolumeWorkoutRow[] = [
+      { sets: [...sets(3, 'shoulders', 'triceps'), ...sets(2, 'front_delts'), ...sets(2, 'abs' as MuscleGroup), ...sets(1, 'forearms' as MuscleGroup)] },
+    ];
+    expect(computeWeeklyVolume(workouts)).toEqual([
+      { muscle_group: 'front_delts', weekly_sets: 5 },
+      { muscle_group: 'triceps', weekly_sets: 1.5 },
+      { muscle_group: 'core', weekly_sets: 2 },
+      { muscle_group: 'forearms', weekly_sets: 1 },
     ]);
   });
 
@@ -85,7 +41,11 @@ describe('computeWeeklyVolume', () => {
       { sets: [...sets(1, 'back', 'biceps'), ...sets(1, 'chest')] },
       { sets: sets(4, 'biceps') },
     ];
-    expect(computeWeeklyVolume(workouts, []).map((entry) => entry.muscle_group)).toEqual(['back', 'biceps', 'chest']);
+    expect(computeWeeklyVolume(workouts).map((entry) => entry.muscle_group)).toEqual(['back', 'biceps', 'chest']);
+  });
+
+  it('reads back as counts per muscle', () => {
+    expect([...volumeSets([{ muscle_group: 'chest', weekly_sets: 3 }, { muscle_group: 'back', weekly_sets: 2.5 }])]).toEqual([['chest', 3], ['back', 2.5]]);
   });
 });
 

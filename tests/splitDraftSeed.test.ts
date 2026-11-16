@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blankSplitDraft, templateSplitDraft } from '@/lib/splitDraftSeed';
-import { splitTemplates } from '@/lib/splitTemplates';
-import { buildGuidedTemplate, recommendProgramTemplate } from '@/lib/programDesigner';
+import { designProgram } from '@/lib/programDesigner';
 import type { Exercise, SplitTemplate } from '@/types';
 
 const exercise = (id: string, name: string): Exercise => ({
@@ -23,12 +22,12 @@ describe('seeding the editor', () => {
     const template: SplitTemplate = {
       name: 'Upper Lower', description: 'Two days', days_per_week: 2,
       days: [
-        { day_name: 'Upper', muscle_groups: ['chest'], exercises: [
+        { day_name: 'Upper', exercises: [
           { name: 'Bench Press', sets: 4, reps_min: 6, reps_max: 8 },
           { name: 'Cable Fly (High-to-Low)', sets: 2, reps_min: 12, reps_max: 15 },
           { name: 'Not In Library', sets: 3, reps_min: 8, reps_max: 12 },
         ] },
-        { day_name: 'Lower', muscle_groups: ['quads'], exercises: [{ name: 'Not In Library', sets: 3, reps_min: 8, reps_max: 12 }] },
+        { day_name: 'Lower', exercises: [{ name: 'Not In Library', sets: 3, reps_min: 8, reps_max: 12 }] },
       ],
     };
     const { draft, missing } = templateSplitDraft(template, [
@@ -45,7 +44,7 @@ describe('seeding the editor', () => {
 
   it('seeds a guided recommendation the same way', () => {
     const answers = { daysPerWeek: 4, focus: 'no_focus', equipment: 'full_gym', sessionLength: 'moderate', experience: 'intermediate' } as const;
-    const guided = buildGuidedTemplate(recommendProgramTemplate(splitTemplates, answers), answers);
+    const guided = designProgram(answers);
     const names = guided.days.flatMap((day) => day.exercises.map((ex) => ex.name));
     const library = names.map((name, index) => exercise(`ex-${index}`, name));
     const { draft, missing } = templateSplitDraft(guided, library);

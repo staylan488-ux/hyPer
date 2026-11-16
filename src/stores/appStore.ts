@@ -29,10 +29,21 @@ import {
   type NutritionProfileInput,
 } from '@/lib/nutritionProfile';
 import {
-  WINDOW_DAYS,
+  WIDE_WINDOW_DAYS,
   estimateExpenditure,
   shouldRefreshExpenditure,
+  type ExpenditureEstimate,
 } from '@/lib/adaptiveExpenditure';
+import {
+  markTargetChangeUndone,
+  newMacros,
+  oldMacros,
+  readLatestTargetChange,
+  recordTargetChange,
+  sameMacros,
+  type BurnProgress,
+  type MacroTargetChange,
+} from '@/lib/targetChanges';
 import { getDailyIntake } from '@/lib/nutritionIntake';
 import { getBodyWeightHistorySince, getLatestBodyWeight } from '@/lib/healthWeights';
 import { calculateMacroTargets } from '@/lib/nutritionCalculator';
@@ -49,7 +60,7 @@ import { getExerciseLibrary } from '@/lib/exerciseLibrary';
 export type AdaptiveRefreshStatus = 'updated' | 'unchanged' | 'skipped' | 'failed';
 
 /** Pull a little more than the estimator's window so its filter has slack. */
-const ADAPTIVE_LOOKBACK_DAYS = WINDOW_DAYS + 7;
+const ADAPTIVE_LOOKBACK_DAYS = WIDE_WINDOW_DAYS + 7;
 
 /**
  * The profile fields a refresh computes from. If any change while it runs,
@@ -89,6 +100,46 @@ function sameMacroTarget(a: MacroTarget | null, b: MacroTarget | null): boolean 
  */
 function sameData(stored: unknown, fresh: unknown): boolean {
   return stored === fresh || JSON.stringify(stored) === JSON.stringify(fresh);
+}
+
+/**
+ * The burn estimate from the account's own logs and weigh-ins, exactly as a
+ * refresh computes it, with the weight and the predicted targets it used.
+ * Null when there is no usable weigh-in yet.
+ */
+async function estimateFromLogs(userId: string, profile: NutritionProfile, now: Date, isCurrent: () => boolean): Promise<{
+  estimate: ExpenditureEstimate;
+  weightKg: number;
+  predictedTdee: number;
+} | null> {
+  const latest = await getLatestBodyWeight(userId);
+  if (!latest || !isCurrent()) return null;
+  const weightKg = Number(latest.kilograms);
+  if (!Number.isFinite(weightKg) || weightKg <= 0) return null;
+
+  const since = localIsoDate(
+    new Date(now.getTime() - ADAPTIVE_LOOKBACK_DAYS * 24 * 60 * 60 * 1_000)
+  );
+  const [weightSamples, dailyIntake] = await Promise.all([
+    getBodyWeightHistorySince(userId, ADAPTIVE_LOOKBACK_DAYS, now),
+    getDailyIntake(userId, since),
+  ]);
+
+  // Seed the estimator with the PREDICTED figure, so a learned value can
+  // never bootstrap itself off its own previous output.
+  const predicted = calculateMacroTargets(macroInputFromProfile(profile, weightKg, null, now));
+
+  const estimate = estimateExpenditure({
+    predictedTdee: predicted.tdee,
+    bmr: predicted.bmr,
+    weightSamples,
+    dailyIntake,
+    phaseStartedOn: profile.phase_started_on,
+    previousExpenditureKcal: profile.expenditure_kcal,
+    previousConfidence: profile.expenditure_confidence,
+    through: now,
+  });
+  return { estimate, weightKg, predictedTdee: predicted.tdee };
 }
 
 /**
@@ -137,7 +188,6 @@ import type {
   Workout,
   WorkoutSet,
   MacroTarget,
-  VolumeLandmark,
   MuscleVolume,
   WorkoutMode,
   WorkoutDayPlan,
@@ -358,8 +408,9 @@ interface AppState {
   currentWorkoutDayPlan: WorkoutDayPlan | null;
   flexTemplates: FlexDayTemplate[];
   macroTarget: MacroTarget | null;
+  /** The latest calorie target change the adaptive loop recorded, or null (none, or no table yet). */
+  targetChange: MacroTargetChange | null;
   nutritionProfile: NutritionProfile | null;
-  volumeLandmarks: VolumeLandmark[];
   weeklyVolume: MuscleVolume[];
   /** The account whose splits, live workout and workout mode have each loaded
    * into this store at least once, so a screen can show them while it reads
@@ -443,11 +494,22 @@ interface AppState {
   setWorkoutMode: (mode: WorkoutMode) => Promise<{ ok: boolean; reason?: string }>;
   fetchCurrentWorkoutDayPlan: (workoutId?: string) => Promise<void>;
   setFlexibleWorkoutLabel: (label: string) => Promise<void>;
-  addFlexibleExercise: (exercise: Exercise) => Promise<void>;
+  /**
+   * Adds a movement with three sets to the live workout, flexible or planned;
+   * a planned session's program is untouched.
+   */
+  addSessionExercise: (exercise: Exercise) => Promise<void>;
   addFlexibleSuperset: (baseExerciseId: string, partner: Exercise) => Promise<void>;
   clearFlexibleSuperset: (exerciseId: string) => Promise<void>;
   updateFlexibleExerciseMeta: (exerciseId: string, updates: Partial<FlexiblePlanItem>) => Promise<void>;
-  removeFlexibleExerciseFromPlan: (exerciseId: string) => Promise<void>;
+  /** Takes a movement out of the live workout (its logged sets stay); the program is untouched. */
+  removeSessionExercise: (exerciseId: string) => Promise<void>;
+  /**
+   * Adds an exercise to the end of a program day (3 × 8–12, as a movement
+   * added in a workout starts), unless the day already has it; throws when
+   * it doesn't save. The programs are read again after.
+   */
+  addExerciseToProgramDay: (splitDayId: string, exerciseId: string) => Promise<void>;
   /** force: read again even if a read is running; pass it after a write. */
   fetchFlexTemplates: (options?: { force?: boolean }) => Promise<void>;
   startFlexibleWorkoutFromTemplate: (label: string) => Promise<Workout | null>;
@@ -468,6 +530,16 @@ interface AppState {
    * Never rejects; the status says what happened.
    */
   refreshAdaptiveTargets: (options?: { force?: boolean }) => Promise<AdaptiveRefreshStatus>;
+  /** Reads the latest recorded target change. A failed read keeps what is shown, silently. */
+  fetchTargetChange: () => Promise<void>;
+  /**
+   * Puts the target from before a change back, until the next weekly update.
+   * False when the target has moved on since (typed by hand, or a newer one).
+   * Throws when the save fails.
+   */
+  undoTargetChange: (change: MacroTargetChange) => Promise<boolean>;
+  /** How far the burn is from being learned, from the same counts a refresh makes. Null when it can't tell. */
+  readBurnProgress: () => Promise<BurnProgress | null>;
 
   // Volume
   calculateWeeklyVolume: () => Promise<void>;
@@ -661,8 +733,8 @@ export const initialAppData = {
   currentWorkoutDayPlan: null,
   flexTemplates: [],
   macroTarget: null,
+  targetChange: null,
   nutritionProfile: null,
-  volumeLandmarks: [],
   weeklyVolume: [],
   whoopConnection: null,
   hydratedForUserId: null,
@@ -682,6 +754,24 @@ function markHydrated(userId: string, part: HydrationPart) {
   if (hydration.loaded.size === 3 && useAppStore.getState().hydratedForUserId !== userId) {
     useAppStore.setState({ hydratedForUserId: userId });
   }
+}
+
+/**
+ * The live workout with its own session plan, which adding or removing a
+ * movement edits. A planned session gets one from its program day the first
+ * time it needs it, as a swap does; a flexible session always has one. Both
+ * are null when there is no open workout or no plan for it.
+ */
+async function liveSessionPlan(get: () => AppState): Promise<{ currentWorkout: Workout | null; currentWorkoutDayPlan: WorkoutDayPlan | null }> {
+  const none = { currentWorkout: null, currentWorkoutDayPlan: null };
+  const { currentWorkout, currentWorkoutDayPlan } = get();
+  if (!currentWorkout || currentWorkout.completed) return none;
+  if (currentWorkoutDayPlan?.workout_id === currentWorkout.id) return { currentWorkout, currentWorkoutDayPlan };
+  if (currentWorkout.split_day_id === null) return none;
+  const plan = await get().ensureWorkoutDayPlan(currentWorkout.id);
+  const latest = get().currentWorkout;
+  if (!plan || latest?.id !== currentWorkout.id || latest.completed) return none;
+  return { currentWorkout: latest, currentWorkoutDayPlan: plan };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -1497,10 +1587,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   }),
 
-  addFlexibleExercise: writesWorkout(async (exercise) => {
+  addSessionExercise: writesWorkout(async (exercise) => {
     const isCurrentAccount = captureAccountScope();
-    const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+    const { currentWorkout, currentWorkoutDayPlan } = await liveSessionPlan(get);
+    if (!currentWorkout || !currentWorkoutDayPlan) return;
 
     const existing = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exercise.id);
 
@@ -1538,7 +1628,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .single();
 
     if (planError || !updatedPlan) {
-      if (planError) console.error('Error adding flexible exercise:', planError);
+      if (planError) console.error('Error adding a movement to the workout:', planError);
       throw new Error('Could not add the exercise. Try again.');
     }
 
@@ -1552,7 +1642,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
 
       if (setsError) {
-        console.error('Error creating flexible exercise sets:', setsError);
+        console.error('Error creating the added movement\'s sets:', setsError);
         throw new Error('Could not add the exercise sets. Try again.');
       } else {
         // Merge instead of refetching so a set logged meanwhile stays logged.
@@ -1791,10 +1881,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   }),
 
-  removeFlexibleExerciseFromPlan: writesWorkout(async (exerciseId) => {
+  addExerciseToProgramDay: async (splitDayId, exerciseId) => {
+    const failed = 'Could not add it to your program. Try again.';
+    const { data: rows, error: readError } = await supabase
+      .from('split_exercises')
+      .select('exercise_id, exercise_order')
+      .eq('split_day_id', splitDayId);
+    if (readError || !rows) throw new Error(failed);
+    if (!rows.some((row) => row.exercise_id === exerciseId)) {
+      const lastOrder = rows.reduce((highest, row) => Math.max(highest, Number(row.exercise_order) || 0), -1);
+      const { error } = await supabase.from('split_exercises').insert({
+        split_day_id: splitDayId,
+        exercise_id: exerciseId,
+        target_sets: 3,
+        target_reps_min: 8,
+        target_reps_max: 12,
+        exercise_order: lastOrder + 1,
+        notes: null,
+        superset_group_id: null,
+      });
+      if (error) throw new Error(failed);
+    }
+    await get().fetchSplits({ force: true });
+  },
+
+  removeSessionExercise: writesWorkout(async (exerciseId) => {
     const isCurrentAccount = captureAccountScope();
-    const { currentWorkout, currentWorkoutDayPlan } = get();
-    if (!currentWorkout || currentWorkout.split_day_id !== null || !currentWorkoutDayPlan) return;
+    const { currentWorkout, currentWorkoutDayPlan } = await liveSessionPlan(get);
+    if (!currentWorkout || !currentWorkoutDayPlan) return;
 
     const removing = currentWorkoutDayPlan.items.find((item) => item.exercise_id === exerciseId);
     const removingGroupId = removing?.superset_group_id || null;
@@ -1819,7 +1933,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .single();
 
     if (planError || !updatedPlan) {
-      if (planError) console.error('Error removing flexible exercise from plan:', planError);
+      if (planError) console.error('Error removing a movement from the workout:', planError);
       throw new Error('Could not remove the exercise. Try again.');
     }
 
@@ -3701,34 +3815,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         const targetAtStart = get().macroTarget;
         if (targetAtStart && targetAtStart.user_id !== userId) return 'skipped';
 
-        const latest = await getLatestBodyWeight(userId);
-        if (!latest || !isAccountCurrent()) return 'skipped';
-        const weightKg = Number(latest.kilograms);
-        if (!Number.isFinite(weightKg) || weightKg <= 0) return 'skipped';
-
         const now = new Date();
-        const since = localIsoDate(
-          new Date(now.getTime() - ADAPTIVE_LOOKBACK_DAYS * 24 * 60 * 60 * 1_000)
-        );
-        const [weightSamples, dailyIntake] = await Promise.all([
-          getBodyWeightHistorySince(userId, ADAPTIVE_LOOKBACK_DAYS, now),
-          getDailyIntake(userId, since),
-        ]);
-
-        // Seed the estimator with the PREDICTED figure, so a learned value can
-        // never bootstrap itself off its own previous output.
-        const predicted = calculateMacroTargets(macroInputFromProfile(profile, weightKg, null, now));
-
-        const estimate = estimateExpenditure({
-          predictedTdee: predicted.tdee,
-          bmr: predicted.bmr,
-          weightSamples,
-          dailyIntake,
-          phaseStartedOn: profile.phase_started_on,
-          previousExpenditureKcal: profile.expenditure_kcal,
-          previousConfidence: profile.expenditure_confidence,
-          through: now,
-        });
+        const learned = await estimateFromLogs(userId, profile, now, isAccountCurrent);
+        if (!learned || !isAccountCurrent()) return 'skipped';
+        const { estimate, weightKg, predictedTdee } = learned;
 
         // The user changed their goal or saved a target while this ran: the
         // result is for inputs they replaced. Write nothing; the unchanged
@@ -3759,6 +3849,44 @@ export const useAppStore = create<AppState>((set, get) => ({
             set({ macroTarget: savedTarget });
           }
           retargeted = !!savedTarget;
+
+          // Keep a record of the change, so the app can say what moved and
+          // why. Only a real change from an earlier target is recorded. A
+          // backend without the table refuses the write: the refresh goes on
+          // exactly as before, and nothing is shown.
+          if (savedTarget && targetAtStart && !sameMacros(targetAtStart, savedTarget)) {
+            try {
+              const recorded = await recordTargetChange({
+                user_id: userId,
+                changed_at: now.toISOString(),
+                old_calories: targetAtStart.calories,
+                old_protein: targetAtStart.protein,
+                old_carbs: targetAtStart.carbs,
+                old_fat: targetAtStart.fat,
+                new_calories: savedTarget.calories,
+                new_protein: savedTarget.protein,
+                new_carbs: savedTarget.carbs,
+                new_fat: savedTarget.fat,
+                expenditure_kcal: estimate.expenditureKcal,
+                expenditure_confidence: estimate.confidence === 'measured' ? 'measured' : 'learning',
+                // What the old target was built on: the burn learned before, else the profile's estimate.
+                old_expenditure_kcal: Math.round(
+                  profile.expenditure_kcal != null
+                    && (profile.expenditure_confidence === 'learning' || profile.expenditure_confidence === 'measured')
+                    ? profile.expenditure_kcal
+                    : predictedTdee
+                ),
+                kg_per_week: estimate.kgPerWeek == null ? null : Math.round(estimate.kgPerWeek * 1000) / 1000,
+                goal_kg_per_week: Math.round(next.requestedRatePctPerWeek * weightKg * 10) / 1000,
+                mean_intake_kcal: estimate.meanIntakeKcal == null ? null : Math.round(estimate.meanIntakeKcal),
+                logged_days: estimate.loggedDayCount,
+                weigh_in_days: estimate.weighInDayCount,
+              });
+              if (isAccountCurrent()) set({ targetChange: recorded });
+            } catch {
+              // No table yet, or offline: the change simply goes unrecorded.
+            }
+          }
         }
 
         if (!isAccountCurrent() || !sameAdaptiveInputs(get().nutritionProfile, profile)) return retargeted ? 'updated' : 'skipped';
@@ -3792,6 +3920,77 @@ export const useAppStore = create<AppState>((set, get) => ({
     return run;
   },
 
+  fetchTargetChange: async () => {
+    const isAccountCurrent = captureAccountScope();
+    const userId = await getSessionUserId();
+    if (!userId || !isAccountCurrent()) return;
+    try {
+      const change = await readLatestTargetChange(userId);
+      if (isAccountCurrent() && !sameData(get().targetChange, change)) set({ targetChange: change });
+    } catch {
+      // No table on this backend yet, or offline: show nothing new, say nothing.
+    }
+  },
+
+  undoTargetChange: async (change) => {
+    const isAccountCurrent = captureAccountScope();
+    const userId = await getSessionUserId();
+    if (!userId) throw new Error('You are signed out. Sign in and try again.');
+    if (!isAccountCurrent() || change.user_id !== userId) return false;
+
+    // Back to the old figures, still adaptive so next Monday's update can move
+    // them again. Only while the target is still the adaptive one this change
+    // set: a target typed by hand (or any other kind), or a newer one, is
+    // never overwritten.
+    const next = newMacros(change);
+    const { data, error } = await supabase
+      .from('macro_targets')
+      .update({ ...oldMacros(change), source: 'adaptive', updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('source', 'adaptive')
+      .eq('calories', next.calories)
+      .eq('protein', next.protein)
+      .eq('carbs', next.carbs)
+      .eq('fat', next.fat)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    if (!isAccountCurrent()) return false;
+    if (!data) {
+      // The target moved on: read it again so the screen stops offering Undo.
+      void get().fetchMacroTarget();
+      return false;
+    }
+    macroTargetSaves.saved();
+    set({ macroTarget: data, macroTargetLoadedForUserId: userId });
+
+    // The old target is back whatever happens here. If this mark is lost, the
+    // line simply stops showing, since the target no longer matches the change.
+    const undoneAt = new Date().toISOString();
+    try {
+      const undone = await markTargetChangeUndone(change, undoneAt);
+      if (isAccountCurrent()) set({ targetChange: undone });
+    } catch {
+      if (isAccountCurrent() && get().targetChange?.id === change.id) set({ targetChange: { ...change, undone_at: undoneAt } });
+    }
+    return true;
+  },
+
+  readBurnProgress: async () => {
+    const isAccountCurrent = captureAccountScope();
+    const profile = get().nutritionProfile;
+    if (!profile) return null;
+    try {
+      const userId = await getSessionUserId();
+      if (!userId || !isAccountCurrent() || profile.user_id !== userId) return null;
+      const learned = await estimateFromLogs(userId, profile, new Date(), isAccountCurrent);
+      if (!learned || !isAccountCurrent()) return null;
+      return { loggedDays: learned.estimate.loggedDayCount, weighInDays: learned.estimate.weighInDayCount };
+    } catch {
+      return null;
+    }
+  },
+
   // An earlier read (started before an edit) that answers late would show the
   // volume from before it, so only the latest read sets it.
   calculateWeeklyVolume: latestWins(async (isLatest) => {
@@ -3802,46 +4001,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { weekStart, weekEnd } = trainingWeekRange(new Date());
 
     // Get all completed sets from this week, regardless of whether
-    // the parent workout was explicitly marked complete. Landmarks load
-    // alongside so statuses are never graded against a missing or stale list.
-    const [{ data: workouts }, { data: freshLandmarks }] = await Promise.all([
-      supabase
-        .from('workouts')
-        .select(`
-          *,
-          sets!inner (
-            exercise_id,
-            completed,
-            exercise:exercises (muscle_group, muscle_group_secondary)
-          )
-        `)
-        .eq('user_id', userId)
-        .eq('sets.completed', true)
-        .gte('date', weekStart)
-        .lte('date', weekEnd),
-      Promise.resolve(
-        supabase
-          .from('volume_landmarks')
-          .select('*')
-          .eq('user_id', userId)
-      ).catch(() => ({ data: null })),
-    ]);
+    // the parent workout was explicitly marked complete.
+    const { data: workouts } = await supabase
+      .from('workouts')
+      .select(`
+        *,
+        sets!inner (
+          exercise_id,
+          completed,
+          exercise:exercises (muscle_group, muscle_group_secondary)
+        )
+      `)
+      .eq('user_id', userId)
+      .eq('sets.completed', true)
+      .gte('date', weekStart)
+      .lte('date', weekEnd);
 
     if (!workouts || !isAccountCurrent() || !isLatest()) return;
 
-    // If the landmarks query failed, keep grading against the stored list.
-    const volumeLandmarks: VolumeLandmark[] = freshLandmarks ?? get().volumeLandmarks;
-    const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[], volumeLandmarks);
+    const weeklyVolume = computeWeeklyVolume(workouts as WeeklyVolumeWorkoutRow[]);
 
-    const stored = get();
-    const changed: Partial<Pick<AppState, 'volumeLandmarks' | 'weeklyVolume'>> = {};
-    if (!sameData(stored.volumeLandmarks, volumeLandmarks)) changed.volumeLandmarks = volumeLandmarks;
     // The first read always lands, even an empty week: Progress tells "not read
     // yet" from "nothing trained" by the initial list.
+    const stored = get();
     if (stored.weeklyVolume === initialAppData.weeklyVolume || !sameData(stored.weeklyVolume, weeklyVolume)) {
-      changed.weeklyVolume = weeklyVolume;
+      set({ weeklyVolume });
     }
-    if (changed.volumeLandmarks || changed.weeklyVolume) set(changed);
   }),
 }));
 

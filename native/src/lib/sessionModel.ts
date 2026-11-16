@@ -50,6 +50,11 @@ export type Movement = {
    * logged sets kept and counted. It reads as ended early, not skipped.
    */
   endedEarly: boolean;
+  /**
+   * Added to a planned session during it: not on the program day and not a
+   * swap. It can be taken out again, as any movement of a flexible session can.
+   */
+  added: boolean;
 };
 
 export type SessionModel = {
@@ -157,9 +162,11 @@ export function buildSessionModel(
   const substitutions = sessionSubstitutions(items);
   const ranges = sessionSetRanges(planned);
   const notes = parseWorkoutNotes(workout.notes).movementNotes;
-  // A movement taken out of a flexible session keeps its logged sets in the
-  // totals but leaves the list.
-  const removed = new Set(flexible ? planned.filter((exercise) => exercise.hidden).map((exercise) => exercise.exercise_id) : []);
+  // A movement taken out of the session keeps its logged sets in the totals
+  // but leaves the list.
+  const removed = new Set(planned.filter((exercise) => exercise.hidden).map((exercise) => exercise.exercise_id));
+  // A planned session's movements that are on its program day.
+  const dayIds = day ? new Set(day.exercises?.map((exercise) => exercise.exercise_id)) : null;
   // Skipped for this workout, as saved in the plan or still saving.
   const markedSkipped = (exerciseId: string) => skips[exerciseId] ?? plans.get(exerciseId)?.skipped === true;
 
@@ -204,6 +211,7 @@ export function buildSessionModel(
         : null,
       skipped: skipped.has(exerciseId),
       endedEarly: skipped.has(exerciseId) && sets.some((set) => set.completed),
+      added: !flexible && dayIds !== null && !dayIds.has(exerciseId) && !substitutions.has(exerciseId),
     };
   });
 

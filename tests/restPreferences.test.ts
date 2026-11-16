@@ -18,7 +18,9 @@ const supabaseMock = vi.hoisted(() => {
 vi.mock('@/lib/supabase', () => ({ supabase: supabaseMock }));
 
 import {
+  COMPOUND_REST_SECONDS,
   DEFAULT_REST_SECONDS,
+  defaultRestSeconds,
   getLastUsedRestSeconds,
   loadRestPreferences,
   loadRestPreferencesAsync,
@@ -76,6 +78,44 @@ describe('restPreferences', () => {
 
     it('honours an explicit fallback argument', () => {
       expect(resolveRestSeconds({}, 'ex-anything', 60)).toBe(60);
+    });
+
+    describe('with each movement’s kind known', () => {
+      const compound = new Set(['ex-squat', 'ex-bench', 'ex-rows']);
+      const single = new Set(['ex-curls', 'ex-raises']);
+      const kind = (id: string) => (compound.has(id) ? true : single.has(id) ? false : null);
+
+      it('starts a multi-joint lift at 2 min 30 and a single-joint movement at 90 s', () => {
+        expect(COMPOUND_REST_SECONDS).toBe(150);
+        expect(resolveRestSeconds({}, 'ex-squat', DEFAULT_REST_SECONDS, kind)).toBe(150);
+        expect(resolveRestSeconds({}, 'ex-curls', DEFAULT_REST_SECONDS, kind)).toBe(90);
+        expect(defaultRestSeconds(true)).toBe(150);
+        expect(defaultRestSeconds(false)).toBe(90);
+        expect(defaultRestSeconds(null)).toBe(90);
+      });
+
+      it('keeps a movement’s own length over everything', () => {
+        const prefs: RestPreferences = { 'ex-squat': { restSeconds: 200, updatedAt: '2026-06-17T10:00:00.000Z' } };
+        expect(resolveRestSeconds(prefs, 'ex-squat', DEFAULT_REST_SECONDS, kind)).toBe(200);
+      });
+
+      it('spreads a chosen length among movements of the same kind, never across', () => {
+        const prefs: RestPreferences = {
+          'ex-curls': { restSeconds: 60, updatedAt: '2026-06-17T12:00:00.000Z' },
+          'ex-rows': { restSeconds: 180, updatedAt: '2026-06-17T10:00:00.000Z' },
+          'ex-bench': { restSeconds: 210, updatedAt: '2026-06-17T11:00:00.000Z' },
+        };
+        // A curl's 60 s, though chosen last, never lands on a squat: the newest big lift's length does.
+        expect(resolveRestSeconds(prefs, 'ex-squat', DEFAULT_REST_SECONDS, kind)).toBe(210);
+        expect(resolveRestSeconds(prefs, 'ex-raises', DEFAULT_REST_SECONDS, kind)).toBe(60);
+        expect(resolveRestSeconds({ 'ex-curls': prefs['ex-curls'] }, 'ex-squat', DEFAULT_REST_SECONDS, kind)).toBe(150);
+      });
+
+      it('falls back to the last length set anywhere for a movement whose kind is not known', () => {
+        const prefs: RestPreferences = { 'ex-curls': { restSeconds: 60, updatedAt: '2026-06-17T12:00:00.000Z' } };
+        expect(resolveRestSeconds(prefs, 'ex-mystery', DEFAULT_REST_SECONDS, kind)).toBe(60);
+        expect(resolveRestSeconds({}, 'ex-mystery', DEFAULT_REST_SECONDS, kind)).toBe(90);
+      });
     });
   });
 

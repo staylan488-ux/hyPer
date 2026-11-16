@@ -199,16 +199,18 @@ afterEach(async () => {
 });
 
 describe("Fuel's date under the title", () => {
-  it('opens the month, as a button named by the date, and leaves + alone in the bar', async () => {
+  it('opens the month, as a button named by the date, with History and + in the bar', async () => {
     await renderFuel();
     const date = pressables['Thursday, November 5'];
     expect(date).toMatchObject({ accessibilityRole: 'button', accessibilityHint: 'Opens the month' });
     await act(async () => { date.onPress!(); });
     expect(push).toHaveBeenCalledWith('/fuel-month');
-    // the calendar glyph is gone: + opens Log food for the day shown
+    // no calendar glyph: the clock opens History, and + at the edge opens Log food for the day shown
     const items = screen.options!.unstable_headerRightItems!();
-    expect(items.map((item) => item.label)).toEqual(['Log food']);
+    expect(items.map((item) => item.label)).toEqual(['History', 'Log food']);
     items[0].onPress();
+    expect(push).toHaveBeenLastCalledWith('/fuel/history');
+    items[1].onPress();
     expect(push).toHaveBeenLastCalledWith({ pathname: '/log-food', params: { day: TODAY } });
   });
 
