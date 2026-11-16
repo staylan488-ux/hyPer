@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildCoachContext, coachTrendKgPerWeek, normalizeCoachResult } from '@/lib/nutritionCoach';
+import { buildCoachContext, coachRails, coachTrendKgPerWeek, normalizeCoachResult } from '@/lib/nutritionCoach';
 import type { NutritionProfile } from '@/lib/nutritionProfile';
 import { buildWeightTrend } from '@/lib/weightTrend';
 
@@ -128,5 +128,89 @@ describe('normalizeCoachResult', () => {
     const out = normalizeCoachResult({ ...sane, confidence: 7, rationale: 'x'.repeat(5000) });
     expect(out.confidence).toBe(1);
     expect(out.rationale.length).toBeLessThanOrEqual(1200);
+  });
+});
+
+describe('holding a suggestion to the calculator’s ranges', () => {
+  // 59 kg, 178 cm, 24, moderately active: resting about 1,588 kcal, daily burn about 2,700.
+  const context = {
+    sex: 'male', age: 24, height_cm: 178, weight_kg: 59, activity: 'moderately_active', current_goal: 'bulk at 0.35% bodyweight/week',
+    measured_expenditure_kcal: null, expenditure_confidence: null, weight_trend_kg_per_week: null, current_targets: null,
+  };
+  const rails = coachRails(context)!;
+  const suggestion = (numbers: { calories: number; protein_g: number; carbs_g: number; fat_g: number }) =>
+    normalizeCoachResult({ ...numbers, rationale: 'Because.', cautions: '', confidence: 0.8 }, 'gemini', rails);
+
+  it('works the ranges out from the person, as the calculator would', () => {
+    expect(rails.referenceKg).toBe(59);
+    // 25% under the daily burn, never under the resting rate; 20% over it.
+    expect(rails.calories.min).toBeGreaterThan(1900);
+    expect(rails.calories.min).toBeLessThan(2100);
+    expect(rails.calories.max).toBeGreaterThan(3150);
+    expect(rails.calories.max).toBeLessThan(3350);
+  });
+
+  it('uses the learned burn when the request carries one', () => {
+    const learned = coachRails({ ...context, measured_expenditure_kcal: 3000, expenditure_confidence: 'measured' })!;
+    expect(learned.calories).toEqual({ min: 2250, max: 3600 });
+    // A burn that is only the formula's guess is not treated as learned.
+    expect(coachRails({ ...context, measured_expenditure_kcal: 3000, expenditure_confidence: 'predicted' })).toEqual(rails);
+  });
+
+  it('leaves a suggestion inside the ranges exactly as it came', () => {
+    const out = suggestion({ calories: 2800, protein_g: 110, carbs_g: 420, fat_g: 76 });
+    expect(out).toMatchObject({ calories: 2800, protein: 110, carbs: 420, fat: 76, held: [], cautions: '' });
+  });
+
+  it('brings protein inside 1.6 to 2.4 g per kg, and says so', () => {
+    const high = suggestion({ calories: 2800, protein_g: 250, carbs_g: 270, fat_g: 80 });
+    expect(high.protein).toBe(142);
+    expect(high.held).toEqual(['protein']);
+    expect(high.cautions).toBe('Protein was brought inside the ranges the calculator uses, so the reasoning may name other figures.');
+    // Carbs take up what protein gave back, so the macros still add up.
+    expect(high.calories).toBe(high.protein * 4 + high.carbs * 4 + high.fat * 9);
+    expect(Math.abs(high.calories - 2800)).toBeLessThanOrEqual(4);
+
+    const low = suggestion({ calories: 2800, protein_g: 60, carbs_g: 460, fat_g: 80 });
+    expect(low.protein).toBe(94);
+  });
+
+  it('keeps calories between the deepest cut and the largest surplus the calculator allows', () => {
+    const crash = suggestion({ calories: 1300, protein_g: 120, carbs_g: 100, fat_g: 47 });
+    expect(crash.calories).toBeGreaterThanOrEqual(rails.calories.min - 4);
+    expect(crash.held).toContain('calories');
+    const dirty = suggestion({ calories: 4500, protein_g: 130, carbs_g: 700, fat_g: 131 });
+    expect(dirty.calories).toBeLessThanOrEqual(rails.calories.max + 4);
+    expect(dirty.cautions).toMatch(/^Calories .*were brought inside/);
+  });
+
+  it('keeps fat between 20 and 35% of calories, never under 0.6 g per kg', () => {
+    const share = (out: { fat: number; calories: number }) => (out.fat * 9) / out.calories;
+    const lean = suggestion({ calories: 2800, protein_g: 120, carbs_g: 540, fat_g: 30 });
+    expect(lean.held).toEqual(['fat']);
+    expect(share(lean)).toBeGreaterThan(0.195);
+    expect(share(lean)).toBeLessThan(0.21);
+    const fatty = suggestion({ calories: 2800, protein_g: 120, carbs_g: 190, fat_g: 173 });
+    expect(fatty.held).toEqual(['fat']);
+    expect(share(fatty)).toBeGreaterThan(0.34);
+    expect(share(fatty)).toBeLessThan(0.355);
+    // A light person on few calories: 0.6 g per kg wins over the percentage.
+    const small = coachRails({ ...context, weight_kg: 100, height_cm: 200, activity: 'sedentary' })!;
+    const out = normalizeCoachResult({ calories: small.calories.min, protein_g: 170, carbs_g: 300, fat_g: 30, rationale: '', cautions: '', confidence: 0.5 }, 'gemini', small);
+    expect(out.fat).toBeGreaterThanOrEqual(60);
+  });
+
+  it('adds its note after the coach’s own caution', () => {
+    const out = normalizeCoachResult({ calories: 2800, protein_g: 250, carbs_g: 270, fat_g: 80, rationale: '', cautions: 'Eat slowly.', confidence: 0.5 }, 'gemini', rails);
+    expect(out.cautions).toBe('Eat slowly. Protein was brought inside the ranges the calculator uses, so the reasoning may name other figures.');
+  });
+
+  it('has no ranges without a weigh-in, and then only the hard rails apply', () => {
+    expect(coachRails({ ...context, weight_kg: null })).toBeNull();
+    expect(coachRails({ ...context, activity: 'unknown' })).toBeNull();
+    expect(coachRails(null)).toBeNull();
+    const out = normalizeCoachResult({ calories: 2800, protein_g: 250, carbs_g: 270, fat_g: 80, rationale: '', cautions: '', confidence: 0.5 }, 'gemini', null);
+    expect(out.protein).toBe(250);
+    expect(out.held).toEqual([]);
   });
 });

@@ -28,13 +28,14 @@ import { editNote, NOTE_LIMIT, saveNoteNow, useMovementNote } from '~/lib/notes'
 import { usePriorRecordsStore } from '~/lib/records';
 import { usePreviousNotesStore, usePreviousTargets, useSessionModel, type Movement } from '~/lib/session';
 import { movementLine } from '~/lib/sessionModel';
-import { chooseRpe, parseNumber } from '~/lib/setEntry';
+import { chooseRpe, effortChip, parseNumber, useEffortScaleStore } from '~/lib/setEntry';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
  * One movement of the live workout: correct a logged set, change how many
  * sets it has, keep a note, or swap or skip it for this workout only. In a
- * flexible session it can also be paired as a superset or taken out.
+ * flexible session it can also be paired as a superset or taken out; a
+ * movement added to a planned session can be taken out again.
  */
 export default function MovementSheet() {
   const c = useBlanc();
@@ -96,7 +97,8 @@ export default function MovementSheet() {
 /** "Plan: 3 sets" or "Plan: 3–4 sets", for reference; the count can still change. */
 function rangeLine(movement: Movement): string | null {
   const range = movement.range;
-  if (!range) return null;
+  // A movement added during the workout has no plan to quote.
+  if (!range || movement.added) return null;
   return range.minSets === range.maxSets
     ? `Plan: ${range.maxSets} ${range.maxSets === 1 ? 'set' : 'sets'}`
     : `Plan: ${range.minSets}–${range.maxSets} sets`;
@@ -349,25 +351,30 @@ function MovementDetail({
         </Section>
       ) : null}
 
-      {flexible && inWorkout ? (
+      {(flexible || movement.added) && inWorkout ? (
         <Section title="Session">
           <Label>
-            {movement.superset ? (
-              <Row
-                title="Unlink superset"
-                detail={`With ${movement.superset.partnerName}`}
-                trailing={editingPlan === 'unlink' ? <ActivityIndicator /> : undefined}
-                onPress={editingPlan ? undefined : () => void runUnlink()}
-              />
-            ) : (
-              <Row
-                title="Add a superset"
-                detail="Alternate sets with another movement"
-                chevron
-                onPress={() => router.push({ pathname: '/swap', params: { id: movement.exerciseId, mode: 'superset' } })}
-              />
-            )}
-            <Hairline />
+            {/* Pairs belong to flexible sessions; an added movement can only come out again. */}
+            {flexible ? (
+              <>
+                {movement.superset ? (
+                  <Row
+                    title="Unlink superset"
+                    detail={`With ${movement.superset.partnerName}`}
+                    trailing={editingPlan === 'unlink' ? <ActivityIndicator /> : undefined}
+                    onPress={editingPlan ? undefined : () => void runUnlink()}
+                  />
+                ) : (
+                  <Row
+                    title="Add a superset"
+                    detail="Alternate sets with another movement"
+                    chevron
+                    onPress={() => router.push({ pathname: '/swap', params: { id: movement.exerciseId, mode: 'superset' } })}
+                  />
+                )}
+                <Hairline />
+              </>
+            ) : null}
             <Row
               title="Remove from workout"
               destructive
@@ -387,6 +394,7 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
   const [weight, setWeight] = useState(set.weight === null ? '' : String(set.weight));
   const [reps, setReps] = useState(set.reps === null ? '' : String(set.reps));
   const [rpe, setRpe] = useState<number | null>(set.rpe);
+  const effortScale = useEffortScaleStore((state) => state.scale);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const weightValue = parseNumber(weight);
@@ -421,12 +429,7 @@ function SetEditor({ set, number, onClose }: { set: WorkoutSet; number: number; 
     <View style={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <BlancText variant="bodyStrong">Set {number}</BlancText>
-        <Chip
-          label={rpe ? `RPE ${rpe}` : 'Add RPE'}
-          accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
-          haptic={false}
-          onPress={() => chooseRpe(setRpe)}
-        />
+        <Chip {...effortChip(rpe, effortScale)} haptic={false} onPress={() => chooseRpe(setRpe)} />
       </View>
 
       {/* The fields name themselves and their units; "×" and the units are only drawn. */}

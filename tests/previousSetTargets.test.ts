@@ -66,9 +66,11 @@ const database = vi.hoisted(() => {
 vi.mock('@/lib/supabase', () => ({ supabase: { from: database.from } }));
 
 import {
+  buildMovementHistory,
   buildPreviousSetTargets,
   exerciseIdsFromKey,
   fetchPreviousSetTargets,
+  fetchPreviousTraining,
   previousTargetExerciseKey,
   previousTargetRetrySignal,
 } from '@/lib/previousSetTargets';
@@ -285,7 +287,7 @@ describe('fetchPreviousSetTargets', () => {
       {
         table: 'workouts',
         chain: [
-          ['select', 'id'],
+          ['select', 'id, date'],
           ['eq', 'user_id', 'user-1'],
           ['lte', 'date', '2026-09-26'],
           ['neq', 'id', 'current'],
@@ -372,6 +374,77 @@ describe('fetchPreviousSetTargets', () => {
     database.state.results.sets = { data: null, error: { message: 'timeout' } };
     await expect(fetchPreviousSetTargets(params)).resolves.toBeNull();
     expect(consoleError).toHaveBeenCalledWith('Error loading previous sets for target-to-beat:', { message: 'timeout' });
+    consoleError.mockRestore();
+  });
+});
+
+describe('buildMovementHistory', () => {
+  const set = (workout: string, exercise: string, number: number, weight: number | null, reps: number | null, completed = true): PreviousSetSummary =>
+    ({ workout_id: workout, exercise_id: exercise, set_number: number, weight, reps, rpe: null, completed });
+
+  it('keeps every session per movement, newest first, by the movement\'s own set position', () => {
+    const history = buildMovementHistory(
+      [{ id: 'w2', date: '2026-10-05' }, { id: 'w1', date: '2026-10-01' }],
+      [
+        set('w1', 'bench', 1, 100, 10),
+        set('w1', 'bench', 2, 100, 9),
+        // A superset swap that started at round 2: still its set 1.
+        set('w2', 'row', 2, 80, 10),
+        set('w2', 'bench', 1, 100, 11),
+        set('w2', 'bench', 2, null, null, false),
+        set('w2', 'bench', 3, '100' as unknown as number, 8),
+      ],
+    );
+    expect(history.bench).toEqual([
+      { workoutId: 'w2', date: '2026-10-05', sets: [{ weight: 100, reps: 11, rpe: null }, null, { weight: 100, reps: 8, rpe: null }] },
+      { workoutId: 'w1', date: '2026-10-01', sets: [{ weight: 100, reps: 10, rpe: null }, { weight: 100, reps: 9, rpe: null }] },
+    ]);
+    expect(history.row).toEqual([{ workoutId: 'w2', date: '2026-10-05', sets: [{ weight: 80, reps: 10, rpe: null }] }]);
+  });
+
+  it('leaves out a session with nothing logged on the movement, and keeps zero as a value', () => {
+    const history = buildMovementHistory(
+      [{ id: 'w2', date: '2026-10-05' }, { id: 'w1', date: '2026-10-01' }],
+      [set('w2', 'dip', 1, null, null, false), set('w1', 'dip', 1, 0, 0)],
+    );
+    expect(history.dip).toEqual([{ workoutId: 'w1', date: '2026-10-01', sets: [{ weight: 0, reps: 0, rpe: null }] }]);
+  });
+});
+
+describe('fetchPreviousTraining', () => {
+  beforeEach(() => {
+    database.state.results = {};
+    database.state.rows = null;
+    database.state.cap = 1000;
+    database.state.between = null;
+    database.state.calls = [];
+  });
+
+  it('returns last time\'s numbers and each movement\'s sessions from one read', async () => {
+    database.state.results.workouts = { data: [{ id: 'w2', date: '2026-09-20' }, { id: 'w1', date: '2026-09-15' }], error: null };
+    database.state.results.sets = {
+      data: [
+        { workout_id: 'w1', exercise_id: 'bench', set_number: 1, weight: 180, reps: 8, rpe: null, completed: true },
+        { workout_id: 'w2', exercise_id: 'bench', set_number: 1, weight: 185, reps: 8, rpe: 8, completed: true },
+      ],
+      error: null,
+    };
+    await expect(fetchPreviousTraining({ userId: 'user-1', workoutId: 'current', date: '2026-09-26', exerciseIds: ['bench'] })).resolves.toEqual({
+      targets: { bench: { 1: { weight: 185, reps: 8, rpe: 8 } } },
+      history: { bench: [
+        { workoutId: 'w2', date: '2026-09-20', sets: [{ weight: 185, reps: 8, rpe: 8 }] },
+        { workoutId: 'w1', date: '2026-09-15', sets: [{ weight: 180, reps: 8, rpe: null }] },
+      ] },
+    });
+    expect(database.state.calls.map((call) => call.table)).toEqual(['workouts', 'sets']);
+  });
+
+  it('is empty with no earlier workouts, and null on an error', async () => {
+    database.state.results.workouts = { data: [], error: null };
+    await expect(fetchPreviousTraining({ userId: 'user-1', workoutId: 'current', date: '2026-09-26', exerciseIds: ['bench'] })).resolves.toEqual({ targets: {}, history: {} });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    database.state.results.workouts = { data: null, error: { message: 'offline' } };
+    await expect(fetchPreviousTraining({ userId: 'user-1', workoutId: 'current', date: '2026-09-26', exerciseIds: ['bench'] })).resolves.toBeNull();
     consoleError.mockRestore();
   });
 });

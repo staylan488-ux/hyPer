@@ -13,7 +13,7 @@ import {
   type MovementRecords, type MovementSetRow, type RecordKind, type SetFigures,
 } from '@/lib/movementHistory';
 import { TRAINING_WEEK } from '@/lib/workoutSessions';
-import type { MuscleGroup, MuscleVolume, VolumeLandmark } from '@/types';
+import type { MuscleGroup, MuscleVolume } from '@/types';
 
 /** A local calendar day as 'yyyy-MM-dd'. */
 type DayKey = string;
@@ -201,9 +201,9 @@ export function priorRecords(rows: MovementSetRow[], exerciseIds: string[], befo
 
 // ── Sets per muscle ──────────────────────────────────────────────────────
 
-/** The week's trained muscles, most sets first. */
-export function weekMuscles(workouts: WeeklyVolumeWorkoutRow[], landmarks: VolumeLandmark[]): MuscleVolume[] {
-  return computeWeeklyVolume(workouts, landmarks)
+/** The week's trained muscles, most sets first: plain counts, never set against a plan. */
+export function weekMuscles(workouts: WeeklyVolumeWorkoutRow[]): MuscleVolume[] {
+  return computeWeeklyVolume(workouts)
     .filter((volume) => volume.weekly_sets > 0)
     .sort((a, b) => b.weekly_sets - a.weekly_sets);
 }
@@ -250,12 +250,11 @@ const dayStartIso = (day: DayKey) => parseISO(day).toISOString();
 export async function readWeekCheckIn(input: {
   userId: string;
   todayKey: DayKey;
-  landmarks: VolumeLandmark[];
 }): Promise<WeekCheckIn> {
   const week = checkInWeek(input.todayKey);
   const nextMonday = format(addDays(parseISO(week.end), 1), 'yyyy-MM-dd');
 
-  const [workoutsRead, weightsRead, nutrition, landmarksRead] = await Promise.all([
+  const [workoutsRead, weightsRead, nutrition] = await Promise.all([
     supabase
       .from('workouts')
       .select('id, date, created_at, completed, sets(exercise_id, weight, reps, completed, exercise:exercises(name, muscle_group, muscle_group_secondary))')
@@ -269,10 +268,7 @@ export async function readWeekCheckIn(input: {
       .gte('measured_at', dayStartIso(week.before))
       .lt('measured_at', dayStartIso(nextMonday)),
     fetchWeeklyNutrition(week.end),
-    // The account's own landmarks, as Progress grades against; the ones kept in memory if this read fails.
-    Promise.resolve(supabase.from('volume_landmarks').select('*').eq('user_id', input.userId)).catch(() => ({ data: null })),
   ]);
-  const landmarks = (landmarksRead.data as VolumeLandmark[] | null) ?? input.landmarks;
   if (workoutsRead.error) throw new Error(workoutsRead.error.message);
   if (weightsRead.error) throw new Error(weightsRead.error.message);
   if (!nutrition) throw new Error('Couldn’t read the week’s food.');
@@ -308,7 +304,7 @@ export async function readWeekCheckIn(input: {
     weight: weekWeight((weightsRead.data ?? []) as WeightSampleLike[], week),
     eating: weekEating(nutrition.weeklyNutrition),
     sets: weekSetCount(volumeRows),
-    muscles: weekMuscles(volumeRows, landmarks),
+    muscles: weekMuscles(volumeRows),
     records: weekRecords(weekSets, prior),
   };
 }

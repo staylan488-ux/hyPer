@@ -165,7 +165,7 @@ export function expenditureSummary(profile: {
     source,
     explanation:
       confidence === 'measured'
-        ? 'Inferred from your food logs and weight trend. Updates once a week.'
+        ? 'Inferred from your food logs and weight trend. Updates on Mondays.'
         : 'Learning from your logs and weight trend. It sharpens as more days come in.',
   };
 }

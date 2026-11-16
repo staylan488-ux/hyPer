@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import type { WorkoutSet } from '@/types';
 import { useLargeText } from '~/lib/accessibility';
 import { formatSet } from '~/lib/format';
+import { effortLabel, effortSpoken, useEffortScaleStore } from '~/lib/setEntry';
 import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
@@ -27,7 +28,7 @@ type LoggedSetRowProps = {
 };
 
 /**
- * A logged set in a list: "Set 2", then "100 lb × 8" in ink and its RPE in a
+ * A logged set in a list: "Set 2", then "100 lb × 8" in ink and its effort ("RIR 2" or "RPE 8") in a
  * right-hand column of its own. The press highlight and hold menu say it can
  * be corrected, so it carries no pencil. Put it inside a SwipeRow for Delete.
  */
@@ -35,15 +36,17 @@ export function LoggedSetRow({ number, set, gain, rpeColumn, onPress, menu, disa
   const c = useBlanc();
   // At the accessibility text sizes the numbers wrap under "Set 2" instead of crowding it.
   const large = useLargeText();
+  const scale = useEffortScaleStore((state) => state.scale);
+  const effort = set.rpe ? effortLabel(set.rpe, scale) : null;
   const logged = set.weight !== null && set.reps !== null;
   const numbers = logged ? formatSet(set.weight, set.reps) : 'Not logged';
   // Graphite numbers on an unfinished set say "not done" by sight only.
-  const label = `Set ${number}, ${numbers}${set.rpe ? `, RPE ${set.rpe}` : ''}${logged && !set.completed ? ', not done' : ''}${gain ? `, beat last time, ${gain}` : ''}. Edit`;
+  const label = `Set ${number}, ${numbers}${set.rpe ? `, ${effortSpoken(set.rpe, scale)}` : ''}${logged && !set.completed ? ', not done' : ''}${gain ? `, beat last time, ${gain}` : ''}. Edit`;
   if (large) {
     return (
       <Row
         title={`Set ${number}`}
-        detail={[numbers, set.rpe ? `RPE ${set.rpe}` : null].filter(Boolean).join(' · ')}
+        detail={[numbers, effort].filter(Boolean).join(' · ')}
         detailMark={gain ? <SymbolView name="arrow.up" size={11} weight="bold" tintColor={c.ink} /> : undefined}
         quiet={!set.completed}
         onPress={onPress}
@@ -71,7 +74,7 @@ export function LoggedSetRow({ number, set, gain, rpeColumn, onPress, menu, disa
           </View>
           {set.rpe || rpeColumn ? (
             <BlancText variant="secondary" tone="graphite" style={{ minWidth: 58, textAlign: 'right', fontVariant: ['tabular-nums'] }}>
-              {set.rpe ? `RPE ${set.rpe}` : ''}
+              {effort ?? ''}
             </BlancText>
           ) : null}
         </View>

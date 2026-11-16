@@ -4,10 +4,12 @@ import { create } from 'zustand';
 
 import { findNewRecords, type MovementRecords, type NewRecord } from '@/lib/movementHistory';
 import type { PreviousWorkoutSetMap } from '@/lib/setAutofill';
+import type { MovementHistoryMap } from '@/lib/setTargets';
 import { getWorkoutDurationMs } from '@/lib/workoutSessions';
 
 import { countBeats } from './beatLastTime';
 import type { SessionModel } from './sessionModel';
+import { countTargets, sessionTargets } from './setTargets';
 
 export type FinishedSummary = {
   dayName: string;
@@ -18,6 +20,8 @@ export type FinishedSummary = {
   sets: number;
   /** Logged sets that beat the same set last time. */
   beat: number;
+  /** Logged sets that had a target, and how many reached it (hit or beat). */
+  targets?: { hit: number; total: number };
   volume: number;
   minutes: number;
   best: { name: string; weight: number; reps: number } | null;
@@ -32,14 +36,16 @@ function beats(a: { weight: number; reps: number }, b: { weight: number; reps: n
 }
 
 /**
- * `previous` is last time's numbers for the session (see usePreviousTargetsStore);
- * `prior` each movement's records before it (see usePriorRecordsStore).
+ * `previous` is last time's numbers for the session and `history` each
+ * movement's recent sessions (see usePreviousTargetsStore); `prior` each
+ * movement's records before it (see usePriorRecordsStore).
  */
 export function summarize(
   session: SessionModel,
   previous: PreviousWorkoutSetMap = {},
   finishedAt = new Date(),
   prior: Readonly<Record<string, MovementRecords | undefined>> = {},
+  history: MovementHistoryMap = {},
 ): FinishedSummary {
   const done = session.sets.filter((set) => set.completed);
   // Start to the last logged set, as the workout is saved, so the receipt agrees with the record and History.
@@ -67,6 +73,7 @@ export function summarize(
     marks: session.sets.map((set) => set.completed),
     sets: done.length,
     beat: countBeats(session.sets, previous),
+    targets: countTargets(session, sessionTargets(session, history)),
     volume,
     minutes: Math.max(1, Math.round((duration ?? 0) / 60_000)),
     best,

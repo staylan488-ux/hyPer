@@ -171,7 +171,6 @@ describe('reading the week', () => {
         setRow('s09', 'now', 'bench', 260, 5),
         setRow('s10', 'theirs', 'bench', 100, 5),
       ],
-      volume_landmarks: [],
       body_weight_measurements: [
         { user_id: 'u1', measured_at: new Date('2026-10-28T08:00:00').toISOString(), kilograms: 60 },
         { user_id: 'u1', measured_at: new Date('2026-11-04T08:00:00').toISOString(), kilograms: 60.5 },
@@ -187,16 +186,17 @@ describe('reading the week', () => {
   });
 
   it('brings the week’s weight, food, sets per muscle and records together', async () => {
-    const checkIn = await readWeekCheckIn({ userId: 'u1', todayKey: '2026-11-09', landmarks: [] });
+    const checkIn = await readWeekCheckIn({ userId: 'u1', todayKey: '2026-11-09' });
     expect(checkIn.week.start).toBe('2026-11-02');
     expect(checkIn.weight?.changeKg).toBeCloseTo(0.5);
     expect(checkIn.eating).toEqual({ days: 2, calories: 2750, protein: 220 });
     // Completed sets in any workout of the week; another account's never.
     expect(checkIn.sets).toBe(4);
-    expect(checkIn.muscles.map((volume) => [volume.muscle_group, volume.weekly_sets, volume.status])).toEqual([
-      ['chest', 3, 'below_mev'],
-      ['triceps', 1.5, 'below_mev'],
-      ['back', 1, 'below_mev'],
+    // Plain counts, never set against a plan or a range.
+    expect(checkIn.muscles).toEqual([
+      { muscle_group: 'chest', weekly_sets: 3 },
+      { muscle_group: 'triceps', weekly_sets: 1.5 },
+      { muscle_group: 'back', weekly_sets: 1 },
     ]);
     expect(checkIn.records.map((record) => [record.name, record.kind, record.set.weight, record.previous.weight])).toEqual([
       ['Bench press', 'max', 250, 202],
@@ -206,7 +206,7 @@ describe('reading the week', () => {
   });
 
   it('holds nothing for an empty week', async () => {
-    const checkIn = await readWeekCheckIn({ userId: 'u1', todayKey: '2026-12-07', landmarks: [] });
+    const checkIn = await readWeekCheckIn({ userId: 'u1', todayKey: '2026-12-07' });
     expect(checkIn).toMatchObject({ weight: null, eating: null, sets: 0, muscles: [], records: [] });
     expect(hasCheckIn(checkIn)).toBe(false);
   });
@@ -214,7 +214,7 @@ describe('reading the week', () => {
   it('fails as a whole when a read fails, rather than showing a quiet week', async () => {
     const from = client.from.bind(client);
     client = { ...client, from: (table: string) => (table === 'workouts' ? { select: () => ({ eq: () => ({ gte: () => ({ lte: async () => ({ data: null, error: { message: 'offline' } }) }) }) }) } : from(table)) } as unknown as typeof client;
-    await expect(readWeekCheckIn({ userId: 'u1', todayKey: '2026-11-09', landmarks: [] })).rejects.toThrow('offline');
+    await expect(readWeekCheckIn({ userId: 'u1', todayKey: '2026-11-09' })).rejects.toThrow('offline');
   });
 });
 
@@ -242,28 +242,17 @@ describe('the words on the card and Last week', async () => {
     expect(words.recordDetail({ exerciseId: 'lever', name: 'Lever', kind: 'reps', set: set(0, 8), previous: set(0, 6) })).toBe('Most reps · was 6');
   });
 
-  it('notes a muscle only outside its range', () => {
-    const landmark = { id: 'l', user_id: 'u1', muscle_group: 'chest' as const, mv: 0, mev: 8, mav_low: 10, mav_high: 16, mrv: 22 };
-    expect(words.muscleNote({ muscle_group: 'chest', weekly_sets: 4, landmark, status: 'below_mev' })).toBe('Under its minimum of 8');
-    expect(words.muscleNote({ muscle_group: 'chest', weekly_sets: 24, landmark, status: 'above_mrv' })).toBe('Over its ceiling of 22');
-    expect(words.muscleNote({ muscle_group: 'chest', weekly_sets: 12, landmark, status: 'mav' })).toBeUndefined();
-    expect(words.musclesInRange([
-      { muscle_group: 'chest', weekly_sets: 12, landmark, status: 'mav' },
-      { muscle_group: 'back', weekly_sets: 2, landmark: { ...landmark, muscle_group: 'back' }, status: 'below_mev' },
-      { muscle_group: 'traps', weekly_sets: 3, landmark: undefined, status: null },
-    ])).toBe('1 of 2 muscles in range');
-  });
+
 });
 
 describe('Today’s Monday card', async () => {
   const { checkInLines } = await import('../native/src/lib/weekCheckIn');
   const week = checkInWeek('2026-11-09');
-  const landmark = { id: 'l', user_id: 'u1', muscle_group: 'chest' as const, mv: 0, mev: 8, mav_low: 10, mav_high: 16, mrv: 22 };
   const record = { exerciseId: 'bench', name: 'Bench', kind: 'max' as const, set: { weight: 205, reps: 5, date: '2026-11-04' }, previous: { weight: 200, reps: 5, date: '2026-10-20' } };
 
   it('reads a bulking week past its targets as plainly as one under them', () => {
     const lines = checkInLines(
-      { week, weight: { averageKg: 60, days: 5, changeKg: 0.3 }, eating: { days: 7, calories: 3120, protein: 196 }, sets: 58, muscles: [{ muscle_group: 'chest', weekly_sets: 12, landmark, status: 'mav' }], records: [record, record] },
+      { week, weight: { averageKg: 60, days: 5, changeKg: 0.3 }, eating: { days: 7, calories: 3120, protein: 196 }, sets: 58, muscles: [{ muscle_group: 'chest', weekly_sets: 12 }], records: [record, record] },
       'lb',
       { calories: 2800, protein: 180 },
       0.3,
@@ -272,7 +261,7 @@ describe('Today’s Monday card', async () => {
       'Weight: +0.7 lb · on pace',
       'Calories a day: 3,120 of 2,800 kcal',
       'Protein a day: 196 of 180 g',
-      'Sets: 58 · 1 of 1 muscles in range',
+      'Sets: 58',
       'Records: 2 new',
     ]);
   });

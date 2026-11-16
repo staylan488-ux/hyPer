@@ -5,7 +5,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
-import { summarizeWeekVolume } from '@/lib/todayModel';
 import { overTargetWord, warnsOverTarget } from '@/lib/fuelSummary';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -31,7 +30,8 @@ import { formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
-import { useNow, useSessionModel, type SessionModel } from '~/lib/session';
+import { useNow, usePreviousHistory, useSessionModel, type SessionModel } from '~/lib/session';
+import { sessionTargets, setTargetFor } from '~/lib/setTargets';
 import { useTodayPlan } from '~/lib/today';
 import { moveTodaySection, useTodayOrder, type TodaySection } from '~/lib/todayOrder';
 import { figureLead, restingFigure, space, useBlanc } from '~/theme/blanc';
@@ -57,10 +57,8 @@ export default function TodayScreen() {
   // Until the saved target is read, no target is not yet "set one in You".
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const targetRead = useAppStore((state) => userId !== null && state.macroTargetLoadedForUserId === userId);
-  const weekly = useAppStore((state) => state.weeklyVolume);
   // Yesterday's totals never show as today's after a failed new-day read.
   const totals = useFuelStore(todayTotalsShown);
-  const week = summarizeWeekVolume(weekly);
   const kcalLeft = target ? target.calories - totals.calories : null;
   // Bulking, calories past target read as extra, never red.
   const goal = useAppStore((state) => state.nutritionProfile?.goal);
@@ -163,8 +161,8 @@ export default function TodayScreen() {
       {/* Named for the screen it opens. Its rows read as You's do: a name, one quiet figure, a chevron. */}
       <Section page title="Progress" style={FLUSH} actions={moves('progress')}>
         <Label>
-          {/* The week so far in one figure; the muscles outside their range are what Progress opens on. */}
-          <Row title="This week" value={weekFigure(plan.weekDone, plan.weekTarget, week)} chevron onPress={() => router.push('/today/progress')} />
+          {/* The week so far in one figure; each muscle's sets are one tap away, on Progress. */}
+          <Row title="This week" value={weekFigure(plan.weekDone, plan.weekTarget)} chevron onPress={() => router.push('/today/progress')} />
           {monday && lastWeek.checkIn && !lastWeek.hidden ? <WeekCheckInRow checkIn={lastWeek.checkIn} todayKey={todayKey} /> : null}
         </Label>
       </Section>
@@ -226,8 +224,15 @@ function SessionLabel({ session }: { session: SessionModel }) {
   const { finish, closing } = useFinishWorkout(session);
   const openWorkout = openTrain;
   const title = current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log';
+  // The set's target, as Train fills it in, while the set holds no numbers of its own.
+  const history = usePreviousHistory(session.workoutId);
+  const target = current && current.set.weight === null && current.set.reps === null
+    ? setTargetFor(current.set, current.movement.sets, sessionTargets(session, history))
+    : null;
   const line = current
-    ? setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
+    ? target
+      ? `Set ${current.setNumber} of ${current.movement.sets.length} · target ${formatSet(target.weight, target.reps)}`
+      : setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
     : empty
       ? 'Add your first movement in Train'
       : 'Finish to save the session';
@@ -290,9 +295,9 @@ function setLine(setNumber: number, sets: number, weight: number | null, reps: n
   return load ? `${base} · ${load}` : base;
 }
 
-/** "3 of 4 sessions", "2 sessions" without a weekly target; before any session, the trained muscles in range, or nothing yet. */
-function weekFigure(done: number | null, target: number | null | undefined, week: { inRange: number; trained: number }): string | undefined {
+/** "3 of 4 sessions", "2 sessions" without a weekly target, or nothing yet. */
+function weekFigure(done: number | null, target: number | null | undefined): string | undefined {
   if (done !== null && target) return `${done} of ${target} sessions`;
   if (done) return `${done} ${done === 1 ? 'session' : 'sessions'}`;
-  return week.trained > 0 ? `${week.inRange} of ${week.trained} muscles in range` : undefined;
+  return undefined;
 }

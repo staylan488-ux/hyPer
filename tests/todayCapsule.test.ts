@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   firstExerciseName,
-  pickInsight,
   plannedSetCount,
-  summarizeWeekVolume,
   todayCapsule,
   TODAY_ACTION_PATHS,
   type HeroState,
 } from '@/lib/todayModel';
-import type { MuscleVolume, SplitDay, SplitExercise } from '@/types';
+import type { SplitDay, SplitExercise } from '@/types';
 
 const exercise = (name: string, order: number, sets: number): SplitExercise => ({
   id: `se-${name}`, split_day_id: 'd1', exercise_id: `ex-${name}`, target_sets: sets, target_reps_min: 8, target_reps_max: 10,
@@ -78,29 +76,3 @@ describe('todayCapsule', () => {
   });
 });
 
-describe('week volume summary', () => {
-  const volume = (muscle_group: MuscleVolume['muscle_group'], weekly_sets: number, status: MuscleVolume['status']): MuscleVolume => ({
-    muscle_group, weekly_sets, status,
-    landmark: { id: `lm-${muscle_group}`, user_id: 'u', muscle_group, mv: 4, mev: 8, mav_low: 12, mav_high: 18, mrv: 22 },
-  } as MuscleVolume);
-
-  it('counts trained muscles by status', () => {
-    expect(summarizeWeekVolume([
-      volume('chest', 2, 'below_mev'), volume('back', 10, 'mev_mav'), volume('quads', 14, 'mav'),
-      volume('hamstrings', 0, 'below_mev'), volume('biceps', 24, 'above_mrv'),
-    ])).toEqual({ trained: 4, inRange: 2, under: 1, over: 1 });
-  });
-
-  it('leaves an ungraded muscle out of the in-range count', () => {
-    expect(summarizeWeekVolume([
-      volume('back', 10, 'mev_mav'), { muscle_group: 'traps', weekly_sets: 4, status: null },
-    ])).toEqual({ trained: 1, inRange: 1, under: 0, over: 0 });
-    expect(pickInsight([{ muscle_group: 'traps', weekly_sets: 4, status: null }])).toBeNull();
-  });
-
-  it('flags the most-under muscle with main’s gap rule', () => {
-    const insight = pickInsight([volume('chest', 2, 'below_mev'), volume('back', 5, 'below_mev')]);
-    expect(insight).toMatchObject({ tone: 'under', muscle: 'Chest', flag: 'add about 6 sets this week' });
-    expect(insight?.headline).toBe('Chest is under-stimulated');
-  });
-});

@@ -2,28 +2,32 @@ import { Stack } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, RefreshControl, View } from 'react-native';
 
+import { targetForWeekBefore } from '@/lib/targetChanges';
 import { checkInWeekLabel, goalPaceKg, hasCheckIn, paceCall } from '@/lib/weekCheckIn';
 import { formatWeight } from '@/lib/weightDisplayCore';
 import { useAppStore } from '@/stores/appStore';
-import { MUSCLE_GROUP_LABELS } from '@/types';
+import { formatSetCount, muscleLabel } from '@/lib/muscleVolume';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
+import { TargetChangeRow, dayFromKey, useShownTargetChange } from '~/components/TargetChangeRow';
+import { WeightNudgeRow, useWeightNudge } from '~/components/WeightNudgeRow';
 import { useAnnounce } from '~/lib/accessibility';
 import { useCurrentDayKey } from '~/lib/accountData';
 import { formatSet, formatWhole } from '~/lib/format';
-import { loadWeekCheckIn, muscleNote, paceWeekLabel, recordDetail, signedWeight, useWeekCheckIn } from '~/lib/weekCheckIn';
+import { loadWeekCheckIn, paceWeekLabel, recordDetail, signedWeight, useWeekCheckIn } from '~/lib/weekCheckIn';
 import { useWeightStore } from '~/lib/you';
 import { space, useBlanc } from '~/theme/blanc';
 
 /**
  * Last week (from Monday's card on Today): the training week before this one,
  * Monday to Sunday. Body weight against the goal's pace, calories and protein
- * a day, sets per muscle and the records set. Each section shows only when the
- * week holds it.
+ * a day, sets per muscle and the records set, then this week's calorie
+ * target change when Monday's update made one. Each section shows only when
+ * there is something in it.
  */
 export default function LastWeekScreen() {
   const todayKey = useCurrentDayKey();
@@ -31,6 +35,12 @@ export default function LastWeekScreen() {
   const unit = useWeightStore((state) => state.unit);
   const target = useAppStore((state) => state.macroTarget);
   const profile = useAppStore((state) => state.nutritionProfile);
+  const targetChange = useShownTargetChange();
+  const weightNudge = useWeightNudge();
+  // Last week is graded against the target that applied then, not one
+  // Monday's update has since replaced.
+  const recordedChange = useAppStore((state) => state.targetChange);
+  const weekTarget = targetForWeekBefore(recordedChange, target, dayFromKey(todayKey));
   const [refreshing, setRefreshing] = useState(false);
 
   // Read again on opening, so an edit made in History since shows.
@@ -94,27 +104,43 @@ export default function LastWeekScreen() {
             ) : null}
 
             {checkIn.eating ? (
-              // Past target is never red here: averages say how the week went, not a warning.
+              // Past target is never red here: averages say how the week went,
+              // not a warning. Graded against the target that applied that week.
               <Section title="Fuel" note={`${checkIn.eating.days} of 7 days logged`}>
                 <Label style={{ overflow: 'hidden' }}>
-                  <Row title="Calories a day" value={target ? `${formatWhole(checkIn.eating.calories)} of ${formatWhole(target.calories)} kcal` : `${formatWhole(checkIn.eating.calories)} kcal`} />
+                  <Row title="Calories a day" value={weekTarget ? `${formatWhole(checkIn.eating.calories)} of ${formatWhole(weekTarget.calories)} kcal` : `${formatWhole(checkIn.eating.calories)} kcal`} />
                   <Hairline />
-                  <Row title="Protein a day" value={target ? `${formatWhole(checkIn.eating.protein)} of ${formatWhole(target.protein)} g` : `${formatWhole(checkIn.eating.protein)} g`} />
+                  <Row title="Protein a day" value={weekTarget ? `${formatWhole(checkIn.eating.protein)} of ${formatWhole(weekTarget.protein)} g` : `${formatWhole(checkIn.eating.protein)} g`} />
                 </Label>
               </Section>
             ) : null}
 
+            {targetChange ? (
+              // Not part of last week's results: Monday's update for the week
+              // ahead, already applied, with Undo. Plain news, never red.
+              <Section title="This week’s target">
+                <Label style={{ overflow: 'hidden' }}>
+                  <TargetChangeRow />
+                </Label>
+              </Section>
+            ) : weightNudge ? (
+              // No burn learned yet, so no Monday update: the scale alone
+              // makes one offer for the week ahead. Nothing moves until tapped.
+              <Section title="This week’s target">
+                <Label style={{ overflow: 'hidden' }}>
+                  <WeightNudgeRow />
+                </Label>
+              </Section>
+            ) : null}
+
+            {/* What was done, as plain counts: a finished week is never set against its plan. */}
             {checkIn.muscles.length > 0 ? (
               <Section title="Muscles" note={`${formatWhole(checkIn.sets)} ${checkIn.sets === 1 ? 'set' : 'sets'}`}>
                 <Label style={{ overflow: 'hidden' }}>
                   {checkIn.muscles.map((volume, index) => (
                     <View key={volume.muscle_group}>
                       {index > 0 ? <Hairline /> : null}
-                      <Row
-                        title={MUSCLE_GROUP_LABELS[volume.muscle_group] ?? volume.muscle_group}
-                        detail={muscleNote(volume)}
-                        value={`${formatSets(volume.weekly_sets)} ${volume.weekly_sets === 1 ? 'set' : 'sets'}`}
-                      />
+                      <Row title={muscleLabel(volume.muscle_group)} value={setsValue(volume.weekly_sets)} />
                     </View>
                   ))}
                 </Label>
@@ -140,9 +166,10 @@ export default function LastWeekScreen() {
   );
 }
 
-/** "12", or "4.5" with a secondary muscle's half sets. */
-function formatSets(sets: number): string {
-  return Number.isInteger(sets) ? String(sets) : sets.toFixed(1);
+/** "12 sets", or "4.5 sets" with a secondary muscle's half sets. */
+function setsValue(sets: number): string {
+  const count = formatSetCount(sets);
+  return `${count} ${count === '1' ? 'set' : 'sets'}`;
 }
 
 function capitalise(words: string): string {

@@ -1,8 +1,8 @@
-import type { MuscleGroup, MuscleVolume, VolumeStatus } from '@/types';
+import type { MuscleGroup } from '@/types';
 
 /**
  * The volume maquette: a sculptor's mannequin whose muscle regions are shaded
- * by this week's training volume. One source of truth for the 3D scene and
+ * by how far each is through this week's planned sets. One source of truth for the 3D scene and
  * the flat 2D fallback. Units are arbitrary (figure ≈ 3.3 tall), y up, the
  * figure faces +z. Pure data and maths — no three.js here.
  */
@@ -103,47 +103,49 @@ export const MUSCLE_PARTS: MusclePart[] = [
 // SHADING
 // ═══════════════════════════════════
 
-/** Ink share per volume status — the same ramp as --color-volume-* tokens. */
-const STATUS_INK: Record<VolumeStatus, number> = {
-  below_mev: 0.2,
-  mev_mav: 0.4,
-  mav: 0.62,
-  approaching_mrv: 0.84,
-  above_mrv: 0.84,
+/**
+ * How far a muscle is through the week: nothing done, under way (some of its
+ * planned sets done), or done (all of them, or any sets with no plan to count
+ * against). Never a warning: done past the plan is still done.
+ */
+export type MuscleProgressState = 'untouched' | 'under_way' | 'done';
+
+/** Ink share for each state, for the drawn figures. */
+const STATE_INK: Record<MuscleProgressState, number> = {
+  untouched: 0,
+  under_way: 0.3,
+  done: 0.62,
 };
 
 export interface MuscleShade {
   muscle: MuscleGroup;
+  state: MuscleProgressState;
   /** 0 = bare porcelain, 1 = full ink. */
   ink: number;
-  /** Past recoverable volume: shown in lacquer. */
-  hot: boolean;
-  sets: number;
-  status: MuscleVolume['status'] | null;
+  /** Sets done this week. */
+  done: number;
+  /** Sets planned this week; null with no plan. */
+  planned: number | null;
 }
 
-const DELTS: MuscleGroup[] = ['front_delts', 'side_delts', 'rear_delts'];
+export function progressState(done: number, planned: number | null): MuscleProgressState {
+  if (!(done > 0)) return 'untouched';
+  if (planned === null || done >= planned) return 'done';
+  return 'under_way';
+}
 
 /**
- * Shade for every rendered muscle. General "shoulders" volume stands in for
- * any deltoid head without its own entry; muscles not trained this week stay
- * bare.
+ * Shade for every drawn muscle from this week's done and planned sets per
+ * muscle (src/lib/muscleVolume's counts, where shoulders already count as
+ * front delts). `planned` is null with no plan: anything trained is done.
  */
-export function shadeMuscles(volume: MuscleVolume[]): Map<MuscleGroup, MuscleShade> {
-  const byMuscle = new Map(volume.map((entry) => [entry.muscle_group, entry]));
+export function shadeMuscles(done: ReadonlyMap<string, number>, planned: ReadonlyMap<string, number> | null): Map<MuscleGroup, MuscleShade> {
   const shades = new Map<MuscleGroup, MuscleShade>();
-  const rendered = new Set(MUSCLE_PARTS.map((part) => part.muscle));
-  for (const muscle of rendered) {
-    const entry = byMuscle.get(muscle) ?? (DELTS.includes(muscle) ? byMuscle.get('shoulders') : undefined);
-    const trained = entry && entry.weekly_sets > 0;
-    shades.set(muscle, {
-      muscle,
-      // A muscle with no grade still shows as trained, at the lightest ink.
-      ink: trained ? STATUS_INK[entry.status ?? 'below_mev'] : 0,
-      hot: Boolean(trained && entry.status === 'above_mrv'),
-      sets: entry?.weekly_sets ?? 0,
-      status: entry?.status ?? null,
-    });
+  for (const muscle of new Set(MUSCLE_PARTS.map((part) => part.muscle))) {
+    const doneSets = done.get(muscle) ?? 0;
+    const plannedSets = planned ? planned.get(muscle) ?? 0 : null;
+    const state = progressState(doneSets, plannedSets);
+    shades.set(muscle, { muscle, state, ink: STATE_INK[state], done: doneSets, planned: plannedSets });
   }
   return shades;
 }
@@ -179,12 +181,10 @@ export interface MaquettePalette {
   /** Bare figure: porcelain in Ivory, obsidian in Black. */
   body: Rgb;
   ink: Rgb;
-  accent: Rgb;
 }
 
 export function muscleColor(shade: MuscleShade | undefined, palette: MaquettePalette): Rgb {
   if (!shade || shade.ink === 0) return palette.body;
-  if (shade.hot) return palette.accent;
   return mixRgb(palette.body, palette.ink, shade.ink);
 }
 
