@@ -13,7 +13,7 @@ import { create } from 'zustand';
 
 /** Mirrors HyperLaunchAction (modules/hyper-launch/ios/HyperLaunchStore.swift). */
 export const LAUNCH_ACTIONS = ['snap-meal', 'log-food', 'train'] as const;
-/** Posted by JavaScript only: a Fuel reminder that names close-the-gap picks opens Fuel, where they are. */
+/** Posted by JavaScript only: a Fuel reminder that names close-the-gap picks opens Fuel and their sheet. */
 export const APP_LAUNCH_ACTIONS = ['fuel'] as const;
 export type LaunchAction = (typeof LAUNCH_ACTIONS)[number] | (typeof APP_LAUNCH_ACTIONS)[number];
 const KNOWN_ACTIONS: readonly string[] = [...LAUNCH_ACTIONS, ...APP_LAUNCH_ACTIONS];
