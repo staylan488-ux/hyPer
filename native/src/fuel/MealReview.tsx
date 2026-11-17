@@ -4,7 +4,7 @@ import { ActionSheetIOS, Pressable, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { normalizeDecimalText } from '@/lib/decimalText';
-import { getMealTotals, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
+import { getMealTotals, mealAmount, rescaleMealIngredients, type MealDraft, type MealIngredient } from '@/lib/mealComposition';
 import { resolveMealDestination } from '@/lib/mealDestination';
 import { NO_MEAL, nutritionGroupTitle } from '@/lib/nutritionGroups';
 import { assertComposedMealOptions, saveComposedMeal } from '@/lib/saveMealComposition';
@@ -30,10 +30,14 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 import { useLogger } from './context';
 
 const amount = (value: number) => Number(value.toFixed(3));
+const AMOUNT_INVALID = 'Enter an amount greater than zero.';
 
 /**
  * The meal being built: name, ingredients and amounts, when, then log it. With
  * `saveOnly` (logged food saved as a meal) it is kept in Saved, not logged.
+ * A meal that already exists (one from Saved or Recent opened to log, or a
+ * logged meal being edited) has an Amount, as a food does: "0.5" logs half of
+ * it, and every ingredient follows.
  */
 export function MealReview({ draft, update, userId, savedTarget, saveOnly = false, editingEntryId, onAddIngredients, onPause, onSaved, storageFailed }: {
   draft: MealDraft;
@@ -54,8 +58,32 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
   const totals = getMealTotals(draft.ingredients);
   const groups = groupsForDay(draft.date);
   const group = groups.find((candidate) => candidate.id === draft.groupId) ?? null;
-  const valid = Boolean(draft.name.trim()) && draft.ingredients.length > 0 && Boolean(draft.time) && invalidRows.length === 0;
   const frozen = busy || draft.locked;
+  // How much of the meal: only where there is a whole meal to take part of.
+  const sized = !saveOnly && !savedTarget && (draft.method === 'saved' || Boolean(editingEntryId));
+  const [amountText, setAmountText] = useState(() => String(draft.amount ?? 1));
+  // Counts the rescales, so each ingredient's field shows its new amount.
+  const [rescales, setRescales] = useState(0);
+  const typedAmount = mealAmount(Number(normalizeDecimalText(amountText)));
+  // Not an amount, or one an ingredient can't follow: the meal stays as it was and Log waits.
+  const amountInvalid = sized && typedAmount !== (draft.amount ?? 1);
+  useAnnounce(amountInvalid ? AMOUNT_INVALID : null);
+  const changeAmount = (text: string) => {
+    // A log keeps two decimals, so the field takes no third: what shows is what logs.
+    if (/[.,]\d{3,}$/.test(text.trim())) return;
+    setAmountText(text);
+    const next = mealAmount(Number(normalizeDecimalText(text)));
+    if (next === null || next === (draft.amount ?? 1)) return;
+    try {
+      update({ amount: next, ingredients: rescaleMealIngredients(draft, next) });
+    } catch {
+      return;
+    }
+    // every row now shows a valid amount again
+    setInvalidRows([]);
+    setRescales((count) => count + 1);
+  };
+  const valid = Boolean(draft.name.trim()) && draft.ingredients.length > 0 && Boolean(draft.time) && invalidRows.length === 0 && !amountInvalid;
   // Saved meals are one per name: a taken name puts this meal in that one's place.
   const { savedMeals, beginSave } = useLogger();
   const replaces = saveOnly ? savedMealNamed(savedMeals, draft.name, draft.entryId) : undefined;
@@ -115,7 +143,24 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
       <View style={{ marginTop: 14 }}>
         <Label>
           <FieldRow label="Name" wide grows value={draft.name} maxLength={500} editable={!frozen} placeholder="e.g. Protein shake" onChangeText={(name) => update({ name })} />
+          {sized ? (
+            <>
+              <Hairline />
+              <FieldRow
+                label="Amount"
+                value={amountText}
+                onChangeText={changeAmount}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+                maxLength={7}
+                editable={!frozen}
+                unit={typedAmount === 1 ? 'meal' : 'meals'}
+                invalid={amountInvalid}
+              />
+            </>
+          ) : null}
         </Label>
+        {amountInvalid ? <FormNote alert>{AMOUNT_INVALID}</FormNote> : null}
       </View>
 
       {/* The meal's totals read as one fact. */}
@@ -147,6 +192,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
               {index > 0 ? <Hairline /> : null}
               <IngredientRow
                 item={item}
+                rescales={rescales}
                 disabled={frozen}
                 onChange={(servings) => update({ ingredients: draft.ingredients.map((part) => (part.id === item.id ? { ...part, servings } : part)) })}
                 onInvalid={(invalid) =>
@@ -230,8 +276,10 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
   );
 }
 
-function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
+function IngredientRow({ item, rescales, disabled, onChange, onInvalid, onRemove }: {
   item: MealIngredient;
+  /** Goes up when the meal's Amount rescales every ingredient: the field then shows the new amount. */
+  rescales: number;
   disabled: boolean;
   onChange: (servings: number) => void;
   onInvalid: (invalid: boolean) => void;
@@ -240,10 +288,15 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
   const c = useBlanc();
   const large = useLargeText();
   const [value, setValue] = useState(String(amount(item.servings * item.food.serving_size)));
+  const [shown, setShown] = useState(rescales);
+  if (shown !== rescales) {
+    setShown(rescales);
+    setValue(String(amount(item.servings * item.food.serving_size)));
+  }
   const field = useRef<TextField>(null);
   const typed = Number(normalizeDecimalText(value));
   const valid = Number.isFinite(typed) && typed > 0;
-  useAnnounce(valid ? null : 'Enter an amount greater than zero.');
+  useAnnounce(valid ? null : AMOUNT_INVALID);
   const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: onRemove }];
   // "559 kcal · 31 g protein", without protein that rounds to none.
   const line = `${formatWhole(item.food.calories * item.servings)} kcal${Math.round(item.food.protein * item.servings) > 0 ? ` · ${formatWhole(item.food.protein * item.servings)} g protein` : ''}`;
@@ -323,7 +376,7 @@ function IngredientRow({ item, disabled, onChange, onInvalid, onRemove }: {
       </View>
       {!valid ? (
         <BlancText variant="footnote" tone="live" style={{ marginTop: 4 }}>
-          Enter an amount greater than zero.
+          {AMOUNT_INVALID}
         </BlancText>
       ) : null}
     </Pressable>

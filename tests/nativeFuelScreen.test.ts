@@ -75,7 +75,7 @@ const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } =
 let root: Root | undefined;
 let host: HTMLDivElement;
 
-async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, copyAgain = false, meal = false, fuelModule, gapPicks = Empty }: {
+async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, shake, copyAgain = false, meal = false, fuelModule, gapPicks = Empty }: {
   day?: string;
   logged?: boolean;
   source?: string;
@@ -84,6 +84,8 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   fontScale?: number;
   /** A second entry, Milk, after the Oats. */
   milk?: boolean;
+  /** A built meal, Shake (milk and oats), logged after them at this amount of it. */
+  shake?: number;
   /** Today's matching meal already has what Copy to today would copy. */
   copyAgain?: boolean;
   /** The Oats in a meal of the person's own (no named meal), with its options. */
@@ -94,6 +96,13 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
 } = {}) {
   const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null as string | null, sort_order: 0, source }] : [];
   if (logged && milk) logs.push({ id: 'log-milk', date: day, food: milkFood, servings: 1, logged_at: `${day}T09:00:00Z`, group_id: null, sort_order: 1, source });
+  if (logged && shake) {
+    const built: Food = {
+      ...milkFood, id: 'shake', name: 'Shake', calories: 300, protein: 14, serving_size: 1, serving_unit: 'meal',
+      description: composition.encodeMealComposition([composition.createMealIngredient(milkFood, 1, 'part-milk'), composition.createMealIngredient(oats, 1, 'part-oats')]),
+    };
+    logs.push({ id: 'log-shake', date: day, food: built, servings: shake, logged_at: `${day}T09:30:00Z`, group_id: null, sort_order: 2, source });
+  }
   const ownMeal = { id: 'g-own', user_id: 'user-a', date: day, kind: 'meal', label: null, sort_order: 0 };
   if (meal) for (const entry of logs) entry.group_id = ownMeal.id;
   shown.logs = logs;
@@ -281,6 +290,15 @@ describe("Fuel's day rows", () => {
     // A tap still opens the entry, where its time is changed.
     await act(async () => { row.onPress!(); });
     expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { entry: 'log-oats' } });
+  });
+
+  it.each([
+    [1, '2 ingredients', '14 g protein', '300'],
+    [0.5, '0.5 meals', '7 g protein', '150'],
+  ] as const)('say how many ingredients a built meal has, or how much of it when it is not the whole meal (%s)', async (shake, amount, protein, kcal) => {
+    await renderFuel({ shake });
+    expect(rows.Shake.detail).toEqual([amount, protein, dates.format(new Date(`${TODAY}T09:30:00Z`), 'h:mm a')]);
+    expect(rows.Shake.value).toBe(kcal);
   });
 
   it('keep the time and Estimate whole: only the amount gives way on a narrow line', async () => {
