@@ -819,6 +819,10 @@ describe('native food logger transitions', () => {
     expect(h.captured.review!.draft).toMatchObject({ amount: 0.5, ingredients: [{ id: 'milk-part', servings: 0.5 }] });
     expect(h.captured.inputs['Amount of Milk, ml'].value).toBe('120');
     expect(h.text()).toContain('60');
+    // Macros to one decimal: a quarter of the milk's 5 g of fat reads 1.3, not 1.25.
+    await act(async () => { h.captured.fields.Amount.onChangeText('0.25'); });
+    expect(h.text()).toContain('P 2 g · C 3 g · F 1.3 g');
+    await act(async () => { h.captured.fields.Amount.onChangeText('0,5'); });
     // A log keeps two decimals: a third is not taken.
     await act(async () => { h.captured.fields.Amount.onChangeText('0,555'); });
     expect(h.captured.fields.Amount.value).toBe('0,5');

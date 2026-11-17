@@ -30,6 +30,8 @@ import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 import { useLogger } from './context';
 
 const amount = (value: number) => Number(value.toFixed(3));
+/** A macro total to one decimal, as a saved meal's own figures are kept: half of 94.7 g reads 47.4, not 47.35. */
+const macro = (value: number) => Number(value.toFixed(1));
 const AMOUNT_INVALID = 'Enter an amount greater than zero.';
 
 /**
@@ -167,7 +169,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
       <View
         accessible
         accessibilityLabel={speak(
-          `${formatWhole(totals.calories)} kcal · protein ${amount(totals.protein)} g · carbs ${amount(totals.carbs)} g · fat ${amount(totals.fat)} g`,
+          `${formatWhole(totals.calories)} kcal · protein ${macro(totals.protein)} g · carbs ${macro(totals.carbs)} g · fat ${macro(totals.fat)} g`,
         )}
         style={{ paddingHorizontal: space.gutter, marginTop: 22 }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
@@ -181,7 +183,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
           </Animated.View>
         </View>
         <BlancText variant="secondary" tone="graphite">
-          P {amount(totals.protein)} g · C {amount(totals.carbs)} g · F {amount(totals.fat)} g
+          P {macro(totals.protein)} g · C {macro(totals.carbs)} g · F {macro(totals.fat)} g
         </BlancText>
       </View>
 
