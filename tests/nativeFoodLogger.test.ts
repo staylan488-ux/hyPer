@@ -1687,6 +1687,44 @@ describe('native food logger: Snap a meal', () => {
     expect(h.captured.ai!.draft.photos).toEqual([]);
   });
 
+  it('says a library photo is opening while it arrives, instead of a frozen viewfinder', async () => {
+    const h = loggerHarness({ realAi: true });
+    await h.render();
+    await h.appear();
+    await h.tab('photo');
+    await h.press('Add photo');
+    await act(async () => { h.captured.viewfinder!.onCameraReady!(); });
+    expect(h.cameraText()).not.toContain('Opening photo…');
+    // The picker has gone; iOS is still handing over the photo (from iCloud, say).
+    const picked = deferred<PickerResult>();
+    h.library.mockReturnValueOnce(picked.promise);
+    await h.press('Photo library');
+    expect(h.cameraText()).toContain('Opening photo…');
+    expect(h.captured.viewfinder).toMatchObject({ active: false });
+    expect(h.captured.pressables['Take photo'].disabled).toBe(true);
+    expect(h.captured.pressables['Photo library'].disabled).toBe(true);
+    await act(async () => { picked.resolve({ canceled: false, assets: [{ uri: 'lib', width: 12, height: 9, type: 'image' }] }); });
+    await h.flush();
+    expect(h.cameraUp()).toBe(false);
+    expect(h.captured.ai!.draft.photos).toEqual([{ uri: 'lib', width: 12, height: 9 }]);
+  });
+
+  it('takes the words away again when the library is cancelled', async () => {
+    const h = loggerHarness({ realAi: true });
+    await h.render();
+    await h.appear();
+    await h.tab('photo');
+    await h.press('Add photo');
+    await act(async () => { h.captured.viewfinder!.onCameraReady!(); });
+    h.library.mockResolvedValueOnce({ canceled: true, assets: [] });
+    await h.press('Photo library');
+    await h.flush();
+    expect(h.cameraUp()).toBe(true);
+    expect(h.cameraText()).not.toContain('Opening photo…');
+    expect(h.captured.viewfinder).toMatchObject({ active: true });
+    expect(h.captured.pressables['Take photo'].disabled).toBe(false);
+  });
+
   it('switches the flash for the shot', async () => {
     const h = loggerHarness({ worker: true, params: { start: 'camera' } });
     await h.render();
