@@ -102,8 +102,8 @@ export function RecentTab({ userId }: { userId: string }) {
                 logs && logs.length > 0
                   ? 'Hidden foods come back when you log them again.'
                   : logger.purpose === 'ingredients'
-                    ? 'Search above or scan a barcode — foods you log show up here.'
-                    : 'Search above, scan a barcode, or snap a meal — foods you log show up here.'
+                    ? 'Search above or scan a barcode. Foods you log show up here.'
+                    : 'Search above, scan a barcode or snap a meal. Foods you log show up here.'
               }
             />
           </Animated.View>
