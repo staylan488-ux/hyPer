@@ -14,15 +14,19 @@ import { supabase } from '@/lib/supabase';
  */
 export async function readWeekSetsBesides(userId: string, workoutId: string, now: Date = new Date()): Promise<MuscleSets> {
   const { weekStart, weekEnd } = trainingWeekRange(now);
-  // As the store's weekly volume reads it: finished sets count whether or not their workout was closed.
+  // As the store's weekly volume counts it: finished sets, whether or not their workout was closed.
+  // Every set of the week's workouts is read and the unfinished ones left out in the count, so
+  // the sample account's backend, which cannot filter on an embedded row, answers the same.
   const { data, error } = await supabase
     .from('workouts')
-    .select('id, sets!inner(completed, exercise:exercises(muscle_group, muscle_group_secondary))')
+    .select('id, sets(completed, exercise:exercises(muscle_group, muscle_group_secondary))')
     .eq('user_id', userId)
-    .eq('sets.completed', true)
     .neq('id', workoutId)
     .gte('date', weekStart)
     .lte('date', weekEnd);
   if (error) throw new Error(error.message);
-  return volumeSets(computeWeeklyVolume((data ?? []) as unknown as WeeklyVolumeWorkoutRow[]));
+  const rows = ((data ?? []) as unknown as Array<{ sets: WeeklyVolumeWorkoutRow['sets'] | null }>).map((row) => ({
+    sets: (row.sets ?? []).map((set) => ({ completed: Boolean(set.completed), exercise: set.exercise })),
+  }));
+  return volumeSets(computeWeeklyVolume(rows));
 }
