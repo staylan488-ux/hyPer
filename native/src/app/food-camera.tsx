@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { onAppVisible } from '@/lib/appVisibility';
@@ -21,6 +21,8 @@ import { paletteFor, space, type Palette } from '~/theme/blanc';
  * first. A shot shows for Retake or Use Photo. Without camera access (or a
  * camera: the simulator) it says so, with Choose from library right under
  * the words (and Open Settings when access is off); the library button stays.
+ * A library photo can take a few seconds to arrive after the picker closes
+ * (iOS may fetch it from iCloud), so the frame says it is opening meanwhile.
  */
 export default function FoodCamera() {
   const insets = useSafeAreaInsets();
@@ -76,7 +78,7 @@ export default function FoodCamera() {
   };
 
   const take = async () => {
-    if (!ready || taking || state !== 'live') return;
+    if (!ready || taking || choosing || state !== 'live') return;
     haptics.tap();
     setTaking(true);
     setError(null);
@@ -150,7 +152,19 @@ export default function FoodCamera() {
           {shot ? (
             <Image source={{ uri: shot.uri }} accessibilityLabel="The photo you took" style={{ position: 'absolute', inset: 0 }} contentFit="contain" />
           ) : null}
-          {state === 'unavailable' || state === 'off' ? (
+          {choosing ? (
+            // Under the picker while it is up; once it closes, says the chosen photo is on its way
+            // instead of leaving the paused viewfinder looking frozen. Close still works.
+            <View
+              accessible
+              accessibilityLabel="Opening photo"
+              style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: state === 'live' ? 'rgba(0,0,0,0.55)' : '#000000' }}>
+              <ActivityIndicator size="large" color={c.ink} />
+              <Text {...textSizing('secondary')} style={[blancTextStyle(c, 'secondary'), { textAlign: 'center' }]}>
+                Opening photo…
+              </Text>
+            </View>
+          ) : state === 'unavailable' || state === 'off' ? (
             <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 }}>
               <Text {...textSizing('headline')} accessibilityRole="header" style={[blancTextStyle(c, 'headline'), { textAlign: 'center' }]}>
                 {state === 'off' ? 'Camera access is off' : CAMERA_UNAVAILABLE}
@@ -210,17 +224,17 @@ export default function FoodCamera() {
               disabled={choosing}
               onPress={() => void library()}
               hitSlop={6}
-              style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 10, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill, opacity: pressed ? 0.6 : 1 })}>
+              style={({ pressed }) => ({ width: 52, height: 52, borderRadius: 10, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill, opacity: choosing ? 0.4 : pressed ? 0.6 : 1 })}>
               <SymbolView name="photo.on.rectangle" size={22} tintColor={c.ink} />
             </Pressable>
           </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Take photo"
-            accessibilityState={state !== 'live' || !ready || taking ? { disabled: true } : undefined}
-            disabled={state !== 'live' || !ready || taking}
+            accessibilityState={state !== 'live' || !ready || taking || choosing ? { disabled: true } : undefined}
+            disabled={state !== 'live' || !ready || taking || choosing}
             onPress={() => void take()}
-            style={{ width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', opacity: state === 'live' ? 1 : 0.35 }}>
+            style={{ width: 76, height: 76, borderRadius: 38, borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', opacity: state === 'live' && !choosing ? 1 : 0.35 }}>
             {({ pressed }) => <View style={{ width: 62, height: 62, borderRadius: 31, backgroundColor: '#FFFFFF', transform: [{ scale: pressed || taking ? 0.9 : 1 }] }} />}
           </Pressable>
           <View style={{ flex: 1 }} />
