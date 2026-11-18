@@ -55,11 +55,12 @@ async function ensureLibraryExercise(exercise: Exercise): Promise<Exercise> {
 
 /**
  * Adds the pick to the live workout, pairs it with the movement as a
- * superset, or swaps the movement for it; rejects when the save fails. Out
- * here because the React Compiler can't yet compile a component whose own
- * code branches inside a try.
+ * superset, or swaps the movement for it; rejects when the save fails.
+ * Resolves to the exercise as the library holds it (one typed in by hand has
+ * its saved id by then). Out here because the React Compiler can't yet
+ * compile a component whose own code branches inside a try.
  */
-async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Movement | null, exercise: Exercise) {
+async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Movement | null, exercise: Exercise): Promise<Exercise> {
   const ready = await ensureLibraryExercise(exercise);
   if (mode === 'add') {
     await addMovement(session.workoutId, ready);
@@ -68,6 +69,7 @@ async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Mo
   } else if (movement) {
     await swapMovement(session.workoutId, movement.exerciseId, ready, session.current?.movement.exerciseId === movement.exerciseId);
   }
+  return ready;
 }
 
 /**
@@ -159,18 +161,19 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     // Back to the workout, past the movement sheet a swap or superset opened
     // from (a swipe on Train's row opens this sheet straight from Train).
     const exitTo = mode === 'add' || params.from === 'train' ? 'back' : 'dismiss';
-    const failure = await pickInWorkout(session, mode, movement, exercise).then(
-      () => null,
-      (error: unknown) => error ?? new Error(copy.fallback),
+    const picked = await pickInWorkout(session, mode, movement, exercise).then(
+      (ready) => ({ ready, failure: null }),
+      (error: unknown) => ({ ready: null, failure: error ?? new Error(copy.fallback) }),
     );
-    if (failure) {
+    if (!picked.ready) {
       haptics.error();
       setSwapping(null);
-      Alert.alert(copy.failed, errorMessage(failure, copy.fallback));
+      Alert.alert(copy.failed, errorMessage(picked.failure, copy.fallback));
       return;
     }
     // In this workout now; the program day is a second save that can fail alone.
-    const kept = keep && programDayId ? await keepInProgram(programDayId, exercise) : null;
+    // It takes the saved exercise: one typed in by hand has no library id until then.
+    const kept = keep && programDayId ? await keepInProgram(programDayId, picked.ready) : null;
     if (kept === false) {
       haptics.error();
       Alert.alert(`${exercise.name} added to this workout only`, `Couldn't add it to ${session.dayName}. You can add it in Program.`);

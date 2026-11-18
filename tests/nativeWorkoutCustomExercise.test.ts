@@ -16,10 +16,14 @@ type PickerProps = {
   allowCustom?: boolean;
   extras?: Exercise[];
   busyId?: string | null;
+  accessory?: ReactNode;
   onPick: (exercise: Exercise) => void;
 };
+type ToggleProps = { label: string; value: boolean; onChange: (value: boolean) => void };
 
 let pickerProps: PickerProps | null = null;
+let keepToggle: ToggleProps | null = null;
+const addExerciseToProgramDay = vi.fn(async () => {});
 const addMovement = vi.fn(async () => {});
 const invalidateExerciseLibrary = vi.fn();
 const back = vi.fn();
@@ -57,11 +61,17 @@ const { default: PickExerciseSheet } = loadNativeModule<{ default: () => ReactNo
     },
     '@/lib/splitDraft': splitDraft,
     '@/lib/supabase': { supabase },
-    '@/stores/appStore': { useAppStore: create(() => ({})) },
+    '@/stores/appStore': { useAppStore: create(() => ({ currentWorkout: { split_day_id: 'day-1' }, addExerciseToProgramDay })) },
     '@/stores/splitEditStore': { useSplitEditStore: create(() => ({ draft: null })) },
     '~/components/ExercisePicker': {
       ExercisePicker: (props: PickerProps) => {
         pickerProps = props;
+        return props.accessory ?? null;
+      },
+    },
+    '~/components/Form': {
+      ToggleRow: (props: ToggleProps) => {
+        keepToggle = props;
         return null;
       },
     },
@@ -78,6 +88,8 @@ const { default: PickExerciseSheet } = loadNativeModule<{ default: () => ReactNo
     '~/lib/session': {
       useSessionModel: () => ({
         workoutId: 'workout-1',
+        dayName: 'Lower B',
+        flexible: false,
         movements: [],
         current: null,
       }),
@@ -91,8 +103,10 @@ let host: HTMLDivElement;
 
 beforeEach(() => {
   pickerProps = null;
+  keepToggle = null;
   inserted.length = 0;
   addMovement.mockClear();
+  addExerciseToProgramDay.mockClear();
   invalidateExerciseLibrary.mockClear();
   back.mockClear();
   host = document.createElement('div');
@@ -127,6 +141,27 @@ describe('Workout exercise picker custom exercises', () => {
       'workout-1',
       expect.objectContaining({ id: 'lib-custom-1', name: 'Pendulum Squat', muscle_group: 'quads' }),
     );
+    expect(back).toHaveBeenCalledOnce();
+    // Keep was left off: the program day is not touched.
+    expect(addExerciseToProgramDay).not.toHaveBeenCalled();
+  });
+
+  it('keeps a custom exercise on the program day by its saved library id, never its pending one', async () => {
+    await act(async () => {
+      root.render(createElement(PickExerciseSheet));
+    });
+    expect(keepToggle?.label).toBe('Keep in Lower B');
+    await act(async () => {
+      keepToggle!.onChange(true);
+    });
+
+    const pending = customExercises.customExercise('Pendulum Squat', 'quads', []);
+    await act(async () => {
+      pickerProps!.onPick(pending);
+    });
+
+    expect(addMovement).toHaveBeenCalledWith('workout-1', expect.objectContaining({ id: 'lib-custom-1' }));
+    expect(addExerciseToProgramDay).toHaveBeenCalledExactlyOnceWith('day-1', 'lib-custom-1');
     expect(back).toHaveBeenCalledOnce();
   });
 });
