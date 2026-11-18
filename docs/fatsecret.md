@@ -74,10 +74,22 @@ Nothing here is on until all of these are done, each with the owner's go:
 
 1. A build with this code is the one in use. An older build shows a logged
    brand food as "Brand food" with no calories.
-2. The backend's settings hold `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET`
-   and `FATSECRET_ENABLED=1`, and `food-lookup` is deployed.
-   `FATSECRET_SCOPE` is optional; without it FatSecret grants every scope the
-   key has (search needs `premier`, the scanner `barcode`).
+2. `food-lookup` is deployed, and then the backend's settings hold
+   `FATSECRET_CLIENT_ID`, `FATSECRET_CLIENT_SECRET` and `FATSECRET_ENABLED=1`.
+   In that order: the function live before this work answers a scan with
+   FatSecret's details for any build once `FATSECRET_ENABLED` is `1`, and an
+   older build saves them on the server. `FATSECRET_SCOPE` is optional;
+   without it FatSecret grants every scope the key has (search needs
+   `premier`, the scanner `barcode`).
+
+   Until the sign-up cutover ([sign-up-and-limits.md](sign-up-and-limits.md))
+   this repository's `food-lookup` cannot go live: it needs the cutover's
+   approval, limit and cache tables and answers 503 without them. The file
+   to deploy until then is the bridge on branch
+   `claude/project-thread-bceud6`: the function as production runs it, with
+   only FatSecret's three lookups added. It caches nothing and counts no
+   lookups against an account. That branch is never merged; after the
+   cutover, deploy this repository's function and delete the branch.
 3. One real search, one barcode and one lookup by ID are checked against the
    live API: the method versions used (`foods.search.v6`, `food.get.v6`,
    `food.find_id_for_barcode`) were taken from FatSecret's documentation and
