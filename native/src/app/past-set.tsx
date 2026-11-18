@@ -88,10 +88,10 @@ export default function PastSetSheet() {
   return (
     <ScrollView showsVerticalScrollIndicator={false}
       style={{ backgroundColor: c.ground }}
-      contentContainerStyle={{ paddingBottom: 28 }}
+      contentContainerStyle={{ paddingBottom: 32 }}
       keyboardShouldPersistTaps="handled"
-      // The sheet fits its content; at the accessibility text sizes that can pass the screen's height.
-      scrollEnabled={large}>
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16 }}>
         <GlassButton symbol="xmark" accessibilityLabel="Close" onPress={() => router.back()} />
         <View style={{ flex: 1, alignItems: 'center' }} accessible accessibilityRole="header" accessibilityLabel={`${name}, set ${number}`}>
@@ -165,7 +165,10 @@ export default function PastSetSheet() {
             accessibilityLabel={rpe ? `RPE ${rpe}. Change` : 'Add RPE'}
             disabled={saving}
             haptic={false}
-            onPress={() => chooseRpe(setRpe)}
+            onPress={() => {
+              Keyboard.dismiss();
+              chooseRpe(setRpe);
+            }}
             style={{ alignSelf: 'flex-start', marginTop: 14 }}
           />
 

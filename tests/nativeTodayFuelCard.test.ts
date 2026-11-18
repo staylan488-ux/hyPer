@@ -40,11 +40,16 @@ type SectionProps = PropsWithChildren<{
   actions?: { label: string; run: () => void }[];
 }>;
 type DragListProps = { items: { key: string; node: ReactNode }[]; cards?: boolean; gap?: number; onMove: (key: string, index: number) => void };
+type PlanCardProps = { actions?: { label: string; run: () => void }[] };
+type CapsuleProps = { title: string; onPress: () => void };
 // What the screen hands its pressables, rows and sections, by name.
 const presses: PressProps[] = [];
 const rows: RowProps[] = [];
 const sections: SectionProps[] = [];
 const lists: DragListProps[] = [];
+const planCards: PlanCardProps[] = [];
+const capsules: CapsuleProps[] = [];
+const fetchMacroTarget = vi.fn();
 // The groups in the order they are drawn, each in its own element.
 const DragList = (props: DragListProps) => {
   lists.push(props);
@@ -80,6 +85,8 @@ const haptics = { tap: vi.fn() };
 const appStore = create(() => ({
   macroTarget: null as MacroTarget | null,
   macroTargetLoadedForUserId: null as string | null,
+  macroTargetLoadFailed: false,
+  fetchMacroTarget,
   weeklyVolume: [] as MuscleVolume[],
   nutritionProfile: null,
 }));
@@ -109,7 +116,12 @@ async function open() {
     '@/stores/authStore': { useAuthStore: create(() => ({ user: { id: 'user-1' } })) },
     '~/components/BlancText': { BlancText: Text },
     '~/components/BrandMark': { BrandMark: Empty, HEADER_MARK_SIZE: 30, headerMarkSlot: {} },
-    '~/components/Capsule': { Capsule: Empty },
+    '~/components/Capsule': {
+      Capsule: (props: CapsuleProps) => {
+        capsules.push(props);
+        return createElement('button', { onClick: props.onPress }, props.title);
+      },
+    },
     '~/components/DragList': { DragList },
     '~/components/SwipeRow': { closeOpenSwipeRow: () => lifted },
     '~/lib/todayOrder': {
@@ -119,7 +131,13 @@ async function open() {
     },
     '~/components/Label': { Label },
     '~/components/LiveClock': { LiveClock: () => null },
-    '~/components/PlanCard': { PlanCard: Empty, SessionCard: Empty },
+    '~/components/PlanCard': {
+      PlanCard: (props: PlanCardProps) => {
+        planCards.push(props);
+        return null;
+      },
+      SessionCard: Empty,
+    },
     '~/components/RollingText': { RollingText: Text },
     '~/components/Tally': { Tally: Empty },
     '~/components/Row': { Hairline: Empty, Row },
@@ -156,13 +174,16 @@ beforeEach(() => {
   rows.length = 0;
   sections.length = 0;
   lists.length = 0;
+  planCards.length = 0;
+  capsules.length = 0;
+  fetchMacroTarget.mockClear();
   lifted = false;
   orderStore.setState({ order: [...TODAY_SECTIONS] });
   week = { weekDone: null, weekTarget: null };
   router.navigate.mockClear();
   router.push.mockClear();
   haptics.tap.mockClear();
-  appStore.setState({ macroTarget: null, macroTargetLoadedForUserId: null, weeklyVolume: [] });
+  appStore.setState({ macroTarget: null, macroTargetLoadedForUserId: null, macroTargetLoadFailed: false, weeklyVolume: [] });
   fuelStore.setState({ todayKey: DAY, todayLoadedKey: DAY, todayTotals: totals });
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -196,6 +217,17 @@ describe('Today’s Fuel card', () => {
     expect(shown()).toContain('1200');
     expect(shown()).toContain('of 2000 kcal');
     expect(shown()).not.toContain(ASK);
+  });
+
+  it('offers Retry when the cold-start target read fails before any target is cached', async () => {
+    appStore.setState({ macroTarget: null, macroTargetLoadedForUserId: null, macroTargetLoadFailed: true });
+    await open();
+    expect(shown()).toContain('Couldn’t load targets');
+    expect(shown()).not.toContain(ASK);
+    const retry = capsules.find((capsule) => capsule.title === 'Retry');
+    expect(retry).toBeDefined();
+    await act(async () => { retry!.onPress(); });
+    expect(fetchMacroTarget).toHaveBeenCalledOnce();
   });
 
   it('asks once the read finds no target for this account', async () => {
@@ -306,11 +338,15 @@ describe('Today’s groups, set apart by space', () => {
 
   it('moves from a heading with VoiceOver, as a drag does by sight', async () => {
     await open();
-    // Fuel is in the middle, Progress last.
+    // Training is first, Fuel in the middle, Progress last.
+    expect(planCards.at(-1)!.actions!.map((action) => action.label)).toEqual(['Move down']);
     expect(section('Fuel').actions!.map((action) => action.label)).toEqual(['Move up', 'Move down']);
     expect(section('Progress').actions!.map((action) => action.label)).toEqual(['Move up']);
     await act(async () => { section('Progress').actions![0].run(); });
     expect(groupsShown()).toEqual(['training', 'progress', 'fuel']);
+    await act(async () => { planCards.at(-1)!.actions![0].run(); });
+    expect(groupsShown()).toEqual(['progress', 'training', 'fuel']);
+    expect(planCards.at(-1)!.actions!.map((action) => action.label)).toEqual(['Move up', 'Move down']);
   });
 
   it('are a page’s groups, and Log food is the Fuel heading’s one action', async () => {

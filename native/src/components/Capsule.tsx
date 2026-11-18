@@ -19,6 +19,7 @@ import { useBlanc } from '~/theme/blanc';
 
 import { BlancText } from './BlancText';
 import { useScriptedCapsule, type ScriptedCapsule } from './GlassDemo';
+import { dismissOpenSwipeRow, isRowGestureActive } from './SwipeRow';
 import { BloomClip, DemoFinger, readPressDemo, useTapBloom, type BloomTone } from './TapBloom';
 
 type CapsuleProps = {
@@ -125,6 +126,11 @@ export function Capsule({
   };
 
   const press = () => {
+    if (isRowGestureActive()) {
+      bloom.cancel();
+      return;
+    }
+    dismissOpenSwipeRow();
     pressAt.current.landed = true;
     haptics.tap();
     if (tone === 'effort') emitGlassPress({ x: pressAt.current.pageX, y: pressAt.current.pageY, tone: 'effort' });

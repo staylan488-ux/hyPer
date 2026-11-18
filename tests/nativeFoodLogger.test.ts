@@ -71,7 +71,7 @@ function deferred<T>() {
 }
 
 type Button = { title: string; disabled?: boolean; onPress: () => void };
-type Field = { label: string; value?: string; onChangeText: (text: string) => void; onSubmitEditing?: () => void };
+type Field = { label: string; value?: string; invalid?: boolean; onChangeText: (text: string) => void; onFocus?: () => void; onBlur?: () => void; onSubmitEditing?: () => void };
 type Press = {
   children?: ReactNode | ((state: { pressed: boolean }) => ReactNode);
   onPress?: () => void;
@@ -279,6 +279,8 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   const cameraBack = vi.fn(closeCameraRoot);
   const openSettings = vi.fn();
   const dismissKeyboard = vi.fn();
+  const barcodeAvailable = vi.fn(async () => ({ available: false }));
+  const scanBarcode = vi.fn<() => Promise<{ rawValue: string; format?: string }>>(async () => ({ rawValue: '0123456789012', format: 'ean13' }));
   // Fuel's addGroup: a new unlabelled meal or snack on the day Fuel shows, or a failure.
   const addGroup = vi.fn(async (kind: 'meal' | 'snack'): Promise<NutritionGroup | null> => {
     const group: NutritionGroup = { id: `new-${kind}`, user_id: 'user-a', date: fuel.selected, kind, label: null, sort_order: fuel.groups.length };
@@ -370,7 +372,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '@/lib/photoReview': { ...photoReview, groundPhotoItems: ground },
     '@/lib/mealDestination': { resolveMealDestination: resolveDestination },
     '@/lib/saveMealComposition': { assertComposedMealOptions, saveComposedMeal: saveMeal },
-    '../../modules/hyper-barcode': { HyperBarcode: { getAvailability: async () => ({ available: false }) } },
+    '../../modules/hyper-barcode': { HyperBarcode: { getAvailability: barcodeAvailable, scanBarcode } },
     '~/components/BlancText': { BlancText: Wrap, blancTextStyle: () => ({}), textSizing: () => ({}) },
     '~/components/Capsule': { Capsule: (props: Button) => { captured.buttons[props.title] = props; return null; } },
     '~/components/GlassButton': { GlassButton: (props: Button & { accessibilityLabel: string }) => { captured.buttons[props.accessibilityLabel] = props; return null; } },
@@ -639,7 +641,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   return {
     captured, imports, render, close, text, tab, click, changeFood, press, search, startPhoto, openSavedEditor, busy, appear, ask, entries, persistEntry, lookup, analysis, analyze,
     token, ground, alert, tap, success, error, saveMeal, resolveDestination, saveFood, ensureFood, resolveFood, replaceSimple, retire, loadSaved, mealsState, back, push,
-    refusePress, announce, when, addGroup, dismissKeyboard, permission, readAccess, shutter, library, openCamera, cameraBack, cameraText, cameraUp, shoot, flush, openSettings,
+    refusePress, announce, when, addGroup, dismissKeyboard, permission, readAccess, shutter, library, openCamera, cameraBack, cameraText, cameraUp, shoot, flush, openSettings, barcodeAvailable, scanBarcode,
   };
 }
 
@@ -671,6 +673,23 @@ describe('editing measured food entries', () => {
     expect(h.captured.manual?.draft.fields.name).toBe(milk.name);
   });
 
+  it.each([
+    ['pieces', 6, 1, '1', '1.5', 1.5],
+    ['scoop', 1, 2, '2', '1', 1],
+  ] as const)('opens a %s-based entry in FoodReview so saving preserves its serving basis', async (unit, size, servings, amount, nextAmount, nextServings) => {
+    const food = { ...milk, serving_unit: unit, serving_size: size };
+    const h = loggerHarness({ editing: true, realReview: true, entry: { ...loggedMilk, food, servings } });
+    await h.render();
+    expect(h.captured.foodReview?.food).toEqual(food);
+    expect(h.captured.fields.Amount.value).toBe(amount);
+    await act(async () => { h.captured.fields.Amount.onChangeText(nextAmount); });
+    await h.click('Save changes');
+    expect(h.saveFood).toHaveBeenCalledWith(expect.objectContaining({
+      foodId: milk.id, servings: nextServings, editingId: loggedMilk.id, source: 'barcode',
+    }));
+    expect(h.ensureFood).not.toHaveBeenCalled();
+  });
+
   it('keeps a changed amount when going back to edit the macros', async () => {
     const h = loggerHarness({ editing: true, realReview: true });
     await h.render();
@@ -678,6 +697,38 @@ describe('editing measured food entries', () => {
     await h.changeFood();
     await h.click('Save changes');
     expect(h.saveFood).toHaveBeenCalledWith(expect.objectContaining({ servings: 0.5, editingId: loggedMilk.id }));
+  });
+
+  it('defers empty-amount validation until blur while keeping Log entry disabled', async () => {
+    const h = loggerHarness({ realReview: true });
+    await h.render();
+    await act(async () => { h.captured.context!.chooseFood(milk); });
+    await act(async () => {
+      h.captured.fields.Amount.onFocus?.();
+      h.captured.fields.Amount.onChangeText('');
+    });
+    expect(h.captured.buttons['Log entry'].disabled).toBe(true);
+    expect(h.captured.fields.Amount.invalid).toBe(false);
+    expect(h.text()).not.toContain('Enter a valid amount greater than zero.');
+
+    await act(async () => { h.captured.fields.Amount.onBlur?.(); });
+    expect(h.captured.fields.Amount.invalid).toBe(true);
+    expect(h.text()).toContain('Enter a valid amount greater than zero.');
+  });
+
+  it('offers Open Settings on Barcode scan when camera access is off', async () => {
+    const h = loggerHarness();
+    h.barcodeAvailable.mockResolvedValue({ available: true });
+    h.scanBarcode.mockRejectedValueOnce(Object.assign(new Error('Camera stopped'), { code: 'SCAN_FAILED' }));
+    await h.render();
+    await h.tab('scan');
+    await h.flush();
+    await h.click('Scan barcode');
+    await h.flush();
+    expect(h.text()).toContain('allow it for hyPer in Settings');
+    expect(h.captured.buttons['Open Settings']).toBeDefined();
+    await h.click('Open Settings');
+    expect(h.openSettings).toHaveBeenCalledOnce();
   });
 });
 

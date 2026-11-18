@@ -122,6 +122,41 @@ history keep them (this file at commit b3f61df has the long version).
 - Not run in a simulator or on a phone yet (built in a cloud session):
   type-checked, unit-tested, and the iOS bundle exported.
 
+## App Store rollout UX polish (branch `ux_deep_dive_rollout`)
+
+- Day-0 & cold-start onboarding: `You › Targets` shows `No targets set yet`
+  with `Calculate targets`, `Suggest targets` and `Enter by hand` (and hides
+  the redundant top-right `Edit` button) instead of unsaved `2,000 kcal`
+  defaults; empty `Fuel` on today offers a quiet `Set a calorie target`
+  capsule; empty `Log food › Recent` guides first-time users to search, scan a
+  barcode or snap a meal; `Sign up` names the 8-character password minimum; and
+  `Today › Fuel` offers `Couldn’t load targets · Retry` if the cold-start
+  target read fails before any target is cached.
+- Logging, workouts & gestures: editing a logged food with its own serving
+  unit or size (`pieces`, `scoop`, `serving_label`, `serving_size !== 1`) opens
+  `FoodReview` instead of overwriting its basis in `ManualTab`; `ServingHelper`
+  dismisses the keyboard on `Convert` and `FoodReview` notes when unapplied
+  helper text holds `Log entry`; empty `Amount` fields defer red alerts until
+  `onBlur` and `Search foods` waits 450 ms before showing the 1-character
+  prompt; `PastSetSheet` scrolls with keyboard insets; `ScanTab` offers `Open
+  Settings` on `SCAN_FAILED`; `WorkoutPick` (`swap.tsx`) enables `allowCustom`
+  during live and past workouts; `Train › Other days` rows open `program-view`
+  scrolled to that day while keeping 1-tap `Start`; `DragList` uses the
+  leading-edge swap rule for all lists so supersets never jump on lift; and
+  `Today` guards `PlanCard`, `SessionCard` and `Capsule` against drag-release
+  taps while adding VoiceOver `Move up` and `Move down` to Training.
+- Release & support surfaces: `app.config.js` strips `location` and `audio`
+  from `UIBackgroundModes` when `HYPER_APP=release` while GPS runs stay behind
+  `early_access` (with a matching `Info.plist` guard in `RunRecorder.swift`),
+  and `You › About` appends the iOS build number when set (`2.0.x (build)`).
+- Checked in `iPhone 17 Pro` simulator (iOS 26.5, React Compiler on): Day-0
+  blank account (`-hyperAction blankAccount`) across `Today`, `Fuel`, `You ›
+  Targets` and `Log food` in Light, Dark and AX5 with Increase Contrast;
+  `Whey protein` (`1 scoop`) edit in `FoodReview`; `PastSetSheet` keypad inset;
+  `Add a movement` picker; `Train › Other days` and `program-view` scrolled to
+  `Lower B`; and `You › About`. Still needs a physical iPhone check for the
+  live barcode camera permission jump, haptics, 120 Hz glass and VoiceOver.
+
 ## Today's groups, and holding one to move it (branch `t3/native-ui-clutter-review`)
 
 - The rules are in the blanc-native skill (Design, and the owner's
@@ -137,14 +172,8 @@ history keep them (this file at commit b3f61df has the long version).
   program editor (Reorder).
 - Checked in the simulator: Today, Train and Fuel in dark and light; Today
   and Fuel at the largest text size and Today with Increase Contrast, before
-  the reorder was added. Not checked with the reorder: the largest text size,
-  Increase Contrast, Reduce Motion, VoiceOver's Move up and Move down.
-- Left for the owner: Train still has a Start button on every other day
-  (removing them changes how an off-plan day starts).
-- Read in the code, not reproduced: the live workout's reorder trades places
-  by a rule that assumes rows of similar height, so lifting a tall block (a
-  superset) may trade it with its neighbour at once. Today's groups use a
-  rule of their own (DragList's `cards`).
+  the reorder was added. Not checked with the reorder on a phone: Reduce
+  Motion and VoiceOver's Move up and Move down.
 
 ## Molten glass and the card-less pages (merged, PR #210)
 
@@ -244,8 +273,7 @@ sample data. None has been seen on a phone.
 ## For later
 
 - Minor: merging 3+ activities in one step, the Target sets field in History,
-  RPE below 6, Train's week strip, Progress's training-time detail, You's
-  About build number.
+  RPE below 6, Train's week strip, Progress's training-time detail.
 - Left as is on purpose (interaction audit, 2026-10-28): logged sets in a live
   workout are corrected, not deleted (History deletes them); the Appearance
   row's whole-row menu (needs a SwiftUI row); a long press on Fuel's meal

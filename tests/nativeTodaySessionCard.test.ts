@@ -55,6 +55,7 @@ const plan = loadNativeModule<Record<string, (props: never) => ReactNode>>('comp
   '~/components/BlancText': { BlancText: Text },
   '~/components/Capsule': { Capsule },
   '~/components/Label': { Label: ({ children }: PropsWithChildren) => createElement('section', null, children) },
+  '~/components/SwipeRow': { closeOpenSwipeRow: () => false },
   '~/components/Tally': { Tally },
   '~/lib/accessibility': silentAccessibility,
   '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min` },

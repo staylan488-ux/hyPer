@@ -113,7 +113,7 @@ export default function TargetsScreen() {
         options={{
           title: 'Targets',
           unstable_headerRightItems: () =>
-            ready
+            ready && target
               ? [
                   {
                     type: 'button',
@@ -138,12 +138,19 @@ export default function TargetsScreen() {
             </View>
             <Capsule title="Try again" fill onPress={() => void loadTargets()} />
           </Label>
+        ) : ready && !target ? (
+          <View style={{ paddingHorizontal: space.gutter, paddingTop: 12, gap: 4 }}>
+            <BlancText variant="headline">No targets set yet</BlancText>
+            <BlancText variant="secondary" tone="graphite">
+              Calculate from your body and goal, or set your own daily numbers.
+            </BlancText>
+          </View>
         ) : (
           <>
             <View style={{ paddingHorizontal: space.gutter, paddingTop: 12 }}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={ready ? speak(`${formatWhole(base.calories)} kcal a day, ${target ? mode : 'starting defaults, not saved'}`) : 'Calories'}
+                accessibilityLabel={ready ? speak(`${formatWhole(base.calories)} kcal a day, ${mode}`) : 'Calories'}
                 accessibilityHint={ready ? 'Edits your targets' : undefined}
                 accessibilityState={ready ? undefined : { disabled: true }}
                 disabled={!ready}
@@ -164,7 +171,7 @@ export default function TargetsScreen() {
                   </Animated.View>
                 </View>
                 <BlancText variant="secondary" tone="graphite">
-                  {!ready ? ' ' : target ? mode : 'Starting defaults, not saved'}
+                  {!ready ? ' ' : mode}
                 </BlancText>
               </Pressable>
               {/* A refresh that failed says so under the numbers it left in place. */}
@@ -188,13 +195,19 @@ export default function TargetsScreen() {
           </>
         )}
 
-        <Label style={{ marginTop: space.section }}>
-          {/* Two ways to new numbers, each saying how, since the names alone read alike. */}
+        <Label style={{ marginTop: ready && !target ? 18 : space.section }}>
+          {/* Ways to new numbers, each saying how, since the names alone read alike. */}
           <Row title="Calculate targets" detail="From your body, activity and goal" chevron onPress={() => router.push('/targets-calculate')} />
           {coachAvailable ? (
             <>
               <Hairline />
               <Row title="Suggest targets" detail="Describe your goal to the AI coach" chevron onPress={() => router.push('/targets-coach')} />
+            </>
+          ) : null}
+          {ready && !target ? (
+            <>
+              <Hairline />
+              <Row title="Enter by hand" detail="Set calories, protein, carbs and fat" chevron onPress={() => router.push('/targets-edit')} />
             </>
           ) : null}
         </Label>

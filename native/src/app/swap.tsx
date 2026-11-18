@@ -2,8 +2,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { isPendingExerciseId } from '@/lib/customExercises';
+import { insertPendingExercises, isPendingExerciseId, type ExerciseInsertClient } from '@/lib/customExercises';
+import { getExerciseLibrary, invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { PROGRAM_PICKER_TITLES, pickerTargetFor, type ProgramPickMode } from '@/lib/splitDraft';
+import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import type { Exercise } from '@/types';
@@ -25,18 +27,35 @@ const COPY: Record<PickMode, { title: string; verb: string; done: string; failed
 };
 
 /**
+ * Saves an exercise typed in by hand to the shared library before adding it to
+ * a workout, reusing an existing row when the name already exists.
+ */
+async function ensureLibraryExercise(exercise: Exercise): Promise<Exercise> {
+  if (!isPendingExerciseId(exercise.id)) return exercise;
+  const ids = await insertPendingExercises([exercise], {
+    client: supabase as unknown as ExerciseInsertClient,
+    loadLibrary: () => getExerciseLibrary({ force: true }),
+  });
+  invalidateExerciseLibrary();
+  const id = ids.get(exercise.id);
+  if (!id) throw new Error(`Could not create exercise: ${exercise.name}`);
+  return { ...exercise, id };
+}
+
+/**
  * Adds the pick to the live workout, pairs it with the movement as a
  * superset, or swaps the movement for it; throws when the save fails. Out
  * here because the React Compiler can't yet compile a component whose own
  * code branches inside a try.
  */
 async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Movement | null, exercise: Exercise) {
+  const ready = await ensureLibraryExercise(exercise);
   if (mode === 'add') {
-    await addMovement(session.workoutId, exercise);
+    await addMovement(session.workoutId, ready);
   } else if (movement && mode === 'superset') {
-    await addSupersetPartner(session.workoutId, movement.exerciseId, exercise);
+    await addSupersetPartner(session.workoutId, movement.exerciseId, ready);
   } else if (movement) {
-    await swapMovement(session.workoutId, movement.exerciseId, exercise, session.current?.movement.exerciseId === movement.exerciseId);
+    await swapMovement(session.workoutId, movement.exerciseId, ready, session.current?.movement.exerciseId === movement.exerciseId);
   }
 }
 
@@ -69,6 +88,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   const sourceMuscle = mode === 'swap' ? movement?.sets[0]?.exercise?.muscle_group : undefined;
 
   const [swapping, setSwapping] = useState<string | null>(null);
+  const [created, setCreated] = useState<Exercise[]>([]);
   // While a pick saves, the sheet holds still: closing it then would leave the
   // save to close whatever screen is showing. After the save it steps aside.
   const [exit, setExit] = useState<'back' | 'dismiss' | null>(null);
@@ -83,16 +103,24 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     [past, session?.movements],
   );
 
+  const rememberCustom = (exercise: Exercise) => {
+    if (isPendingExerciseId(exercise.id)) {
+      setCreated((current) => (current.some((entry) => entry.id === exercise.id) ? current : [exercise, ...current]));
+    }
+  };
+
   const choosePast = async (exercise: Exercise) => {
     if (!past || swapping || (mode === 'superset' && !params.id)) return;
+    rememberCustom(exercise);
     setSwapping(exercise.id);
     const store = useAppStore.getState();
     const saved = await editPastWorkout(past.id, async () => {
+      const ready = await ensureLibraryExercise(exercise);
       if (mode === 'superset' && params.id) {
-        await store.addSupersetToWorkout(past.id, params.id, exercise);
+        await store.addSupersetToWorkout(past.id, params.id, ready);
       } else {
-        const created = await store.addExerciseToWorkout(past.id, exercise);
-        if (!created) throw new Error('Could not add that exercise.');
+        const added = await store.addExerciseToWorkout(past.id, ready);
+        if (!added) throw new Error('Could not add that exercise.');
       }
     });
     if (saved) {
@@ -109,6 +137,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   const choose = async (exercise: Exercise) => {
     if (pastId) return choosePast(exercise);
     if (!session || swapping || (mode !== 'add' && !movement)) return;
+    rememberCustom(exercise);
     setSwapping(exercise.id);
     // Back to the workout, past the movement sheet a swap or superset opened
     // from (a swipe on Train's row opens this sheet straight from Train).
@@ -131,6 +160,8 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
       subtitle={baseName && mode !== 'add' ? (mode === 'swap' ? `Replacing ${baseName}` : `With ${baseName}`) : null}
       initialMuscle={sourceMuscle}
       exclude={inWorkout}
+      extras={created}
+      allowCustom
       busyId={swapping}
       onPick={(exercise) => void choose(exercise)}
     />
