@@ -73,6 +73,15 @@ describe('save logged food as a meal', () => {
     expect(meal.ingredients[0].food).toMatchObject({ calories: 5, fdc_id: '1234' });
   });
 
+  it("keeps a brand food's IDs, so the meal stores those and not what FatSecret says of it", () => {
+    const yogurt = food('row-9', 'Greek Yogurt · Chobani', { source: 'fatsecret', external_source: 'fatsecret', external_id: '4411:5522' });
+    const meal = mealFromLoggedFoods([{ food: yogurt, servings: 2 }, { food: food('f1', 'Oats', { external_source: 'open_food_facts', external_id: '0123' }), servings: 1 }], ids());
+    expect(meal.ingredients[0].food).toMatchObject({ source: 'fatsecret', external_source: 'fatsecret', external_id: '4411:5522' });
+    // other foods are copied as before
+    expect(meal.ingredients[1].food.external_id).toBeUndefined();
+    expect(encodeMealComposition(meal.ingredients)).not.toContain('Chobani');
+  });
+
   it('keeps a food from an unknown source, as a manual entry', () => {
     const odd = food('odd', 'Burrito', { source: 'gemini' as Food['source'] });
     const meal = mealFromLoggedFoods([{ food: odd, servings: 1 }], ids());

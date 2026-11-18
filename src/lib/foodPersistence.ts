@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { deviceFoodKey, deviceFoodStub, isDeviceFoodStub, keepDeviceFood } from '@/lib/deviceFoods';
 import { getSessionUserId } from '@/lib/sessionUser';
 import { shouldDropColumn } from '@/lib/foodLoggerUtils';
 import type { Food } from '@/types';
@@ -67,11 +68,15 @@ const EXTERNAL_SOURCE_LABEL: Record<ExternalFoodSource, string> = {
 };
 
 export type ExternalFood = Pick<Food, 'name' | 'calories' | 'protein' | 'carbs' | 'fat' | 'serving_size' | 'serving_unit'>
-  & { external_id: string };
+  & { external_id: string; serving_label?: string };
 
 /**
- * Returns the user's foods row for a barcode-provider food, creating it on the
+ * Returns the user's foods row for a provider's food, creating it on the
  * first log so later logs of the same product reuse one row.
+ *
+ * A FatSecret food's row is a stub: FatSecret's terms let the server keep the
+ * food's IDs but not its name or numbers, which stay on this phone
+ * (src/lib/deviceFoods.ts). A food that cannot be kept that way is not saved.
  */
 export async function persistExternalFood(
   food: ExternalFood,
@@ -79,6 +84,19 @@ export async function persistExternalFood(
   source: ExternalFoodSource,
 ): Promise<string | null> {
   const label = EXTERNAL_SOURCE_LABEL[source];
+  const identified = { ...food, source, external_source: source };
+  const deviceOnly = source === 'fatsecret';
+  if (deviceOnly && !deviceFoodKey(identified)) {
+    console.error('FatSecret food without its IDs was not saved');
+    return null;
+  }
+  // The details go on the phone before the row exists, so a log never points
+  // at a food this phone cannot show. A stub (a food still waiting for its
+  // details) has none to keep.
+  if (deviceOnly && !isDeviceFoodStub(identified) && !keepDeviceFood(identified)) {
+    console.error('FatSecret food could not be kept on this device');
+    return null;
+  }
 
   const { data: existingFood, error: lookupError } = await supabase
     .from('foods')
@@ -94,7 +112,7 @@ export async function persistExternalFood(
 
   const { data: newFood, error: insertError } = await supabase
     .from('foods')
-    .insert({
+    .insert(deviceOnly ? { user_id: userId, ...deviceFoodStub(food.external_id) } : {
       user_id: userId,
       name: food.name,
       calories: food.calories,
@@ -127,7 +145,8 @@ export async function persistExternalFood(
  *   per person so nobody can plant numbers that someone else then logs; the
  *   server refuses shared rows. Existing rows are never changed, because past
  *   logs point at them (older shared rows still read for those logs).
- * - Open Food Facts / FatSecret: the user's row for that product identity.
+ * - Open Food Facts / FatSecret: the user's row for that product identity
+ *   (FatSecret's is a stub; see persistExternalFood).
  * - custom / saved_meal / manual_entry: reuse by id; a temporary id ('' or
  *   photo-…) inserts a new row for the user.
  * - Anything else already has a row: its id is returned as is.

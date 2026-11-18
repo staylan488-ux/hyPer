@@ -29,6 +29,7 @@ vi.mock('@/lib/supabase', () => {
 
 vi.mock('@/lib/sessionUser', () => ({ getSessionUserId: vi.fn(async () => 'user-1') }));
 
+import { DEVICE_ONLY_FOOD_NAME, forgetDeviceFoodsForTest, readDeviceFood } from '@/lib/deviceFoods';
 import { ensureFoodRow, insertOneServingFood, persistExternalFood } from '@/lib/foodPersistence';
 import {
   SAVED_MEAL_FETCH_LIMIT,
@@ -46,6 +47,7 @@ const missingServingSize = { message: 'column "serving_size" of relation "foods"
 beforeEach(() => {
   mocks.chains.length = 0;
   mocks.results.length = 0;
+  forgetDeviceFoodsForTest();
   const stored = new Map<string, string>();
   vi.stubGlobal('localStorage', {
     getItem: (key: string) => stored.get(key) ?? null,
@@ -312,46 +314,84 @@ describe('barcode provider foods', () => {
     name: 'Bar', calories: 200, protein: 20, carbs: 22, fat: 7,
     serving_size: 0, serving_unit: '', external_id: '0123456789',
   };
+  // FatSecret's identity is its food ID and serving ID.
+  const brand = { ...food, serving_size: 45, serving_unit: 'g', serving_label: '1 bar', external_id: '4411:5522' };
 
-  it.each(['open_food_facts', 'fatsecret'] as const)('reuses the existing %s row', async (source) => {
+  it.each([['open_food_facts', food], ['fatsecret', brand]] as const)('reuses the existing %s row', async (source, item) => {
     mocks.results.push({ data: { id: 'existing' } });
 
-    expect(await persistExternalFood(food, 'user-a', source)).toBe('existing');
+    expect(await persistExternalFood(item, 'user-a', source)).toBe('existing');
     expect(mocks.chains).toEqual([[
       ['from', 'foods'],
       ['select', 'id'],
       ['eq', 'user_id', 'user-a'],
       ['eq', 'external_source', source],
-      ['eq', 'external_id', '0123456789'],
+      ['eq', 'external_id', item.external_id],
       ['limit', 1],
       ['maybeSingle'],
     ]]);
   });
 
-  it.each(['open_food_facts', 'fatsecret'] as const)('creates a %s row on a miss', async (source) => {
+  it('creates an Open Food Facts row on a miss', async () => {
     mocks.results.push({ data: null }, { data: { id: 'created' } });
 
-    expect(await persistExternalFood(food, 'user-a', source)).toBe('created');
+    expect(await persistExternalFood(food, 'user-a', 'open_food_facts')).toBe('created');
     expect(mocks.chains[1]).toEqual([
       ['from', 'foods'],
       ['insert', {
         user_id: 'user-a', name: 'Bar', calories: 200, protein: 20, carbs: 22, fat: 7,
         serving_size: 1, serving_unit: 'serving',
-        source, fdc_id: null, external_source: source, external_id: '0123456789',
+        source: 'open_food_facts', fdc_id: null, external_source: 'open_food_facts', external_id: '0123456789',
       }],
       ['select', 'id'],
       ['single'],
     ]);
   });
 
+  it('saves a FatSecret food as its IDs alone and keeps what it is on the phone', async () => {
+    mocks.results.push({ data: null }, { data: { id: 'created' } });
+
+    expect(await persistExternalFood(brand, 'user-a', 'fatsecret')).toBe('created');
+    // FatSecret's terms: IDs may stay on the server, the name and numbers may not.
+    expect(mocks.chains[1]).toEqual([
+      ['from', 'foods'],
+      ['insert', {
+        user_id: 'user-a', name: DEVICE_ONLY_FOOD_NAME, calories: 0, protein: 0, carbs: 0, fat: 0,
+        serving_size: 1, serving_unit: 'serving',
+        source: 'fatsecret', fdc_id: null, external_source: 'fatsecret', external_id: '4411:5522',
+      }],
+      ['select', 'id'],
+      ['single'],
+    ]);
+    expect(JSON.stringify(mocks.chains)).not.toContain('Bar');
+    expect(readDeviceFood('fatsecret:4411:5522')).toEqual({
+      name: 'Bar', calories: 200, protein: 20, carbs: 22, fat: 7, serving_size: 45, serving_unit: 'g', serving_label: '1 bar',
+    });
+  });
+
+  it('logs a FatSecret food again from its stub without overwriting what the phone holds', async () => {
+    mocks.results.push({ data: null }, { data: { id: 'created' } }, { data: { id: 'created' } });
+    await persistExternalFood(brand, 'user-a', 'fatsecret');
+
+    const stub = { name: DEVICE_ONLY_FOOD_NAME, calories: 0, protein: 0, carbs: 0, fat: 0, serving_size: 1, serving_unit: 'serving', external_id: '4411:5522' };
+    expect(await persistExternalFood(stub, 'user-a', 'fatsecret')).toBe('created');
+    expect(readDeviceFood('fatsecret:4411:5522')?.name).toBe('Bar');
+  });
+
+  it('does not save a FatSecret food that has no IDs to keep it under', async () => {
+    expect(await persistExternalFood(food, 'user-a', 'fatsecret')).toBeNull();
+    expect(mocks.chains).toHaveLength(0);
+    expect(console.error).toHaveBeenCalledWith('FatSecret food without its IDs was not saved');
+  });
+
   it('still inserts after a failed lookup, and returns null when the insert fails', async () => {
     mocks.results.push({ error: { message: 'lookup failed' } }, { error: { message: 'insert failed' } });
 
-    expect(await persistExternalFood({ ...food, serving_size: 45, serving_unit: 'g' }, 'user-a', 'fatsecret')).toBeNull();
+    expect(await persistExternalFood({ ...food, serving_size: 45, serving_unit: 'g' }, 'user-a', 'open_food_facts')).toBeNull();
     expect(mocks.chains).toHaveLength(2);
     expect(mocks.chains[1][1][1]).toMatchObject({ serving_size: 45, serving_unit: 'g' });
-    expect(console.error).toHaveBeenCalledWith('Error looking up FatSecret food:', { message: 'lookup failed' });
-    expect(console.error).toHaveBeenCalledWith('Error creating FatSecret food:', { message: 'insert failed' });
+    expect(console.error).toHaveBeenCalledWith('Error looking up Open Food Facts food:', { message: 'lookup failed' });
+    expect(console.error).toHaveBeenCalledWith('Error creating Open Food Facts food:', { message: 'insert failed' });
   });
 });
 

@@ -9,8 +9,14 @@
 //
 // Callers keep their own error policy: a failure in either request comes back
 // as `error`, the same way a single embedded request would fail.
+//
+// A FatSecret food's row holds only its IDs (src/lib/deviceFoods.ts). Every
+// read here fills such rows in from the phone, and asks FatSecret again for
+// the ones the phone does not hold, so no caller sees a stub it could have
+// been spared.
 
 import type { PostgrestError } from '@supabase/supabase-js';
+import { resolveDeviceFoods } from './deviceFoodRefill';
 import { supabase } from './supabase';
 
 export const FOOD_ID_CHUNK_SIZE = 200;
@@ -26,6 +32,25 @@ export type NutritionLogWithFood<Log, Food> = Log & { food: Food | null };
 export interface NutritionLogsWithFoodsResult<Log, Food> {
   data: NutritionLogWithFood<Log, Food>[] | null;
   error: PostgrestError | null;
+  /**
+   * True when a device-only food's details could not be read this time (see
+   * deviceFoodRefill): those foods count as nothing, so a sum over `data` is
+   * short. Screens show what there is; a figure that is saved or acted on
+   * should wait for a complete read.
+   */
+  incomplete?: boolean;
+}
+
+/** What tells a device-only food from any other, read with every food. */
+const DEVICE_FOOD_COLUMNS = ['name', 'source', 'external_source', 'external_id'];
+type DeviceFoodColumns = { name?: string | null; source?: string | null; external_source?: string | null; external_id?: string | null };
+
+/** `columns` plus the ones a device-only food is recognised by. */
+export function withDeviceFoodColumns(columns: string): string {
+  const asked = columns.split(',').map((column) => column.trim());
+  if (asked.includes('*')) return columns;
+  const added = DEVICE_FOOD_COLUMNS.filter((column) => !asked.includes(column));
+  return added.length > 0 ? `${columns}, ${added.join(', ')}` : columns;
 }
 
 function chunk<T>(values: T[], size: number): T[][] {
@@ -42,7 +67,8 @@ function requestFoods(ids: string[], foodColumns: string) {
 /**
  * A user's logs in a date range, each with its food (or `food: null` when the
  * food row is missing). `logColumns` must include food_id and `foodColumns`
- * must include id.
+ * must include id; a food also comes with the columns a device-only food is
+ * recognised by, whether asked for or not.
  *
  * `expectedFoodIds` (say, the foods of the answer being reloaded) are read
  * alongside the logs instead of after them. Foods the logs do not use are
@@ -59,6 +85,7 @@ export async function fetchNutritionLogsWithFoods<
   foodColumns: string,
   expectedFoodIds?: Iterable<string>,
 ): Promise<NutritionLogsWithFoodsResult<Log, Food>> {
+  foodColumns = withDeviceFoodColumns(foodColumns);
   let logsQuery = supabase
     .from('nutrition_logs')
     .select(logColumns)
@@ -90,8 +117,13 @@ export async function fetchNutritionLogsWithFoods<
   if (failed?.error) return { data: null, error: failed.error };
   for (const result of foodResults) keep(result.data);
 
+  // The columns added above are on every row, whatever the caller's type says.
+  const resolved = await resolveDeviceFoods([...foods.values()] as (Food & DeviceFoodColumns)[]);
+  for (const food of resolved.foods) foods.set(food.id, food);
+
   return {
     data: rows.map((row) => ({ ...row, food: foods.get(row.food_id) ?? null })),
     error: null,
+    ...(resolved.incomplete ? { incomplete: true } : {}),
   };
 }

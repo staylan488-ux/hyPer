@@ -9,12 +9,16 @@ import { fetchNutritionLogsWithFoods } from './nutritionLogQueries';
 import { logMacro } from './nutritionMacros';
 
 export async function getDailyIntake(userId: string, sinceIsoDate: string): Promise<DailyIntake[]> {
-  const { data: rows, error } = await fetchNutritionLogsWithFoods<
+  const { data: rows, error, incomplete } = await fetchNutritionLogsWithFoods<
     { date: string; servings: number | string; food_id: string },
     { id: string; calories: number | string }
   >(userId, { from: sinceIsoDate }, 'date, servings, food_id', 'id, calories');
 
   if (error) throw new Error(error.message);
+  // A brand food whose details this phone could not read counts as nothing;
+  // an estimate built on a short total would be wrong, so this read fails
+  // like any other and the next one tries again.
+  if (incomplete) throw new Error('Some logged foods could not be read');
   if (!rows || rows.length === 0) return [];
 
   const totals = new Map<string, number>();
