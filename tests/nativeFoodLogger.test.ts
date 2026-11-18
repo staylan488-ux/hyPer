@@ -952,6 +952,10 @@ describe('native food logger transitions', () => {
     await h.render();
     expect(h.captured.foodReview).toMatchObject({ food: milk, servings: 2 });
     expect(reviewHandoff).toBeNull();
+    // Opened from the Close the gap sheet: ✕ goes back to the sheet, Change food to the lists.
+    expect(h.captured.buttons.Close).toBeDefined();
+    expect(h.captured.buttons.Back).toBeUndefined();
+    expect(h.captured.foodReview?.onChangeFood).toBeDefined();
 
     reviewHandoff = { food: recipe, servings: 1 };
     const built = loggerHarness({ params: { day: '2026-11-03', review: '1' } });

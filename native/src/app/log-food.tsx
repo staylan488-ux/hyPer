@@ -260,9 +260,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         ? { food: reviewing.food, meta: null, servings: reviewing.servings }
         : null,
   );
-  // An entry opened to edit shows its own food's review first: ✕ closes it, and
-  // Change food (under the name) goes to the lists, where ‹ alone said neither.
+  // An entry opened to edit, or a close-the-gap pick handed over to review,
+  // shows that food's review first: ✕ closes it (back to where it came from),
+  // and Change food (under the name) goes to the lists, where ‹ alone said neither.
   const editingOwnFood = Boolean(editing && chosen && editing.food?.id === chosen.food.id);
+  const openedOnFood = editingOwnFood || Boolean(!editing && reviewing && chosen && chosen.food.id === reviewing.food.id);
   const [manual, setManual] = useState<ManualDraft>(() =>
     editing?.food ? { ...emptyManual, fields: manualFromFood(editing.food), servings: String(editing.servings) } : emptyManual,
   );
@@ -964,7 +966,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
         onScrollBeginDrag={() => dismissOpenSwipeRow()}>
         <View style={{ backgroundColor: c.ground, paddingBottom: 8 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16 }}>
-            {chosen && !editingOwnFood ? (
+            {chosen && !openedOnFood ? (
               <GlassButton symbol="chevron.left" accessibilityLabel="Back" disabled={saving} onPress={() => setChosen(null)} />
             ) : loggingSaved && mealReview && !paused && !meal?.locked ? (
               // A saved meal's review goes back to the lists, as a food's does.
@@ -1095,7 +1097,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             onAmountChange={editing?.food?.id === chosen.food.id
               ? (servings) => setManual((draft) => ({ ...draft, servings: servings === null ? '' : String(servings) }))
               : undefined}
-            onChangeFood={editingOwnFood && !saving ? () => setChosen(null) : undefined}
+            onChangeFood={openedOnFood && !saving ? () => setChosen(null) : undefined}
           />
         ) : (
           <View key={captureKey}>

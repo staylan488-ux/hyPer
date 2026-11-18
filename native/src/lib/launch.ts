@@ -9,6 +9,7 @@ import type { AuthScreen } from '@/lib/authScreen';
 import { addLaunchActionListener, takePendingAction } from '../../modules/hyper-launch';
 import { announce } from './accessibility';
 import { today, useFuelStore } from './fuel';
+import { askGapSheet } from './gapSheetAsk';
 import { haptics } from './haptics';
 import {
   askLoggerCamera,
@@ -101,10 +102,12 @@ function runLaunchStep(step: LaunchStep): void {
   else if (step.kind === 'logger-camera') askLoggerCamera(step.atMs);
   // Switches to Train as it was left, as tapping its tab does.
   else if (step.kind === 'train') router.navigate('/train');
-  // Fuel on today, where the reminder's close-the-gap picks are.
+  // Fuel on today, and from there the sheet of the reminder's close-the-gap
+  // picks: Fuel opens it once it knows there are some (fuel/GapPicks.tsx).
   else if (step.kind === 'fuel') {
     useFuelStore.getState().select(today());
     router.navigate('/fuel');
+    askGapSheet();
   }
   else if (step.kind === 'refused') refusePress();
 }

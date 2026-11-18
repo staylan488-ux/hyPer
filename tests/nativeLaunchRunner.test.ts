@@ -29,6 +29,7 @@ type Launch = {
 const push = vi.fn();
 const navigate = vi.fn();
 const announce = vi.fn();
+const askGapSheet = vi.fn();
 const error = vi.fn();
 const remove = vi.fn();
 let rootState: unknown;
@@ -67,6 +68,7 @@ const launch = loadNativeModule<Launch>('lib/launch.ts', {
   './haptics': { haptics: { error } },
   './launchActions': launchActions,
   './fuel': { today: () => '2026-11-08', useFuelStore: { getState: () => ({ select: selectFuelDay }) } },
+  './gapSheetAsk': { askGapSheet },
 });
 
 const stack = (...names: string[]) => ({ routes: [{ name: '__root', state: { index: names.length - 1, routes: names.map((name) => ({ name })) } }] });
@@ -232,12 +234,16 @@ describe('useLaunchActionRunner', () => {
     expect(error).not.toHaveBeenCalled();
   });
 
-  it('opens Fuel on today for a reminder that names close-the-gap picks', async () => {
+  it('opens Fuel on today and asks for the sheet, for a reminder that names close-the-gap picks', async () => {
     selectFuelDay.mockClear();
+    askGapSheet.mockClear();
     await render();
     await act(async () => { launchActions.postLaunchPress('fuel'); });
     expect(selectFuelDay).toHaveBeenCalledWith('2026-11-08');
     expect(navigate).toHaveBeenCalledWith('/fuel');
+    // Fuel opens the sheet itself, once it knows there are picks to show.
+    expect(askGapSheet).toHaveBeenCalledOnce();
+    expect(push).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
   });
 });
