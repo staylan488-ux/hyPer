@@ -218,6 +218,7 @@ async function open() {
       '~/lib/setEntry': setEntry,
       '~/lib/setTargets': nativeSetTargets,
       '~/lib/today': { useFinishedToday: () => undefined, useTodayPlan: () => ({}) },
+      '~/lib/weekFit': { useWeekFitLookup: () => undefined },
       '~/lib/warmup': { useBarWeight: () => 45 },
       '~/lib/earlyAccess': { useEarlyAccess: () => false },
       '~/platform/devLaunch': { devScrollTrace: { enabled: false } },

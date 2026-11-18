@@ -26,6 +26,10 @@ const MUSCLES = Object.keys(MUSCLE_GROUP_LABELS) as MuscleGroup[];
 const LIBRARY_MAX_AGE_MS = 5 * 60_000;
 const NO_MATCHES: SwapMatch[] = [];
 
+/** A row that leads the list, with the line that says why. */
+export type LeadRow = { exercise: Exercise; line: string };
+const NO_LEAD: LeadRow[] = [];
+
 type PickerProps = {
   title: string;
   subtitle?: string | null;
@@ -35,6 +39,13 @@ type PickerProps = {
    * matches (src/lib/swapSuggestions.ts), ahead of the usual list.
    */
   replacing?: Pick<Exercise, 'id' | 'name' | 'equipment' | 'category'> | null;
+  /**
+   * Rows that lead the list under their own heading when nothing is being
+   * swapped out (Add opens on what fits, src/lib/addSuggestions.ts): `pick`
+   * chooses them from the movements on offer. Keep the object the same
+   * between renders.
+   */
+  lead?: { title: string; pick: (offered: Exercise[]) => LeadRow[] } | null;
   /** Exercise ids never offered (already in the workout or day). */
   exclude: ReadonlySet<string>;
   /** Rows the library does not have yet (custom exercises), offered first. */
@@ -55,10 +66,10 @@ type PickerProps = {
 /**
  * The one exercise picker: search, muscle chips, everyday gym movements
  * first and bodyweight skills on request. A swap leads with the closest
- * matches for the movement it replaces, until a search or another muscle
- * asks for something else.
+ * matches for the movement it replaces, and an add with what fits, until a
+ * search or another muscle asks for something else.
  */
-export function ExercisePicker({ title, subtitle, initialMuscle, replacing = null, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action, accessory }: PickerProps) {
+export function ExercisePicker({ title, subtitle, initialMuscle, replacing = null, lead = null, exclude, extras = [], selected, busyId = null, onPick, allowCustom, action, accessory }: PickerProps) {
   const c = useBlanc();
   const large = useLargeText();
   const [library, setLibrary] = useState<Exercise[] | null>(() => peekExerciseLibrary());
@@ -92,7 +103,14 @@ export function ExercisePicker({ title, subtitle, initialMuscle, replacing = nul
     [replacing, library, extras, exclude],
   );
   // They lead the picker as it opens; a search or another muscle is a request for the plain list.
-  const matches = swap && !searching && muscle === (initialMuscle ?? 'all') ? swap.matches : NO_MATCHES;
+  const swapMatches = swap && !searching && muscle === (initialMuscle ?? 'all') ? swap.matches : NO_MATCHES;
+  // What fits leads an add the same way, on the whole list only.
+  const fits = useMemo(
+    () => (lead && library ? lead.pick([...extras, ...library].filter((exercise) => !exclude.has(exercise.id))) : NO_LEAD),
+    [lead, library, extras, exclude],
+  );
+  const matches: readonly LeadRow[] = swapMatches.length > 0 ? swapMatches : !replacing && !searching && muscle === 'all' ? fits : NO_LEAD;
+  const leadTitle = swapMatches.length > 0 || !lead ? 'Closest matches' : lead.title;
   const { gym, skills } = useMemo(() => {
     const seen = new Set<string>();
     const rows = [...extras, ...(library ?? [])].filter((exercise) => {
@@ -313,7 +331,7 @@ export function ExercisePicker({ title, subtitle, initialMuscle, replacing = nul
         {matches.length > 0 ? (
           <>
             <BlancText variant="footnote" tone="graphite" accessibilityRole="header" style={{ marginTop: 8, marginBottom: 6, marginHorizontal: space.gutter }}>
-              Closest matches
+              {leadTitle}
             </BlancText>
             <Label style={{ overflow: 'hidden' }}>
               {matches.map((match, index) => (

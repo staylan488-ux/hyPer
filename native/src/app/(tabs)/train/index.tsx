@@ -43,6 +43,7 @@ import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, effortChip, isBodyweight, parseNumber, useEffortScaleStore, weightToLog } from '~/lib/setEntry';
 import { FIRST_TIME, firstTimeHint, isLastSet, sessionTargets, setTargetFor, targetFigures, targetLabel, targetLine, targetMoment, type SessionTargets } from '~/lib/setTargets';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
+import { useWeekFitLookup } from '~/lib/weekFit';
 import { useBarWeight } from '~/lib/warmup';
 import { useEarlyAccess } from '~/lib/earlyAccess';
 import { devScrollTrace } from '~/platform/devLaunch';
@@ -136,6 +137,8 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   // Where a movement never trained before starts, once the wider read lands.
   const starts = usePreviousStarts(session.workoutId);
   const targets = sessionTargets(session, history, starts);
+  // The week around this workout, kept ready for the Add list.
+  useWeekFitLookup(session);
   const previousNotes = usePreviousNotes(session);
   const effortScale = useEffortScaleStore((state) => state.scale);
   const logSet = useAppStore((state) => state.logSet);
