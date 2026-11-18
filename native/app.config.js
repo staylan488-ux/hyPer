@@ -35,21 +35,13 @@ module.exports = ({ config }) => {
     plugins: [...(config.plugins ?? []), sentryPlugin()],
   };
   if (process.env.HYPER_APP !== 'release') return base;
-  // GPS Run stays behind early_access for the initial App Store release, so omit
-  // background location and audio modes from the release Info.plist (Guideline 2.5.4).
-  const infoPlist = { ...base.ios.infoPlist, CFBundleDisplayName: 'hyPer' };
-  const backgroundModes = (infoPlist.UIBackgroundModes ?? []).filter(
-    (mode) => mode !== 'location' && mode !== 'audio',
-  );
-  if (backgroundModes.length > 0) infoPlist.UIBackgroundModes = backgroundModes;
-  else delete infoPlist.UIBackgroundModes;
   return {
     ...base,
     scheme: 'app.hyper.mobile',
     ios: {
       ...base.ios,
       bundleIdentifier: 'app.hyper.mobile',
-      infoPlist,
+      infoPlist: { ...base.ios.infoPlist, CFBundleDisplayName: 'hyPer' },
     },
     extra: { ...base.extra, widgetBundleIdentifier: 'app.hyper.mobile.HyperWidgets' },
   };
