@@ -156,6 +156,12 @@ Settled; do not reopen or "improve" them without being asked.
   until Analyze meal; only Snap a meal estimates on its own. Search stays a
   food search. Barcode opens its camera only when Scan barcode is tapped. No
   food list carries a kcal heading.
+- Close the gap is one row under Fuel's figures that opens its own sheet
+  (Sinan's pick, 2026-11-17, over the plan drawn on the calorie line and over
+  buttons at the foot of the diary). As a titled list of food rows on Fuel it
+  read to him as one more meal, "crammed in lazily". The row says where the
+  picks take the day ("3 of your usuals reach 2,411 kcal"), never their sum,
+  which beside the title read as the gap.
 - Food AI defaults to Gemini. While an analysis runs, the Analysis card shows
   the function's own steps; never invent a step or a timed message.
 - Train: a movement's set count goes from 1 to 12 whatever the program says.

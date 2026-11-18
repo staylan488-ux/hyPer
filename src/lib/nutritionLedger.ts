@@ -19,10 +19,12 @@ export function sourceLabel(source?: string): string {
 
 type ServingLike = { servings: number; food?: { serving_size?: number | null; serving_unit?: string | null } | null };
 
-/** "150 g" for measured foods, "1.5 servings" otherwise. */
+/** "150 g" for measured foods, "0.5 meals" for part of a built meal, "1.5 servings" otherwise. */
 export function servingLabel(log: ServingLike): string {
   const unit = log.food?.serving_unit?.trim();
   const servingSize = Number(log.food?.serving_size) || 1;
+  // A built meal counts as servings do: "1 meal", "0.5 meals".
+  if (unit?.toLowerCase() === 'meal' && servingSize === 1) return `${log.servings} meal${Number(log.servings) !== 1 ? 's' : ''}`;
   if (unit && unit.toLowerCase() !== 'serving') {
     const amount = roundestAmount(servingSize * log.servings, log.servings, (value) => value / servingSize);
     return `${amount} ${unit}`;

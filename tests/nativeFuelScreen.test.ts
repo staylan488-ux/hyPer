@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import * as dates from 'date-fns';
-import { act, createElement, Fragment, useEffect, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
+import { act, createElement, Fragment, type ComponentType, type PropsWithChildren, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -75,7 +75,7 @@ const screen: { options?: { unstable_headerRightItems?: () => HeaderItem[] } } =
 let root: Root | undefined;
 let host: HTMLDivElement;
 
-async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, copyAgain = false, meal = false, fuelModule, gapPicks = Empty }: {
+async function renderFuel({ day = TODAY, logged = true, source, target = null, loaded = true, fontScale = 1, milk = false, shake, copyAgain = false, meal = false, fuelModule, gapRow = Empty }: {
   day?: string;
   logged?: boolean;
   source?: string;
@@ -84,16 +84,25 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
   fontScale?: number;
   /** A second entry, Milk, after the Oats. */
   milk?: boolean;
+  /** A built meal, Shake (milk and oats), logged after them at this amount of it. */
+  shake?: number;
   /** Today's matching meal already has what Copy to today would copy. */
   copyAgain?: boolean;
   /** The Oats in a meal of the person's own (no named meal), with its options. */
   meal?: boolean;
   /** The real Fuel store (native/src/lib/fuel.ts) in place of the stand-in. */
   fuelModule?: object;
-  gapPicks?: ComponentType<{ visible?: boolean }>;
+  gapRow?: ComponentType<{ active?: boolean }>;
 } = {}) {
   const logs = logged ? [{ id: 'log-oats', date: day, food: oats, servings: 1, logged_at: `${day}T08:00:00Z`, group_id: null as string | null, sort_order: 0, source }] : [];
   if (logged && milk) logs.push({ id: 'log-milk', date: day, food: milkFood, servings: 1, logged_at: `${day}T09:00:00Z`, group_id: null, sort_order: 1, source });
+  if (logged && shake) {
+    const built: Food = {
+      ...milkFood, id: 'shake', name: 'Shake', calories: 300, protein: 14, serving_size: 1, serving_unit: 'meal',
+      description: composition.encodeMealComposition([composition.createMealIngredient(milkFood, 1, 'part-milk'), composition.createMealIngredient(oats, 1, 'part-oats')]),
+    };
+    logs.push({ id: 'log-shake', date: day, food: built, servings: shake, logged_at: `${day}T09:30:00Z`, group_id: null, sort_order: 2, source });
+  }
   const ownMeal = { id: 'g-own', user_id: 'user-a', date: day, kind: 'meal', label: null, sort_order: 0 };
   if (meal) for (const entry of logs) entry.group_id = ownMeal.id;
   shown.logs = logs;
@@ -152,7 +161,7 @@ async function renderFuel({ day = TODAY, logged = true, source, target = null, l
     '~/lib/workoutBar': { useWorkoutBarShown: (select: (state: { shown: boolean }) => unknown) => select({ shown: false }) },
     zustand: { create: zustandCreate },
     '~/components/Track': { Track: ({ progress }: { progress: number }) => createElement('i', { 'data-track': String(progress) }) },
-    '~/fuel/GapPicks': { GapPicks: gapPicks },
+    '~/fuel/GapPicks': { GapRow: gapRow },
     '~/fuel/DayMark': { DayMark: (props: MarkProps) => { marks.push(props); return null; } },
     '~/lib/format': { formatWhole: String },
     '~/lib/fuel': fuelModule ?? {
@@ -221,22 +230,18 @@ describe("Fuel's date under the title", () => {
   });
 });
 
-describe('Fuel gap-pick lifetime', () => {
-  it('hides rather than unmounts retry state when browsing past days', async () => {
-    const mount = vi.fn();
-    const unmount = vi.fn();
-    let visible: boolean | undefined;
-    const selectDay = await renderFuel({ gapPicks: function GapPicksProbe(props) {
-      visible = props.visible;
-      useEffect(() => { mount(); return () => { unmount(); }; }, []);
+describe('Fuel’s Close the gap row', () => {
+  it('is today’s only: another day on screen offers no picks', async () => {
+    let active: boolean | undefined;
+    const selectDay = await renderFuel({ gapRow: function GapRowProbe(props) {
+      active = props.active;
       return null;
     } });
+    expect(active).toBe(true);
     await selectDay('2026-11-04');
-    expect(unmount).not.toHaveBeenCalled();
-    expect(visible).toBe(false);
+    expect(active).toBe(false);
     await selectDay(TODAY);
-    expect(mount).toHaveBeenCalledTimes(1);
-    expect(visible).toBe(true);
+    expect(active).toBe(true);
   });
 });
 
@@ -246,6 +251,18 @@ describe('Fuel on a day with nothing logged', () => {
     const figure = Object.values(pressables).find((press) => press.accessibilityHint === 'Edits your calorie target' || press.accessibilityHint === 'Sets your calorie target');
     expect(figure).toBeUndefined();
     expect(capsules['Log food']).toBeDefined();
+    expect(capsules['Set a calorie target']).toBeUndefined();
+  });
+
+  it('offers Set a calorie target on today when empty and no target is saved yet', async () => {
+    await renderFuel({ day: TODAY, logged: false, target: null });
+    expect(capsules['Set a calorie target']).toMatchObject({ variant: 'quiet' });
+    await act(async () => { capsules['Set a calorie target'].onPress(); });
+    expect(push).toHaveBeenCalledWith('/you/targets');
+
+    for (const key of Object.keys(capsules)) delete capsules[key];
+    await renderFuel({ day: TODAY, logged: false, target: { calories: 2200, protein: 160, carbs: 240, fat: 65 } });
+    expect(capsules['Set a calorie target']).toBeUndefined();
   });
 });
 
@@ -281,6 +298,15 @@ describe("Fuel's day rows", () => {
     // A tap still opens the entry, where its time is changed.
     await act(async () => { row.onPress!(); });
     expect(push).toHaveBeenCalledWith({ pathname: '/log-food', params: { entry: 'log-oats' } });
+  });
+
+  it.each([
+    [1, '2 ingredients', '14 g protein', '300'],
+    [0.5, '0.5 meals', '7 g protein', '150'],
+  ] as const)('say how many ingredients a built meal has, or how much of it when it is not the whole meal (%s)', async (shake, amount, protein, kcal) => {
+    await renderFuel({ shake });
+    expect(rows.Shake.detail).toEqual([amount, protein, dates.format(new Date(`${TODAY}T09:30:00Z`), 'h:mm a')]);
+    expect(rows.Shake.value).toBe(kcal);
   });
 
   it('keep the time and Estimate whole: only the amount gives way on a narrow line', async () => {

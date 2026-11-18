@@ -47,6 +47,16 @@ describe('composed meal persistence', () => {
     expect(mocks.upsert.mock.invocationCallOrder[0]).toBeLessThan(mocks.persistNutritionEntry.mock.invocationCallOrder[0]);
   });
 
+  it('logs part of a meal as servings of the whole meal, as a food’s amount is', async () => {
+    // Half of the meal: the draft holds what is eaten (0.75 servings of milk).
+    const half = { ...draft, amount: 0.5, ingredients: draft.ingredients.map((item) => ({ ...item, servings: 0.75 })) };
+    await saveComposedMeal(half, 'user-a', { mealType: 'lunch' });
+    const [food] = mocks.upsert.mock.calls[0];
+    expect(food).toMatchObject({ calories: 180, protein: 12, carbs: 18, fat: 7.5, serving_size: 1, serving_unit: 'meal' });
+    expect(decodeMealComposition(food.description)?.ingredients).toEqual(draft.ingredients);
+    expect(mocks.persistNutritionEntry.mock.calls[0][0]).toMatchObject({ food_id: draft.entryId, servings: 0.5 });
+  });
+
   it('saves reusable meals only when opted in', async () => {
     await saveComposedMeal({ ...draft, saveAsReusableMeal: true }, 'user-a');
     expect(mocks.upsert.mock.calls[0][0].source).toBe('saved_meal');
