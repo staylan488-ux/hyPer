@@ -1,6 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useRef, useState, type ComponentProps, type ComponentRef } from 'react';
-import { ScrollView, View } from 'react-native';
+import { useRef, useState, type ComponentProps } from 'react';
+import { View } from 'react-native';
 
 import { programVolumeLine } from '@/lib/muscleProgress';
 import { lowMainMuscles, programVolume } from '@/lib/muscleVolume';
@@ -32,7 +32,7 @@ function spokenTarget(target: string): string {
 
 /** One program: its days and what each holds, with Edit, Set active and Delete. */
 export default function ProgramViewScreen() {
-  const { id, day } = useLocalSearchParams<{ id: string; day?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const stored = useAppStore((state) => state.splits.find((entry) => entry.id === id) ?? null);
   // Deleted from here: the screen keeps showing it while it slides away.
   const [leaving, setLeaving] = useState<Split | null>(null);
@@ -53,7 +53,6 @@ export default function ProgramViewScreen() {
   return (
     <ProgramView
       split={split}
-      focusDayId={day}
       onLeave={() => {
         setLeaving(split);
         router.back();
@@ -62,18 +61,8 @@ export default function ProgramViewScreen() {
   );
 }
 
-function ProgramView({ split, focusDayId, onLeave }: { split: Split; focusDayId?: string; onLeave: () => void }) {
+function ProgramView({ split, onLeave }: { split: Split; onLeave: () => void }) {
   const [activating, setActivating] = useState(false);
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const dayTopRef = useRef<number | null>(null);
-  const contentHeightRef = useRef(0);
-  const scrolledToDay = useRef(false);
-  const scrollToFocusedDay = () => {
-    const dayTop = dayTopRef.current;
-    if (scrolledToDay.current || dayTop === null || contentHeightRef.current <= dayTop) return;
-    scrolledToDay.current = true;
-    scrollRef.current?.scrollTo({ y: Math.max(0, dayTop - 96), animated: false });
-  };
   // The header's closures are built once per program, so a ref guards a second tap.
   const activatingNow = useRef(false);
   const activate = async () => {
@@ -143,12 +132,7 @@ function ProgramView({ split, focusDayId, onLeave }: { split: Split; focusDayId?
   return (
     <>
       <Stack.Screen options={options} />
-      <TabScroll
-        ref={scrollRef}
-        onContentSizeChange={(_width, height) => {
-          contentHeightRef.current = height;
-          scrollToFocusedDay();
-        }}>
+      <TabScroll>
         <BlancText variant="secondary" tone="graphite" style={{ marginHorizontal: space.gutter, marginTop: 2 }}>
           {[split.is_active ? 'Active' : null, plural(split.days.length, 'day'), plural(exerciseTotal(split), 'exercise')].filter(Boolean).join(' · ')}
         </BlancText>
@@ -169,22 +153,11 @@ function ProgramView({ split, focusDayId, onLeave }: { split: Split; focusDayId?
           />
         )}
 
-        {split.days.map((day, dayIndex) => {
+        {split.days.map((day) => {
           // A superset pair reads as one block, as in the editor.
           const blocks = exerciseBlocks(day.exercises);
           return (
-            <View
-              key={day.id}
-              onLayout={
-                // Day 1 already sits under the large title; scrolling near 0 would fight the title inset.
-                dayIndex > 0 && day.id === focusDayId
-                  ? (event) => {
-                      dayTopRef.current = event.nativeEvent.layout.y;
-                      requestAnimationFrame(scrollToFocusedDay);
-                    }
-                  : undefined
-              }>
-              <Section title={day.day_name}>
+            <Section key={day.id} title={day.day_name}>
               <Label>
                 {/* A day's rows open that day in the editor, where its sets, reps and movements change. */}
                 {day.exercises.length === 0 ? <Row title="No exercises yet" quiet onPress={() => editProgramDay(split, day.id)} /> : null}
@@ -211,8 +184,7 @@ function ProgramView({ split, focusDayId, onLeave }: { split: Split; focusDayId?
                   </View>
                 ))}
               </Label>
-              </Section>
-            </View>
+            </Section>
           );
         })}
 
