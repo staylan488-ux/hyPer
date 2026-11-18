@@ -348,6 +348,10 @@ describe('day ledger and calendar', () => {
     expect(sourceLabel('barcode_saved')).toBe('Manual');
     expect(servingLabel({ servings: 1.5, food: { serving_size: 100, serving_unit: 'g' } })).toBe('150 g');
     expect(servingLabel({ servings: 2, food: { serving_size: 1, serving_unit: 'serving' } })).toBe('2 servings');
+    // a built meal counts as servings do
+    expect(servingLabel({ servings: 1, food: { serving_size: 1, serving_unit: 'meal' } })).toBe('1 meal');
+    expect(servingLabel({ servings: 0.5, food: { serving_size: 1, serving_unit: 'meal' } })).toBe('0.5 meals');
+    expect(servingLabel({ servings: 2, food: { serving_size: 1, serving_unit: 'meal' } })).toBe('2 meals');
   });
 
   it('shows a measured amount as it was typed, though servings keep two decimals', () => {

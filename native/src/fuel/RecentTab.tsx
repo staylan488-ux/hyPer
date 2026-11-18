@@ -50,7 +50,7 @@ export function RecentTab({ userId }: { userId: string }) {
   };
   const open = (recent: RecentFood) => {
     settle();
-    if (logger.purpose === 'log' && composed(recent)) logger.composeMeal(recent.food);
+    if (logger.purpose === 'log' && composed(recent)) logger.composeMeal(recent.food, false, recent.servings);
     else logger.chooseFood(recent.food, null, recent.servings);
   };
   const hideFood = (recent: RecentFood) => {

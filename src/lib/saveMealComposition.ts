@@ -1,5 +1,5 @@
 import { buildLoggedAt } from '@/lib/foodLoggerUtils';
-import { encodeMealComposition, getMealTotals, parseMealDraft, type MealDraft } from '@/lib/mealComposition';
+import { encodeMealComposition, getMealTotals, parseMealDraft, wholeMealIngredients, type MealDraft } from '@/lib/mealComposition';
 import { persistNutritionEntry } from '@/lib/saveNutritionEntry';
 import { supabase } from '@/lib/supabase';
 
@@ -18,7 +18,11 @@ export function assertComposedMealOptions(options: SaveComposedMealOptions): voi
   }
 }
 
-/** Creates a fresh recipe snapshot so edits never rewrite previously logged meals. */
+/**
+ * Creates a fresh recipe snapshot so edits never rewrite previously logged
+ * meals. The snapshot is the whole meal; a part of it eaten ("0.5") is the
+ * log's servings, as a food's amount is.
+ */
 export async function saveComposedMeal(
   draft: MealDraft,
   userId: string,
@@ -36,6 +40,8 @@ export async function saveComposedMeal(
   }
 
   const foodId = valid.entryId;
+  const amount = valid.amount ?? 1;
+  const whole = wholeMealIngredients(valid);
   if (options.editSavedMealId === foodId) {
     throw new Error('Use a new meal identity when editing a saved meal.');
   }
@@ -43,11 +49,11 @@ export async function saveComposedMeal(
     id: foodId,
     user_id: userId,
     name: valid.name.trim(),
-    ...getMealTotals(valid.ingredients),
+    ...getMealTotals(whole),
     serving_size: 1,
     serving_unit: 'meal',
     source: valid.saveAsReusableMeal || options.editSavedMealId || options.saveOnly ? 'saved_meal' : 'manual_entry',
-    description: encodeMealComposition(valid.ingredients),
+    description: encodeMealComposition(whole),
   }, { onConflict: 'id' });
   if (foodError) throw foodError;
 
@@ -65,7 +71,7 @@ export async function saveComposedMeal(
   const [year, month, day] = valid.date.split('-').map(Number);
   await persistNutritionEntry({
     food_id: foodId,
-    servings: 1,
+    servings: amount,
     meal_type: options.mealType ?? null,
     group_id: valid.groupId,
     source: 'meal_builder',

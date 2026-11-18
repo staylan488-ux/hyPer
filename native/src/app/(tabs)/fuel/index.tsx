@@ -684,7 +684,8 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
 function entryDetail(log: FoodLog): DetailParts {
   const parts = decodeMealComposition(log.food?.description);
   const time = format(getLogDate(log), 'h:mm a');
-  const amount = parts ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
+  // A built meal says how many ingredients; part of one ("0.5 meals") says how much of it instead.
+  const amount = parts && Number(log.servings) === 1 ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
   const protein = Math.round(logMacro(log, 'protein') ?? 0);
   // An AI estimate says so (one word, so the line stays quiet).
   const raw = log.source as string | undefined;

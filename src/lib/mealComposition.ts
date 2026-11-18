@@ -23,6 +23,11 @@ export interface MealDraft {
   saveAsReusableMeal: boolean;
   foodId?: string;
   locked: boolean;
+  /**
+   * How much of the meal this logs (1, the whole meal, when absent). The
+   * ingredients hold what is eaten: the whole meal's, times this.
+   */
+  amount?: number;
 }
 
 export interface MealTotals {
@@ -144,6 +149,34 @@ export function scaleMealIngredients(ingredients: MealIngredient[], servings: nu
   return scaled;
 }
 
+// Enough places that a rescale and its way back land on the same figure.
+const tidy = (value: number) => Number(value.toFixed(9));
+
+/** The amount of a meal as its log keeps it (two decimals), or null when it is not an amount. */
+export function mealAmount(value: number): number | null {
+  const rounded = Math.round(value * 100) / 100;
+  return positive(rounded) ? rounded : null;
+}
+
+/**
+ * A draft's ingredients at another amount of the meal ("0.5" for half of
+ * it): each ingredient keeps its share. Throws when an ingredient would come
+ * to nothing.
+ */
+export function rescaleMealIngredients(draft: Pick<MealDraft, 'ingredients' | 'amount'>, amount: number): MealIngredient[] {
+  const from = draft.amount ?? 1;
+  if (!positive(amount) || !positive(from)) throw new Error('Meal quantity must be greater than zero.');
+  if (amount === from) return draft.ingredients;
+  const scaled = parseIngredients(draft.ingredients.map((item) => ({ ...item, servings: tidy((item.servings / from) * amount) })), true);
+  if (!scaled) throw new Error('Meal ingredients contain an invalid food or quantity.');
+  return scaled;
+}
+
+/** The whole meal a draft logs part of: its ingredients at an amount of 1. */
+export function wholeMealIngredients(draft: Pick<MealDraft, 'ingredients' | 'amount'>): MealIngredient[] {
+  return rescaleMealIngredients(draft, 1);
+}
+
 function draftKey(userId: string, draftId: string): string {
   return DRAFT_PREFIX + encodeURIComponent(userId) + ':' + encodeURIComponent(draftId);
 }
@@ -164,6 +197,7 @@ export function parseMealDraft(value: unknown): MealDraft | null {
     || !boundedString(value.entryId) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.entryId)
     || typeof value.saveAsReusableMeal !== 'boolean' || typeof value.locked !== 'boolean'
     || !(value.foodId === undefined || boundedString(value.foodId))
+    || !(value.amount === undefined || positive(value.amount))
     || !boundedString(value.time, 5) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value.time)
     || !(value.groupId === null || boundedString(value.groupId))) return null;
   const ingredients = parseIngredients(value.ingredients, true);
@@ -172,6 +206,7 @@ export function parseMealDraft(value: unknown): MealDraft | null {
     method: value.method as MealDraft['method'], date: value.date, entryId: value.entryId,
     saveAsReusableMeal: value.saveAsReusableMeal, locked: value.locked,
     ...(typeof value.foodId === 'string' ? { foodId: value.foodId } : {}),
+    ...(typeof value.amount === 'number' ? { amount: value.amount } : {}),
   } : null;
 }
 

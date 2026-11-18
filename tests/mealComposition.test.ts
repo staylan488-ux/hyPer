@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Food } from '@/types';
 import {
   clearMealDraft, createMealIngredient, decodeMealComposition, encodeMealComposition,
-  getMealTotals, loadMealDraft, MEAL_COMPOSITION_PREFIX, saveMealDraft, scaleMealIngredients,
+  getMealTotals, loadMealDraft, mealAmount, MEAL_COMPOSITION_PREFIX, rescaleMealIngredients, saveMealDraft, scaleMealIngredients,
+  wholeMealIngredients,
   type MealDraft,
 } from '@/lib/mealComposition';
 
@@ -59,6 +60,33 @@ describe('meal composition', () => {
     expect(ingredients[0].food.calories).toBe(120);
   });
 
+  it('rescales a draft to another amount of the meal and back, each ingredient keeping its share', () => {
+    const half = rescaleMealIngredients({ ingredients }, 0.5);
+    expect(half.map((item) => item.servings)).toEqual([0.75, 1]);
+    expect(ingredients.map((item) => item.servings)).toEqual([1.5, 2]);
+    // one ingredient changed on its own keeps its change through the next rescale
+    const changed = half.map((item, index) => (index === 0 ? { ...item, servings: 0.5 } : item));
+    expect(rescaleMealIngredients({ ingredients: changed, amount: 0.5 }, 1).map((item) => item.servings)).toEqual([1, 2]);
+    // a third and back lands on the same figures
+    const third = rescaleMealIngredients({ ingredients }, 0.33);
+    expect(wholeMealIngredients({ ingredients: third, amount: 0.33 }).map((item) => item.servings)).toEqual([1.5, 2]);
+    expect(wholeMealIngredients({ ingredients })).toBe(ingredients);
+    expect(() => rescaleMealIngredients({ ingredients }, 0)).toThrow();
+    expect(() => rescaleMealIngredients({ ingredients }, NaN)).toThrow();
+    // an ingredient that would come to nothing
+    expect(() => rescaleMealIngredients({ ingredients: [createMealIngredient(milk, 1e-9, 'trace')] }, 0.01)).toThrow();
+  });
+
+  it('keeps a meal amount as a log does: two decimals, never nothing', () => {
+    expect(mealAmount(0.5)).toBe(0.5);
+    expect(mealAmount(0.333)).toBe(0.33);
+    expect(mealAmount(2)).toBe(2);
+    expect(mealAmount(0.004)).toBeNull();
+    expect(mealAmount(0)).toBeNull();
+    expect(mealAmount(-1)).toBeNull();
+    expect(mealAmount(NaN)).toBeNull();
+  });
+
   it.each([0, -1, NaN, Infinity])('rejects invalid ingredient or meal quantity %s', (quantity) => {
     expect(() => createMealIngredient(milk, quantity, '00000000-0000-4000-8000-000000000004')).toThrow();
     expect(() => scaleMealIngredients(ingredients, quantity)).toThrow();
@@ -94,6 +122,14 @@ describe('meal draft persistence', () => {
     expect(saveMealDraft('user-a', draft)).toBe(true);
     expect(loadMealDraft('user-a')).toEqual(draft);
     expect(loadMealDraft('user-b')).toBeNull();
+  });
+
+  it('keeps the amount of a meal being logged, and refuses one that is not an amount', () => {
+    const half = { ...draft, amount: 0.5 };
+    expect(saveMealDraft('user-a', half)).toBe(true);
+    expect(loadMealDraft('user-a')).toEqual(half);
+    expect(saveMealDraft('user-a', { ...draft, amount: 0 })).toBe(false);
+    expect(saveMealDraft('user-a', { ...draft, amount: NaN })).toBe(false);
   });
 
   it('isolates new and edited meals and clears only the requested draft', () => {
