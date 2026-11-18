@@ -50,7 +50,7 @@ export function RecentTab({ userId }: { userId: string }) {
   };
   const open = (recent: RecentFood) => {
     settle();
-    if (logger.purpose === 'log' && composed(recent)) logger.composeMeal(recent.food);
+    if (logger.purpose === 'log' && composed(recent)) logger.composeMeal(recent.food, false, recent.servings);
     else logger.chooseFood(recent.food, null, recent.servings);
   };
   const hideFood = (recent: RecentFood) => {
@@ -97,7 +97,15 @@ export function RecentTab({ userId }: { userId: string }) {
         ) : null}
         {foods.length === 0 ? (
           <Animated.View entering={rowEnter} layout={rowLayout}>
-            <Empty text={logs && logs.length > 0 ? 'Hidden foods come back when you log them again.' : 'Foods you log show up here, the most eaten first.'} />
+            <Empty
+              text={
+                logs && logs.length > 0
+                  ? 'Hidden foods come back when you log them again.'
+                  : logger.purpose === 'ingredients'
+                    ? 'Search above or scan a barcode. Foods you log show up here.'
+                    : 'Search above, scan a barcode or snap a meal. Foods you log show up here.'
+              }
+            />
           </Animated.View>
         ) : null}
       </View>

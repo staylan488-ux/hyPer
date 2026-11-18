@@ -729,6 +729,13 @@ export function SearchTab({ query }: { query: string }) {
           : null),
   );
 
+  const [shortQuery, setShortQuery] = useState<string | null>(null);
+  useEffect(() => {
+    if (trimmed.length !== 1) return;
+    const timer = setTimeout(() => setShortQuery(trimmed), 450);
+    return () => clearTimeout(timer);
+  }, [trimmed]);
+
   useEffect(() => {
     if (trimmed.length < 2 || listed) return;
     let current = true;
@@ -875,7 +882,7 @@ export function SearchTab({ query }: { query: string }) {
         <Capsule title="Show more" variant="quiet" onPress={() => setMore(trimmed)} style={{ alignSelf: 'center', marginTop: 14 }} />
       ) : null}
       {searching || (brandsPending && count === 0 && saved.length === 0) ? <ActivityIndicator style={{ marginTop: 32 }} /> : null}
-      {trimmed.length === 1 ? <Empty text="Type at least 2 characters." /> : null}
+      {trimmed.length === 1 && shortQuery === trimmed ? <Empty text="Type at least 2 characters." /> : null}
       {nothing && saved.length === 0 ? (
         <>
           <Empty text={nothingText} />

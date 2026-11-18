@@ -127,6 +127,15 @@ export default function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="close-gap"
+              options={{
+                presentation: 'formSheet',
+                sheetAllowedDetents: 'fitToContents',
+                sheetGrabberVisible: true,
+                contentStyle: { backgroundColor: p.ground },
+              }}
+            />
+            <Stack.Screen
               name="fuel-month"
               options={{
                 presentation: 'formSheet',

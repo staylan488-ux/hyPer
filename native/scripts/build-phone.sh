@@ -76,7 +76,10 @@ APP="$DD/Build/Products/Release-iphoneos/hyPerNative.app"
 BUNDLE="$APP/main.jsbundle"
 # The bundle must point at production and carry no local test backend.
 "$GREP" -a -q -F "$PROJECT_HOST" "$BUNDLE" || { echo "The bundle has no production host."; exit 1; }
-if "$GREP" -a -q -E ':54321|192\.168\.|host\.docker' "$BUNDLE"; then
+# A local backend is a 192.168 address after http(s):// or ws(s)://, Supabase's
+# local port or Docker's host name. A bare 192.168 is not enough: Sentry's
+# crash reporting carries 192.168.0.1 and 192.168.1.1 as documentation examples.
+if "$GREP" -a -q -E ':54321|host\.docker|(https?|wss?)://192\.168\.' "$BUNDLE"; then
   echo "The bundle mentions a local test backend."
   exit 1
 fi

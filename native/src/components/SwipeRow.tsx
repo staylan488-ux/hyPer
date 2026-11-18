@@ -53,15 +53,20 @@ export function releaseRowPresses() {
   markSwipeEnd();
 }
 
+/** True while a row swipe or drag-to-reorder gesture owns the touch (including its release grace). */
+export function isRowGestureActive(): boolean {
+  const now = Date.now();
+  const swiping = swipeStartedAt > swipeEndedAt && now - swipeStartedAt < SWIPE_LONGEST;
+  return rowHeld || swiping || now - swipeEndedAt < SWIPE_PRESS_GRACE;
+}
+
 /**
  * For a row's tap or long press: true when the touch is not the row's own, so
  * the row does nothing. That is a touch that swiped (now or a moment ago), or
  * one that only closes the row left open (as in Mail).
  */
 export function closeOpenSwipeRow(): boolean {
-  const now = Date.now();
-  const swiping = swipeStartedAt > swipeEndedAt && now - swipeStartedAt < SWIPE_LONGEST;
-  if (rowHeld || swiping || now - swipeEndedAt < SWIPE_PRESS_GRACE) return true;
+  if (isRowGestureActive()) return true;
   return dismissOpenSwipeRow();
 }
 

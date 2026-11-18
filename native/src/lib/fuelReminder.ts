@@ -182,7 +182,7 @@ async function hold(userId: string, now: Date, requests: ReminderRequest[], pend
           sound: 'default',
           categoryIdentifier: FUEL_REMINDER_CATEGORY,
           threadIdentifier: FUEL_REMINDER_CATEGORY,
-          // Its words name close-the-gap picks: a tap opens Fuel, where they are.
+          // Its words name close-the-gap picks: a tap opens Fuel and their sheet.
           ...(request.opensFuel ? { data: { open: REMINDER_OPENS_FUEL } } : null),
         },
         // Wall-clock parts (month from 1); iOS works out the instant.
@@ -345,7 +345,7 @@ let followingTaps = false;
 
 /**
  * A tap on the reminder opens Log food on Recent, or Fuel when it names
- * close-the-gap picks (Fuel shows them, one tap each); its Snap a meal button
+ * close-the-gap picks (Fuel opens their sheet, one tap each); its Snap a meal button
  * (press and hold the reminder) opens the camera. Both go through the launch
  * press store, so they run exactly like the Home Screen quick actions of the
  * same name: once, after the intro, with the app in front, and never closing

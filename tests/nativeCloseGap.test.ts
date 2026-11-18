@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { RecentLog } from '@/lib/recentFoods';
 import type { Food } from '@/types';
-import { gapEveningStart, gapPlanFor, isGapEvening } from '../native/src/lib/closeGap';
+import { gapEveningStart, gapLogAllTitle, gapPlanFor, gapRowLine, gapWithWords, isGapEvening } from '../native/src/lib/closeGap';
+import { askGapSheet, GAP_SHEET_ASK_MS, takeGapSheetAsk } from '../native/src/lib/gapSheetAsk';
 
 // Close the gap on the phone: the same shortfall as the Fuel reminder, the
 // evening from 6 PM (or an earlier reminder), and nothing on a day with
@@ -35,5 +36,44 @@ describe('gapPlanFor', () => {
     expect(gapPlanFor({ ...input, logs: null })).toBeNull();
     expect(gapPlanFor({ ...input, totals: totals(0, 0) })).toBeNull();
     expect(gapPlanFor({ ...input, totals: totals(2700, 160) })).toBeNull();
+  });
+});
+
+describe('the words', () => {
+  const pick = (kcal: number, protein: number) => ({ kcal, protein });
+
+  it('Fuel’s row says where the picks take the day, in the plan’s measure', () => {
+    const eaten = { calories: 171, protein: 2 };
+    expect(gapRowLine({ aim: 'calories', picks: [pick(985, 38), pick(807, 43), pick(448, 48)] as never }, eaten)).toBe('3 of your usuals reach 2,411 kcal');
+    expect(gapRowLine({ aim: 'calories', picks: [pick(807, 43)] as never }, eaten)).toBe('One of your usuals reaches 978 kcal');
+    expect(gapRowLine({ aim: 'protein', picks: [pick(400, 40), pick(150, 15)] as never }, { calories: 2300, protein: 105 })).toBe('2 of your usuals reach 160 g protein');
+  });
+
+  it('the sheet’s figure names the picks it counts, and nothing once they are all logged', () => {
+    expect(gapWithWords(3, 3)).toBe(' with all three');
+    expect(gapWithWords(2, 2)).toBe(' with both');
+    expect(gapWithWords(1, 1)).toBe(' with this');
+    expect(gapWithWords(3, 1)).toBe(' with the rest');
+    expect(gapWithWords(3, 0)).toBe('');
+  });
+
+  it('the sheet’s button says how many it logs, then Done', () => {
+    expect(gapLogAllTitle(3, 3)).toBe('Log all three');
+    expect(gapLogAllTitle(2, 2)).toBe('Log both');
+    expect(gapLogAllTitle(1, 1)).toBe('Log it');
+    expect(gapLogAllTitle(3, 2)).toBe('Log the other two');
+    expect(gapLogAllTitle(3, 1)).toBe('Log the other one');
+    expect(gapLogAllTitle(3, 0)).toBe('Done');
+  });
+});
+
+describe('the reminder’s ask for the sheet', () => {
+  it('is taken once, and only while it is fresh', () => {
+    expect(takeGapSheetAsk(1_000)).toBe(false);
+    askGapSheet(1_000);
+    expect(takeGapSheetAsk(1_000 + GAP_SHEET_ASK_MS)).toBe(true);
+    expect(takeGapSheetAsk(1_000 + GAP_SHEET_ASK_MS)).toBe(false);
+    askGapSheet(1_000);
+    expect(takeGapSheetAsk(1_001 + GAP_SHEET_ASK_MS)).toBe(false);
   });
 });

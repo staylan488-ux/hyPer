@@ -34,7 +34,7 @@ import { tabBarCover, TabScroll } from '~/components/TabScroll';
 import { UndoBar } from '~/components/UndoBar';
 import { Track } from '~/components/Track';
 import { DayMark } from '~/fuel/DayMark';
-import { GapPicks } from '~/fuel/GapPicks';
+import { GapRow } from '~/fuel/GapPicks';
 import { announce, screenReaderRunning, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { dayKey, todayLogsInMatchingMeal, useFuelDay, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
@@ -403,13 +403,10 @@ export default function FuelScreen() {
                 <MacroColumn macro="fat" value={totals.fat} target={target?.fat || null} loaded={loaded} goal={goal} place="last" />
               </View>
             )}
+            {/* Today in the evening, well short: one row that opens the usual foods that close the gap. */}
+            {userId ? <GapRow userId={userId} day={todayKey} active={live && loaded} totals={totals} target={target} goal={goal} dayLogs={logs} /> : null}
           </Label>
         )}
-
-        {/* Today in the evening, well short: the usual foods that close the gap, one tap each. */}
-        {userId ? (
-          <GapPicks userId={userId} day={todayKey} visible={live && loaded && !empty} totals={totals} target={target} goal={goal} dayLogs={logs} />
-        ) : null}
 
         {/* One day's list: rows and meals fold away and close up when removed.
             Moving to another day swaps the whole list without that motion. */}
@@ -430,6 +427,9 @@ export default function FuelScreen() {
               <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ marginTop: 36, alignItems: 'center', gap: 6, paddingHorizontal: space.gutter }}>
                 <BlancText variant="bodyStrong">{live ? 'Nothing logged yet' : 'Nothing logged'}</BlancText>
                 <Capsule title="Log food" onPress={() => logFood(selected)} style={{ marginTop: 12, alignSelf: 'center' }} />
+                {live && targetKnown && !kcalTarget ? (
+                  <Capsule title="Set a calorie target" variant="quiet" onPress={() => router.push('/you/targets')} style={{ marginTop: 4, alignSelf: 'center' }} />
+                ) : null}
               </Animated.View>
             ) : null}
 
@@ -684,7 +684,8 @@ function MealSection({ title, group, logs, groups, lateNight, day, todayKey }: {
 function entryDetail(log: FoodLog): DetailParts {
   const parts = decodeMealComposition(log.food?.description);
   const time = format(getLogDate(log), 'h:mm a');
-  const amount = parts ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
+  // A built meal says how many ingredients; part of one ("0.5 meals") says how much of it instead.
+  const amount = parts && Number(log.servings) === 1 ? `${parts.ingredients.length} ingredient${parts.ingredients.length === 1 ? '' : 's'}` : servingLabel(log);
   const protein = Math.round(logMacro(log, 'protein') ?? 0);
   // An AI estimate says so (one word, so the line stays quiet).
   const raw = log.source as string | undefined;

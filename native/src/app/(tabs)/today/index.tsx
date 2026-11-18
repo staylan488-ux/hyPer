@@ -57,6 +57,7 @@ export default function TodayScreen() {
   // Until the saved target is read, no target is not yet "set one in You".
   const userId = useAuthStore((state) => state.user?.id ?? null);
   const targetRead = useAppStore((state) => userId !== null && state.macroTargetLoadedForUserId === userId);
+  const targetFailed = useAppStore((state) => Boolean(state.macroTargetLoadFailed));
   // Yesterday's totals never show as today's after a failed new-day read.
   const totals = useFuelStore(todayTotalsShown);
   const kcalLeft = target ? target.calories - totals.calories : null;
@@ -97,7 +98,11 @@ export default function TodayScreen() {
 
   // Each group's heading sits close over its content; the list sets the groups apart.
   const groups: Record<TodaySection, ReactNode> = {
-    training: session ? <SessionLabel session={session} /> : <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} top={0} />,
+    training: session ? (
+      <SessionLabel session={session} actions={moves('training')} />
+    ) : (
+      <PlanCard hero={plan.hero} next={plan.next} place="today" seeded={plan.seeded} top={0} actions={moves('training')} />
+    ),
     fuel: (
       <>
       {/* The day's food under its heading; the block opens Fuel, its chevron says so. */}
@@ -145,8 +150,26 @@ export default function TodayScreen() {
             </Pressable>
           </Label>
         ) : !targetRead ? (
-          // Holds the block's place (the 56 pt figure, its line and the protein meter) until the target is read.
-          <Label style={{ height: FUEL_BLOCK_HEIGHT }} />
+          targetFailed ? (
+            <Label
+              style={{
+                minHeight: 78,
+                paddingLeft: space.labelPad,
+                paddingRight: space.gutter,
+                paddingVertical: 14,
+                flexDirection: large ? 'column' : 'row',
+                alignItems: large ? 'stretch' : 'center',
+                gap: 12,
+              }}>
+              <BlancText variant="headline" style={large ? undefined : { flex: 1 }}>
+                Couldn’t load targets
+              </BlancText>
+              <Capsule title="Retry" variant="quiet" onPress={() => void useAppStore.getState().fetchMacroTarget()} />
+            </Label>
+          ) : (
+            // Holds the block's place (the 56 pt figure, its line and the protein meter) until the target is read.
+            <Label style={{ height: FUEL_BLOCK_HEIGHT }} />
+          )
         ) : (
           // No target yet: one row that asks for one. Row plays the tap's haptic itself.
           <Label>
@@ -216,7 +239,7 @@ export default function TodayScreen() {
   );
 }
 
-function SessionLabel({ session }: { session: SessionModel }) {
+function SessionLabel({ session, actions }: { session: SessionModel; actions?: { label: string; run: () => void }[] }) {
   const current = session.current;
   // A flexible session starts empty: nothing to finish yet, as on Train,
   // which asks for its first movement.
@@ -249,6 +272,7 @@ function SessionLabel({ session }: { session: SessionModel }) {
       tally={empty ? null : { marks: session.sets.map((set) => set.completed), current: current?.index ?? null, label: `${session.doneCount} of ${session.sets.length} sets done` }}
       title={title}
       line={line}
+      actions={actions}
       action={
         current || empty ? (
           <Capsule title="Resume" tone="effort" onPress={openWorkout} />

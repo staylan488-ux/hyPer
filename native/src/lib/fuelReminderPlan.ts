@@ -57,7 +57,7 @@ export function fuelShortfall(totals: MacroTotals, target: ReminderTarget, goal:
 /**
  * The words: what's left, or, with nothing logged, a plain prompt (it is
  * usually eaten, not missing). With close-the-gap picks the second line names
- * them, and a tap opens Fuel, where they log with one tap each (`picks`).
+ * them, and a tap opens Fuel and their sheet, where they log with one tap each (`picks`).
  */
 export function reminderCopy(totals: MacroTotals, short: Shortfall, plan: GapPlan | null = null): { title: string; body: string; picks: boolean } {
   if (!(totals.calories > 0) && !(totals.protein > 0)) {
@@ -77,7 +77,7 @@ export function reminderCopy(totals: MacroTotals, short: Shortfall, plan: GapPla
 
 /** Wall-clock parts for iOS's calendar trigger; month counts from 1, as iOS does. */
 export type ReminderAt = { year: number; month: number; day: number; hour: number; minute: number };
-/** `opensFuel`: the words name close-the-gap picks, so a tap opens Fuel, where they are. */
+/** `opensFuel`: the words name close-the-gap picks, so a tap opens Fuel and their sheet. */
 export type ReminderRequest = { id: string; day: string; at: ReminderAt; atMs: number; title: string; body: string; opensFuel: boolean };
 export type ReminderPlanInput = {
   now: Date;

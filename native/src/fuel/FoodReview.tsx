@@ -58,12 +58,15 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
   const [saving, setSaving] = useState(false);
   // an amount typed in the line under Amount must be applied or cleared before logging
   const [helperOpen, setHelperOpen] = useState(false);
+  // Clearing Amount to type a new digit keeps Log entry off without flashing red mid-keystroke.
+  const [amountBlurred, setAmountBlurred] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // one retry-safe id until this entry's save is confirmed
   const pending = useRef(createPendingEntryId()).current;
 
   const servings = servingsForAmount(food, amount, unit);
   const invalid = amountError(food, amount, unit);
+  const shownInvalid = invalid && (amount.trim() !== '' || amountBlurred) ? invalid : null;
   const kcal = servings === null ? 0 : Math.round(food.calories * servings);
   const protein = servings === null ? 0 : Math.round(food.protein * servings);
   // With one unit there is no choice to offer: the amount says what it counts,
@@ -172,9 +175,13 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
             keyboardType="decimal-pad"
             selectTextOnFocus
             unit={amountUnit}
-            invalid={Boolean(invalid)}
+            invalid={Boolean(shownInvalid)}
             // Typing the amount by hand clears the line under it, so Log entry is ready.
-            onFocus={() => setHelperOpen(false)}
+            onFocus={() => {
+              setAmountBlurred(false);
+              setHelperOpen(false);
+            }}
+            onBlur={() => setAmountBlurred(true)}
           />
           {units.length > 1 ? (
             <>
@@ -183,7 +190,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
             </>
           ) : null}
         </Label>
-        {invalid ? <FormNote alert>{invalid}</FormNote> : null}
+        {shownInvalid ? <FormNote alert>{shownInvalid}</FormNote> : null}
         <ServingHelper
           key={`${food.id}:${food.serving_size}:${food.serving_unit}`}
           food={food}
@@ -191,6 +198,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
           open={helperOpen}
           onOpenChange={setHelperOpen}
           onApply={(next) => {
+            setAmountBlurred(false);
             setUnit('serving');
             setAmount(String(next));
             onAmountChange?.(next);
@@ -222,6 +230,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
       </View>
 
       {error ? <FormNote alert>{error}</FormNote> : null}
+      {!error && helperOpen ? <FormNote>Convert and apply the amount typed above, or clear it to log.</FormNote> : null}
 
       <View style={{ paddingHorizontal: space.inset, marginTop: 20 }}>
         <Capsule
