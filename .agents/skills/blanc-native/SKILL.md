@@ -182,6 +182,13 @@ Settled; do not reopen or "improve" them without being asked.
   could do the top of the range with. Each later set follows the set before
   it. A start is not a target: no "Target hit", and Session complete does not
   count it. Never start a movement from a machine's numbers.
+- "How to do it" (built 2026-11-18, second of the three pieces; not yet seen
+  by him): a folding section at the top of the movement sheet with the
+  setup, each rep and why. It starts open for a movement done fewer than
+  three times and folded after that; his own fold or open stands until the
+  app restarts. A study is named only where it is the reason for a cue, and a
+  movement the lines cannot place has no section. Lines and sources:
+  [how to do a movement](../../../docs/movement-how-to.md).
 - Sets are rated in reps in reserve by default (Sinan, 2026-11-13), stored
   as RPE (2 in reserve = RPE 8); RPE is a per-phone choice in You › App. A
   rating is never carried over from another set: only a tap saves one.
