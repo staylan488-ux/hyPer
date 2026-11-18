@@ -1370,7 +1370,13 @@ function StartPlanned() {
                   return (
                     <View key={day.id}>
                       {index > 0 ? <Hairline /> : null}
-                      <Row title={day.day_name} detail={dayLine(day)} trailing={large ? undefined : startButton} />
+                      <Row
+                        title={day.day_name}
+                        detail={dayLine(day)}
+                        trailing={large ? undefined : startButton}
+                        actions={large || starting !== null ? undefined : [{ label: `Start ${day.day_name}`, run: () => void start(day.id) }]}
+                        onPress={split ? () => router.push({ pathname: '/train/program-view', params: { id: split.id, day: day.id } }) : undefined}
+                      />
                       {/* At the accessibility text sizes the button would squeeze the day's words: it goes under them. */}
                       {large ? <View style={{ paddingLeft: 18, paddingRight: 16, paddingBottom: 12 }}>{startButton}</View> : null}
                     </View>

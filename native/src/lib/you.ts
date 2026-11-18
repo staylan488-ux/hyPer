@@ -300,7 +300,7 @@ export async function loadTargets(): Promise<boolean> {
     if (target.error) throw target.error;
     if (!isCurrent()) return false;
     useAppStore.setState({
-      ...(targetBeforeSaves() ? { macroTarget: target.data ?? null, macroTargetLoadedForUserId: userId } : null),
+      ...(targetBeforeSaves() ? { macroTarget: target.data ?? null, macroTargetLoadedForUserId: userId, macroTargetLoadFailed: false } : null),
       ...(profileBeforeSaves() ? { nutritionProfile: profile, nutritionProfileLoadedForUserId: userId } : null),
     });
     useTargetsStore.setState({ status: 'ready' });

@@ -281,6 +281,28 @@ describe('DragList', () => {
     expect(tops()).toEqual({ a: 0, b: 120, c: 170 });
   });
 
+  it('keeps a tall superset block in place on lift, and swaps once dragged past the next row’s middle', () => {
+    render(['a', 'b', 'c']);
+    flushUI();
+    layOutOneByOne({ a: 120, b: 50, c: 50 });
+
+    // Holding a 2-row superset (or a tiny finger tremor) must not swap it downward.
+    drag('a', 0);
+    flushJS();
+    settle();
+    flushUI();
+    expect(onMove).not.toHaveBeenCalled();
+    expect(tops()).toEqual({ a: 0, b: 120, c: 170 });
+
+    // Once its bottom (120 + 30 = 150) passes b's middle (145), they trade places.
+    drag('a', 30);
+    flushJS();
+    settle();
+    flushUI();
+    expect(onMove).toHaveBeenCalledWith('a', 1);
+    expect(tops()).toEqual({ b: 0, a: 50, c: 170 });
+  });
+
   it('puts the rows back when a drop fails to save before it has settled', () => {
     render(['a', 'b', 'c']);
     flushUI();

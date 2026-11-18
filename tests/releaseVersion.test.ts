@@ -11,7 +11,7 @@ const script = fileURLToPath(new URL('../native/scripts/release-version.mjs', im
 const appJson = JSON.parse(fs.readFileSync(new URL('../native/app.json', import.meta.url), 'utf8'));
 const appConfig = require('../native/app.config.js') as (input: { config: Record<string, unknown> }) => {
   version: string;
-  ios: { buildNumber?: string; bundleIdentifier: string };
+  ios: { buildNumber?: string; bundleIdentifier: string; infoPlist?: { UIBackgroundModes?: string[] } };
 };
 
 describe('next release version', () => {
@@ -114,5 +114,12 @@ describe('native app config version', () => {
 
   it.each(['2.0', '2.0.1-beta', 'latest', '02.0.1'])('refuses HYPER_APP_VERSION=%j', (version) => {
     expect(() => resolve({ HYPER_APP: 'release', HYPER_APP_VERSION: version })).toThrow('HYPER_APP_VERSION');
+  });
+
+  it('omits background location and audio modes from release builds while Run is behind early access', () => {
+    const dev = resolve({ HYPER_APP: undefined });
+    expect(dev.ios.infoPlist?.UIBackgroundModes).toEqual(['location', 'audio']);
+    const release = resolve({ HYPER_APP: 'release' });
+    expect(release.ios.infoPlist?.UIBackgroundModes).toBeUndefined();
   });
 });

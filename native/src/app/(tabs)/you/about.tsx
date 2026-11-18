@@ -7,7 +7,7 @@ import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
 import { TabScroll } from '~/components/TabScroll';
-import { appVersion } from '~/lib/appConfig';
+import { appBuildNumber, appVersion } from '~/lib/appConfig';
 import { openPage, PRIVACY_URL, SUPPORT_URL, TERMS_URL } from '~/lib/links';
 import { space } from '~/theme/blanc';
 
@@ -18,6 +18,8 @@ import { space } from '~/theme/blanc';
  */
 export default function AboutScreen() {
   const version = appVersion();
+  const build = appBuildNumber();
+  const versionLabel = build ? `${version} (${build})` : version;
   return (
     <>
       <Stack.Screen options={{ title: 'About' }} />
@@ -39,8 +41,8 @@ export default function AboutScreen() {
           {/* Tapping the version plays the row's tap, a quick check that haptics work. */}
           <Row
             title="Version"
-            value={version}
-            accessibilityLabel={`Version ${version}. Tap to feel a haptic.`}
+            value={versionLabel}
+            accessibilityLabel={`Version ${version}${build ? `, build ${build}` : ''}. Tap to feel a haptic.`}
             onPress={() => undefined}
           />
         </Label>

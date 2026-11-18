@@ -420,6 +420,7 @@ interface AppState {
    * account data. Failed refreshes keep the last successful values. */
   workoutLoadedForUserId: string | null;
   macroTargetLoadedForUserId: string | null;
+  macroTargetLoadFailed: boolean;
   nutritionProfileLoadedForUserId: string | null;
 
   // Split actions
@@ -740,6 +741,7 @@ export const initialAppData = {
   hydratedForUserId: null,
   workoutLoadedForUserId: null,
   macroTargetLoadedForUserId: null,
+  macroTargetLoadFailed: false,
   nutritionProfileLoadedForUserId: null,
 } satisfies Partial<AppState>;
 
@@ -3706,6 +3708,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const beforeSaves = macroTargetSaves.begin();
     const userId = await getSessionUserId();
     if (!userId || !isAccountCurrent()) return;
+    if (get().macroTargetLoadFailed) set({ macroTargetLoadFailed: false });
 
     // maybeSingle, not single — a user with no targets yet is the normal case,
     // not an error.
@@ -3717,12 +3720,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // A successful read with no row clears a target left over from a previous
     // account. A failed read keeps what is shown, so a flaky connection never
-    // blanks the targets.
+    // blanks the targets, while noting a cold-start failure when none is read yet.
     if (!error && isAccountCurrent() && beforeSaves()) {
       const macroTarget = data ?? null;
       set(sameData(get().macroTarget, macroTarget)
-        ? { macroTargetLoadedForUserId: userId }
-        : { macroTarget, macroTargetLoadedForUserId: userId });
+        ? { macroTargetLoadedForUserId: userId, macroTargetLoadFailed: false }
+        : { macroTarget, macroTargetLoadedForUserId: userId, macroTargetLoadFailed: false });
+    } else if (error && isAccountCurrent() && beforeSaves() && get().macroTargetLoadedForUserId !== userId) {
+      set({ macroTargetLoadFailed: true });
     }
   },
 
@@ -3753,7 +3758,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (data && isAccountCurrent()) {
       macroTargetSaves.saved();
-      set({ macroTarget: data, macroTargetLoadedForUserId: userId });
+      set({ macroTarget: data, macroTargetLoadedForUserId: userId, macroTargetLoadFailed: false });
     }
   },
 

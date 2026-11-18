@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, TextInput, View } from 'react-native';
 
 import { interpretFoodServing, servingNeedsAi } from '@/lib/foodTrial';
 import type { Food } from '@/types';
@@ -70,6 +70,7 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
 
 
   const interpret = async () => {
+    Keyboard.dismiss();
     // Only an amount the AI must read asks first; "8 oz" never leaves the phone.
     if (servingNeedsAi(food, text) && !(await askAiConsent())) return;
     const current = ++request.current;

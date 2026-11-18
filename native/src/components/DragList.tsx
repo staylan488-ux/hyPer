@@ -282,43 +282,26 @@ function DragRow({ id, shared, enabled, onMove, onHold, onDragging, children }: 
         // Kept within the list, as iOS keeps a dragged row in its table.
         const y = Math.min(Math.max(event.translationY, -startTop.get()), total - own - startTop.get());
         dragY.set(y);
-        if (cards) {
-          // Groups differ in height, so the held one trades places with a
-          // neighbour once its leading edge passes that neighbour's middle, as
-          // they lie now: a tall group can still go above a short first one.
-          const heldTop = startTop.get() + y;
-          let next = list;
-          let at = next.indexOf(id);
-          for (let step = 0; step < next.length; step += 1) {
-            const below = at < next.length - 1 ? next[at + 1] : null;
-            const above = at > 0 ? next[at - 1] : null;
-            const middleOf = (key: string) => topOf(key, next, heights.get(), gap) + (heights.get()[key] ?? FALLBACK_HEIGHT) / 2;
-            const to = below !== null && heldTop + own > middleOf(below) ? at + 1 : above !== null && heldTop < middleOf(above) ? at - 1 : at;
-            if (to === at) break;
-            const moved = next.filter((key) => key !== id);
-            moved.splice(to, 0, id);
-            next = moved;
-            at = to;
-          }
-          if (next !== list) {
-            order.set(next);
-            runOnJS(haptics.select)();
-          }
-          return;
+        // Rows and groups can differ in height (a superset pair, Today's groups),
+        // so the held one trades places with a neighbour once its leading edge
+        // passes that neighbour's middle, as they lie now: a tall item never
+        // swaps on lift and can still go above a short first one.
+        const heldTop = startTop.get() + y;
+        let next = list;
+        let at = next.indexOf(id);
+        for (let step = 0; step < next.length; step += 1) {
+          const below = at < next.length - 1 ? next[at + 1] : null;
+          const above = at > 0 ? next[at - 1] : null;
+          const middleOf = (key: string) => topOf(key, next, heights.get(), gap) + (heights.get()[key] ?? FALLBACK_HEIGHT) / 2;
+          const to = below !== null && heldTop + own > middleOf(below) ? at + 1 : above !== null && heldTop < middleOf(above) ? at - 1 : at;
+          if (to === at) break;
+          const moved = next.filter((key) => key !== id);
+          moved.splice(to, 0, id);
+          next = moved;
+          at = to;
         }
-        // The place whose middle the row's middle has passed.
-        const middle = startTop.get() + y + own / 2;
-        const others = list.filter((key) => key !== id);
-        let index = 0;
-        let edge = 0;
-        for (const key of others) {
-          const height = heights.get()[key] ?? FALLBACK_HEIGHT;
-          if (middle > edge + height / 2) index += 1;
-          edge += height + gap;
-        }
-        if (list.indexOf(id) !== index) {
-          others.splice(index, 0, id);
-          order.set(others);
+        if (next !== list) {
+          order.set(next);
           runOnJS(haptics.select)();
         }
       })

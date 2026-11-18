@@ -246,6 +246,18 @@ describe('Fuel on a day with nothing logged', () => {
     const figure = Object.values(pressables).find((press) => press.accessibilityHint === 'Edits your calorie target' || press.accessibilityHint === 'Sets your calorie target');
     expect(figure).toBeUndefined();
     expect(capsules['Log food']).toBeDefined();
+    expect(capsules['Set a calorie target']).toBeUndefined();
+  });
+
+  it('offers Set a calorie target on today when empty and no target is saved yet', async () => {
+    await renderFuel({ day: TODAY, logged: false, target: null });
+    expect(capsules['Set a calorie target']).toMatchObject({ variant: 'quiet' });
+    await act(async () => { capsules['Set a calorie target'].onPress(); });
+    expect(push).toHaveBeenCalledWith('/you/targets');
+
+    for (const key of Object.keys(capsules)) delete capsules[key];
+    await renderFuel({ day: TODAY, logged: false, target: { calories: 2200, protein: 160, carbs: 240, fat: 65 } });
+    expect(capsules['Set a calorie target']).toBeUndefined();
   });
 });
 

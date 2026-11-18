@@ -298,8 +298,8 @@ export default function SignIn() {
               if (error === shortMessage && next.length >= minLength) setError(null);
               setPassword(next);
             }}
-            placeholder="Password"
-            accessibilityLabel="Password"
+            placeholder={isLogin ? 'Password' : `Password (${minLength}+ characters)`}
+            accessibilityLabel={isLogin ? 'Password' : `Password, at least ${minLength} characters`}
             secureTextEntry
             textContentType={isLogin ? 'password' : 'newPassword'}
             autoComplete={isLogin ? 'current-password' : 'new-password'}
@@ -330,6 +330,11 @@ export default function SignIn() {
           {shownError ? (
             <BlancText variant="secondary" tone="live" accessibilityRole="alert">
               {shownError}
+            </BlancText>
+          ) : null}
+          {!isLogin && !signupSuccess && !shownError && password.length > 0 && password.length < minLength ? (
+            <BlancText variant="footnote" tone="graphite">
+              {`At least ${minLength} characters`}
             </BlancText>
           ) : null}
           {!isLogin && showSignInPrompt ? <TextLink title="Go to sign in" onPress={() => switchMode(true)} /> : null}

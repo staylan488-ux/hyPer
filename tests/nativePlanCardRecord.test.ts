@@ -40,6 +40,7 @@ const push = vi.fn();
 const selectHistoryDay = vi.fn();
 const newProgram = vi.fn();
 const openTrain = vi.fn();
+let lifted = false;
 
 const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>(
   'components/PlanCard.tsx',
@@ -67,6 +68,7 @@ const { PlanCard } = loadNativeModule<{ PlanCard: (props: Props) => ReactNode }>
         return createElement('section', { 'data-min-height': minHeight }, children);
       },
     },
+    '~/components/SwipeRow': { closeOpenSwipeRow: () => lifted },
     '~/components/Tally': { Tally: ({ accessibilityLabel }: { accessibilityLabel: string }) => createElement('i', null, accessibilityLabel) },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/format': { formatMinutes: (minutes: number) => `${minutes} min` },
@@ -94,9 +96,11 @@ async function show(props: Props) {
 }
 
 beforeEach(() => {
+  lifted = false;
   history.setState({ finished: undefined });
   programs.setState({ splits: [] });
   push.mockClear();
+  openTrain.mockClear();
   selectHistoryDay.mockClear();
   host = document.createElement('div');
   document.body.appendChild(host);
@@ -172,6 +176,10 @@ describe('Plan card for a day already trained', () => {
       expect(card.getAttribute('aria-label')).toBe('Push, 52 minutes, Done, 3 of 3 sets logged, Next: Legs');
       expect(card.dataset.hint).toBe('Opens the workout');
       push.mockClear();
+      lifted = true;
+      await act(async () => card.click());
+      expect(push).not.toHaveBeenCalled();
+      lifted = false;
       await act(async () => card.click());
       expect(push).toHaveBeenCalledWith({ pathname: '/train/past', params: { id: 'w1' } });
     }

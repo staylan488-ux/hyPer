@@ -352,10 +352,13 @@ final class RunRecorder: NSObject {
     UIApplication.shared.applicationSupportsShakeToEdit = false
     // A run screen glanced at should not dim and lock mid-interval.
     UIApplication.shared.isIdleTimerDisabled = true
-    manager.allowsBackgroundLocationUpdates = true
-    manager.showsBackgroundLocationIndicator = true
-    if #available(iOS 17.0, *) {
-      backgroundActivitySession = CLBackgroundActivitySession()
+    let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+    if backgroundModes.contains("location") {
+      manager.allowsBackgroundLocationUpdates = true
+      manager.showsBackgroundLocationIndicator = true
+      if #available(iOS 17.0, *) {
+        backgroundActivitySession = CLBackgroundActivitySession()
+      }
     }
     startMotionUpdates()
     recording = true
