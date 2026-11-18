@@ -37,6 +37,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
   const [available, setAvailable] = useState(true);
   const [digits, setDigits] = useState('');
   const [missed, setMissed] = useState<string | null>(null);
+  const [cameraBlocked, setCameraBlocked] = useState(false);
   // a newer scan, or leaving Scan, drops a late result
   const [gate] = useState(createRequestGate);
   const { beginBusy, chooseFood } = logger;
@@ -59,6 +60,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
       }
       if (!pressed) haptics.tap();
       setMissed(null);
+      setCameraBlocked(false);
       setState('looking-up');
       setMessage(`Looking up ${barcode}…`);
       const isCurrent = gate.begin();
@@ -88,6 +90,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
   );
 
   const scan = useCallback(async () => {
+    setCameraBlocked(false);
     setState('starting');
     setMessage('Opening the camera…');
     try {
@@ -112,6 +115,7 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
         return;
       }
       haptics.error();
+      setCameraBlocked(code === 'SCAN_FAILED');
       setState('error');
       setMessage(
         code === 'SCAN_FAILED'
@@ -153,6 +157,12 @@ export function ScanTab({ onCreateProduct }: { onCreateProduct: (barcode: string
           {message}
         </BlancText>
       </View>
+
+      {cameraBlocked ? (
+        <View style={{ paddingHorizontal: space.inset, marginTop: 12 }}>
+          <Capsule title="Open Settings" variant="quiet" onPress={() => void Linking.openSettings()} />
+        </View>
+      ) : null}
 
       {available ? (
         <View style={{ paddingHorizontal: space.inset, marginTop: 16 }}>

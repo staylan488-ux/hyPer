@@ -427,6 +427,9 @@ export default function FuelScreen() {
               <Animated.View entering={rowEnter} exiting={blockExit} layout={rowLayout} style={{ marginTop: 36, alignItems: 'center', gap: 6, paddingHorizontal: space.gutter }}>
                 <BlancText variant="bodyStrong">{live ? 'Nothing logged yet' : 'Nothing logged'}</BlancText>
                 <Capsule title="Log food" onPress={() => logFood(selected)} style={{ marginTop: 12, alignSelf: 'center' }} />
+                {live && targetKnown && !kcalTarget ? (
+                  <Capsule title="Set a calorie target" variant="quiet" onPress={() => router.push('/you/targets')} style={{ marginTop: 4, alignSelf: 'center' }} />
+                ) : null}
               </Animated.View>
             ) : null}
 

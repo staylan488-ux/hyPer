@@ -2,8 +2,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { isPendingExerciseId } from '@/lib/customExercises';
+import { insertPendingExercises, isPendingExerciseId, type ExerciseInsertClient } from '@/lib/customExercises';
+import { getExerciseLibrary, invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { PROGRAM_PICKER_TITLES, pickerTargetFor, type ProgramPickMode } from '@/lib/splitDraft';
+import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { useSplitEditStore } from '@/stores/splitEditStore';
 import type { Exercise } from '@/types';
@@ -36,19 +38,38 @@ async function keepInProgram(splitDayId: string, exercise: Exercise): Promise<bo
 }
 
 /**
- * Adds the pick to the live workout, pairs it with the movement as a
- * superset, or swaps the movement for it; rejects when the save fails. Out
- * here because the React Compiler can't yet compile a component whose own
- * code branches inside a try.
+ * Saves an exercise typed in by hand to the shared library before adding it to
+ * a workout, reusing an existing row when the name already exists.
  */
-async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Movement | null, exercise: Exercise) {
+async function ensureLibraryExercise(exercise: Exercise): Promise<Exercise> {
+  if (!isPendingExerciseId(exercise.id)) return exercise;
+  const ids = await insertPendingExercises([exercise], {
+    client: supabase as unknown as ExerciseInsertClient,
+    loadLibrary: () => getExerciseLibrary({ force: true }),
+  });
+  invalidateExerciseLibrary();
+  const id = ids.get(exercise.id);
+  if (!id) throw new Error(`Could not create exercise: ${exercise.name}`);
+  return { ...exercise, id };
+}
+
+/**
+ * Adds the pick to the live workout, pairs it with the movement as a
+ * superset, or swaps the movement for it; rejects when the save fails.
+ * Resolves to the exercise as the library holds it (one typed in by hand has
+ * its saved id by then). Out here because the React Compiler can't yet
+ * compile a component whose own code branches inside a try.
+ */
+async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Movement | null, exercise: Exercise): Promise<Exercise> {
+  const ready = await ensureLibraryExercise(exercise);
   if (mode === 'add') {
-    await addMovement(session.workoutId, exercise);
+    await addMovement(session.workoutId, ready);
   } else if (movement && mode === 'superset') {
-    await addSupersetPartner(session.workoutId, movement.exerciseId, exercise);
+    await addSupersetPartner(session.workoutId, movement.exerciseId, ready);
   } else if (movement) {
-    await swapMovement(session.workoutId, movement.exerciseId, exercise, session.current?.movement.exerciseId === movement.exerciseId);
+    await swapMovement(session.workoutId, movement.exerciseId, ready, session.current?.movement.exerciseId === movement.exerciseId);
   }
+  return ready;
 }
 
 /**
@@ -86,6 +107,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   const [keep, setKeep] = useState(false);
 
   const [swapping, setSwapping] = useState<string | null>(null);
+  const [created, setCreated] = useState<Exercise[]>([]);
   // While a pick saves, the sheet holds still: closing it then would leave the
   // save to close whatever screen is showing. After the save it steps aside.
   const [exit, setExit] = useState<'back' | 'dismiss' | null>(null);
@@ -100,16 +122,24 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
     [past, session?.movements],
   );
 
+  const rememberCustom = (exercise: Exercise) => {
+    if (isPendingExerciseId(exercise.id)) {
+      setCreated((current) => (current.some((entry) => entry.id === exercise.id) ? current : [exercise, ...current]));
+    }
+  };
+
   const choosePast = async (exercise: Exercise) => {
     if (!past || swapping || (mode === 'superset' && !params.id)) return;
+    rememberCustom(exercise);
     setSwapping(exercise.id);
     const store = useAppStore.getState();
     const saved = await editPastWorkout(past.id, async () => {
+      const ready = await ensureLibraryExercise(exercise);
       if (mode === 'superset' && params.id) {
-        await store.addSupersetToWorkout(past.id, params.id, exercise);
+        await store.addSupersetToWorkout(past.id, params.id, ready);
       } else {
-        const created = await store.addExerciseToWorkout(past.id, exercise);
-        if (!created) throw new Error('Could not add that exercise.');
+        const added = await store.addExerciseToWorkout(past.id, ready);
+        if (!added) throw new Error('Could not add that exercise.');
       }
     });
     if (saved) {
@@ -126,22 +156,24 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   const choose = async (exercise: Exercise) => {
     if (pastId) return choosePast(exercise);
     if (!session || swapping || (mode !== 'add' && !movement)) return;
+    rememberCustom(exercise);
     setSwapping(exercise.id);
     // Back to the workout, past the movement sheet a swap or superset opened
     // from (a swipe on Train's row opens this sheet straight from Train).
     const exitTo = mode === 'add' || params.from === 'train' ? 'back' : 'dismiss';
-    const failure = await pickInWorkout(session, mode, movement, exercise).then(
-      () => null,
-      (error: unknown) => error ?? new Error(copy.fallback),
+    const picked = await pickInWorkout(session, mode, movement, exercise).then(
+      (ready) => ({ ready, failure: null }),
+      (error: unknown) => ({ ready: null, failure: error ?? new Error(copy.fallback) }),
     );
-    if (failure) {
+    if (!picked.ready) {
       haptics.error();
       setSwapping(null);
-      Alert.alert(copy.failed, errorMessage(failure, copy.fallback));
+      Alert.alert(copy.failed, errorMessage(picked.failure, copy.fallback));
       return;
     }
     // In this workout now; the program day is a second save that can fail alone.
-    const kept = keep && programDayId ? await keepInProgram(programDayId, exercise) : null;
+    // It takes the saved exercise: one typed in by hand has no library id until then.
+    const kept = keep && programDayId ? await keepInProgram(programDayId, picked.ready) : null;
     if (kept === false) {
       haptics.error();
       Alert.alert(`${exercise.name} added to this workout only`, `Couldn't add it to ${session.dayName}. You can add it in Program.`);
@@ -163,6 +195,8 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
       initialMuscle={sourceMuscle}
       replacing={mode === 'swap' ? movement?.sets[0]?.exercise ?? null : null}
       exclude={inWorkout}
+      extras={created}
+      allowCustom
       busyId={swapping}
       onPick={(exercise) => void choose(exercise)}
       accessory={

@@ -3,7 +3,9 @@ import { useEffect } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { summarize, useFinishedStore } from '~/lib/finished';
+import { useFuelStore } from '~/lib/fuel';
 import { checkFuelReminderSoon } from '~/lib/fuelReminder';
 import { receiveLaunchPress } from '~/lib/launchActions';
 import { setSkipped } from '~/lib/movement';
@@ -11,7 +13,9 @@ import { startRest } from '~/lib/rest';
 import { priorRecordsFor } from '~/lib/records';
 import { liveSessionModel, previousHistoryFor, previousTargetsFor, useFocusStore } from '~/lib/session';
 import { buildSessionModel } from '~/lib/sessionModel';
+import { useTargetsStore } from '~/lib/you';
 import { devScrollTrace, readDevLaunch } from '~/platform/devLaunch';
+import { isPreviewActive } from '~/platform/previewFlag';
 
 /**
  * Debug builds only: opens the launch-argument route and runs a scripted
@@ -128,6 +132,41 @@ export function DevLaunchRunner() {
         setTimeout(() => {
           if (useAppStore.getState().currentWorkout) void useAppStore.getState().completeWorkout();
         }, 1200),
+      );
+    }
+
+    if (action === 'blankAccount' && isPreviewActive()) {
+      // Clears the in-memory preview sample data so Day-0 empty states can be checked on simulator.
+      timers.push(
+        setTimeout(() => {
+          const userId = useAuthStore.getState().user?.id;
+          if (!userId) return;
+          void Promise.all([
+            supabase.from('macro_targets').delete().eq('user_id', userId),
+            supabase.from('nutrition_profiles').delete().eq('user_id', userId),
+            supabase.from('nutrition_logs').delete().eq('user_id', userId),
+            supabase.from('splits').delete().eq('user_id', userId),
+            supabase.from('workouts').delete().eq('user_id', userId),
+          ]).then(() => {
+            useAppStore.setState({
+              splits: [],
+              activeSplit: null,
+              currentWorkout: null,
+              currentWorkoutDayPlan: null,
+              macroTarget: null,
+              nutritionProfile: null,
+              weeklyVolume: [],
+              macroTargetLoadedForUserId: userId,
+              nutritionProfileLoadedForUserId: userId,
+            });
+            useFuelStore.setState({
+              logs: [],
+              todayTotals: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+              status: 'ready',
+            });
+            useTargetsStore.setState({ status: 'ready' });
+          });
+        }, 250),
       );
     }
 

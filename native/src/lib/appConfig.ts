@@ -45,6 +45,11 @@ export function appVersion(): string {
   return Constants.expoConfig?.version ?? '';
 }
 
+/** This build's iOS build number ("69") when set, for support triage on About. */
+export function appBuildNumber(): string {
+  return Constants.expoConfig?.ios?.buildNumber ?? '';
+}
+
 /** The server allows only newer builds than this one. */
 export function useUpdateRequired(): boolean {
   return useAppConfigStore((state) => isOlderThan(appVersion(), state.config?.minAppVersion));

@@ -2,7 +2,7 @@ import { parseISO } from 'date-fns';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, View, type AccessibilityActionEvent } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import type { HeroState } from '@/lib/todayModel';
@@ -10,6 +10,7 @@ import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
 import { Label } from '~/components/Label';
+import { closeOpenSwipeRow } from '~/components/SwipeRow';
 import { Tally } from '~/components/Tally';
 import { speak, useLargeText } from '~/lib/accessibility';
 import { formatMinutes } from '~/lib/format';
@@ -39,6 +40,7 @@ export function PlanCard({
   place,
   seeded = false,
   top = 18,
+  actions,
 }: {
   hero: HeroState;
   next: string | null;
@@ -47,6 +49,8 @@ export function PlanCard({
   top?: number;
   /** The hero comes from the phone's copy (useTodayPlan's seeded). */
   seeded?: boolean;
+  /** VoiceOver actions on Today's group (Move up, Move down). */
+  actions?: { label: string; run: () => void }[];
 }) {
   const c = useBlanc();
   // At the accessibility text sizes the button moves under the words.
@@ -102,7 +106,7 @@ export function PlanCard({
         detail = next ? `Next: ${next}` : null;
         break;
       }
-      return <FinishedCard record={finished} next={next} top={top} />;
+      return <FinishedCard record={finished} next={next} top={top} actions={actions} />;
     }
     case 'flexible':
       title = 'Flexible mode';
@@ -138,9 +142,18 @@ export function PlanCard({
     alignItems: large ? ('stretch' as const) : ('center' as const),
     gap: 12,
   };
+  const spokenTitle = speak([title, detail].filter(Boolean).join(', '));
+  const spokenActions = actions?.length ? actions.map((entry) => ({ name: entry.label, label: entry.label })) : undefined;
+  const act = (event: AccessibilityActionEvent) => actions?.find((entry) => entry.label === event.nativeEvent.actionName)?.run();
+  const textActs = Boolean(place === 'today' && action);
   const content = (
     <>
-        <View style={large ? undefined : { flex: 1, minWidth: 0 }}>
+        <View
+          accessible={textActs}
+          accessibilityLabel={textActs ? spokenTitle : undefined}
+          accessibilityActions={textActs ? spokenActions : undefined}
+          onAccessibilityAction={textActs ? act : undefined}
+          style={large ? undefined : { flex: 1, minWidth: 0 }}>
           <BlancText variant="headline" numberOfLines={large ? undefined : 1}>
             {title}
           </BlancText>
@@ -171,9 +184,12 @@ export function PlanCard({
             // With a button inside, VoiceOver reaches the button on its own.
             accessible={!action}
             accessibilityRole="button"
-            accessibilityLabel={speak([title, detail].filter(Boolean).join(', '))}
+            accessibilityLabel={spokenTitle}
             accessibilityHint="Opens Train"
+            accessibilityActions={!action ? spokenActions : undefined}
+            onAccessibilityAction={!action ? act : undefined}
             onPress={() => {
+              if (closeOpenSwipeRow()) return;
               haptics.tap();
               toTrain();
             }}
@@ -195,7 +211,17 @@ export function PlanCard({
  * No button: the card opens the workout, and says so with a chevron where the
  * live card's button was, as every card that opens a screen does.
  */
-function FinishedCard({ record, next, top }: { record: FinishedToday; next: string | null; top: number }) {
+function FinishedCard({
+  record,
+  next,
+  top,
+  actions,
+}: {
+  record: FinishedToday;
+  next: string | null;
+  top: number;
+  actions?: { label: string; run: () => void }[];
+}) {
   const c = useBlanc();
   // At the accessibility sizes the action slot stacks under the words, where a lone chevron would float.
   const large = useLargeText();
@@ -228,6 +254,7 @@ function FinishedCard({ record, next, top }: { record: FinishedToday; next: stri
         // VoiceOver reads the record as one stop, its length in words ("1 h 5 min" as "1 hour 5 minutes").
         spoken={[record.title, length, 'Done', counted, line].filter(Boolean).join(', ')}
         hint="Opens the workout"
+        actions={actions}
         onPress={() => {
           // The workout screen reads History's month: History moves to the record's day first.
           selectHistoryDay(parseISO(record.day));
@@ -257,6 +284,7 @@ export function SessionCard({
   action,
   spoken,
   hint,
+  actions,
   onPress,
   top = 18,
 }: {
@@ -274,11 +302,15 @@ export function SessionCard({
   /** The whole card's words for VoiceOver, read as one stop. */
   spoken?: string;
   hint?: string;
+  /** VoiceOver actions on Today's group (Move up, Move down). */
+  actions?: { label: string; run: () => void }[];
   onPress: () => void;
 }) {
   const c = useBlanc();
   // At the accessibility text sizes the day wraps, the clock moves under it, and the button under the words.
   const large = useLargeText();
+  const spokenActions = actions?.length ? actions.map((entry) => ({ name: entry.label, label: entry.label })) : undefined;
+  const act = (event: AccessibilityActionEvent) => actions?.find((entry) => entry.label === event.nativeEvent.actionName)?.run();
   return (
     <Label style={{ marginTop: top, overflow: 'hidden' }}>
       <Pressable
@@ -286,7 +318,10 @@ export function SessionCard({
         accessibilityRole="button"
         accessibilityLabel={spoken === undefined ? undefined : speak(spoken)}
         accessibilityHint={hint}
+        accessibilityActions={spoken === undefined ? undefined : spokenActions}
+        onAccessibilityAction={spoken === undefined ? undefined : act}
         onPress={() => {
+          if (closeOpenSwipeRow()) return;
           haptics.tap();
           onPress();
         }}
@@ -294,6 +329,8 @@ export function SessionCard({
         <View
           accessible
           accessibilityLabel={speak(daySpoken ?? day)}
+          accessibilityActions={spoken === undefined ? spokenActions : undefined}
+          onAccessibilityAction={spoken === undefined ? act : undefined}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 12, ...(large ? { flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 4 } : null) }}>
           {/* The session names the card quietly; a long name gives way, the clock always shows. */}
           <BlancText variant="secondary" weight="500" tone="graphite" numberOfLines={large ? undefined : 1} style={large ? undefined : { flex: 1, minWidth: 0 }}>

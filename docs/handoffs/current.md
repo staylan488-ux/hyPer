@@ -100,15 +100,16 @@ are removed as they merge; each PR's description and Git history keep them.
 - The owner approved both on his phone on 2026-11-09 in the test app. Their
   rules are in the blanc-native skill (Design, and the owner's decisions).
 - Today's groups, not checked with the reorder: the largest text size,
-  Increase Contrast, Reduce Motion, VoiceOver's Move up and Move down. A
+  Increase Contrast, Reduce Motion, VoiceOver's Move up and Move down (the
+  Training group has them too since the rollout polish below). A
   heading's action is now a small glass capsule everywhere a Section has one;
   not opened: a meal's Ingredients (Add) and the program editor (Reorder).
 - Left for the owner: Train still has a Start button on every other day
   (removing them changes how an off-plan day starts).
-- Read in the code, not reproduced: the live workout's reorder trades places
-  by a rule that assumes rows of similar height, so lifting a tall block (a
-  superset) may trade it with its neighbour at once. Today's groups use a
-  rule of their own (DragList's `cards`).
+- Every DragList now trades places by the rule Today's groups had (the held
+  one's leading edge past its neighbour's middle), so lifting a tall block (a
+  superset) no longer trades it with its neighbour at once. Tested, not felt
+  on a phone.
 - The glass, not measured: what it costs over a day, and Low Power Mode on
   the phone (meant to cap it at 60). Not checked: VoiceOver.
 - The glass, known and left as is: in light, a darker line passing behind
@@ -121,6 +122,18 @@ are removed as they merge; each PR's description and Git history keep them.
 Each of these passed tests and, where noted in its PR, the simulator with
 sample data. None has been seen on a phone.
 
+- Rollout polish (written outside the project on `ux_deep_dive_rollout`,
+  moved onto main in `claude/project-thread-az5ggj`): its author reports a
+  simulator pass on the sample account before the move; nothing was run in a
+  simulator or on a phone after it. To see: a superset lifted and dragged in
+  a live workout; Today's groups set down with the finger on Resume or Start
+  (no tap should follow); a Capsule tapped straight after a swipe (every
+  Capsule now ignores a press for 350 ms after a row swipe or drag ends); a
+  movement typed in by hand during a live and a past workout, with Keep on,
+  on a real account; editing a logged food counted in scoops or pieces; the
+  past set sheet with the keypad up; Open Settings after the barcode camera
+  is refused; Today with the target read failing on a cold start; Targets,
+  Fuel and Recent on an account with nothing saved.
 - Public release app changes (#226): the consent alert before anything goes
   to Gemini, the limit messages on Log food's AI tab, the Update hyPer screen,
   what an account without early access sees, About's links, and crash
@@ -195,8 +208,13 @@ sample data. None has been seen on a phone.
 ## For later
 
 - Minor: merging 3+ activities in one step, the Target sets field in History,
-  RPE below 6, Train's week strip, Progress's training-time detail, You's
-  About build number.
+  RPE below 6, Train's week strip, Progress's training-time detail.
+- Before the App Store submission, for the owner and Alex: every build still
+  declares background location and audio, which only runs use, and runs show
+  only to early-access accounts. Either Alex's real run goes to review with
+  them, or App Store builds drop the two modes (RunRecorder must then leave
+  background updates off, or iOS stops the app). The rollout polish dropped
+  them from every release build, TestFlight included; that was taken out.
 - Left as is on purpose (interaction audit, 2026-10-28): logged sets in a live
   workout are corrected, not deleted (History deletes them); the Appearance
   row's whole-row menu (needs a SwiftUI row); a long press on Fuel's meal

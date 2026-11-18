@@ -295,10 +295,12 @@ function IngredientRow({ item, rescales, disabled, onChange, onInvalid, onRemove
     setShown(rescales);
     setValue(String(amount(item.servings * item.food.serving_size)));
   }
+  const [blurred, setBlurred] = useState(false);
   const field = useRef<TextField>(null);
   const typed = Number(normalizeDecimalText(value));
   const valid = Number.isFinite(typed) && typed > 0;
-  useAnnounce(valid ? null : AMOUNT_INVALID);
+  const shownInvalid = !valid && (value.trim() !== '' || blurred);
+  useAnnounce(shownInvalid ? AMOUNT_INVALID : null);
   const menu: MenuAction[] = [{ title: 'Remove', symbol: 'trash', destructive: true, removes: true, run: onRemove }];
   // "559 kcal · 31 g protein", without protein that rounds to none.
   const line = `${formatWhole(item.food.calories * item.servings)} kcal${Math.round(item.food.protein * item.servings) > 0 ? ` · ${formatWhole(item.food.protein * item.servings)} g protein` : ''}`;
@@ -352,6 +354,8 @@ function IngredientRow({ item, rescales, disabled, onChange, onInvalid, onRemove
           onAccessibilityAction={(event) => {
             if (event.nativeEvent.actionName === 'remove') onRemove();
           }}
+          onFocus={() => setBlurred(false)}
+          onBlur={() => setBlurred(true)}
           onChangeText={(next) => {
             setValue(next);
             const servings = Number(normalizeDecimalText(next)) / item.food.serving_size;
@@ -363,7 +367,7 @@ function IngredientRow({ item, rescales, disabled, onChange, onInvalid, onRemove
             if (!invalid) onChange(servings);
           }}
           lineBreakModeIOS="tail"
-          style={[typeScale.field, { color: valid ? c.ink : c.live, minWidth: 56, minHeight: 44, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
+          style={[typeScale.field, { color: !shownInvalid ? c.ink : c.live, minWidth: 56, minHeight: 44, textAlign: 'right', padding: 0, fontVariant: ['tabular-nums'] }]}
         />
         {/* The field's name says the unit. */}
         <BlancText
@@ -376,7 +380,7 @@ function IngredientRow({ item, rescales, disabled, onChange, onInvalid, onRemove
           {item.food.serving_unit}
         </BlancText>
       </View>
-      {!valid ? (
+      {shownInvalid ? (
         <BlancText variant="footnote" tone="live" style={{ marginTop: 4 }}>
           {AMOUNT_INVALID}
         </BlancText>

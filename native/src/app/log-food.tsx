@@ -125,6 +125,16 @@ function useClaims(): [number, () => () => void] {
  * `review=1` (Fuel's close-the-gap pick handed over through `offerReview`: its
  * review at the usual amount, or a built meal's builder).
  */
+/**
+ * Whether a food carries its own serving size or unit (not a plain "1 serving"
+ * manual entry), so editing opens FoodReview rather than overwriting its basis in Manual.
+ */
+function hasOwnServingBasis(food: Food): boolean {
+  if (getCompatibleMeasurementUnits(food.serving_unit).length > 1) return true;
+  const unit = food.serving_unit?.trim().toLowerCase() ?? '';
+  return Boolean((unit && unit !== 'serving') || Number(food.serving_size) !== 1 || food.serving_label?.trim());
+}
+
 export default function LogFoodSheet() {
   const params = useLocalSearchParams<{ entry?: string; day?: string; group?: string; savedMeal?: string; saveEntries?: string; newSavedMeal?: string; start?: string; atMs?: string; review?: string }>();
   const userId = useAuthStore((state) => state.user?.id) ?? '';
@@ -254,7 +264,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
 
   const [tab, setTab] = useState<Tab>(editing ? 'manual' : startCamera ? 'photo' : 'recent');
   const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(() =>
-    editing?.food && !decodeMealComposition(editing.food.description) && getCompatibleMeasurementUnits(editing.food.serving_unit).length > 1
+    editing?.food && !decodeMealComposition(editing.food.description) && hasOwnServingBasis(editing.food)
       ? { food: editing.food, meta: null, servings: editing.servings }
       : reviewing && !decodeMealComposition(reviewing.food.description)
         ? { food: reviewing.food, meta: null, servings: reviewing.servings }

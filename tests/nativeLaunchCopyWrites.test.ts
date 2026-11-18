@@ -88,7 +88,7 @@ describe('Resume adaptive targets', () => {
       '~/components/Form': { FormNote: ({ children }: Children) => createElement('p', { 'data-note': '' }, children as ReactNode) },
       '~/components/Label': { Label: box },
       '~/components/RollingText': { RollingText: text },
-      '~/components/Row': { Hairline: none, Row: none },
+      '~/components/Row': { Hairline: none, Row: ({ title }: { title: string }) => createElement('span', null, title) },
       '~/components/Section': { Section: box },
       '~/components/TabScroll': { TabScroll: box },
       '~/components/TargetChangeRow': { TargetChangeRow: none, useShownTargetChange: () => null },
@@ -162,6 +162,19 @@ describe('Resume adaptive targets', () => {
     expect(loadTargets).toHaveBeenCalledTimes(1);
     expect(updateMacroTarget).toHaveBeenCalledWith({ calories: 2800, protein: 160, carbs: 350, fat: 80, source: 'calculated' });
     expect(refreshAdaptiveTargets).toHaveBeenCalledWith({ force: true });
+  });
+
+  it('shows setup choices instead of unsaved default numbers when no target is saved yet', async () => {
+    app.setState({ macroTarget: null, nutritionProfile: null });
+    loadTargets.mockImplementation(async () => {
+      app.setState({ macroTarget: null, nutritionProfile: null, macroTargetLoadedForUserId: USER, nutritionProfileLoadedForUserId: USER });
+      targets.setState({ status: 'ready' });
+    });
+    await open();
+    expect(host.textContent).toContain('No targets set yet');
+    expect(host.textContent).toContain('Calculate targets');
+    expect(host.textContent).toContain('Enter by hand');
+    expect(host.textContent).not.toContain('2000');
   });
 });
 
