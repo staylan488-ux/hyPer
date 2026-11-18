@@ -161,7 +161,7 @@ async function open() {
     '~/lib/openTrain': { openTrain: () => undefined },
     '~/lib/fuel': { today: () => DAY, todayTotalsShown, useFuelStore: fuelStore },
     '~/lib/motion': { figureLayout: undefined },
-    '~/lib/session': { useNow: () => Date.now(), usePreviousHistory: () => ({}), useSessionModel: () => null },
+    '~/lib/session': { useNow: () => Date.now(), usePreviousHistory: () => ({}), usePreviousStarts: () => ({}), useSessionModel: () => null },
     '~/lib/setTargets': nativeSetTargets,
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, ...week }) },
     '~/theme/blanc': { space: { gutter: 20, labelPad: 18, group: 40 }, useBlanc: () => ({ pressed: '#E7E6E1', upcoming: '#707069' }), figureLead: () => 0, restingFigure: {} },
