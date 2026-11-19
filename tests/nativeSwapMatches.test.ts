@@ -42,6 +42,7 @@ type PickerProps = {
   title: string;
   initialMuscle?: MuscleGroup;
   replacing?: Exercise | null;
+  lead?: { title: string; pick: (offered: Exercise[]) => Array<{ exercise: Exercise; line: string }> } | null;
   exclude: ReadonlySet<string>;
   onPick: (exercise: Exercise) => void;
 };
@@ -185,5 +186,54 @@ describe('closest matches on a swap', () => {
   it('passes the movement being replaced only on a swap, from both swap screens', () => {
     const source = readFileSync(join(__dirname, '../native/src/app/swap.tsx'), 'utf8');
     expect(source.match(/replacing=\{mode === 'swap' \?/g)).toHaveLength(2);
+  });
+});
+
+describe('what fits on an add', () => {
+  const lead = {
+    title: 'Fits today',
+    pick: (offered: Exercise[]) =>
+      offered
+        .filter((exercise) => exercise.name === 'Leg Extension' || exercise.name === 'Barbell Back Squat')
+        .map((exercise) => ({ exercise, line: 'Quadriceps · 4 of 9 sets so far this week' })),
+  };
+  const add = (props: Partial<PickerProps> = {}) => open({ title: 'Add a movement', initialMuscle: undefined, replacing: null, lead, ...props });
+
+  it('leads with what fits under its own heading, from the movements on offer, then the rest once', async () => {
+    await add();
+    expect(headers()).toEqual(['Add a movement', 'Fits today', 'More movements']);
+    // The squat is already in the workout, so it is never handed to the pick.
+    expect(rows()).toEqual([
+      'Leg Extension, Quadriceps, 4 of 9 sets so far this week',
+      'Flat Barbell Bench Press, Chest',
+      'Front Squat, Quadriceps',
+      'Hack Squat, Quadriceps',
+      'Leg Press, Quadriceps',
+      'Smith Machine Squat, Quadriceps',
+    ]);
+    // No study line: that belongs to a swap.
+    expect(host.textContent).not.toContain('Haugen');
+  });
+
+  it('steps back to the plain list for a search or a muscle', async () => {
+    await add();
+    await act(async () => { typeSearch('leg'); });
+    expect(headers()).toEqual(['Add a movement']);
+    expect(rows()).toEqual(['Leg Extension, Quadriceps', 'Leg Press, Quadriceps']);
+    await act(async () => { typeSearch(''); });
+    expect(headers()).toContain('Fits today');
+    await act(async () => { host.querySelector<HTMLElement>('[data-chip="Chest"]')!.click(); });
+    expect(headers()).toEqual(['Add a movement']);
+  });
+
+  it('shows the list as it always was when nothing fits', async () => {
+    await add({ lead: { title: 'Fits today', pick: () => [] } });
+    expect(headers()).toEqual(['Add a movement']);
+    expect(rows()).toHaveLength(6);
+  });
+
+  it('gives way to the closest matches on a swap', async () => {
+    await open({ lead });
+    expect(headers()).toEqual(['Swap for this workout', 'Closest matches', 'More movements']);
   });
 });

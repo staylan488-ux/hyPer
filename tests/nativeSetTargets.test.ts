@@ -5,7 +5,7 @@ import type { Exercise, Split, Workout, WorkoutSet } from '@/types';
 
 import { summarize } from '../native/src/lib/finished';
 import { buildSessionModel } from '../native/src/lib/sessionModel';
-import { countTargets, isLastSet, sessionTargets, setTargetFor, targetFigures, targetLabel, targetLine, targetMoment } from '../native/src/lib/setTargets';
+import { countTargets, firstTimeHint, isLastSet, sessionTargets, setTargetFor, targetFigures, targetLabel, targetLine, targetMoment } from '../native/src/lib/setTargets';
 
 // The live workout's set targets: what Train fills in, says and counts.
 
@@ -199,5 +199,56 @@ describe('targets hit in a session', () => {
     expect(countTargets(session, sessionTargets(session, history))).toEqual({ hit: 3, total: 4 });
     expect(summarize(session, {}, new Date('2026-11-12T17:00:00Z'), {}, history).targets).toEqual({ hit: 3, total: 4 });
     expect(summarize(session).targets).toEqual({ hit: 0, total: 0 });
+  });
+});
+
+describe('a movement never trained before', () => {
+  const movementOf = (session: ReturnType<typeof model>) => session.movements.find((entry) => entry.exerciseId === 'fresh')!;
+
+  it('says how to pick the first weight when nothing says where to start', () => {
+    const session = model(unlogged(fresh));
+    // Until the wider read lands, nothing is known about it.
+    expect(firstTimeHint(movementOf(session), sessionTargets(session, history))).toBeNull();
+    const targets = sessionTargets(session, history, { fresh: null });
+    const movement = movementOf(session);
+    expect(setTargetFor(movement.sets[0], movement.sets, targets)).toBeNull();
+    expect(firstTimeHint(movement, targets)).toBe('First time · pick a weight you could do 12 times');
+    // Bodyweight has no weight to pick.
+    expect(firstTimeHint(movement, targets, true)).toBeNull();
+    // A movement with history never reads as a first time, whatever the read says.
+    expect(sessionTargets(session, { ...history, fresh: history.press }, { fresh: null }).get('fresh')?.firstTime).toBeUndefined();
+  });
+
+  it('gives the sets after the first their targets from the set before, reading its rating', () => {
+    const first = { ...set(fresh, 1, 50, 12, true), rpe: 7 };
+    const session = model([first, set(fresh, 2, null, null, false), set(fresh, 3, null, null, false)]);
+    const targets = sessionTargets(session, history, { fresh: null });
+    const movement = movementOf(session);
+    expect(firstTimeHint(movement, targets)).toBeNull();
+    const second = setTargetFor(movement.sets[1], movement.sets, targets)!;
+    expect(targetFigures(second)).toBe('55 × 10');
+    expect(targetLine(second)).toBe('Target · up 5 lb, set 1 had 3 in reserve');
+    expect(targetLine(second, { lastSet: true })).toBe('Target, or more · up 5 lb, set 1 had 3 in reserve');
+  });
+
+  it('starts from a close relative, as a place to begin and not a target', () => {
+    const session = model(unlogged(fresh));
+    const targets = sessionTargets(session, history, { fresh: { weight: 105, reps: 8, from: 'Lat Pulldown', step: 10 } });
+    const movement = movementOf(session);
+    const start = setTargetFor(movement.sets[0], movement.sets, targets)!;
+    expect(targetFigures(start)).toBe('105 × 8');
+    expect(targetLine(start, { lastSet: true })).toBe('First time · light, from your Lat Pulldown');
+    expect(firstTimeHint(movement, targets)).toBeNull();
+    // Passing a start kept light on purpose is expected: no "Target hit", and nothing to count.
+    expect(targetMoment({ weight: 105, reps: 12 }, start)).toBeNull();
+    const logged = model([set(fresh, 1, 105, 12, true), set(fresh, 2, 105, 10, true), set(fresh, 3, null, null, false)]);
+    const loggedTargets = sessionTargets(logged, history, { fresh: { weight: 105, reps: 8, from: 'Lat Pulldown', step: 10 } });
+    expect(countTargets(logged, loggedTargets)).toEqual({ hit: 1, total: 1 });
+    expect(summarize(logged, {}, new Date('2026-11-12T17:00:00Z'), {}, history, { fresh: null }).targets).toEqual({ hit: 1, total: 1 });
+  });
+
+  it('keeps the plain word when the weight comes down', () => {
+    const down = { weight: 85, reps: 8, why: { kind: 'found' as const, move: 'down' as const, by: 15, set: 1, edge: 8 } };
+    expect(targetLine(down, { lastSet: true })).toBe('Target · down 15 lb, set 1 came in under 8');
   });
 });

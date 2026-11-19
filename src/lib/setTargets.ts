@@ -19,6 +19,13 @@
 // target repeats the target, two in a row match what was done, more than
 // three weeks away matches last time, more than five eases back in under it,
 // three sessions without a gain mark the movement stalled.
+//
+// A movement with no history at all has no last time to aim from. Its first
+// session finds the weight instead (docs/set-targets.md, "The first time"):
+// set 1 starts light from a close relative when the person has one
+// (src/lib/firstTimeTargets.ts), or is the person's own pick, and each later
+// set follows the set before it: up when that set ran well past the range,
+// down when it fell well short, otherwise the same weight for a couple fewer.
 import { calculateE1RM } from '@/lib/workoutProgress';
 
 /** One logged set of a past session, as saved. Zero is a real value. */
@@ -54,7 +61,16 @@ export type TargetWhy =
   /** Match what was done last time: after two short sessions, or a break. A long break starts under it. */
   | { kind: 'match'; cause: 'missed_twice' | 'break' | 'long_break' }
   /** Moved during the session: to the weight in use today, or with how an earlier set went. */
-  | { kind: 'moved'; cause: 'weight' | 'reps'; off: number; /** Weight cause: how much heavier (+) or lighter (−) set 1 went. */ by?: number };
+  | { kind: 'moved'; cause: 'weight' | 'reps'; off: number; /** Weight cause: how much heavier (+) or lighter (−) set 1 went. */ by?: number }
+  /** No history on this movement: a light start worked out from `from`, a close relative the person has trained. */
+  | { kind: 'first_time'; from: string }
+  /**
+   * A first session finding its weight from the set before (`set`, 1-based):
+   * `up` or `down` by `by` pounds, or `keep`. `rated` is that set's rating (as
+   * RPE) when its reps in reserve are why; `edge` is the end of the rep range
+   * it ran past or fell short of.
+   */
+  | { kind: 'found'; move: 'up' | 'down' | 'keep'; by: number; set: number; rated?: number; edge?: number };
 
 export type TargetFigures = { weight: number; reps: number };
 export type SetTarget = TargetFigures & { why: TargetWhy };
@@ -66,6 +82,12 @@ export type MovementTargets = {
   stalled: boolean;
   /** The weight step used for "the next weight up", in pounds. */
   step: number;
+  /**
+   * Set on a movement with no history: its sets find the weight during the
+   * session (see liveSetTarget). `sets` then holds the start, or nulls when
+   * there is nothing to start from and set 1 is the person's own pick.
+   */
+  firstTime?: { range: RepRange | null };
 };
 
 export type TargetOptions = {
@@ -566,8 +588,114 @@ export function planMovementTargets({
   return { sets, stalled: walk.noGain >= options.stallSessions, step };
 }
 
-/** A logged set this session, by the movement's own set position (index 0 is set 1). */
-export type LoggedSet = { weight: number; reps: number } | null;
+/** A logged set this session, by the movement's own set position (index 0 is set 1). `rpe` is the rating chosen for it, if any. */
+export type LoggedSet = { weight: number; reps: number; rpe?: number | null } | null;
+
+/**
+ * The figures a session was worked at: the weight used on most of its sets
+ * (the heavier on a tie) and the reps of its first set at that weight. Null
+ * when it logged no set with reps.
+ */
+export function sessionWorkingSet(session: PastSession): TargetFigures | null {
+  const first = baseFrom(session, session.sets.length, null)?.find((set) => set !== null);
+  return first ? { weight: first.weight, reps: first.reps } : null;
+}
+
+/** Where a first session starts: figures for set 1, worked out from the movement named. */
+export type FirstTimeStart = TargetFigures & { from: string };
+
+/** The reps a set stays under the one before it at the same weight: one after a set rated easy, else two. */
+const FOUND_DROP = { rated: 1, unrated: 2 } as const;
+/** A set this many reps past the range, or short of it, moves the weight. */
+const FOUND_OFF = 2;
+/** The most a first session raises the weight from one set to the next. */
+const FOUND_MAX_RAISE = 1.25;
+
+/**
+ * Targets for a movement with no history. With a `start`, every set opens on
+ * it until a set is logged; without one, set 1 has no target and the later
+ * sets get theirs once it is logged (liveSetTarget). Null with no sets.
+ */
+export function planFirstTime({
+  setCount,
+  range,
+  equipment = null,
+  start = null,
+  step,
+}: {
+  setCount: number;
+  range: RepRange | null;
+  equipment?: string | null;
+  start?: FirstTimeStart | null;
+  /** The weight step, when the relative the start came from has taught one. */
+  step?: number;
+}): MovementTargets | null {
+  const count = Math.max(0, Math.floor(setCount));
+  if (count === 0) return null;
+  const cleanRange = range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.min > 0 && range.max >= range.min
+    ? range
+    : null;
+  const usableStart = start && start.weight > 0 && start.reps > 0 ? start : null;
+  const target: SetTarget | null = usableStart
+    ? { weight: usableStart.weight, reps: usableStart.reps, why: { kind: 'first_time', from: usableStart.from } }
+    : null;
+  return {
+    sets: Array.from({ length: count }, () => (target ? { ...target } : null)),
+    stalled: false,
+    step: typeof step === 'number' && Number.isFinite(step) && step > 0 ? step : defaultWeightStep(equipment),
+    firstTime: { range: cleanRange },
+  };
+}
+
+/**
+ * The next set of a first session, from the set before it (`from`, 1-based).
+ * What that set could have gone to is its reps plus what its rating adds
+ * (ratedReps). Two or more past the top of the range, the weight goes up to
+ * the heaviest step the estimate still puts at the middle of the range;
+ * two or more short of the bottom, it comes down the same way and asks only
+ * for the bottom of the range, since the estimate promises more reps on a
+ * lighter weight than people get. Otherwise the weight stays, for a rep
+ * fewer than a set rated easy could have gone to, or two fewer than a set
+ * that was not.
+ */
+function foundTarget(done: NonNullable<LoggedSet>, from: number, range: RepRange | null, step: number): SetTarget {
+  const bump = ratedReps(done.rpe);
+  const able = done.reps + bump;
+  const rated = bump > 0 && typeof done.rpe === 'number' ? { rated: done.rpe } : {};
+  const drop = bump > 0 ? FOUND_DROP.rated : FOUND_DROP.unrated;
+  const keep = (top: number): SetTarget => ({
+    weight: done.weight,
+    reps: Math.max(1, Math.min(top, able) - drop),
+    why: { kind: 'found', move: 'keep', by: 0, set: from },
+  });
+  if (!range || done.weight <= 0 || !Number.isFinite(step) || step <= 0) return keep(Infinity);
+  const max = calculateE1RM(done.weight, able);
+  if (max === null) return keep(range.max);
+  const middle = Math.ceil((range.min + range.max) / 2);
+  // The weight the estimate puts at the middle of the range.
+  const ideal = max / (1 + middle / 30);
+  if (able >= range.max + FOUND_OFF) {
+    const most = done.weight * FOUND_MAX_RAISE;
+    const steps = Math.floor((Math.min(ideal, most) - done.weight) / step + EPSILON);
+    if (steps >= 1) {
+      const weight = round2(done.weight + steps * step);
+      const estimate = repsAtWeight({ weight: done.weight, reps: able }, weight) ?? range.min;
+      return {
+        weight,
+        reps: Math.min(range.max, Math.max(range.min, Math.floor(estimate + EPSILON))),
+        why: { kind: 'found', move: 'up', by: round2(steps * step), set: from, edge: range.max, ...rated },
+      };
+    }
+  } else if (able <= range.min - FOUND_OFF) {
+    // Half a step either way goes to the lighter weight.
+    const steps = Math.max(1, Math.round((done.weight - ideal) / step + EPSILON));
+    const weight = round2(done.weight - steps * step);
+    if (weight > 0) {
+      return { weight, reps: range.min, why: { kind: 'found', move: 'down', by: round2(steps * step), set: from, edge: range.min } };
+    }
+  }
+  return keep(range.max);
+}
 
 /**
  * One set's target once part of the session is logged. `position` is 1-based.
@@ -585,6 +713,14 @@ export function liveSetTarget(
   position: number,
   options: Pick<TargetOptions, 'follow'> = DEFAULT_TARGET_OPTIONS,
 ): SetTarget | null {
+  if (targets?.firstTime) {
+    // A first session: each set follows the latest one logged before it.
+    for (let index = Math.min(position - 1, logged.length) - 1; index >= 0; index -= 1) {
+      const done = logged[index];
+      if (done && done.reps > 0 && done.weight >= 0) return foundTarget(done, index + 1, targets.firstTime.range, targets.step);
+    }
+    return targets.sets[position - 1] ?? null;
+  }
   const planned = targets?.sets[position - 1] ?? null;
   if (!planned || !targets) return null;
   const candidates = logged.slice(0, position - 1).flatMap((set, index) => {
@@ -611,11 +747,16 @@ const pounds = (value: number) => `${round2(value)} lb`;
 /** The one quiet line under the set: "one more rep than last time". */
 export type EffortWords = 'rir' | 'rpe';
 
+/** A rating as a line gives it: "3 in reserve", or "RPE 7". */
+function ratingWords(rpe: number, scale: EffortWords): string {
+  if (scale === 'rpe') return `RPE ${round2(rpe)}`;
+  const reserve = Math.max(0, round2(10 - rpe));
+  return `${reserve >= 4 ? '4 or more' : reserve} in reserve`;
+}
+
 /** Last time's rating as the line gives it: "3 in reserve last time", or "RPE 7 last time". */
 function ratedWords(rpe: number, scale: EffortWords): string {
-  if (scale === 'rpe') return `RPE ${round2(rpe)} last time`;
-  const reserve = Math.max(0, round2(10 - rpe));
-  return `${reserve >= 4 ? '4 or more' : reserve} in reserve last time`;
+  return `${ratingWords(rpe, scale)} last time`;
 }
 
 /**
@@ -652,6 +793,17 @@ export function describeTarget(target: SetTarget, scale: EffortWords = 'rir'): s
         return Math.abs(by) > WEIGHT_TOLERANCE ? `set 1 went ${pounds(Math.abs(by))} ${by > 0 ? 'heavier' : 'lighter'}` : 'follows set 1';
       }
       return `set 1 came in ${count(Math.abs(why.off), 'rep', true)} ${why.off < 0 ? 'under' : 'over'}`;
+    case 'first_time':
+      return `light, from your ${why.from}`;
+    case 'found':
+      if (why.move === 'up') {
+        if (why.rated !== undefined) return `up ${pounds(why.by)}, set ${why.set} ${scale === 'rpe' ? 'was' : 'had'} ${ratingWords(why.rated, scale)}`;
+        return why.edge !== undefined ? `up ${pounds(why.by)}, set ${why.set} went past ${why.edge}` : `up ${pounds(why.by)}`;
+      }
+      if (why.move === 'down') {
+        return why.edge !== undefined ? `down ${pounds(why.by)}, set ${why.set} came in under ${why.edge}` : `down ${pounds(why.by)}`;
+      }
+      return `follows set ${why.set}`;
   }
 }
 

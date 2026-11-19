@@ -54,6 +54,7 @@ const { default: PickExerciseSheet } = loadNativeModule<{ default: () => ReactNo
       useLocalSearchParams: () => ({ mode: 'add' }),
     },
     'react-native': { Alert: { alert: vi.fn() } },
+    '@/lib/addSuggestions': { suggestAdds: () => [] },
     '@/lib/customExercises': customExercises,
     '@/lib/exerciseLibrary': {
       getExerciseLibrary: async () => [],
@@ -85,6 +86,7 @@ const { default: PickExerciseSheet } = loadNativeModule<{ default: () => ReactNo
       errorMessage: (_error: unknown, fallback: string) => fallback,
       swapMovement: vi.fn(),
     },
+    '~/lib/weekFit': { programExerciseIds: () => new Set(), sessionMovementSets: () => [], weekFitFor: () => null },
     '~/lib/session': {
       useSessionModel: () => ({
         workoutId: 'workout-1',

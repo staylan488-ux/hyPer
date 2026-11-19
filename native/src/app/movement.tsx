@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Keyboard, StyleSheet, TextInput, useWindowDimensions, View, type AccessibilityActionEvent } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { useAppStore } from '@/stores/appStore';
 import type { WorkoutSet } from '@/types';
@@ -21,6 +22,7 @@ import { Stepper } from '~/components/Stepper';
 import { announce, speak, useLargeText, useScreenReader } from '~/lib/accessibility';
 import { gainOnLastTime } from '~/lib/beatLastTime';
 import { haptics } from '~/lib/haptics';
+import { howToFor, useHowToFold } from '~/lib/howTo';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { changeSetCount, confirmRemoveMovement, errorMessage, setSkipped, switchBack, unlinkSuperset } from '~/lib/movement';
 import { formatWhole } from '~/lib/format';
@@ -32,8 +34,9 @@ import { chooseRpe, effortChip, parseNumber, useEffortScaleStore } from '~/lib/s
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
 
 /**
- * One movement of the live workout: correct a logged set, change how many
- * sets it has, keep a note, or swap or skip it for this workout only. In a
+ * One movement of the live workout: how to do it, correct a logged set,
+ * change how many sets it has, keep a note, or swap or skip it for this
+ * workout only. In a
  * flexible session it can also be paired as a superset or taken out; a
  * movement added to a planned session can be taken out again.
  */
@@ -127,6 +130,9 @@ function MovementDetail({
   const [switching, setSwitching] = useState(false);
   const [editingPlan, setEditingPlan] = useState<'unlink' | 'remove' | null>(null);
   const note = useMovementNote(workoutId, movement.exerciseId, movement.note);
+  // Setup, each rep and why, for a movement whose name the lines cover. Open while the movement is new.
+  const how = howToFor(movement);
+  const howFold = useHowToFold(workoutId, movement.exerciseId);
   // Last time's note for this movement, from the lookup Train made.
   const lastNote = usePreviousNotesStore((state) => (state.workoutId === workoutId ? state.notes[movement.exerciseId] : undefined));
   // The movement's best before this workout, read for Session complete's records.
@@ -205,7 +211,19 @@ function MovementDetail({
 
   return (
     <>
-      <Section title="Sets" style={{ marginTop: 14 }}>
+      {how ? (
+        <Section title="How to do it" fold={{ open: howFold.open, onToggle: howFold.toggle }} style={{ marginTop: 14 }}>
+          {howFold.open ? (
+            <Animated.View entering={FadeIn.duration(180)} style={{ marginHorizontal: space.gutter, gap: 10 }}>
+              <HowLine label="Setup" text={how.setup} />
+              <HowLine label="Each rep" text={how.rep} />
+              <HowLine label="Why" text={how.why} quiet />
+            </Animated.View>
+          ) : null}
+        </Section>
+      ) : null}
+
+      <Section title="Sets" style={how ? undefined : { marginTop: 14 }}>
         <Label>
           {/* Logged sets, to correct one; the count row below covers the rest. */}
           {movement.sets.map((set, index) =>
@@ -385,6 +403,24 @@ function MovementDetail({
         </Section>
       ) : null}
     </>
+  );
+}
+
+/**
+ * One line of "How to do it": a small mono label beside its words. At the
+ * accessibility text sizes the label sits over them. Read as one stop.
+ */
+function HowLine({ label, text, quiet }: { label: string; text: string; quiet?: boolean }) {
+  const large = useLargeText();
+  return (
+    <View accessible accessibilityLabel={speak(`${label}. ${text}`)} style={large ? { gap: 2 } : { flexDirection: 'row', gap: 12 }}>
+      <BlancText variant="meta" tone="graphite" style={large ? undefined : { width: 68, paddingTop: 3 }}>
+        {label.toLowerCase()}
+      </BlancText>
+      <BlancText variant="secondary" tone={quiet ? 'graphite' : 'ink'} style={large ? undefined : { flex: 1 }}>
+        {text}
+      </BlancText>
+    </View>
   );
 }
 

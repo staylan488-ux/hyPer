@@ -121,7 +121,7 @@ async function open() {
     '~/lib/openTrain': { openTrain },
     '~/lib/fuel': { today: () => '2026-11-04', todayTotalsShown: () => null, useFuelStore: create(() => ({})) },
     '~/lib/motion': { figureLayout: {} },
-    '~/lib/session': { useNow: () => Date.parse('2026-11-04T18:10:00Z'), usePreviousHistory: () => history, useSessionModel: () => session },
+    '~/lib/session': { useNow: () => Date.parse('2026-11-04T18:10:00Z'), usePreviousHistory: () => history, usePreviousStarts: () => ({}), useSessionModel: () => session },
     '~/lib/setTargets': nativeSetTargets,
     '~/lib/today': { useTodayPlan: () => ({ hero: { kind: 'rest' }, next: null, weekDone: null, weekTarget: null }) },
     '~/theme/blanc': { space: { gutter: 20, labelPad: 18, group: 40 }, useBlanc: () => ({}) },

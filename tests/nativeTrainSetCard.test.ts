@@ -60,6 +60,8 @@ const set = (id: string, setNumber: number, completed: boolean, weight: number |
 
 let previous: setAutofill.PreviousWorkoutSetMap;
 let history: MovementHistoryMap;
+/** Where a movement never trained before starts, by exercise id (see usePreviousStarts). */
+let starts: Record<string, { weight: number; reps: number; from: string; step: number } | null>;
 let notes: Record<string, { note: string; workoutId?: string }>;
 let note: string | null;
 let session: Record<string, unknown>;
@@ -207,6 +209,7 @@ async function open() {
         useFocusStore: create(() => ({ exerciseId: null, focus: vi.fn() })),
         usePreviousNotes: () => notes,
         usePreviousHistory: () => history,
+        usePreviousStarts: () => starts,
         usePreviousTargets: () => previous,
         useSessionModel: () => session,
         useStartSession: () => ({ starting: null, start: vi.fn() }),
@@ -215,6 +218,7 @@ async function open() {
       '~/lib/setEntry': setEntry,
       '~/lib/setTargets': nativeSetTargets,
       '~/lib/today': { useFinishedToday: () => undefined, useTodayPlan: () => ({}) },
+      '~/lib/weekFit': { useWeekFitLookup: () => undefined },
       '~/lib/warmup': { useBarWeight: () => 45 },
       '~/lib/earlyAccess': { useEarlyAccess: () => false },
       '~/platform/devLaunch': { devScrollTrace: { enabled: false } },
@@ -248,6 +252,7 @@ beforeEach(() => {
   notes = {};
   previous = { row: { 1: { weight: 80, reps: 8, rpe: null }, 2: { weight: 80, reps: 8, rpe: null }, 3: { weight: 80, reps: 8, rpe: null } } };
   history = {};
+  starts = {};
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
@@ -380,6 +385,33 @@ describe('the set card\'s target', () => {
     } finally {
       laterMovements = [];
     }
+  });
+
+  it('asks a movement never trained before for its own first weight, then follows that set', async () => {
+    history = {};
+    previous = {};
+    starts = { row: null };
+    await open();
+    const line = [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent?.startsWith('First time'));
+    expect(line?.textContent).toBe('First time · pick a weight you could do 10 times');
+    expect(host.querySelector('[data-field="Weight in pounds"]')?.textContent).toBe('');
+    expect(targetLine()).toBeUndefined();
+    const name = [...host.querySelectorAll<HTMLElement>('[data-pressable]')].find((pressable) => pressable.getAttribute('aria-label')?.startsWith('Barbell Row'))!;
+    expect(name.getAttribute('aria-label')).toContain('First time, pick a weight you could do 10 times');
+  });
+
+  it('starts a movement never trained before from a close relative, named, as a start and not a target', async () => {
+    history = {};
+    previous = {};
+    starts = { row: { weight: 100, reps: 8, from: 'Pendlay Row', step: 5 } };
+    await open();
+    expect(host.querySelector('[data-field="Weight in pounds"]')?.textContent).toBe('100');
+    expect(host.querySelector('[data-field="Reps"]')?.textContent).toBe('8');
+    const line = [...host.querySelectorAll<HTMLElement>('span')].find((span) => span.textContent?.startsWith('First time'));
+    expect(line?.textContent).toBe('First time · light, from your Pendlay Row');
+    expect(targetLine()).toBeUndefined();
+    await type('Reps', '11');
+    expect(captions()[1]).toEqual({ text: 'start 8', spoken: 'Start, 8 reps', shown: true });
   });
 
   it('is absent with no history, leaving last time in the fields', async () => {
