@@ -30,7 +30,7 @@ import { formatSet, formatWhole } from '~/lib/format';
 import { haptics } from '~/lib/haptics';
 import { today, todayTotalsShown, useFuelStore } from '~/lib/fuel';
 import { figureLayout } from '~/lib/motion';
-import { useNow, usePreviousHistory, useSessionModel, type SessionModel } from '~/lib/session';
+import { useNow, usePreviousHistory, usePreviousStarts, useSessionModel, type SessionModel } from '~/lib/session';
 import { sessionTargets, setTargetFor } from '~/lib/setTargets';
 import { useTodayPlan } from '~/lib/today';
 import { moveTodaySection, useTodayOrder, type TodaySection } from '~/lib/todayOrder';
@@ -249,12 +249,13 @@ function SessionLabel({ session, actions }: { session: SessionModel; actions?: {
   const title = current ? current.movement.name : empty ? 'No movements yet' : session.sets.length > 0 ? 'All sets logged' : 'Nothing left to log';
   // The set's target, as Train fills it in, while the set holds no numbers of its own.
   const history = usePreviousHistory(session.workoutId);
+  const starts = usePreviousStarts(session.workoutId);
   const target = current && current.set.weight === null && current.set.reps === null
-    ? setTargetFor(current.set, current.movement.sets, sessionTargets(session, history))
+    ? setTargetFor(current.set, current.movement.sets, sessionTargets(session, history, starts))
     : null;
   const line = current
     ? target
-      ? `Set ${current.setNumber} of ${current.movement.sets.length} · target ${formatSet(target.weight, target.reps)}`
+      ? `Set ${current.setNumber} of ${current.movement.sets.length} · ${target.why.kind === 'first_time' ? 'start' : 'target'} ${formatSet(target.weight, target.reps)}`
       : setLine(current.setNumber, current.movement.sets.length, current.set.weight, current.set.reps)
     : empty
       ? 'Add your first movement in Train'

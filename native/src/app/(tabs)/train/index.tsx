@@ -38,11 +38,12 @@ import { haptics } from '~/lib/haptics';
 import { rowLayout } from '~/lib/motion';
 import { confirmRemoveMovement, errorMessage, renameSession, reorderMovements, setSkipped } from '~/lib/movement';
 import { restSecondsFor, startRest } from '~/lib/rest';
-import { liveSessionModel, useFocusStore, usePreviousHistory, usePreviousNotes, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
+import { liveSessionModel, useFocusStore, usePreviousHistory, usePreviousNotes, usePreviousStarts, usePreviousTargets, useSessionModel, useStartSession, type SessionModel } from '~/lib/session';
 import { afterLoggedSet } from '~/lib/sessionModel';
 import { chooseRpe, effortChip, isBodyweight, parseNumber, useEffortScaleStore, weightToLog } from '~/lib/setEntry';
-import { isLastSet, sessionTargets, setTargetFor, targetFigures, targetLabel, targetLine, targetMoment, type SessionTargets } from '~/lib/setTargets';
+import { FIRST_TIME, firstTimeHint, isLastSet, sessionTargets, setTargetFor, targetFigures, targetLabel, targetLine, targetMoment, type SessionTargets } from '~/lib/setTargets';
 import { useFinishedToday, useTodayPlan } from '~/lib/today';
+import { useWeekFitLookup } from '~/lib/weekFit';
 import { useBarWeight } from '~/lib/warmup';
 import { useEarlyAccess } from '~/lib/earlyAccess';
 import { devScrollTrace } from '~/platform/devLaunch';
@@ -133,7 +134,11 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const previous = usePreviousTargets(session.workoutId);
   // Each movement's targets today, from the same read as last time.
   const history = usePreviousHistory(session.workoutId);
-  const targets = sessionTargets(session, history);
+  // Where a movement never trained before starts, once the wider read lands.
+  const starts = usePreviousStarts(session.workoutId);
+  const targets = sessionTargets(session, history, starts);
+  // The week around this workout, kept ready for the Add list.
+  useWeekFitLookup(session);
   const previousNotes = usePreviousNotes(session);
   const effortScale = useEffortScaleStore((state) => state.scale);
   const logSet = useAppStore((state) => state.logSet);
@@ -220,7 +225,7 @@ function LiveWorkout({ session }: { session: SessionModel }) {
       return suggestedDraft(current, previous, targets);
     });
   });
-  useEffect(() => onPreviousChange(), [previous, history]);
+  useEffect(() => onPreviousChange(), [previous, history, starts]);
 
   // On a bodyweight movement an empty weight logs as 0: no "0" to type first.
   const weight = draft ? weightToLog(draft.weight, isBodyweight(current?.set.exercise)) : null;
@@ -232,8 +237,10 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const target = current ? setTargetFor(current.set, current.movement.sets, targets) : null;
   // On the movement's last set the line opens "Target, or more": a target is a floor.
   const lastOfMovement = Boolean(current && isLastSet(current.set, current.movement.sets));
-  const targetWord = target ? targetLabel(target, lastOfMovement) : 'Target';
-  const targetText = target ? targetLine(target, { scale: effortScale, lastSet: lastOfMovement }) : null;
+  // A movement never trained before, with nothing to start from: how to pick its first weight.
+  const firstHint = current && !target ? firstTimeHint(current.movement, targets, isBodyweight(current.set.exercise)) : null;
+  const targetWord = target ? targetLabel(target, lastOfMovement) : firstHint ? FIRST_TIME : 'Target';
+  const targetText = target ? targetLine(target, { scale: effortScale, lastSet: lastOfMovement }) : firstHint;
   // Last time's note, only when it was written the last time this movement
   // was done: a note from months back ("Smith today") is not about today.
   const noteBefore = current ? previousNotes[current.movement.exerciseId] : undefined;
@@ -257,11 +264,13 @@ function LiveWorkout({ session }: { session: SessionModel }) {
   const farFromTarget = Boolean(target && weight !== null && Math.abs(weight - target.weight) >= 0.1 * Math.max(weight, target.weight) && Math.abs(weight - target.weight) > 0.01);
   const targetWeight = target && !farFromTarget && target.weight > 0 && draft && differsFromLast(draft.weight, target.weight) ? formatLoad(target.weight) : null;
   const targetReps = target && !farFromTarget && draft && differsFromLast(draft.reps, target.reps) ? target.reps : null;
+  // Under a field edited away from it, a first-time start reads "start", not "target".
+  const [targetCaption, targetSpoken] = target?.why.kind === 'first_time' ? ['start', 'Start'] : ['target', 'Target'];
   const weightCaption = target
-    ? targetWeight ? { text: `target ${targetWeight}`, spoken: `Target, ${targetWeight} pounds` } : null
+    ? targetWeight ? { text: `${targetCaption} ${targetWeight}`, spoken: `${targetSpoken}, ${targetWeight} pounds` } : null
     : lastWeight ? { text: `last ${lastWeight}`, spoken: `Last time, ${lastWeight} pounds` } : null;
   const repsCaption = target
-    ? targetReps !== null ? { text: `target ${targetReps}`, spoken: `Target, ${targetReps} reps` } : null
+    ? targetReps !== null ? { text: `${targetCaption} ${targetReps}`, spoken: `${targetSpoken}, ${targetReps} reps` } : null
     : lastReps !== null ? { text: `last ${lastReps}`, spoken: `Last time, ${lastReps} reps` } : null;
   // Ending a movement early with one set to go only skips that set: the quiet action says so.
   const lastSetLeft = current ? current.movement.sets.length - current.movement.done === 1 : false;

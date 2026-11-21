@@ -119,7 +119,78 @@ convention, chosen small so that the first session back is one the person
 finishes; the normal rule takes over from the next session. A gap is never counted, named or
 judged anywhere in the app (owner decision, 2026-11-12).
 
+## The first time
+
+Added 2026-11-18. Every target above needs a last time. A movement with none
+used to open with an empty weight and only its rep range: every swap, every
+movement added to a workout, every movement of a new program. In the owner's
+history that was 25 movements over 51 workouts, and on 10 of the 18 he came
+back to, the starting weight changed the next time.
+
+The recent read (the last 30 workouts) finding nothing does not mean never
+trained. One wider read settles it (`native/src/lib/session.ts`,
+`src/lib/firstTimeTargets.ts`):
+
+- **Trained before, longer ago.** Its older sessions join the history and the
+  usual rule takes it from there, which after that long is the way back in
+  from the Breaks table.
+- **Never trained.** Its first session finds the weight, as below.
+
+**Set 1.** With nothing to go on, the card asks for a weight the person could
+do the top of the range with, and the choice is theirs. When they have
+trained a close relative in the last twelve weeks, set 1 opens on three
+quarters of that movement's working weight, for its reps brought inside the
+new range, and the card names the relative. A start is a place to begin, not
+a target: it is not counted on Session complete and passing it says nothing.
+
+**A close relative** is the same movement pattern (`movementProfiles.ts`) on
+the same bar, dumbbells, kettlebell, Smith machine or cable, both sides or one
+side alike. Never a machine: a machine's number belongs to that machine, its
+levers and its stack, so a leg press says nothing about a hack squat. Never
+across equipment either, and never onto a variant done far lighter than its
+pattern's main lifts (a good morning beside a Romanian deadlift); that list is
+in `firstTimeTargets.ts` and errs wide, since a name on it only loses the
+head start.
+
+**Three quarters** is a judgment. No study read gives the figure. Variants of
+one movement on the same equipment differ by up to about a fifth (a front
+squat against a back squat), and the two mistakes are not equal: a first set
+that is too heavy is a grind or a miss on a movement the person has never
+done, and one that is too light costs a set, which the next set corrects.
+
+**Each later set follows the set before it.** What that set could have gone
+to is its reps plus what its rating adds, by the same table as above:
+
+| The set before | The next set |
+|---|---|
+| Two or more past the top of the range | Up, to the heaviest step the estimate still puts at the middle of the range, and never more than a quarter heavier |
+| Two or more short of the bottom | Down, to where the estimate puts the middle of the range, for the bottom of the range |
+| Anything between | The same weight, for one rep fewer than a set rated easy could have gone to, or two fewer than one that was not |
+
+With no rep range, or on bodyweight, the weight stays and only the reps
+follow.
+
+Going down asks only for the bottom of the range because the estimate
+promises more reps on a lighter weight than people get. The owner's own
+history shows it both ways: he lost fewer reps than the estimate said when he
+raised a weight (the 6 reps above) and gained fewer when he lowered one (80
+for 8 on a pushdown, then 10 at 70 a session later, where the estimate says
+13). At one weight he fell one rep or none from set 1 to set 2 in 11 of 19
+first sessions and two or three in the other 8; a target is a floor, so an
+unrated set asks for two fewer. Replayed over his 25 first sessions, unrated (`tests/firstTimeReplay.test.ts`), 26 of the
+27 later sets he did at the target's weight reached the target. None of the
+25 had a close relative behind it, so the start from a relative is tested on
+made-up histories only and has not met real numbers yet.
+
+One weight for every set of a movement is the rule everywhere else. A first
+session breaks it on purpose: finding the weight is its job, and from the
+second session the usual rule works from the weight most of its sets used.
+
 ## What the rule does not do
+
+- It does not start a movement from a machine, from other equipment, or from
+  a movement of another pattern (an incline press from a flat one). Those
+  first sessions ask for the person's own pick and follow it.
 
 - It never raises the weight with no rep range, or on bodyweight work: reps
   climb and the weight is the person's to move.

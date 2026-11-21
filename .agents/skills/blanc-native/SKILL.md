@@ -175,6 +175,27 @@ Settled; do not reopen or "improve" them without being asked.
   A target is a floor: on a movement's last set the line opens "Target, or
   more" (built 2026-11-13 from the audit, not yet seen by Sinan). What each
   number rests on: [set targets](../../../docs/set-targets.md).
+- A movement never trained before (built 2026-11-18, first of the three
+  "no research needed" pieces Sinan picked; not yet seen by him): its line
+  opens "First time". With a close relative in his history set 1 starts light
+  from it and the line names it; otherwise the line asks for a weight he
+  could do the top of the range with. Each later set follows the set before
+  it. A start is not a target: no "Target hit", and Session complete does not
+  count it. Never start a movement from a machine's numbers.
+- "How to do it" (built 2026-11-18, second of the three pieces; not yet seen
+  by him): a folding section at the top of the movement sheet with the
+  setup, each rep and why. It starts open for a movement done fewer than
+  three times and folded after that; his own fold or open stands until the
+  app restarts. A study is named only where it is the reason for a cue, and a
+  movement the lines cannot place has no section. Lines and sources:
+  [how to do a movement](../../../docs/movement-how-to.md).
+- Add a movement and Add a superset on a live workout (built 2026-11-18,
+  third of the three pieces; not yet seen by him) open on up to three rows,
+  "Fits today" or "Pairs well", each with its muscle's week ("Hamstrings · 3
+  of 8 sets so far this week"). A count and nothing else: no "behind", no
+  "missed", no days. Past workouts and the program editor keep the plain
+  list. Rules: [training volume](../../../docs/training-volume.md), "Add
+  opens on what fits".
 - Sets are rated in reps in reserve by default (Sinan, 2026-11-13), stored
   as RPE (2 in reserve = RPE 8); RPE is a per-phone choice in You › App. A
   rating is never carried over from another set: only a tap saves one.

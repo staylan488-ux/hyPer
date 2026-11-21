@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
+import { suggestAdds } from '@/lib/addSuggestions';
 import { insertPendingExercises, isPendingExerciseId, type ExerciseInsertClient } from '@/lib/customExercises';
 import { getExerciseLibrary, invalidateExerciseLibrary } from '@/lib/exerciseLibrary';
 import { PROGRAM_PICKER_TITLES, pickerTargetFor, type ProgramPickMode } from '@/lib/splitDraft';
@@ -17,6 +18,7 @@ import { useLeaveGuard } from '~/lib/leaveGuard';
 import { editPastWorkout, useHistoryStore } from '~/lib/history';
 import { addMovement, addSupersetPartner, errorMessage, swapMovement } from '~/lib/movement';
 import { useSessionModel, type Movement, type SessionModel } from '~/lib/session';
+import { programExerciseIds, sessionMovementSets, weekFitFor } from '~/lib/weekFit';
 
 type PickMode = 'swap' | 'add' | 'superset';
 
@@ -76,7 +78,8 @@ async function pickInWorkout(session: SessionModel, mode: PickMode, movement: Mo
  * Picks an exercise to swap a movement for this workout only, to add to the
  * live workout (a planned session's program stays the same), or to pair with
  * a movement as a superset. Leaves out
- * exercises already in the workout; a swap opens on the movement's muscle.
+ * exercises already in the workout; a swap opens on the movement's muscle,
+ * and an add or a superset on what fits the session and the week.
  * With a past workout (`workout`), it adds a movement or a superset to that
  * workout instead, as History does.
  */
@@ -105,6 +108,24 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
   const splitDayId = useAppStore((state) => state.currentWorkout?.split_day_id ?? null);
   const programDayId = mode === 'add' && session && !session.flexible ? splitDayId : null;
   const [keep, setKeep] = useState(false);
+
+  // Adding to the live workout opens on what fits: worked out once as the
+  // sheet opens, from the week Train kept ready, so the rows never move.
+  // Without that week (a read failed or has not landed) the list is as before.
+  const [lead] = useState(() => {
+    const pairWith = mode === 'superset' ? movement?.sets.find((set) => set.exercise)?.exercise ?? null : null;
+    if (!session || mode === 'swap' || (mode === 'superset' && !pairWith)) return null;
+    const week = weekFitFor(session.workoutId);
+    if (!week) return null;
+    const today = sessionMovementSets(session);
+    const inProgram = programExerciseIds();
+    const flexible = session.flexible;
+    return {
+      title: mode === 'superset' ? 'Pairs well' : 'Fits today',
+      pick: (offered: Exercise[]) =>
+        suggestAdds({ library: offered, session: today, flexible, elsewhere: week.elsewhere, planned: week.planned, programExerciseIds: inProgram, pairWith }),
+    };
+  });
 
   const [swapping, setSwapping] = useState<string | null>(null);
   const [created, setCreated] = useState<Exercise[]>([]);
@@ -194,6 +215,7 @@ function WorkoutPick({ params }: { params: { id?: string; mode?: string; workout
       }
       initialMuscle={sourceMuscle}
       replacing={mode === 'swap' ? movement?.sets[0]?.exercise ?? null : null}
+      lead={lead}
       exclude={inWorkout}
       extras={created}
       allowCustom

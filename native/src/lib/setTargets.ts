@@ -3,9 +3,11 @@
 // "last time"). No React, so the root test suite covers it
 // (tests/nativeSetTargets.test.ts). Targets fail soft: when one can't be
 // worked out, the set behaves as it did before targets.
+import type { FirstTimeRead } from '@/lib/firstTimeTargets';
 import {
   describeTarget,
   liveSetTarget,
+  planFirstTime,
   planMovementTargets,
   targetOutcome,
   type EffortWords,
@@ -20,28 +22,45 @@ import type { Movement, SessionModel } from './sessionModel';
 
 export type SessionTargets = ReadonlyMap<string, MovementTargets>;
 
-const NO_TARGETS: SessionTargets = new Map();
+/** Where each first-time movement starts, by exercise id (null: nothing says); a movement not listed is not known to be one. */
+type FirstTimeStarts = FirstTimeRead['starts'];
 
-/** Today's targets for each movement of the session that has history to aim from. */
-export function sessionTargets(session: Pick<SessionModel, 'date' | 'movements'> | null, history: MovementHistoryMap): SessionTargets {
+const NO_TARGETS: SessionTargets = new Map();
+const NO_STARTS: FirstTimeStarts = {};
+
+/**
+ * Today's targets for each movement of the session that has history to aim
+ * from, and for each one `starts` says has never been trained.
+ */
+export function sessionTargets(
+  session: Pick<SessionModel, 'date' | 'movements'> | null,
+  history: MovementHistoryMap,
+  starts: FirstTimeStarts = NO_STARTS,
+): SessionTargets {
   if (!session) return NO_TARGETS;
   const targets = new Map<string, MovementTargets>();
   for (const movement of session.movements) {
-    const planned = movementTargets(movement, session.date, history);
+    const planned = movementTargets(movement, session.date, history, starts);
     if (planned) targets.set(movement.exerciseId, planned);
   }
   return targets;
 }
 
-function movementTargets(movement: Movement, date: string, history: MovementHistoryMap): MovementTargets | null {
+function movementTargets(movement: Movement, date: string, history: MovementHistoryMap, starts: FirstTimeStarts): MovementTargets | null {
   const past = history[movement.exerciseId];
-  if (!past || past.length === 0) return null;
+  const first = !past || past.length === 0;
+  if (first && !(movement.exerciseId in starts)) return null;
   const min = movement.plan?.target_reps_min;
   const max = movement.plan?.target_reps_max;
   const range = typeof min === 'number' && typeof max === 'number' && min > 0 && max >= min ? { min, max } : null;
   const equipment = movement.sets.find((set) => set.exercise)?.exercise?.equipment ?? null;
+  const setCount = setPositions(movement.sets).length;
   try {
-    return planMovementTargets({ history: past, today: date, setCount: setPositions(movement.sets).length, range, equipment });
+    if (first) {
+      const start = starts[movement.exerciseId];
+      return planFirstTime({ setCount, range, equipment, start, step: start?.step });
+    }
+    return planMovementTargets({ history: past, today: date, setCount, range, equipment });
   } catch {
     return null;
   }
@@ -59,7 +78,7 @@ function setPositions(sets: readonly Pick<WorkoutSet, 'set_number'>[]): number[]
 function loggedByPosition(sets: readonly WorkoutSet[]): LoggedSet[] {
   return setPositions(sets).map((number) => {
     const set = sets.find((candidate) => candidate.set_number === number && candidate.completed);
-    return set && typeof set.weight === 'number' && typeof set.reps === 'number' ? { weight: set.weight, reps: set.reps } : null;
+    return set && typeof set.weight === 'number' && typeof set.reps === 'number' ? { weight: set.weight, reps: set.reps, rpe: set.rpe ?? null } : null;
   });
 }
 
@@ -107,9 +126,31 @@ export function isLastSet(set: Pick<WorkoutSet, 'set_number'>, movementSets: rea
  */
 export function targetLabel(target: SetTarget, lastSet: boolean): string {
   const why = target.why;
+  // A start worked out from another movement is a place to begin, not a target yet.
+  if (why.kind === 'first_time') return FIRST_TIME;
   const open = why.kind === 'more_reps' || why.kind === 'hold' || why.kind === 'more_weight' || why.kind === 'past_top'
-    || (why.kind === 'moved' && why.off >= 0);
+    || (why.kind === 'moved' && why.off >= 0) || (why.kind === 'found' && why.move !== 'down');
   return lastSet && open ? 'Target, or more' : 'Target';
+}
+
+/** The line's first word on a movement's first ever set. */
+export const FIRST_TIME = 'First time';
+
+/**
+ * The card's line on a first-time movement with nothing to start from, until
+ * its first set is logged: how to choose the weight. Null once a set has a
+ * target, on a movement with history, and on bodyweight work.
+ */
+export function firstTimeHint(
+  movement: Pick<Movement, 'exerciseId' | 'sets' | 'plan'>,
+  targets: SessionTargets,
+  bodyweight = false,
+): string | null {
+  const planned = targets.get(movement.exerciseId);
+  if (!planned?.firstTime || bodyweight) return null;
+  if (planned.sets.some((set) => set !== null) || movement.sets.some((set) => set.completed)) return null;
+  const top = planned.firstTime.range?.max;
+  return top ? `${FIRST_TIME} · pick a weight you could do ${top} times` : `${FIRST_TIME} · start light, the next set follows it`;
 }
 
 /**
@@ -120,8 +161,13 @@ export function targetLine(target: SetTarget, { scale = 'rir', lastSet = false }
   return `${targetLabel(target, lastSet)} · ${describeTarget(target, scale)}`;
 }
 
-/** What the card says once a set is logged against its target, or null when it missed. */
+/**
+ * What the card says once a set is logged against its target, or null when
+ * it missed. A first-time start is a place to begin, kept light on purpose:
+ * passing it is expected, and says nothing.
+ */
 export function targetMoment(done: { weight: number; reps: number }, target: SetTarget): string | null {
+  if (target.why.kind === 'first_time') return null;
   const outcome = targetOutcome(done, target);
   if (outcome.kind === 'missed') return null;
   return outcome.kind === 'hit' ? 'Target hit' : `Beat target · ${outcome.gain}`;
@@ -135,7 +181,8 @@ export function countTargets(session: Pick<SessionModel, 'movements'>, targets: 
     for (const set of movement.sets) {
       if (!set.completed || typeof set.weight !== 'number' || typeof set.reps !== 'number') continue;
       const target = setTargetFor(set, movement.sets, targets);
-      if (!target) continue;
+      // A first-time start is not a target to count.
+      if (!target || target.why.kind === 'first_time') continue;
       total += 1;
       if (targetOutcome({ weight: set.weight, reps: set.reps }, target).kind !== 'missed') hit += 1;
     }

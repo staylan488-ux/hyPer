@@ -112,6 +112,39 @@ toward the designer's own aim for the answers, by the designer's limits. See
 [program-design.md](program-design.md), "A program that keeps your own
 movements".
 
+## Add opens on what fits
+
+Adding a movement or a superset to a live workout leads the list with up to
+three movements (`src/lib/addSuggestions.ts`, built 2026-11-18). Everything
+below is a judgment; the only numbers shown are counts.
+
+- **Which muscles.** Only the eight main muscles, as every suggestion. On a
+  planned day, the ones that day's movements train, first or second muscle.
+  In a flexible session, the main muscles of the half of the body it has
+  started on, or all eight when it is empty. For a superset, the main muscles
+  of the paired movement's half that it does not train.
+- **Most open first.** A muscle's room is its planned sets for the week less
+  its finished sets and the sets today still holds for it; with no plan for
+  the muscle, about 10 (`VOLUME_AIM`) less the same. A muscle with less than
+  one set of room is left out, and with none left the list opens as it always
+  did.
+- **One movement each.** From the person's own program first, then the
+  muscle's staples (`SUGGESTED_MOVEMENTS`), less for a movement of the same
+  kind as one already in the session, so a leg curl day gets a Romanian
+  deadlift before a second curl. A superset partner never shares a muscle
+  with the paired movement and never loads the lower back when that one does.
+- **The line.** The muscle and its week: "Hamstrings · 3 of 8 sets so far
+  this week", the same done and planned Progress shows (finished sets in the
+  week's other workouts, read once when the workout opens on Train, plus this
+  workout's own). With no plan: "4 sets so far this week" or "none yet this
+  week".
+
+It states a count and stops (owner decision, 2026-11-12). No line says
+behind, missed or short, nothing counts days, and the rows exist only on a
+list the person opened to add something. A search or a muscle chip puts the
+plain list back. If the week's read has not landed or failed, the list opens
+plain and nothing moves afterwards.
+
 ## Muscle tags
 
 Counts are only as good as the tags on each movement. The audit of
