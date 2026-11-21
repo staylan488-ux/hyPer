@@ -2,6 +2,7 @@
 // meal, or one entry, into a saved meal after the fact. Each food keeps the
 // amount eaten; a built meal among them adds its own ingredients.
 import { combinedMealName } from '@/lib/combineMeal';
+import { deviceFoodKey } from '@/lib/deviceFoods';
 import { normalizeFoodName } from '@/lib/foodLoggerUtils';
 import { createMealIngredient, expandMealIngredients, type MealIngredient } from '@/lib/mealComposition';
 import type { Food } from '@/types';
@@ -39,6 +40,8 @@ function ingredientFor(entry: LoggedFood, newId: () => string): MealIngredient |
         source: FOOD_SOURCES.includes(food.source) ? food.source : 'manual_entry',
         fdc_id: fdcId === null || fdcId === undefined ? null : String(fdcId),
         description: food.description ?? null,
+        // a device-only food keeps its identity, so the meal stores its IDs and not its details
+        ...(deviceFoodKey(food) ? { external_source: food.external_source ?? 'fatsecret', external_id: food.external_id } : {}),
       },
       servings,
       newId(),

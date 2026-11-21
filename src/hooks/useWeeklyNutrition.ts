@@ -75,6 +75,10 @@ async function readLogs(userId: string, first: Date, last: Date) {
   const results = await Promise.all(reads);
   const failed = results.find((result) => result.error);
   if (failed?.error) throw failed.error;
+  // A brand food this phone could not read just now counts as nothing: an
+  // average over these days would be short, so the read fails and is tried
+  // again, like any other (see NutritionLogsWithFoodsResult.incomplete).
+  if (results.some((result) => result.incomplete)) throw new Error('Some logged foods could not be read');
   return results.flatMap((result) => result.data ?? []);
 }
 

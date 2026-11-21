@@ -59,6 +59,15 @@ afterEach(() => {
 });
 
 describe('useWeeklyNutrition', () => {
+  it('gives no averages built on a brand food it could not read, and says the totals did not load', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    logs = [log('2026-11-01', 2000)];
+    fetchNutritionLogsWithFoods.mockImplementationOnce(async () => ({ data: logs, error: null, incomplete: true }));
+    const data = await read('2026-11-02');
+    expect(data.weeklyNutrition).toEqual([]);
+    expect(data.error).toContain('Couldn’t load nutrition totals');
+  });
+
   it('reads the seven days ending the day it is given, oldest first, across a month', async () => {
     logs = [log('2026-10-28', 9999), log('2026-10-29', 1800, 120), log('2026-11-02', 2400, 150), log('2026-11-04', 2000, 130), log('2026-11-05', 700, 40)];
     const week = await read('2026-11-04');

@@ -36,6 +36,8 @@ let detail = deferred<Food>();
 let usda: (query: string) => Promise<Food[]> = async () => [milk];
 /** The app's own food list's answer; nothing unless a case says otherwise, so USDA is asked. */
 let listed: (query: string) => Food[] = () => [];
+/** FatSecret's brand answer; no answer at all (a failed lookup) unless a case says otherwise. */
+let brandSearch: (query: string) => Promise<Food[] | null> = async () => { throw new Error('no answer'); };
 let retry: (() => void) | undefined;
 let showMore: (() => void) | undefined;
 const release = vi.fn();
@@ -56,6 +58,7 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: strin
     // drawn as a marker, so a case can see the spinner in place of results
     ActivityIndicator: () => createElement('progress'),
     Alert: { alert: vi.fn() },
+    Linking: { openURL: vi.fn() },
     Pressable: (props: PropsWithChildren<Press>) => {
       pressables.push(props);
       return Wrap(props);
@@ -80,6 +83,7 @@ const { SearchTab } = loadNativeModule<{ SearchTab: ComponentType<{ query: strin
   '@/lib/usdaClient': {
     // the reason a failed search carries, as the real client reads it
     foodLookupFailure: (error: { reason?: string }) => error.reason ?? 'offline',
+    searchFatSecretFoodsSecure: (query: string) => brandSearch(query),
     searchUsdaFoodsSecureStrict: (query: string) => usda(query),
     withUsdaPortion: () => detail.promise,
   },
@@ -116,6 +120,7 @@ beforeEach(() => {
   detail = deferred();
   usda = async () => [milk];
   listed = () => [];
+  brandSearch = async () => { throw new Error('no answer'); };
   retry = undefined;
   showMore = undefined;
   release.mockClear();
@@ -276,6 +281,136 @@ describe("Search: the app's own food list answers first", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(350); });
     expect(asked).toHaveBeenCalledWith(milk.name);
     expect(host.textContent).toContain(milk.name);
+  });
+});
+
+describe('Search: brands from FatSecret under the plain food', () => {
+  const listFor = (count: number) => (query: string): Food[] =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `plain-${serial}-${index}`, user_id: null, name: `${query} plain ${index + 1}`, calories: 100, protein: 5, carbs: 10, fat: 2,
+      serving_size: 100, serving_unit: 'g', source: 'usda', fdc_id: `${7000 + serial * 100 + index}`,
+    }));
+  const brandsFor = (count: number) => async (query: string): Promise<Food[]> =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `fatsecret:${serial}${index}:1`, user_id: null, name: `${query} brand ${index + 1}`, calories: 120, protein: 16, carbs: 6, fat: 3,
+      serving_size: 150, serving_unit: 'g', serving_label: '1 container', source: 'fatsecret', fdc_id: null,
+      external_source: 'fatsecret', external_id: `${serial}${index}:1`,
+    }));
+  const CREDIT = 'Powered by fatsecret Platform API';
+  const mount = async (query: string) => {
+    const host = document.createElement('div');
+    root.unmount();
+    root = createRoot(host);
+    await act(async () => { root.render(createElement(SearchTab, { query })); });
+    return host;
+  };
+
+  it('lists brands under the plain food once typing stops, each list named, with FatSecret credited', async () => {
+    listed = listFor(2);
+    const asked = vi.fn(brandsFor(2));
+    brandSearch = asked;
+    const host = await mount(`yogurt ${serial}`);
+    // the plain food is there at once; brands wait for typing to stop
+    expect(host.textContent).toContain('plain 2');
+    expect(host.textContent).not.toContain('brand 1');
+    expect(asked).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(asked).toHaveBeenCalledWith(`yogurt ${serial}`);
+    const text = host.textContent ?? '';
+    expect(text).toContain('Foods');
+    expect(text).toContain('Brands');
+    expect(text.indexOf('plain 2')).toBeLessThan(text.indexOf('Brands'));
+    expect(text.indexOf('Brands')).toBeLessThan(text.indexOf('brand 1'));
+    expect(text.indexOf('brand 2')).toBeLessThan(text.indexOf(CREDIT));
+  });
+
+  it('opens a brand result as it stands, with nothing to read first', async () => {
+    brandSearch = brandsFor(1);
+    usda = async () => [];
+    await mount(`chobani ${serial}`);
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    const row = [...pressables].reverse().find((props) => props.accessibilityLabel?.includes('brand 1, '));
+    expect(row).toBeDefined();
+    await act(async () => { row!.onPress!(); });
+    expect(chooseFood.mock.calls[0][0]).toMatchObject({ source: 'fatsecret', external_id: `${serial}0:1`, serving_label: '1 container' });
+    expect(beginRead).not.toHaveBeenCalled();
+  });
+
+  it('shows brands alone, unnamed, when there is no plain food for the words', async () => {
+    brandSearch = brandsFor(2);
+    usda = async () => [];
+    const host = await mount(`chobani ${serial}`);
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).toContain('brand 2');
+    expect(host.textContent).toContain(CREDIT);
+    expect(host.textContent).not.toContain('Brands');
+    expect(host.textContent).not.toContain('No USDA matches.');
+    expect(host.textContent).not.toContain('No matches.');
+  });
+
+  it('lists the first six brands, and the rest once Show more is pressed', async () => {
+    listed = listFor(3);
+    brandSearch = brandsFor(9);
+    const host = await mount(`yogurt ${serial}`);
+    expect(showMore).toBeUndefined();
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).toContain('brand 6');
+    expect(host.textContent).not.toContain('brand 7');
+    expect(showMore).toBeDefined();
+    await act(async () => { showMore!(); });
+    expect(host.textContent).toContain('brand 9');
+  });
+
+  it('says nothing when FatSecret does not answer: the plain food stands alone', async () => {
+    listed = listFor(2);
+    const host = await mount(`yogurt ${serial}`);
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(host.textContent).toContain('plain 2');
+    expect(host.textContent).not.toContain('Brands');
+    expect(host.textContent).not.toContain(CREDIT);
+    expect(host.textContent).not.toContain('failed');
+  });
+
+  it('does not send one or two letters to FatSecret', async () => {
+    const asked = vi.fn(brandsFor(1));
+    brandSearch = asked;
+    listed = listFor(1);
+    await mount('yo');
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it('says there are no matches only once both searches have answered with nothing', async () => {
+    const brands = deferred<Food[]>();
+    brandSearch = () => brands.promise;
+    usda = async () => [];
+    const host = await mount(`zzzq ${serial}`);
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    // USDA has nothing, FatSecret has not answered: still looking
+    expect(host.textContent).not.toContain('No');
+    expect(host.querySelector('progress')).not.toBeNull();
+    await act(async () => { brands.resolve([]); });
+    expect(host.textContent).toContain('No matches.');
+    expect(host.querySelector('progress')).toBeNull();
+  });
+
+  // Last: FatSecret saying it is off holds for ten minutes, across sheets.
+  it('asks once when FatSecret is switched off, then searches as it did without it', async () => {
+    const asked = vi.fn(async () => null);
+    brandSearch = asked;
+    usda = async () => [];
+    const host = await mount(`zzzq ${serial}`);
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(asked).toHaveBeenCalledOnce();
+    expect(host.textContent).toContain('No USDA matches.');
+    await act(async () => { root.render(createElement(SearchTab, { query: `zzzqq ${serial}` })); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(asked).toHaveBeenCalledOnce();
+    expect(host.textContent).toContain('No USDA matches.');
+    // a sheet opened later does not ask either
+    await mount(`zzzqqq ${serial}`);
+    await act(async () => { await vi.advanceTimersByTimeAsync(350); });
+    expect(asked).toHaveBeenCalledOnce();
   });
 });
 

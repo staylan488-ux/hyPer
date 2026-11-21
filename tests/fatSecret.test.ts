@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapFatSecretBarcodeFood } from '@/lib/fatSecret';
+import { mapFatSecretBarcodeFood, mapFatSecretFood, mapFatSecretSearch } from '@/lib/fatSecret';
 
 describe('FatSecret barcode response mapping', () => {
   it('chooses the flagged package serving and preserves storable identifiers', () => {
@@ -98,5 +98,48 @@ describe('FatSecret barcode response mapping', () => {
         },
       },
     })).toBeNull();
+  });
+});
+
+describe('FatSecret foods by serving, and brand search', () => {
+  const serving = (id: string, description: string, calories: string, extra: Record<string, string> = {}) => ({
+    serving_id: id, serving_description: description, metric_serving_amount: '150', metric_serving_unit: 'g',
+    calories, carbohydrate: '6', protein: '16', fat: '3', ...extra,
+  });
+  const yogurt = {
+    food_id: '4411', food_name: 'Greek Yogurt', brand_name: 'Chobani', food_type: 'Brand',
+    servings: { serving: [serving('5521', '100 g', '80'), serving('5522', '1 container', '120', { is_default: '1' })] },
+  };
+
+  it('reads the serving a log was saved with, not the default one', () => {
+    expect(mapFatSecretFood(yogurt, '5521')).toMatchObject({ id: 'fatsecret:4411:5521', calories: 80, external_id: '4411:5521' });
+    expect(mapFatSecretFood(yogurt, '5522')).toMatchObject({ id: 'fatsecret:4411:5522', calories: 120, serving_label: '1 container' });
+    expect(mapFatSecretFood(yogurt)).toMatchObject({ id: 'fatsecret:4411:5522' });
+  });
+
+  it('has no food for a serving FatSecret no longer lists', () => {
+    expect(mapFatSecretFood(yogurt, '9999')).toBeNull();
+    expect(mapFatSecretFood(null, '5522')).toBeNull();
+  });
+
+  it('lists brand results once each, in FatSecret\'s order, and leaves plain food to the app\'s own list', () => {
+    const foods = mapFatSecretSearch({
+      configured: true,
+      foods: [
+        yogurt,
+        { food_id: '1', food_name: 'Banana', food_type: 'Generic', servings: { serving: serving('2', '1 medium', '105') } },
+        { food_id: '7', food_name: 'Big Mac', brand_name: "McDonald's", food_type: 'Brand', servings: { serving: serving('8', '1 burger', '590') } },
+        yogurt,
+        { food_id: '9', food_name: 'No numbers', food_type: 'Brand', servings: { serving: [] } },
+      ],
+    });
+    expect(foods.map((food) => food.name)).toEqual(['Greek Yogurt · Chobani', "Big Mac · McDonald's"]);
+    expect(foods.every((food) => food.source === 'fatsecret' && food.external_source === 'fatsecret')).toBe(true);
+  });
+
+  it('has no results for an answer that is not a list', () => {
+    expect(mapFatSecretSearch(null)).toEqual([]);
+    expect(mapFatSecretSearch({ configured: true })).toEqual([]);
+    expect(mapFatSecretSearch({ foods: 'x' as never })).toEqual([]);
   });
 });

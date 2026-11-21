@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { refillDeviceFoodsFor } from '@/lib/deviceFoodRefill';
 import { normalizeFoodName, numbersNearlyEqual } from '@/lib/foodLoggerUtils';
 import { insertOneServingFood, type KeptFoodFields, type OneServingFoodValues } from '@/lib/foodPersistence';
 import type { Food } from '@/types';
@@ -74,6 +75,9 @@ const SAVED_MEAL_COLUMNS = 'id, user_id, name, calories, protein, carbs, fat, se
 export async function loadSavedMeals(userId: string): Promise<{ meals: Food[]; error: unknown }> {
   const { data, error } = await listSavedMealRows<SavedMealRow>(userId, SAVED_MEAL_COLUMNS);
   if (error) return { meals: [], error };
+  // A built meal's brand ingredients this phone does not hold are read again
+  // in the background, so opening the meal shows what is in it.
+  refillDeviceFoodsFor(data ?? []);
   const meals = dedupeSavedMealsByName(data, (meal): Food => ({
     id: meal.id,
     user_id: meal.user_id,
