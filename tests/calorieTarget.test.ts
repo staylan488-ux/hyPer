@@ -36,6 +36,7 @@ describe('calorie target helpers', () => {
     expect(servingsForCalories(trailMix, '500')).toBeCloseTo(3.125, 6);
     expect(servingsForCalories(trailMix, '1,200')).toBeCloseTo(7.5, 6);
     expect(servingsForCalories(trailMix, '80.5')).toBeCloseTo(80.5 / 160, 6);
+    expect(servingsForCalories(trailMix, '80,5')).toBeCloseTo(80.5 / 160, 6);
   });
 
   it('rejects zero-calorie foods, invalid numbers, and extreme targets', () => {

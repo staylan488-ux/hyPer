@@ -53,10 +53,14 @@ type CalorieBasis = Basis & Pick<Food, 'calories'>;
 
 const MAX_CALORIE_TARGET_SERVINGS = 1000;
 
+const GROUPED_THOUSANDS_PATTERN = /^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
+
 /** Servings for a target calorie amount; null when the food has no calories or the target is invalid. */
 export function servingsForCalories(food: Pick<Food, 'calories'>, caloriesText: string): number | null {
   if (!Number.isFinite(food.calories) || food.calories <= 0) return null;
-  const calories = parseDecimal(caloriesText.replace(/,/g, ''));
+  const trimmed = caloriesText.trim();
+  const normalized = GROUPED_THOUSANDS_PATTERN.test(trimmed) ? trimmed.replace(/,/g, '') : trimmed;
+  const calories = parseDecimal(normalized);
   if (!Number.isFinite(calories) || calories <= 0) return null;
   const servings = calories / food.calories;
   if (!Number.isFinite(servings) || servings <= 0 || servings > MAX_CALORIE_TARGET_SERVINGS) return null;
