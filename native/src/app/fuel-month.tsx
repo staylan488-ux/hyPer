@@ -1,4 +1,4 @@
-import { addMonths, endOfMonth, format, isAfter, isSameDay, isSameMonth, startOfDay, startOfMonth } from 'date-fns';
+import { addMonths, endOfMonth, format, isAfter, isSameDay, isSameMonth, parseISO, startOfDay, startOfMonth } from 'date-fns';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -10,9 +10,11 @@ import { getSessionUserId } from '@/lib/sessionUser';
 import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/stores/appStore';
 import { BlancText } from '~/components/BlancText';
+import { Capsule } from '~/components/Capsule';
 import { GlassButton } from '~/components/GlassButton';
 import { DayMark } from '~/fuel/DayMark';
 import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { useCurrentDayKey } from '~/lib/accountData';
 import { formatWhole } from '~/lib/format';
 import { dayKey, useFuelStore } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
@@ -95,7 +97,9 @@ export default function FuelMonthSheet() {
   const [attempt, setAttempt] = useState(0);
   // The failure arrives after the sheet does.
   useAnnounce(failed && 'Couldn’t load this month.');
-  const today = startOfDay(new Date());
+  const currentDay = useCurrentDayKey();
+  const today = startOfDay(parseISO(currentDay));
+  const showToday = !isSameDay(selected, today) || !isSameMonth(month, today);
   const days = buildCalendarDays(month);
 
   // The dots: the loaded month's entries when it is this month, else a light read of dates.
@@ -221,6 +225,19 @@ export default function FuelMonthSheet() {
           </View>
         </View>
       </GestureDetector>
+
+      {showToday ? (
+        <View style={{ alignItems: 'center', marginTop: 12 }}>
+          <Capsule
+            title="Today"
+            variant="quiet"
+            onPress={() => {
+              useFuelStore.getState().select(currentDay);
+              router.back();
+            }}
+          />
+        </View>
+      ) : null}
 
       {failed ? (
         <Pressable

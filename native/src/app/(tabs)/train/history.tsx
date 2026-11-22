@@ -256,8 +256,9 @@ function Calendar({ month, day, workouts, activities }: { month: Date; day: stri
   const turn = (step: 1 | -1) => {
     if (arrowTurn.current) arrowTurn.current = false;
     else haptics.select();
+    const today = parseISO(todayKey);
     const target = startOfMonth(addMonths(month, step));
-    selectHistoryDay(isSameMonth(target, new Date()) ? new Date() : target);
+    selectHistoryDay(isSameMonth(target, today) ? today : target);
   };
 
   return (

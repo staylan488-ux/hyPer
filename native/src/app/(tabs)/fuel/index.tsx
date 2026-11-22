@@ -264,10 +264,10 @@ export default function FuelScreen() {
   // standard sizes on; then the words go under the figure.
   const grown = useWindowDimensions().fontScale > 1;
   const loadFailed = status === 'error' && !loaded;
-  useAnnounce(loadFailed ? "This day's food could not load. Pull down to try again." : null);
+  useAnnounce(loadFailed ? "This day's food could not load." : null);
   const c = useBlanc();
   // Every day is written as Today writes its date ("Monday, November 2"), with the year only when it differs.
-  const dayLine = format(selectedDate, selectedDate.getFullYear() === new Date().getFullYear() ? 'EEEE, MMMM d' : 'EEEE, MMMM d, yyyy');
+  const dayLine = format(selectedDate, selectedDate.getFullYear() === Number(todayKey.slice(0, 4)) ? 'EEEE, MMMM d' : 'EEEE, MMMM d, yyyy');
   // A day with nothing logged shows no figures (no 0 kcal, no 0 g): only Nothing logged and Log food.
   const empty = loaded && logs.length === 0;
 
@@ -443,9 +443,12 @@ export default function FuelScreen() {
         </LayoutAnimationConfig>
 
         {loadFailed ? (
-          <BlancText variant="secondary" tone="live" style={{ margin: space.gutter }}>
-            This day's food could not load. Pull down to try again.
-          </BlancText>
+          <View style={{ margin: space.gutter, alignItems: 'center', gap: 12 }}>
+            <BlancText variant="secondary" tone="live" style={{ textAlign: 'center' }}>
+              This day’s food could not load.
+            </BlancText>
+            <Capsule title={refreshing ? 'Trying…' : 'Try again'} variant="quiet" disabled={refreshing} onPress={() => void refresh()} />
+          </View>
         ) : null}
       </TabScroll>
 
