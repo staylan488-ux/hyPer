@@ -191,10 +191,39 @@ export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hi
   }
 }
 
-/** Whether reading this amount needs the AI ("8 oz" and other plain conversions don't). */
-export function servingNeedsAi(food: ServingFood, text: string): boolean {
+type ServingFoodWithCalories = ServingFood & { calories?: number };
+
+const CALORIE_TARGET_PATTERN = /^(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k?cals?|calories?)$/;
+const CALORIE_PREFIX_PATTERN = /^(?:(?:i\s+(?:ate|had|want|need|aim\s+for)|about|around|roughly|~)\s+)+/;
+
+/** Resolve a calorie target like "500 cal" or "500 kcal" locally from the food's calories per serving. */
+export function resolveCaloriesLocally(food: ServingFoodWithCalories, text: string): ServingInterpretation | null {
+  const cleaned = text.toLowerCase().replace(/[“”"]/g, '').replace(/\s+/g, ' ').trim().replace(/[.!]+$/, '');
+  if (!cleaned || /\b(and|plus|with|or|per|each)\b/.test(cleaned)) return null;
+  const stripped = cleaned.replace(CALORIE_PREFIX_PATTERN, '').trim();
+  const match = stripped.match(CALORIE_TARGET_PATTERN);
+  if (!match) return null;
+  const quantity = Number(match[1].replace(/,/g, ''));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return { status: 'clarification', message: 'Enter a calorie target greater than zero.' };
+  }
+  const perServing = food.calories;
+  if (typeof perServing !== 'number' || !Number.isFinite(perServing) || perServing <= 0) {
+    return { status: 'clarification', message: 'This food has 0 calories, so it cannot be calculated from a calorie target.' };
+  }
+  const rawServings = quantity / perServing;
+  if (!Number.isFinite(rawServings) || rawServings > 1000) {
+    return { status: 'clarification', message: 'That amount is too large. Check the calories and try again.' };
+  }
+  const servings = Math.round(rawServings * 1000) / 1000;
+  return { status: 'resolved', quantity, optionId: 'calories', servings, unit: 'kcal', basisQuantity: perServing };
+}
+
+/** Whether reading this amount needs the AI ("8 oz", "500 cal" and other plain conversions don't). */
+export function servingNeedsAi(food: ServingFoodWithCalories, text: string): boolean {
   try {
     const input = normalizeServingInput({ action: 'interpret-serving', food, text });
+    if (resolveCaloriesLocally(food, input.text)) return false;
     return !resolveServingLocally(input.food, input.text);
   } catch {
     // An amount the service would refuse anyway: no reason to ask first.
@@ -203,8 +232,11 @@ export function servingNeedsAi(food: ServingFood, text: string): boolean {
 }
 
 /** Interpret only the amount. Nutrition and division stay in application code. */
-export async function interpretFoodServing(food: ServingFood, text: string, accessToken: string): Promise<ServingInterpretation> {
+export async function interpretFoodServing(food: ServingFoodWithCalories, text: string, accessToken: string): Promise<ServingInterpretation> {
   const input = normalizeServingInput({ action: 'interpret-serving', food, text });
+  // "500 cal", "500 kcal": deterministic calorie-target math stays on the phone.
+  const calorieTarget = resolveCaloriesLocally(food, input.text);
+  if (calorieTarget) return calorieTarget;
   // "272 ml", "1.5 cups", "8 oz": plain conversions need no Gemini call.
   const local = resolveServingLocally(input.food, input.text);
   if (local) return local;

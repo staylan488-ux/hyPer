@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import { useRef, useState } from 'react';
 import { ActionSheetIOS, Pressable, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -6,7 +7,10 @@ import { barcodeProviderLabel } from '@/lib/barcodeLookup';
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import {
   amountError,
+  amountForCalories,
+  amountForServings,
   amountForUnit,
+  equivalentWeightLabel,
   foodBasisLabel,
   foodMacroLine,
   getCompatibleMeasurementUnits,
@@ -20,6 +24,7 @@ import { chosenFoodLogSource } from '@/lib/saveNutritionEntry';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
+import { FigureInput } from '~/components/FigureInput';
 import { FieldRow, FormNote } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { RollingText } from '~/components/RollingText';
@@ -29,7 +34,7 @@ import { formatWhole } from '~/lib/format';
 import { SAVE_FAILED, saveFoodEntry } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { figureLayout } from '~/lib/motion';
-import { space } from '~/theme/blanc';
+import { space, useBlanc } from '~/theme/blanc';
 
 import { useLogger, type ChosenMeta } from './context';
 import { spokenMacros } from './FoodLists';
@@ -49,6 +54,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
   /** An entry being edited: picks another food from the lists in place of this one. */
   onChangeFood?: () => void;
 }) {
+  const c = useBlanc();
   const logger = useLogger();
   const large = useLargeText();
   const units = getCompatibleMeasurementUnits(food.serving_unit);
@@ -60,15 +66,19 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
   const [helperOpen, setHelperOpen] = useState(false);
   // Clearing Amount to type a new digit keeps Log entry off without flashing red mid-keystroke.
   const [amountBlurred, setAmountBlurred] = useState(false);
+  const [editingCalories, setEditingCalories] = useState(false);
+  const [calorieDraft, setCalorieDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   // one retry-safe id until this entry's save is confirmed
   const pending = useRef(createPendingEntryId()).current;
 
+  const canTargetCalories = Number.isFinite(food.calories) && food.calories > 0;
   const servings = servingsForAmount(food, amount, unit);
   const invalid = amountError(food, amount, unit);
   const shownInvalid = invalid && (amount.trim() !== '' || amountBlurred) ? invalid : null;
   const kcal = servings === null ? 0 : Math.round(food.calories * servings);
   const protein = servings === null ? 0 : Math.round(food.protein * servings);
+  const weightEquivalent = servings !== 1 ? equivalentWeightLabel(food, servings, unit) : null;
   // With one unit there is no choice to offer: the amount says what it counts,
   // in the food's own word when one serving is one of it ("1 scoop").
   const ownUnit = food.serving_unit?.trim();
@@ -83,6 +93,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
   const basis = foodBasisLabel(food);
 
   const chooseUnit = () => {
+    setEditingCalories(false);
     const options = [...units, 'Cancel'];
     ActionSheetIOS.showActionSheetWithOptions({ title: 'Unit', options, cancelButtonIndex: units.length }, (index) => {
       if (index >= units.length) return;
@@ -91,6 +102,24 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
       setAmount(amountForUnit(food, amount, unit, next));
       setUnit(next);
     });
+  };
+
+  const startCalorieTarget = () => {
+    if (!canTargetCalories || saving) return;
+    haptics.tap();
+    setHelperOpen(false);
+    setAmountBlurred(false);
+    setCalorieDraft(kcal > 0 ? String(kcal) : '');
+    setEditingCalories(true);
+  };
+
+  const updateCalorieTarget = (value: string) => {
+    setCalorieDraft(value);
+    const nextAmount = amountForCalories(food, value, unit);
+    if (nextAmount === null) return;
+    setAmountBlurred(false);
+    setAmount(nextAmount);
+    onAmountChange?.(servingsForAmount(food, nextAmount, unit));
   };
 
   const save = async () => {
@@ -180,6 +209,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
             onFocus={() => {
               setAmountBlurred(false);
               setHelperOpen(false);
+              setEditingCalories(false);
             }}
             onBlur={() => setAmountBlurred(true)}
           />
@@ -196,38 +226,114 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
           food={food}
           disabled={saving}
           open={helperOpen}
-          onOpenChange={setHelperOpen}
+          onOpenChange={(nextOpen) => {
+            if (nextOpen) setEditingCalories(false);
+            setHelperOpen(nextOpen);
+          }}
           onApply={(next) => {
             setAmountBlurred(false);
-            setUnit('serving');
-            setAmount(String(next));
-            onAmountChange?.(next);
+            setEditingCalories(false);
+            const converted = unit !== 'serving' ? amountForServings(food, next, unit) : null;
+            if (converted !== null) {
+              setAmount(converted);
+              onAmountChange?.(servingsForAmount(food, converted, unit));
+            } else {
+              setUnit('serving');
+              setAmount(String(next));
+              onAmountChange?.(next);
+            }
           }}
         />
       </View>
 
       <WhenBlock disabled={saving} />
 
-      {/* One fact for VoiceOver: what this entry adds. */}
-      <View
-        accessible
-        accessibilityLabel={speak(`This entry · ${formatWhole(kcal)} kcal${protein > 0 ? ` · ${formatWhole(protein)} g protein` : ''}`)}
-        style={{ paddingHorizontal: space.gutter, marginTop: 28 }}>
-        <BlancText variant="secondary" tone="graphite">
-          This entry
-        </BlancText>
-        {/* At the accessibility sizes the words go under the figure when they don't fit beside it. */}
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
-          <RollingText variant="figure" size={56}>
-            {formatWhole(kcal)}
-          </RollingText>
-          <Animated.View layout={figureLayout} style={large ? { flexShrink: 1 } : undefined}>
-            <BlancText variant="secondary" tone="graphite">
-              {protein > 0 ? `kcal · ${formatWhole(protein)} g protein` : 'kcal'}
+      {/* One fact for VoiceOver: what this entry adds (tappable to work backwards from calories). */}
+      {editingCalories ? (
+        <View style={{ paddingHorizontal: space.gutter, marginTop: 28 }}>
+          <BlancText variant="secondary" tone="graphite">
+            Target calories
+          </BlancText>
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
+            <FigureInput
+              value={calorieDraft}
+              fontSize={56}
+              autoFocus
+              selectTextOnFocus
+              keyboardType="decimal-pad"
+              maxLength={6}
+              placeholder={kcal > 0 ? String(kcal) : '–'}
+              accessibilityLabel="Target calories"
+              onChangeText={updateCalorieTarget}
+              onBlur={() => setEditingCalories(false)}
+              onSubmitEditing={() => setEditingCalories(false)}
+            />
+            <View style={large ? { flexShrink: 1 } : undefined}>
+              <BlancText variant="secondary" tone="graphite">
+                {protein > 0 ? `kcal · ${formatWhole(protein)} g protein` : 'kcal'}
+              </BlancText>
+            </View>
+          </View>
+          {weightEquivalent ? (
+            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2 }} accessibilityLabel={speak(weightEquivalent)}>
+              {weightEquivalent}
             </BlancText>
-          </Animated.View>
+          ) : null}
         </View>
-      </View>
+      ) : canTargetCalories ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={speak(
+            `This entry · ${formatWhole(kcal)} kcal${protein > 0 ? ` · ${formatWhole(protein)} g protein` : ''}${weightEquivalent ? ` · ${weightEquivalent}` : ''}`,
+          )}
+          accessibilityHint="Tap to set a target calorie amount"
+          disabled={saving}
+          onPress={startCalorieTarget}
+          style={({ pressed }) => ({ paddingHorizontal: space.gutter, marginTop: 28, minHeight: 44, opacity: pressed ? 0.55 : 1 })}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <BlancText variant="secondary" tone="graphite">
+              This entry
+            </BlancText>
+            <SymbolView name="pencil" size={12} tintColor={c.graphite} />
+          </View>
+          {/* At the accessibility sizes the words go under the figure when they don't fit beside it. */}
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
+            <RollingText variant="figure" size={56}>
+              {formatWhole(kcal)}
+            </RollingText>
+            <Animated.View layout={figureLayout} style={large ? { flexShrink: 1 } : undefined}>
+              <BlancText variant="secondary" tone="graphite">
+                {protein > 0 ? `kcal · ${formatWhole(protein)} g protein` : 'kcal'}
+              </BlancText>
+            </Animated.View>
+          </View>
+          {weightEquivalent ? (
+            <BlancText variant="footnote" tone="graphite" style={{ marginTop: 2 }}>
+              {weightEquivalent}
+            </BlancText>
+          ) : null}
+        </Pressable>
+      ) : (
+        <View
+          accessible
+          accessibilityLabel={speak(`This entry · ${formatWhole(kcal)} kcal${protein > 0 ? ` · ${formatWhole(protein)} g protein` : ''}`)}
+          style={{ paddingHorizontal: space.gutter, marginTop: 28 }}>
+          <BlancText variant="secondary" tone="graphite">
+            This entry
+          </BlancText>
+          {/* At the accessibility sizes the words go under the figure when they don't fit beside it. */}
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 2, ...(large ? { flexWrap: 'wrap' } : null) }}>
+            <RollingText variant="figure" size={56}>
+              {formatWhole(kcal)}
+            </RollingText>
+            <Animated.View layout={figureLayout} style={large ? { flexShrink: 1 } : undefined}>
+              <BlancText variant="secondary" tone="graphite">
+                {protein > 0 ? `kcal · ${formatWhole(protein)} g protein` : 'kcal'}
+              </BlancText>
+            </Animated.View>
+          </View>
+        </View>
+      )}
 
       {error ? <FormNote alert>{error}</FormNote> : null}
       {!error && helperOpen ? <FormNote>Convert and apply the amount typed above, or clear it to log.</FormNote> : null}

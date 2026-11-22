@@ -495,6 +495,13 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
       '@/lib/recentFoods': { usualAmountInput },
       '@/lib/saveNutritionEntry': { chosenFoodLogSource: () => 'search' },
       '@/lib/barcodeLookup': { barcodeProviderLabel: String },
+      '~/components/FigureInput': {
+        FigureInput: (props: { value: string; onChangeText: (text: string) => void; onBlur?: () => void; accessibilityLabel?: string }) => {
+          const label = props.accessibilityLabel ?? 'Figure';
+          captured.fields[label] = { ...props, label };
+          return createElement('input', { 'aria-label': label, value: props.value, readOnly: true });
+        },
+      },
       './ServingHelper': { ServingHelper: Empty },
     });
     imports['~/fuel/FoodReview'] = { FoodReview: (props: { food: Food }) => {
@@ -715,6 +722,23 @@ describe('editing measured food entries', () => {
     await act(async () => { h.captured.fields.Amount.onBlur?.(); });
     expect(h.captured.fields.Amount.invalid).toBe(true);
     expect(h.text()).toContain('Enter a valid amount greater than zero.');
+  });
+
+  it('updates Amount and saves the matching servings when a calorie target is entered', async () => {
+    const trailMix = { ...milk, name: 'Trail Mix', calories: 160, protein: 5, serving_size: 30, serving_unit: 'g' };
+    const h = loggerHarness({ editing: true, realReview: true, entry: { ...loggedMilk, food: trailMix, servings: 1 } });
+    await h.render();
+    expect(h.captured.fields.Amount.value).toBe('30');
+    const calorieKey = Object.keys(h.captured.pressables).find((label) => label.includes('This entry'));
+    expect(calorieKey).toBeDefined();
+    await act(async () => { h.captured.pressables[calorieKey!].onPress?.(); });
+    await act(async () => { h.captured.fields['Target calories'].onChangeText('500'); });
+    expect(h.captured.fields.Amount.value).toBe('94');
+    await act(async () => { h.captured.fields['Target calories'].onBlur?.(); });
+    await h.click('Save changes');
+    expect(h.saveFood).toHaveBeenCalledWith(expect.objectContaining({
+      foodId: milk.id, servings: expect.closeTo(94 / 30, 5), editingId: loggedMilk.id,
+    }));
   });
 
   it('offers Open Settings on Barcode scan when camera access is off', async () => {
