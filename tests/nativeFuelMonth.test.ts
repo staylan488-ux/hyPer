@@ -27,19 +27,20 @@ afterEach(async () => {
 });
 
 /** The real month sheet; only views, the store and the date read are stand-ins. */
-async function openMonthSheet(reads: Array<Promise<Read>>) {
+async function openMonthSheet(reads: Array<Promise<Read>>, selected = '2026-11-03') {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-04T10:00:00'));
   const read = vi.fn(() => reads.shift() ?? Promise.resolve({ data: [], error: null }));
   const query = { select: () => query, eq: () => query, gte: () => query, lte: read };
-  const fuel = { selected: '2026-11-03', loadedMonth: '2026-11', logs: [{ date: '2026-11-02', food: { calories: 520 }, servings: 1 }], select: vi.fn() };
+  const fuel = { selected, loadedMonth: '2026-11', logs: [{ date: '2026-11-02', food: { calories: 520 }, servings: 1 }], select: vi.fn() };
+  const back = vi.fn();
   const pan = { activeOffsetX: () => pan, failOffsetY: () => pan, runOnJS: () => pan, onEnd: () => pan };
   const Box = ({ children }: { children?: ReactNode }) => createElement('div', null, children);
   const Press = ({ accessibilityLabel, onPress, children }: { accessibilityLabel?: string; onPress?: () => void; children?: ReactNode }) =>
     createElement('button', { 'aria-label': accessibilityLabel, onClick: onPress }, children);
   const Sheet = loadNativeModule<{ default: ComponentType }>('app/fuel-month.tsx', {
     'date-fns': dates,
-    'expo-router': { router: { back: vi.fn() } },
+    'expo-router': { router: { back } },
     'react-native': { Pressable: Press, View: Box },
     'react-native-gesture-handler': { Gesture: { Pan: () => pan }, GestureDetector: Box },
     '@/lib/nutritionCalendar': calendar,
@@ -48,8 +49,10 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
     '@/lib/supabase': { supabase: { from: () => query } },
     '@/stores/appStore': { useAppStore: (select: (state: object) => unknown) => select({ macroTarget: null, nutritionProfile: null }) },
     '~/components/BlancText': { BlancText: ({ children }: { children?: ReactNode }) => createElement('span', null, children) },
+    '~/components/Capsule': { Capsule: ({ title, onPress }: { title: string; onPress?: () => void }) => createElement('button', { onClick: onPress }, title) },
     '~/components/GlassButton': { GlassButton: ({ accessibilityLabel, onPress }: { accessibilityLabel: string; onPress: () => void }) => createElement('button', { 'aria-label': accessibilityLabel, onClick: onPress }) },
     '~/fuel/DayMark': { DayMark: () => null },
+    '~/lib/accountData': { useCurrentDayKey: () => dates.format(new Date(), 'yyyy-MM-dd') },
     '~/lib/fuel': { dayKey: (date: Date) => dates.format(date, 'yyyy-MM-dd'), useFuelStore: { getState: () => fuel } },
     '~/lib/accessibility': silentAccessibility,
     '~/lib/format': { formatWhole: String },
@@ -66,7 +69,7 @@ async function openMonthSheet(reads: Array<Promise<Read>>) {
   };
   // A day with food says so: its kcal in the month Fuel holds, "food logged" in a month whose dates alone are read.
   const hasEntries = (day: string) => container.querySelector(`[aria-label="${day}, food logged"], [aria-label="${day}, 520 calories"]`) !== null;
-  return { container, press, hasEntries, read };
+  return { container, press, hasEntries, read, fuel, back };
 }
 
 const FAILED = 'Couldn’t load this month. Tap to try again.';
@@ -117,6 +120,16 @@ describe('Fuel month sheet', () => {
     await sheet.press('Previous month');
     await act(async () => { october.reject(new Error('network')); });
     expect(sheet.container.textContent).toContain(FAILED);
+  });
+
+  it('offers Today to jump back when viewing another day or month, and hides it on today in this month', async () => {
+    const onToday = await openMonthSheet([], '2026-11-04');
+    expect(onToday.container.textContent).not.toContain('Today');
+    await onToday.press('Previous month');
+    expect(onToday.container.textContent).toContain('Today');
+    await onToday.press('Today');
+    expect(onToday.fuel.select).toHaveBeenCalledWith('2026-11-04');
+    expect(onToday.back).toHaveBeenCalledTimes(1);
   });
 
   it('never marks the month on screen with a failure from a month left behind', async () => {

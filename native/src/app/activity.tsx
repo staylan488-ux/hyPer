@@ -22,8 +22,7 @@ import { space, useBlanc } from '~/theme/blanc';
 const NOTES_LIMIT = 280;
 
 /** The day History chose, or today: a future day starts on today, where the date picker ends. */
-function startDay(day?: string): string {
-  const today = format(new Date(), 'yyyy-MM-dd');
+function startDay(day: string | undefined, today: string): string {
   return day && day < today ? day : today;
 }
 
@@ -44,7 +43,7 @@ export default function ActivitySheet() {
     type: editing?.activity_type ?? 'bike_ride',
     customType: editing?.custom_type ?? '',
     title: editing?.title ?? '',
-    date: editing?.date ?? startDay(params.day),
+    date: editing?.date ?? startDay(params.day, currentDay),
     start: editing?.started_at ? new Date(editing.started_at).getTime() : null,
     minutes: editing?.duration_seconds ? String(Math.round(editing.duration_seconds / 60)) : '',
     notes: editing?.notes ?? '',
