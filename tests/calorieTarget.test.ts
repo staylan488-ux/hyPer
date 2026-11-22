@@ -56,6 +56,8 @@ describe('calorie target helpers', () => {
     const roundTripServings = servingsForAmount(trailMix, grams!, 'g');
     expect(Math.round(roundTripServings! * 100)).toBe(313);
     expect(amountForCalories(trailMix, '500', 'oz')).toBe('3.31');
+    expect(amountForCalories(trailMix, '80', 'kg')).toBe('0.015');
+    expect(servingsForAmount(trailMix, '0.015', 'kg')).toBeCloseTo(0.5, 6);
     expect(amountForCalories(trailMix, '500', 'ml')).toBeNull();
     expect(amountForCalories(water, '500', 'ml')).toBeNull();
   });

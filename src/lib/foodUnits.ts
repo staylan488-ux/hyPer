@@ -77,6 +77,13 @@ export function amountForCalories(food: CalorieBasis, caloriesText: string, unit
   return amountForServings(food, servings, unit);
 }
 
+function formatPreciseAmount(value: number, maxDecimals: number): string {
+  if (!Number.isFinite(value)) return '';
+  const scale = 10 ** maxDecimals;
+  const rounded = Math.round(value * scale) / scale;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(maxDecimals).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1');
+}
+
 /** Amount text in `unit` for a given serving count; null when the unit cannot convert. */
 export function amountForServings(food: Basis, servings: number, unit: MeasurementUnit): string | null {
   if (!Number.isFinite(servings) || servings <= 0) return null;
@@ -88,15 +95,20 @@ export function amountForServings(food: Basis, servings: number, unit: Measureme
     servingUnitRaw: food.serving_unit,
   });
   if (raw === null) return null;
-  const rounded = roundestAmount(raw, servings, (candidate) =>
-    computeServingsFromAmount({
+  const saved = savedHundredths(servings);
+  for (const decimals of [0, 1, 2, 3, 4]) {
+    const scale = 10 ** decimals;
+    const candidate = Math.round(raw * scale) / scale;
+    if (candidate <= 0) continue;
+    const back = computeServingsFromAmount({
       amount: candidate,
       amountUnitRaw: unit,
       servingSize: food.serving_size,
       servingUnitRaw: food.serving_unit,
-    }),
-  );
-  return formatMeasurementAmount(rounded);
+    });
+    if (back !== null && savedHundredths(back) === saved) return formatPreciseAmount(candidate, decimals);
+  }
+  return formatPreciseAmount(raw, 4);
 }
 
 /**
