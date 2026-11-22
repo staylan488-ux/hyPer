@@ -741,6 +741,17 @@ describe('editing measured food entries', () => {
     }));
   });
 
+  it('disables saving while an invalid calorie target is typed', async () => {
+    const trailMix = { ...milk, name: 'Trail Mix', calories: 160, protein: 5, serving_size: 30, serving_unit: 'g' };
+    const h = loggerHarness({ editing: true, realReview: true, entry: { ...loggedMilk, food: trailMix, servings: 1 } });
+    await h.render();
+    const calorieKey = Object.keys(h.captured.pressables).find((label) => label.includes('This entry'));
+    await act(async () => { h.captured.pressables[calorieKey!].onPress?.(); });
+    await act(async () => { h.captured.fields['Target calories'].onChangeText('0'); });
+    expect(h.captured.buttons['Save changes'].disabled).toBe(true);
+    expect(h.text()).toContain('Enter a valid calorie target greater than zero.');
+  });
+
   it('offers Open Settings on Barcode scan when camera access is off', async () => {
     const h = loggerHarness();
     h.barcodeAvailable.mockResolvedValue({ available: true });

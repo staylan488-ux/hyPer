@@ -73,6 +73,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
   const pending = useRef(createPendingEntryId()).current;
 
   const canTargetCalories = Number.isFinite(food.calories) && food.calories > 0;
+  const calorieDraftInvalid = editingCalories && amountForCalories(food, calorieDraft, unit) === null;
   const servings = servingsForAmount(food, amount, unit);
   const invalid = amountError(food, amount, unit);
   const shownInvalid = invalid && (amount.trim() !== '' || amountBlurred) ? invalid : null;
@@ -123,7 +124,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
   };
 
   const save = async () => {
-    if (servings === null || saving) return;
+    if (servings === null || calorieDraftInvalid || saving) return;
     if (logger.purpose === 'ingredients') {
       try {
         logger.addIngredients([createMealIngredient(food, servings)]);
@@ -335,6 +336,9 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
         </View>
       )}
 
+      {calorieDraftInvalid && calorieDraft.trim() !== '' ? (
+        <FormNote alert>Enter a valid calorie target greater than zero.</FormNote>
+      ) : null}
       {error ? <FormNote alert>{error}</FormNote> : null}
       {!error && helperOpen ? <FormNote>Convert and apply the amount typed above, or clear it to log.</FormNote> : null}
 
@@ -345,7 +349,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
           fill
           onPress={() => void save()}
           busy={saving}
-          disabled={servings === null || helperOpen}
+          disabled={servings === null || calorieDraftInvalid || helperOpen}
         />
       </View>
     </View>
