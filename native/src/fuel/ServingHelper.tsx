@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, TextInput, View } from 'react-native';
 
 import { interpretFoodServing, servingNeedsAi } from '@/lib/foodTrial';
+import { equivalentWeightLabel } from '@/lib/foodUnits';
 import type { Food } from '@/types';
 import { BlancText } from '~/components/BlancText';
 import { Capsule } from '~/components/Capsule';
@@ -46,6 +47,7 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   const request = useRef(0);
   // match nutrition_logs.servings DECIMAL(10,2)
   const logServings = result?.status === 'resolved' ? Math.round(result.servings * 100) / 100 : 0;
+  const weightEquivalent = result?.status === 'resolved' && result.optionId === 'calories' ? equivalentWeightLabel(food, logServings, 'serving') : null;
   // The answer lands after return (a moment later from Gemini): VoiceOver hears it (errors announce themselves).
   useAnnounce(
     result?.status === 'clarification' ? result.message : result?.status === 'resolved' ? `Reads as ${display(result.servings)} servings` : null,
@@ -109,9 +111,9 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
               setBusy(false);
               onOpenChange(Boolean(next.trim()));
             }}
-            placeholder="Or type 250 g, 200 ml, 12 oz"
+            placeholder="Or type 250 g, 500 cal, 12 oz"
             placeholderTextColor={c.upcoming}
-            accessibilityLabel="Or type an amount, like 250 g or 200 ml"
+            accessibilityLabel="Or type an amount, like 250 g or 500 cal"
             accessibilityHint="Works it out in servings"
             autoCorrect={false}
             returnKeyType="go"
@@ -156,6 +158,11 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
                     {display(result.servings)} servings
                   </BlancText>
                 </BlancText>
+                {weightEquivalent ? (
+                  <BlancText variant="footnote" tone="graphite" accessibilityLabel={speak(`About ${weightEquivalent}`)}>
+                    ≈ {weightEquivalent}
+                  </BlancText>
+                ) : null}
                 {result.assumption ? (
                   <BlancText variant="footnote" tone="graphite">
                     {result.assumption}
