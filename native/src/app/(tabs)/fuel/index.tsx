@@ -447,7 +447,7 @@ export default function FuelScreen() {
             <BlancText variant="secondary" tone="live" style={{ textAlign: 'center' }}>
               This day’s food could not load.
             </BlancText>
-            <Capsule title={refreshing ? 'Trying…' : 'Try again'} variant="quiet" disabled={refreshing} onPress={() => void refresh()} />
+            <Capsule title={refreshing ? 'Trying…' : 'Try again'} variant="quiet" disabled={refreshing} onPress={() => void refresh()} style={{ alignSelf: 'center' }} />
           </View>
         ) : null}
       </TabScroll>

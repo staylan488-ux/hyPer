@@ -231,6 +231,7 @@ export default function FuelMonthSheet() {
           <Capsule
             title="Today"
             variant="quiet"
+            style={{ alignSelf: 'center' }}
             onPress={() => {
               useFuelStore.getState().select(currentDay);
               router.back();
