@@ -84,7 +84,7 @@ type Press = {
 type SwipeAction = { label: string; destructive?: boolean; onPress: () => void };
 type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
 type AlertButton = { text: string; onPress?: () => void };
-type Input = { accessibilityLabel?: string; value?: string; editable?: boolean; onChangeText?: (text: string) => void; onFocus?: () => void };
+type Input = { accessibilityLabel?: string; value?: string; editable?: boolean; onChangeText?: (text: string) => void; onFocus?: () => void; onSubmitEditing?: () => void };
 type Context = { beginBusy: () => () => void; beginRead: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food, editSaved?: boolean, servings?: number) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null }; setWhen: (next: { date: Date; time: string; groupId: string | null }) => void };
 type ReviewProps = {
   draft: composition.MealDraft;
@@ -489,6 +489,12 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   } };
   imports['~/fuel/ScanTab'] = loadNativeModule('fuel/ScanTab.tsx', imports);
   if (realReview) {
+    const servingHelper = loadNativeModule<NativeModule>('fuel/ServingHelper.tsx', {
+      ...imports,
+      '@/lib/foodTrial': foodTrial,
+      '@/lib/foodUnits': foodUnits,
+      '~/lib/aiConsent': { askAiConsent: async () => true },
+    });
     const foodReview = loadNativeModule<NativeModule>('fuel/FoodReview.tsx', {
       ...imports,
       '@/lib/foodUnits': foodUnits,
@@ -502,7 +508,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
           return createElement('input', { 'aria-label': label, value: props.value, readOnly: true });
         },
       },
-      './ServingHelper': { ServingHelper: Empty },
+      './ServingHelper': servingHelper,
     });
     imports['~/fuel/FoodReview'] = { FoodReview: (props: { food: Food }) => {
       captured.foodReview = props;
@@ -750,6 +756,120 @@ describe('editing measured food entries', () => {
     await act(async () => { h.captured.fields['Target calories'].onChangeText('0'); });
     expect(h.captured.buttons['Save changes'].disabled).toBe(true);
     expect(h.text()).toContain('Enter a valid calorie target greater than zero.');
+  });
+
+  it('keeps typed amounts in ServingHelper, converts 100 g and 500 ml, and applies the adjusted serving size', async () => {
+    const helperLabel = 'Or type an amount, like 250 g or 500 cal';
+    const h = loggerHarness({ realReview: true });
+    await h.render();
+    await act(async () => { h.captured.context!.chooseFood(milk); });
+
+    // Typing character-by-character must never erase what was typed.
+    await act(async () => { h.captured.inputs[helperLabel].onChangeText!('5'); });
+    expect(h.captured.inputs[helperLabel].value).toBe('5');
+    expect(h.captured.buttons['Log entry'].disabled).toBe(true);
+    expect(h.captured.pressables.Convert).toBeDefined();
+
+    await act(async () => { h.captured.inputs[helperLabel].onChangeText!('500 ml'); });
+    expect(h.captured.inputs[helperLabel].value).toBe('500 ml');
+    await h.press('Convert');
+    await h.flush();
+    expect(h.captured.buttons['Use this amount']).toBeDefined();
+    await h.click('Use this amount');
+
+    expect(h.captured.fields.Amount.value).toBe('2.08');
+    expect(h.captured.inputs[helperLabel].value).toBe('');
+    expect(h.captured.buttons['Log entry'].disabled).toBe(false);
+
+    // Also works when Amount is already in grams (e.g. a saved/recent item) and keeps the gram unit.
+    const trailMix = { ...milk, id: 'trail-mix', name: 'Trail Mix', calories: 160, protein: 5, serving_size: 30, serving_unit: 'g' };
+    const edited = loggerHarness({ editing: true, realReview: true, entry: { ...loggedMilk, food: trailMix, servings: 1 } });
+    await edited.render();
+    expect(edited.captured.fields.Amount.value).toBe('30');
+    await act(async () => { edited.captured.inputs[helperLabel].onChangeText!('1'); });
+    expect(edited.captured.inputs[helperLabel].value).toBe('1');
+    await act(async () => { edited.captured.inputs[helperLabel].onChangeText!('100 g'); });
+    expect(edited.captured.inputs[helperLabel].value).toBe('100 g');
+    await edited.press('Convert');
+    await edited.flush();
+    await edited.click('Use this amount');
+    expect(edited.captured.fields.Amount.value).toBe('100');
+    expect(edited.captured.inputs[helperLabel].value).toBe('');
+    expect(edited.captured.buttons['Save changes'].disabled).toBe(false);
+  });
+
+  it('clears ServingHelper when focusing Amount or tapping Target calories, and closes Target calories when typing in ServingHelper', async () => {
+    const helperLabel = 'Or type an amount, like 250 g or 500 cal';
+    const trailMix = { ...milk, id: 'trail-mix', name: 'Trail Mix', calories: 160, protein: 5, serving_size: 30, serving_unit: 'g' };
+    const h = loggerHarness({ realReview: true });
+    await h.render();
+    await act(async () => { h.captured.context!.chooseFood(trailMix); });
+
+    // Focusing Amount clears ServingHelper and re-enables Log entry.
+    await act(async () => { h.captured.inputs[helperLabel].onChangeText!('100 g'); });
+    expect(h.captured.inputs[helperLabel].value).toBe('100 g');
+    expect(h.captured.buttons['Log entry'].disabled).toBe(true);
+    await act(async () => { h.captured.fields.Amount.onFocus?.(); });
+    expect(h.captured.inputs[helperLabel].value).toBe('');
+    expect(h.captured.buttons['Log entry'].disabled).toBe(false);
+
+    // Tapping This entry clears ServingHelper and opens Target calories.
+    await act(async () => { h.captured.inputs[helperLabel].onChangeText!('100 g'); });
+    const calorieKey = Object.keys(h.captured.pressables).find((label) => label.includes('This entry'));
+    await act(async () => { h.captured.pressables[calorieKey!].onPress?.(); });
+    expect(h.captured.inputs[helperLabel].value).toBe('');
+    expect(h.captured.fields['Target calories']).toBeDefined();
+
+    // Typing into ServingHelper while Target calories is open closes Target calories and keeps the text.
+    await act(async () => { h.captured.inputs[helperLabel].onChangeText!('500 cal'); });
+    expect(h.captured.inputs[helperLabel].value).toBe('500 cal');
+    await h.press('Convert');
+    await h.flush();
+    await h.click('Use this amount');
+    expect(h.captured.fields.Amount.value).toBe('3.13');
+    expect(h.captured.buttons['Log entry'].disabled).toBe(false);
+  });
+
+  it('does not erase ServingHelper text when a parent passes a new onOpenChange callback on every render', async () => {
+    const helperLabel = 'Or type an amount, like 250 g or 500 cal';
+    const h = loggerHarness({ realReview: true });
+    const { ServingHelper } = loadNativeModule<{ ServingHelper: ComponentType<{ food: Food; disabled: boolean; open: boolean; onApply: (servings: number) => void; onOpenChange: (open: boolean) => void }> }>(
+      'fuel/ServingHelper.tsx',
+      {
+        ...h.imports,
+        '@/lib/foodTrial': foodTrial,
+        '@/lib/foodUnits': foodUnits,
+        '~/lib/aiConsent': { askAiConsent: async () => true },
+      },
+    );
+    const openChanges: boolean[] = [];
+    function Wrapper({ show = true }: { show?: boolean }) {
+      const [open, setOpen] = useState(false);
+      return show
+        ? createElement(ServingHelper, {
+            food: milk,
+            disabled: false,
+            open,
+            onApply: noop,
+            // Deliberately inline (new identity every render) to guard against effect-cleanup regressions.
+            onOpenChange: (next) => {
+              openChanges.push(next);
+              setOpen(next);
+            },
+          })
+        : null;
+    }
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    active.push(async () => { await act(async () => { root.unmount(); }); });
+    await act(async () => { root.render(createElement(Wrapper, { show: true })); });
+    await act(async () => { h.captured.inputs[helperLabel].onChangeText!('2'); });
+    expect(h.captured.inputs[helperLabel].value).toBe('2');
+    expect(openChanges).toEqual([true]);
+
+    // Unmounting still notifies the parent with false.
+    await act(async () => { root.render(createElement(Wrapper, { show: false })); });
+    expect(openChanges).toEqual([true, false]);
   });
 
   it('offers Open Settings on Barcode scan when camera access is off', async () => {

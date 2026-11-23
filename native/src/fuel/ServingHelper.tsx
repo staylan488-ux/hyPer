@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, TextInput, View } from 'react-native';
 
 import { interpretFoodServing, servingNeedsAi } from '@/lib/foodTrial';
@@ -52,12 +52,15 @@ export function ServingHelper({ food, disabled, open, onApply, onOpenChange }: {
   useAnnounce(
     result?.status === 'clarification' ? result.message : result?.status === 'resolved' ? `Reads as ${display(result.servings)} servings` : null,
   );
+  // Notify the review only on unmount; putting onOpenChange in the deps would
+  // fire cleanup on every re-render with an inline callback and erase typed text.
+  const closeOnUnmount = useEffectEvent(() => onOpenChange(false));
   useEffect(
     () => () => {
       request.current++;
-      onOpenChange(false);
+      closeOnUnmount();
     },
-    [onOpenChange],
+    [],
   );
   // Set aside by the review (Amount typed by hand): drop what was typed here.
   useEffect(() => {
