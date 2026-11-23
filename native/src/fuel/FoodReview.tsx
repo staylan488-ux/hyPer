@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActionSheetIOS, Pressable, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -92,6 +92,11 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
           ? 'serving'
           : 'servings';
   const basis = foodBasisLabel(food);
+
+  const handleHelperOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen) setEditingCalories(false);
+    setHelperOpen(nextOpen);
+  }, []);
 
   const chooseUnit = () => {
     setEditingCalories(false);
@@ -227,10 +232,7 @@ export function FoodReview({ food, meta, servings: usual, onAmountChange, onChan
           food={food}
           disabled={saving}
           open={helperOpen}
-          onOpenChange={(nextOpen) => {
-            if (nextOpen) setEditingCalories(false);
-            setHelperOpen(nextOpen);
-          }}
+          onOpenChange={handleHelperOpenChange}
           onApply={(next) => {
             setAmountBlurred(false);
             setEditingCalories(false);
