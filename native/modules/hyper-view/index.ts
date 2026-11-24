@@ -5,6 +5,7 @@ export type WindowFrame = { x: number; y: number; width: number; height: number 
 
 interface HyperViewNative {
   windowFrame(viewTag: number): Promise<WindowFrame | null>;
+  copyText?: (text: string) => Promise<void>;
 }
 
 let loaded: HyperViewNative | null = null;
@@ -21,5 +22,17 @@ export async function windowFrame(view: Parameters<typeof findNodeHandle>[0]): P
     return await native().windowFrame(tag);
   } catch {
     return null;
+  }
+}
+
+/** Copies plain text to iOS's pasteboard. False on an older build that does not expose it yet. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    const mod = native();
+    if (typeof mod.copyText !== 'function') return false;
+    await mod.copyText(text);
+    return true;
+  } catch {
+    return false;
   }
 }

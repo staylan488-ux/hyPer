@@ -7,6 +7,7 @@ import { useEffect, useMemo } from 'react';
 import { Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { connectionsSummaryLabel } from '@/lib/agentGrants';
 import { formatWeight } from '@/lib/weightDisplayCore';
 import { DEFAULT_WEIGHT_RANGE, weightLatestRunDays, weightRange } from '@/lib/weightHistory';
 import { useAppStore } from '@/stores/appStore';
@@ -31,6 +32,7 @@ import {
   APPEARANCE_LABELS,
   chooseAppearance,
   loadYou,
+  useAgentGrantsStore,
   useAnalysisModeStore,
   useAppearanceStore,
   useHealthStore,
@@ -57,6 +59,7 @@ export default function YouScreen() {
   const targetKnown = useAppStore((state) => Boolean(userId) && state.macroTargetLoadedForUserId === userId);
   const whoop = useAppStore((state) => state.whoopConnection);
   const health = useHealthStore((state) => state.enabled);
+  const agents = useAgentGrantsStore((state) => state.grants);
   const analysis = useAnalysisModeStore((state) => state.mode);
   const early = useEarlyAccess();
   const { refreshing, refresh } = usePullRefresh(loadYou);
@@ -72,10 +75,8 @@ export default function YouScreen() {
     .join('')
     .slice(0, 2)
     .toUpperCase();
-  // Two steps: the React Compiler can't yet compile a ternary inside `||`.
-  const connected = [whoop ? 'WHOOP' : null, health ? 'Health' : null].filter(Boolean).join(', ');
   // Nothing connected shows no value: a placeholder "None" says nothing the row doesn't.
-  const connections = connected || undefined;
+  const connections = connectionsSummaryLabel({ whoop: Boolean(whoop), health, agents });
 
   return (
     <>

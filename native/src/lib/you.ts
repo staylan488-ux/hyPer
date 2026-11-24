@@ -8,6 +8,7 @@ import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
 import { captureAccountScope } from '@/lib/accountScope';
+import { listAgentGrants, revokeAgentGrant, sortAgentGrants, type AgentGrant } from '@/lib/agentGrants';
 import { getFoodAnalysisMode, saveFoodAnalysisMode } from '@/lib/foodTrial';
 import { WEIGHT_TREND_WINDOW_DAYS } from '@/lib/bodyWeightSummary';
 import {
@@ -63,10 +64,10 @@ export function usePullRefresh(load: () => Promise<unknown>) {
 }
 
 /**
- * Everything the You page shows: weight, targets, saved meals and WHOOP. Every
- * weigh-in is read as well as the recent ones, so Body weight opens with its
- * whole history drawn, while the card still shows as soon as the short read
- * lands, however long the history.
+ * Everything the You page shows: weight, targets, saved meals, connected agents
+ * and WHOOP. Every weigh-in is read as well as the recent ones, so Body weight
+ * opens with its whole history drawn, while the card still shows as soon as the
+ * short read lands, however long the history.
  */
 export async function loadYou(): Promise<void> {
   await Promise.allSettled([
@@ -74,6 +75,7 @@ export async function loadYou(): Promise<void> {
     loadWeights({ all: true }),
     loadTargets(),
     loadYouMeals(),
+    loadAgentGrants(),
     useAppStore.getState().fetchWhoopConnection(),
   ]);
 }
@@ -490,6 +492,79 @@ export const APPEARANCE_LABELS: Record<AppearanceChoice, string> = {
   dark: 'Dark',
 };
 
+// ── AI agents ────────────────────────────────────────────────────────────
+
+type AgentGrantsState = {
+  /** Connected OAuth agents, newest first; null until the first read lands. */
+  grants: AgentGrant[] | null;
+  loading: boolean;
+  failed: boolean;
+};
+
+export const useAgentGrantsStore = create<AgentGrantsState>(() => ({
+  grants: null,
+  loading: false,
+  failed: false,
+}));
+
+let agentReadsStarted = 0;
+let agentReadsShown = 0;
+const agentReadsRunning = new Map<number, () => boolean>();
+/** Agents currently being disconnected so an overlapping read does not bring them back. */
+const revokingAgents = new Set<string>();
+
+/** Reads connected OAuth agents for the signed-in account. A failed read keeps what is shown. */
+export async function loadAgentGrants(): Promise<void> {
+  const userId = currentUserId();
+  if (!userId) return;
+  const isCurrent = captureAccountScope();
+  const read = ++agentReadsStarted;
+  agentReadsRunning.set(read, isCurrent);
+  useAgentGrantsStore.setState({ loading: true });
+  try {
+    const grants = (await listAgentGrants()).filter((grant) => !revokingAgents.has(grant.clientId));
+    if (isCurrent() && read >= agentReadsShown) {
+      agentReadsShown = read;
+      useAgentGrantsStore.setState({ grants, failed: false });
+    }
+  } catch {
+    if (isCurrent() && read >= agentReadsShown) {
+      useAgentGrantsStore.setState({ failed: true });
+    }
+  } finally {
+    agentReadsRunning.delete(read);
+    if (isCurrent()) {
+      useAgentGrantsStore.setState({ loading: [...agentReadsRunning.values()].some((active) => active()) });
+    }
+  }
+}
+
+/** Disconnects an OAuth agent optimistically; puts it back if revocation fails. */
+export async function disconnectAgent(grant: AgentGrant): Promise<boolean> {
+  const userId = currentUserId();
+  if (!userId || revokingAgents.has(grant.clientId)) return false;
+  const isCurrent = captureAccountScope();
+  revokingAgents.add(grant.clientId);
+  useAgentGrantsStore.setState((state) => ({
+    grants: state.grants ? state.grants.filter((candidate) => candidate.clientId !== grant.clientId) : state.grants,
+  }));
+  try {
+    await revokeAgentGrant(grant.clientId);
+    // Ignore any read that began before this revoke succeeded; later reads see a reconnect cleanly.
+    agentReadsShown = Math.max(agentReadsShown, ++agentReadsStarted);
+    return true;
+  } catch {
+    if (isCurrent()) {
+      useAgentGrantsStore.setState((state) => ({
+        grants: state.grants ? sortAgentGrants([...state.grants, grant]) : [grant],
+      }));
+    }
+    return false;
+  } finally {
+    revokingAgents.delete(grant.clientId);
+  }
+}
+
 // ── Sign-out ─────────────────────────────────────────────────────────────
 
 /** Leaves nothing of this account in You's screens. */
@@ -498,6 +573,8 @@ export function resetYou() {
   useTargetsStore.setState({ status: 'loading', staged: null, message: null });
   useYouMealsStore.setState({ meals: null, failed: false });
   useHealthStore.setState({ busy: false, message: null });
+  revokingAgents.clear();
+  useAgentGrantsStore.setState({ grants: null, loading: false, failed: false });
 }
 
 /** Deletes a typed weigh-in; it leaves the list at once and comes back if the delete fails. */

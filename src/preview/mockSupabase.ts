@@ -423,6 +423,19 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
     }
   }
   const scenario: MockScenario = { remainingSetFailures: options?.setSaveFailures ?? 0, delayMs: 0 };
+  const previewGrantTime = new Date();
+  previewGrantTime.setHours(Math.max(0, previewGrantTime.getHours() - 2), 15, 0, 0);
+  const previewOAuthGrants = [
+    {
+      client: {
+        id: 'preview-claude',
+        name: 'Claude',
+        uri: 'https://claude.ai',
+      },
+      scopes: [] as string[],
+      granted_at: previewGrantTime.toISOString(),
+    },
+  ];
   const auth = {
     getUser: async () => ({ data: { user: getPreviewUser() }, error: null }),
     getSession: async () => ({ data: { session: { user: getPreviewUser(), access_token: 'preview' } }, error: null }),
@@ -439,6 +452,14 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
         globalThis.localStorage?.setItem('hyper:preview:user-metadata', JSON.stringify(user.user_metadata));
       } catch { /* The confirmed value still applies for this render. */ }
       return { data: { user }, error: null };
+    },
+    oauth: {
+      listGrants: async () => ({ data: structuredClone(previewOAuthGrants), error: null }),
+      revokeGrant: async ({ clientId }: { clientId: string }) => {
+        const index = previewOAuthGrants.findIndex((grant) => grant.client.id === clientId);
+        if (index >= 0) previewOAuthGrants.splice(index, 1);
+        return { data: {}, error: null };
+      },
     },
   };
 

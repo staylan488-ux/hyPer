@@ -2,11 +2,10 @@ import * as WebBrowser from 'expo-web-browser';
 import { Linking } from 'react-native';
 
 /**
- * hyPer's public pages (site/ in the repo, published to GitHub Pages). The
- * App Store listing names the same addresses (docs/app-store-listing.md);
- * if the site moves, change them together.
+ * hyPer's public pages (site/ in the repo, served from thehyper.app). Keep
+ * App Store Connect's policy and support URLs pointing at these addresses too.
  */
-const SITE = 'https://staylan488-ux.github.io/hyPer';
+const SITE = 'https://thehyper.app';
 export const PRIVACY_URL = `${SITE}/privacy/`;
 export const TERMS_URL = `${SITE}/terms/`;
 export const SUPPORT_URL = `${SITE}/support/`;
