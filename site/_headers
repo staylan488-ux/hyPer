@@ -1,0 +1,29 @@
+# Cloudflare Pages response headers for thehyper.app.
+#
+# The consent page signs people in to hyPer and lets an app into their
+# account, so it is held tighter than the rest of the site:
+# - It can never be drawn inside another page (X-Frame-Options and
+#   frame-ancestors), where a press on "Allow access" could be stolen.
+# - It loads nothing but its own files and the Supabase client from esm.sh,
+#   runs no inline script or style, and talks only to Supabase. If the
+#   project's address is not on supabase.co, put it in connect-src on both
+#   rules.
+# - Its address carries a request's id, so it is never sent on as a referrer
+#   and the page is never cached.
+#
+# Both rules carry the same headers: the page's address with and without the
+# closing slash. tests/oauthConsentPage.test.ts checks them.
+
+/oauth/consent
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://esm.sh; style-src 'self'; img-src 'self'; connect-src https://auth.thehyper.app https://*.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Cache-Control: no-store
+
+/oauth/consent/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://esm.sh; style-src 'self'; img-src 'self'; connect-src https://auth.thehyper.app https://*.supabase.co; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Cache-Control: no-store

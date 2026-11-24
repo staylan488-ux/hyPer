@@ -1,0 +1,21 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "thehyper",
+  "account_id": "e455c4250c34e37ec69b5d3aa1015b9c",
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-22",
+  "workers_dev": false,
+  "assets": {
+    "directory": "../site",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "routes": [
+    { "pattern": "thehyper.app", "custom_domain": true },
+    { "pattern": "mcp.thehyper.app", "custom_domain": true }
+  ],
+  "vars": {
+    "SUPABASE_MCP_URL": "https://nnwfaaxmyvqsdnfcdxom.supabase.co/functions/v1/mcp",
+    "SUPABASE_AUTH_URL": "https://auth.thehyper.app/auth/v1"
+  }
+}

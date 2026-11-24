@@ -1,0 +1,530 @@
+/*
+ * "Sign in with hyPer": the consent page. Colours, type roles and the page
+ * column come from /assets/blanc.css.
+ *
+ * The page is the app's sign-in screen on the web: the mark, a title, then
+ * rows on the ground between hairlines. A button is a capsule, and the one
+ * filled in ink is the page's main action.
+ */
+
+/* ── Views ────────────────────────────────────────────────────────────── */
+
+/* The mark stays put; what is under it rises in, as on the app's sign-in. */
+.view {
+  margin-top: 18px;
+}
+
+.view:not([hidden]) {
+  animation: rise 360ms cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+
+.intro {
+  display: grid;
+  gap: 10px;
+}
+
+/* A new view's heading takes the focus so a screen reader starts there; it shows no ring. */
+[tabindex="-1"]:focus {
+  outline: 0;
+}
+
+.intro--close {
+  gap: 8px;
+}
+
+.noscript {
+  margin-top: 26px;
+}
+
+/* ── Waiting ──────────────────────────────────────────────────────────── */
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  margin-top: 26px;
+  color: var(--graphite);
+}
+
+/* A check that takes a blink shows nothing; a slower one says so. */
+.view--waiting:not([hidden]) {
+  animation: appear 240ms ease 320ms both;
+}
+
+.view--waiting[data-now]:not([hidden]) {
+  animation: rise 360ms cubic-bezier(0.22, 0.8, 0.24, 1) both;
+}
+
+/* Without JavaScript nothing is on its way. */
+@media (scripting: none) {
+  .view--waiting {
+    display: none;
+  }
+}
+
+.spinner {
+  box-sizing: border-box;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 760ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.3;
+  }
+}
+
+/* ── Capsule: Blanc's button ──────────────────────────────────────────── */
+
+.capsule {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 54px;
+  margin: 0;
+  padding: 10px 26px;
+  border: 0;
+  border-radius: 27px;
+  background: var(--capsule);
+  color: var(--on-capsule);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: calc(22 / 17);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 150ms cubic-bezier(0.22, 0.8, 0.24, 1), background-color 180ms ease, color 180ms ease, opacity 180ms ease;
+}
+
+.capsule__label {
+  transition: opacity 120ms ease;
+}
+
+/* Under the finger it gives a little, as the app's does. */
+.capsule:active {
+  transform: scale(0.985);
+}
+
+/* A quieter action beside the main one: the fill, drawn by a hairline. */
+.capsule--quiet {
+  background: var(--fill);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.capsule--quiet:active {
+  background: var(--pressed);
+}
+
+/* Beside a line of text: 36 px drawn, with a 44 px target. */
+.capsule--small {
+  flex: none;
+  width: auto;
+  min-width: 76px;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 18px;
+  font-size: calc(16rem / 17);
+  line-height: calc(20 / 16);
+}
+
+.capsule--small::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+
+.capsule--small:active {
+  transform: scale(0.96);
+}
+
+/* Not ready yet: it sits back in the track's grey with a dimmed title. */
+.capsule[aria-disabled="true"] {
+  background: var(--track);
+  color: var(--upcoming);
+  cursor: default;
+}
+
+.capsule--quiet[aria-disabled="true"] {
+  background: var(--fill);
+  color: var(--upcoming);
+}
+
+.capsule[aria-disabled="true"]:active {
+  transform: none;
+}
+
+/* Working: the title makes room for a spinner and the capsule keeps its size. */
+.capsule .spinner {
+  display: none;
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.capsule[aria-busy="true"] {
+  cursor: progress;
+}
+
+.capsule[aria-busy="true"] .capsule__label {
+  opacity: 0;
+}
+
+.capsule[aria-busy="true"] .spinner {
+  display: block;
+}
+
+@media (hover: hover) {
+  .capsule:not([aria-disabled="true"]):not([aria-busy="true"]):hover {
+    background: color-mix(in srgb, var(--capsule) 86%, var(--ground));
+  }
+
+  .capsule--quiet:not([aria-disabled="true"]):not([aria-busy="true"]):hover {
+    background: var(--pressed);
+  }
+}
+
+/* Google's G, tinted with the title's colour as the app tints it: 15 px beside
+   a 17 px title, centred on its capitals, and part of the line if the title wraps. */
+.google-g {
+  display: inline-block;
+  width: calc(15em / 17);
+  height: calc(15em / 17);
+  margin-right: calc(8em / 17);
+  vertical-align: -0.09em;
+  background: currentColor;
+  -webkit-mask: url("/assets/images/google-g.svg") center / contain no-repeat;
+  mask: url("/assets/images/google-g.svg") center / contain no-repeat;
+}
+
+/* A quiet text button under a form or beside a line. */
+.link {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: calc(15rem / 17);
+  line-height: calc(20 / 15);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: opacity 120ms ease;
+}
+
+.link:active,
+.link[aria-disabled="true"] {
+  opacity: 0.5;
+}
+
+/* Beside a quiet line, as the app's Terms links: graphite, underlined. */
+.link--subtle {
+  color: var(--graphite);
+  font-weight: 400;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: from-font;
+}
+
+@media (hover: hover) {
+  .link:not([aria-disabled="true"]):hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: from-font;
+  }
+}
+
+/* ── Sign in ──────────────────────────────────────────────────────────── */
+
+.signin-google {
+  margin-top: 32px;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 4px;
+}
+
+.or::before,
+.or::after {
+  content: "";
+  flex: 1;
+  height: var(--hairline-width);
+  background: var(--hairline);
+}
+
+/* A form row as iOS draws one: the label, then what is typed, on a rule.
+   At the larger text sizes the field moves under its label, as iOS's do. */
+.field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  align-content: center;
+  column-gap: 12px;
+  min-height: 52px;
+  border-bottom: var(--hairline-width) solid var(--hairline);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.field:focus-within {
+  border-bottom-color: var(--ink);
+  box-shadow: 0 1px 0 0 var(--ink);
+}
+
+/* The label's own line is 4 px above the field when the field is under it. */
+.field label {
+  flex: 0 0 5.5rem;
+  padding-top: 14px;
+  margin-bottom: -10px;
+  font-size: 1rem;
+  line-height: calc(22 / 17);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Never under 16 px: Safari on iPhone zooms the page into a smaller field. */
+.field input {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 10.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: max(1rem, 16px);
+  line-height: calc(22 / 17);
+  letter-spacing: normal;
+}
+
+.field input::placeholder {
+  color: var(--graphite);
+  opacity: 1;
+}
+
+/* A saved password fills in on the ground, not on the browser's tint. */
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  box-shadow: 0 0 0 100px var(--ground) inset;
+  caret-color: var(--ink);
+}
+
+.error {
+  color: var(--live);
+  text-wrap: pretty;
+}
+
+.form .error {
+  margin-top: 14px;
+}
+
+.signin-submit {
+  margin-top: 18px;
+}
+
+/* ── Consent ──────────────────────────────────────────────────────────── */
+
+.lead {
+  margin-top: 28px;
+}
+
+.rows {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: var(--hairline-width) solid var(--hairline);
+}
+
+.rows li {
+  padding: 14px 0;
+  border-bottom: var(--hairline-width) solid var(--hairline);
+  text-wrap: balance;
+}
+
+.scopes {
+  margin-top: 10px;
+}
+
+/* Who is signed in, and a way to be someone else. */
+.account {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 12px;
+  min-height: 44px;
+  margin-top: 6px;
+}
+
+.account p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.account__name {
+  color: var(--ink);
+}
+
+.account + .error {
+  margin-top: 6px;
+}
+
+.actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.afterword {
+  margin-top: 20px;
+}
+
+/* ── No request ───────────────────────────────────────────────────────── */
+
+.address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+  margin-top: 30px;
+  border-top: var(--hairline-width) solid var(--hairline);
+  border-bottom: var(--hairline-width) solid var(--hairline);
+}
+
+.address__url {
+  min-width: 0;
+  padding: 10px 0;
+  font-family: var(--mono);
+  font-size: calc(15rem / 17);
+  line-height: calc(20 / 15);
+  overflow-wrap: anywhere;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+/* ── A problem ────────────────────────────────────────────────────────── */
+
+.problem-retry {
+  margin-top: 30px;
+}
+
+/* ── Preview ──────────────────────────────────────────────────────────── */
+
+.preview-tag {
+  width: 100%;
+  max-width: 24rem;
+  margin-top: auto;
+  padding-top: 48px;
+  color: var(--upcoming);
+}
+
+/* ── Reduce Motion, Increase Contrast, forced colours ─────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .view:not([hidden]),
+  .view--waiting[data-now]:not([hidden]) {
+    animation: appear 160ms linear both;
+  }
+
+  .view--waiting:not([hidden]):not([data-now]) {
+    animation: appear 160ms linear 320ms both;
+  }
+
+  .capsule,
+  .capsule__label,
+  .field,
+  .link {
+    transition: none;
+  }
+
+  .capsule:active,
+  .capsule--small:active {
+    transform: none;
+  }
+
+  /* Working still shows, without turning. */
+  .spinner {
+    border-top-color: currentColor;
+    animation: pulse 900ms ease-in-out infinite alternate;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .capsule--quiet {
+    box-shadow: inset 0 0 0 1.5px var(--ink);
+  }
+
+  .capsule[aria-disabled="true"] {
+    box-shadow: inset 0 0 0 1.5px var(--upcoming);
+  }
+
+  .field:focus-within {
+    box-shadow: 0 2px 0 0 var(--ink);
+  }
+}
+
+@media (forced-colors: active) {
+  .capsule {
+    border: 1px solid ButtonText;
+  }
+
+  .capsule[aria-disabled="true"] {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  .mark {
+    fill: CanvasText;
+  }
+}
