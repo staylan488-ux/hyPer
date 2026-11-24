@@ -11,6 +11,7 @@ import {
   createMcpHandler,
   kgToLb,
   lbToKg,
+  type AgentActionRow,
   type BodyWeightRow,
   type FoodRow,
   type MacroTargetRow,
@@ -18,6 +19,7 @@ import {
   type McpServices,
   type McpToolCallResult,
   type McpToolDefinition,
+  type NewAgentActionInsert,
   type NewBodyWeightInsert,
   type NewFoodInsert,
   type NewNutritionGroupInsert,
@@ -42,6 +44,7 @@ interface MemoryDb {
   macroTargets: Map<string, MacroTargetRow>;
   profiles: Map<string, NutritionProfileRow>;
   weights: BodyWeightRow[];
+  agentActions: AgentActionRow[];
 }
 
 function makeUuid(counter: number): string {
@@ -60,6 +63,7 @@ function createMemoryDb(seed: Partial<MemoryDb> = {}) {
     macroTargets: new Map(seed.macroTargets ?? []),
     profiles: new Map(seed.profiles ?? []),
     weights: [...(seed.weights ?? [])],
+    agentActions: [...(seed.agentActions ?? [])],
   };
 
   function repositoryFor(callerUserId: string): McpRepository {
@@ -163,6 +167,16 @@ function createMemoryDb(seed: Partial<MemoryDb> = {}) {
           created_at: FIXED_NOW.toISOString(),
         };
         db.weights.push(inserted);
+        return inserted;
+      },
+      async insertAgentAction(action: NewAgentActionInsert) {
+        const inserted: AgentActionRow = {
+          id: nextId(),
+          created_at: FIXED_NOW.toISOString(),
+          undone_at: null,
+          ...action,
+        };
+        db.agentActions.push(inserted);
         return inserted;
       },
     };
@@ -1170,6 +1184,109 @@ describe('Tool 6: log_body_weight', () => {
       expect(res.rpc.result?.isError).toBe(true);
     }
     expect(db.weights).toHaveLength(0);
+  });
+});
+
+describe('Agent action audit log (before/after undo snapshots)', () => {
+  it('records undo snapshots and client_id for all 4 write tools, and nothing for read-only tools', async () => {
+    const { handler, db } = makeHarness({}, {
+      authenticate: vi.fn(async (token: string) => (token === 'valid-token' ? { userId: USER_ID, clientId: 'oauth-claude' } : null)),
+    });
+
+    await callTool(handler, 'get_day_summary', {});
+    await callTool(handler, 'search_foods', {});
+    expect(db.agentActions).toHaveLength(0);
+
+    const logged = await callTool(handler, 'log_food', {
+      date: '2026-11-22',
+      meal: 'lunch',
+      name: 'Chicken Bowl',
+      calories: 550,
+      protein: 45,
+      carbs: 50,
+      fat: 16,
+    });
+    const logId = db.logs[0].id;
+    expect(logged.rpc.result?.structuredContent?.action_id).toBe(db.agentActions[0].id);
+    expect(db.agentActions[0]).toMatchObject({
+      user_id: USER_ID,
+      client_id: 'oauth-claude',
+      tool_name: 'log_food',
+      summary: 'Logged Chicken Bowl',
+      undo_payload: {
+        kind: 'log_food',
+        date: '2026-11-22',
+        meal: 'lunch',
+        log_ids: [logId],
+        total_calories: 550,
+        item_count: 1,
+        first_food_name: 'Chicken Bowl',
+      },
+    });
+
+    await callTool(handler, 'update_food_log', { log_id: logId, servings: 1.5 });
+    expect(db.agentActions[1]).toMatchObject({
+      client_id: 'oauth-claude',
+      tool_name: 'update_food_log',
+      summary: 'Updated Chicken Bowl',
+      undo_payload: {
+        kind: 'update_food_log',
+        food_name: 'Chicken Bowl',
+        before: { id: logId, date: '2026-11-22', servings: 1, meal_type: 'lunch' },
+        after: { date: '2026-11-22', servings: 1.5, meal_type: 'lunch' },
+      },
+    });
+
+    await callTool(handler, 'delete_food_log', { log_id: logId });
+    expect(db.agentActions[2]).toMatchObject({
+      client_id: 'oauth-claude',
+      tool_name: 'delete_food_log',
+      summary: 'Removed Chicken Bowl',
+      undo_payload: {
+        kind: 'delete_food_log',
+        food_name: 'Chicken Bowl',
+        calories: 825,
+        deleted_row: { id: logId, date: '2026-11-22', servings: 1.5, meal_type: 'lunch' },
+      },
+    });
+
+    await callTool(handler, 'log_body_weight', { weight: 180, unit: 'lb' });
+    expect(db.agentActions[3]).toMatchObject({
+      client_id: 'oauth-claude',
+      tool_name: 'log_body_weight',
+      summary: 'Logged body weight',
+      undo_payload: {
+        kind: 'log_body_weight',
+        weight_id: db.weights[0].id,
+        kilograms: lbToKg(180),
+      },
+    });
+  });
+
+  it('still succeeds on primary writes if agent_actions has not been migrated yet', async () => {
+    const { db, repositoryFor, nextId } = createMemoryDb();
+    const logSpy = vi.fn();
+    const handler = createMcpHandler({
+      resourceUrl: RESOURCE_URL,
+      authIssuer: AUTH_ISSUER,
+      authenticate: async () => ({ userId: USER_ID, clientId: 'oauth-claude' }),
+      checkApproval: async () => null,
+      repositoryFor: (userId) => ({
+        ...repositoryFor(userId),
+        insertAgentAction: async () => {
+          throw Object.assign(new Error("Could not find the table 'public.agent_actions'"), { code: 'PGRST205' });
+        },
+      }),
+      now: () => FIXED_NOW,
+      generateId: nextId,
+      log: logSpy,
+    });
+
+    const res = await callTool(handler, 'log_body_weight', { weight: 80, unit: 'kg' });
+    expect(res.rpc.result?.isError).toBeUndefined();
+    expect(db.weights).toHaveLength(1);
+    expect(res.rpc.result?.structuredContent?.action_id).toBeUndefined();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('agent_actions'), expect.anything());
   });
 });
 

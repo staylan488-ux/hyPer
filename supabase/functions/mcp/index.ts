@@ -15,10 +15,12 @@ import { approvalRefusal } from '../_shared/approval.ts';
 import {
   MCP_CORS_HEADERS,
   createMcpHandler,
+  type AgentActionRow,
   type BodyWeightRow,
   type FoodRow,
   type MacroTargetRow,
   type McpRepository,
+  type NewAgentActionInsert,
   type NewBodyWeightInsert,
   type NewFoodInsert,
   type NewNutritionGroupInsert,
@@ -232,6 +234,16 @@ function createUserRepository(client: SupabaseClient): McpRepository {
       if (error || !data) throw error ?? new Error('Could not insert body weight');
       return data as BodyWeightRow;
     },
+
+    async insertAgentAction(action: NewAgentActionInsert): Promise<AgentActionRow | null> {
+      const { data, error } = await client
+        .from('agent_actions')
+        .insert(action)
+        .select('id, user_id, created_at, client_id, agent_name, tool_name, summary, undo_payload, undone_at')
+        .single();
+      if (error) throw error;
+      return (data as AgentActionRow | null) ?? null;
+    },
   };
 }
 
@@ -280,7 +292,7 @@ Deno.serve(async (request: Request) => {
   const handler = createMcpHandler({
     resourceUrl,
     authIssuer,
-    async authenticate(token: string): Promise<string | null> {
+    async authenticate(token: string) {
       const client = getUserClient(token);
       // Verify OAuth 2.1 asymmetric JWTs locally via JWKS (and fall back to
       // getUser for symmetric tokens). Only accept authenticated user tokens.
@@ -290,11 +302,14 @@ Deno.serve(async (request: Request) => {
         if (status !== undefined && status >= 500) throw error;
         return null;
       }
-      const claims = data?.claims as { sub?: unknown; role?: unknown } | undefined;
+      const claims = data?.claims as { sub?: unknown; role?: unknown; client_id?: unknown } | undefined;
       if (claims?.role !== 'authenticated' || typeof claims.sub !== 'string' || !claims.sub.trim()) {
         return null;
       }
-      return claims.sub;
+      const clientId = typeof claims.client_id === 'string' && claims.client_id.trim()
+        ? claims.client_id.trim()
+        : null;
+      return { userId: claims.sub, clientId };
     },
     checkApproval(userId: string) {
       if (skipApprovalGate) return Promise.resolve(null);

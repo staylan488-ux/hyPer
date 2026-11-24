@@ -8,6 +8,7 @@ import { Appearance } from 'react-native';
 import { create } from 'zustand';
 
 import { captureAccountScope } from '@/lib/accountScope';
+import { listAgentActions, undoAgentAction, type AgentAction } from '@/lib/agentActions';
 import { listAgentGrants, revokeAgentGrant, sortAgentGrants, type AgentGrant } from '@/lib/agentGrants';
 import { getFoodAnalysisMode, saveFoodAnalysisMode } from '@/lib/foodTrial';
 import { WEIGHT_TREND_WINDOW_DAYS } from '@/lib/bodyWeightSummary';
@@ -36,6 +37,7 @@ import { whoopCallbackStatus } from '@/lib/whoopStatus';
 import { macroTargetSaves, nutritionProfileSaves, useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import type { Food } from '@/types';
+import { useFuelStore } from '~/lib/fuel';
 import { isPreviewActive } from '~/platform/previewFlag';
 
 const currentUserId = () => useAuthStore.getState().user?.id ?? null;
@@ -565,6 +567,95 @@ export async function disconnectAgent(grant: AgentGrant): Promise<boolean> {
   }
 }
 
+// ── Recent agent activity ────────────────────────────────────────────────
+
+type AgentActionsState = {
+  /** Recent MCP write actions, newest first; null until the first read lands. */
+  actions: AgentAction[] | null;
+  loading: boolean;
+  failed: boolean;
+  /** True when the backend does not have public.agent_actions yet. */
+  tableMissing: boolean;
+  /** Action IDs whose Undo request is currently in flight. */
+  undoingIds: string[];
+};
+
+export const useAgentActionsStore = create<AgentActionsState>(() => ({
+  actions: null,
+  loading: false,
+  failed: false,
+  tableMissing: false,
+  undoingIds: [],
+}));
+
+let agentActionReadsStarted = 0;
+let agentActionReadsShown = 0;
+const agentActionReadsRunning = new Map<number, () => boolean>();
+
+/** Reads recent agent writes for the signed-in account. A failed read keeps what is shown. */
+export async function loadAgentActions(): Promise<void> {
+  const userId = currentUserId();
+  if (!userId) return;
+  const isCurrent = captureAccountScope();
+  const read = ++agentActionReadsStarted;
+  agentActionReadsRunning.set(read, isCurrent);
+  useAgentActionsStore.setState({ loading: true });
+  try {
+    const { actions, tableMissing } = await listAgentActions(userId);
+    if (isCurrent() && read >= agentActionReadsShown) {
+      agentActionReadsShown = read;
+      useAgentActionsStore.setState({ actions, failed: false, tableMissing });
+    }
+  } catch {
+    if (isCurrent() && read >= agentActionReadsShown) {
+      useAgentActionsStore.setState({ failed: true });
+    }
+  } finally {
+    agentActionReadsRunning.delete(read);
+    if (isCurrent()) {
+      useAgentActionsStore.setState({ loading: [...agentActionReadsRunning.values()].some((active) => active()) });
+    }
+  }
+}
+
+/** Reverses a single agent action and refreshes Fuel or Body weight right away. */
+export async function undoRecentAgentAction(action: AgentAction): Promise<{ ok: boolean; error?: string }> {
+  const userId = currentUserId();
+  if (!userId || action.undone_at) return { ok: false };
+  if (useAgentActionsStore.getState().undoingIds.includes(action.id)) return { ok: false };
+  const isCurrent = captureAccountScope();
+  useAgentActionsStore.setState((state) => ({
+    undoingIds: state.undoingIds.includes(action.id) ? state.undoingIds : [...state.undoingIds, action.id],
+  }));
+  try {
+    const { undoneAt, affected } = await undoAgentAction(userId, action);
+    if (!isCurrent()) return { ok: false };
+    agentActionReadsShown = Math.max(agentActionReadsShown, ++agentActionReadsStarted);
+    useAgentActionsStore.setState((state) => ({
+      actions: state.actions
+        ? state.actions.map((candidate) => (candidate.id === action.id ? { ...candidate, undone_at: undoneAt } : candidate))
+        : state.actions,
+    }));
+    if (affected === 'weight') {
+      void loadWeights({ all: useWeightStore.getState().all !== null });
+    } else {
+      void useFuelStore.getState().refreshAfterWrite();
+    }
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error && error.message ? error.message : 'Check your connection and try again.',
+    };
+  } finally {
+    if (isCurrent()) {
+      useAgentActionsStore.setState((state) => ({
+        undoingIds: state.undoingIds.filter((id) => id !== action.id),
+      }));
+    }
+  }
+}
+
 // ── Sign-out ─────────────────────────────────────────────────────────────
 
 /** Leaves nothing of this account in You's screens. */
@@ -575,6 +666,7 @@ export function resetYou() {
   useHealthStore.setState({ busy: false, message: null });
   revokingAgents.clear();
   useAgentGrantsStore.setState({ grants: null, loading: false, failed: false });
+  useAgentActionsStore.setState({ actions: null, loading: false, failed: false, tableMissing: false, undoingIds: [] });
 }
 
 /** Deletes a typed weigh-in; it leaves the list at once and comes back if the delete fails. */

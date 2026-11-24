@@ -3,6 +3,9 @@
 // Deno or network globals.
 
 import type {
+  AgentActionRow,
+  AgentActionToolName,
+  AgentUndoPayload,
   BodyWeightRow,
   FoodRow,
   McpRepository,
@@ -50,9 +53,44 @@ const RECENT_WEIGH_IN_LIMIT = 7;
 
 export interface ToolContext {
   userId: string;
+  clientId?: string | null;
   repo: McpRepository;
   now: () => Date;
   generateId: () => string;
+  log?: (message: string, error?: unknown) => void;
+}
+
+const MAX_ACTION_SUMMARY_LEN = 300;
+
+function trimSummary(text: string): string {
+  const collapsed = text.replace(/\s+/g, ' ').trim();
+  if (collapsed.length <= MAX_ACTION_SUMMARY_LEN) return collapsed;
+  return `${collapsed.slice(0, MAX_ACTION_SUMMARY_LEN - 1)}…`;
+}
+
+/**
+ * Persists a best-effort audit row so the app can show Recent activity + 1-tap Undo.
+ * Never fails the user's primary write if agent_actions has not been migrated yet.
+ */
+async function recordAgentAction(
+  ctx: ToolContext,
+  toolName: AgentActionToolName,
+  summary: string,
+  undoPayload: AgentUndoPayload,
+): Promise<AgentActionRow | null> {
+  if (typeof ctx.repo.insertAgentAction !== 'function') return null;
+  try {
+    return await ctx.repo.insertAgentAction({
+      user_id: ctx.userId,
+      client_id: ctx.clientId ?? null,
+      tool_name: toolName,
+      summary: trimSummary(summary),
+      undo_payload: undoPayload,
+    });
+  } catch (error) {
+    ctx.log?.(`mcp: failed to record agent_actions row for ${toolName}`, error);
+    return null;
+  }
 }
 
 class ToolValidationError extends Error {
@@ -1110,6 +1148,23 @@ async function runLogFood(rawArgs: unknown, ctx: ToolContext): Promise<McpToolCa
     fat: roundTo(totalFat, 1),
   };
 
+  const firstFoodName = entries[0]?.food_name ?? 'Food';
+  const actionSummary = entries.length === 1
+    ? `Logged ${firstFoodName}`
+    : entries.length === 2
+      ? `Logged ${entries[0].food_name} and ${entries[1].food_name}`
+      : `Logged ${entries.length} items`;
+
+  const action = await recordAgentAction(ctx, 'log_food', actionSummary, {
+    kind: 'log_food',
+    date,
+    meal,
+    log_ids: insertedLogs.map((log) => log.id),
+    total_calories: loggedTotals.calories,
+    item_count: entries.length,
+    first_food_name: firstFoodName,
+  });
+
   const payload: Record<string, unknown> = {
     date,
     meal,
@@ -1121,6 +1176,7 @@ async function runLogFood(rawArgs: unknown, ctx: ToolContext): Promise<McpToolCa
     },
     logged_totals: loggedTotals,
     entries,
+    ...(action ? { action_id: action.id } : {}),
   };
 
   const summary =
@@ -1184,6 +1240,16 @@ async function runUpdateFoodLog(rawArgs: unknown, ctx: ToolContext): Promise<Mcp
     }
   }
 
+  const beforeSnapshot = {
+    id: existing.id,
+    date: existing.date,
+    logged_at: existing.logged_at ?? null,
+    servings: roundTo(num(existing.servings, 0), 2),
+    meal_type: existing.meal_type ?? null,
+    group_id: existing.group_id ?? null,
+    sort_order: existing.sort_order ?? 0,
+  };
+
   const updated = await ctx.repo.updateNutritionLog(ctx.userId, logId, patch);
   if (!updated) {
     throw new ToolValidationError('Food log entry not found.');
@@ -1192,9 +1258,22 @@ async function runUpdateFoodLog(rawArgs: unknown, ctx: ToolContext): Promise<Mcp
   const food = await ctx.repo.getFoodById(updated.food_id);
   const entry = formatEntryOutput(updated, food);
 
+  const action = await recordAgentAction(ctx, 'update_food_log', `Updated ${entry.food_name}`, {
+    kind: 'update_food_log',
+    food_name: entry.food_name,
+    before: beforeSnapshot,
+    after: {
+      date: updated.date,
+      logged_at: updated.logged_at ?? null,
+      servings: roundTo(num(updated.servings, 0), 2),
+      meal_type: updated.meal_type ?? null,
+    },
+  });
+
   const payload: Record<string, unknown> = {
     updated: true,
     entry,
+    ...(action ? { action_id: action.id } : {}),
   };
 
   const summary =
@@ -1221,9 +1300,27 @@ async function runDeleteFoodLog(rawArgs: unknown, ctx: ToolContext): Promise<Mcp
     throw new ToolValidationError('Food log entry not found.');
   }
 
+  const action = await recordAgentAction(ctx, 'delete_food_log', `Removed ${entry.food_name}`, {
+    kind: 'delete_food_log',
+    food_name: entry.food_name,
+    calories: entry.calories,
+    deleted_row: {
+      id: existing.id,
+      date: existing.date,
+      logged_at: existing.logged_at ?? null,
+      food_id: existing.food_id,
+      servings: roundTo(num(existing.servings, 0), 2),
+      meal_type: existing.meal_type ?? null,
+      group_id: existing.group_id ?? null,
+      sort_order: existing.sort_order ?? 0,
+      source: existing.source || 'manual',
+    },
+  });
+
   const payload: Record<string, unknown> = {
     deleted: true,
     entry,
+    ...(action ? { action_id: action.id } : {}),
   };
 
   const summary = `Deleted "${entry.food_name}" (${entry.calories} kcal) from ${entry.date}.`;
@@ -1266,6 +1363,13 @@ async function runLogBodyWeight(rawArgs: unknown, ctx: ToolContext): Promise<Mcp
   const savedKg = roundTo(num(saved.kilograms), 3);
   const savedLb = kgToLb(savedKg);
 
+  const action = await recordAgentAction(ctx, 'log_body_weight', 'Logged body weight', {
+    kind: 'log_body_weight',
+    weight_id: saved.id,
+    kilograms: savedKg,
+    measured_at: saved.measured_at,
+  });
+
   const payload: Record<string, unknown> = {
     id: saved.id,
     measured_at: saved.measured_at,
@@ -1275,6 +1379,7 @@ async function runLogBodyWeight(rawArgs: unknown, ctx: ToolContext): Promise<Mcp
     external_id: saved.external_id,
     source_bundle: saved.source_bundle,
     source_name: saved.source_name,
+    ...(action ? { action_id: action.id } : {}),
   };
 
   const summary = `Logged body weight: ${savedLb} lb (${savedKg} kg) at ${saved.measured_at}.`;

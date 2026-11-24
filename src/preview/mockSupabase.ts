@@ -407,9 +407,70 @@ export function createMockClient(options?: { setSaveFailures?: number }): Supaba
       const changedAt = new Date();
       changedAt.setHours(6, 0, 0, 0);
       for (const row of previewTables.macro_targets) row.source = 'adaptive';
+      const wheyLog = previewTables.nutrition_logs.find((row) => row.id === 'nl6');
+      const wheyFood = wheyLog ? previewTables.foods.find((row) => row.id === wheyLog.food_id) : null;
+      const bananaLog = previewTables.nutrition_logs.find((row) => row.id === 'nl5');
+      const bananaFood = bananaLog ? previewTables.foods.find((row) => row.id === bananaLog.food_id) : null;
+      const agentActions: Row[] = [];
+      if (wheyLog) {
+        const foodName = String(wheyFood?.name ?? 'Whey Protein');
+        const calories = Math.round(Number(wheyFood?.calories ?? 120) * Number(wheyLog.servings ?? 1));
+        agentActions.push({
+          id: 'aa-preview-1',
+          user_id: PREVIEW_USER_ID,
+          created_at: String(wheyLog.logged_at ?? changedAt.toISOString()),
+          client_id: 'preview-claude',
+          agent_name: 'Claude',
+          tool_name: 'log_food',
+          summary: `Logged ${foodName}`,
+          undo_payload: {
+            kind: 'log_food',
+            date: String(wheyLog.date),
+            meal: 'snack',
+            log_ids: [String(wheyLog.id)],
+            total_calories: calories,
+            item_count: 1,
+            first_food_name: foodName,
+          },
+          undone_at: null,
+        });
+      }
+      if (bananaLog) {
+        const foodName = String(bananaFood?.name ?? 'Banana');
+        agentActions.push({
+          id: 'aa-preview-2',
+          user_id: PREVIEW_USER_ID,
+          created_at: String(bananaLog.logged_at ?? changedAt.toISOString()),
+          client_id: 'preview-claude',
+          agent_name: 'Claude',
+          tool_name: 'update_food_log',
+          summary: `Updated ${foodName}`,
+          undo_payload: {
+            kind: 'update_food_log',
+            food_name: foodName,
+            before: {
+              id: String(bananaLog.id),
+              date: String(bananaLog.date),
+              logged_at: (bananaLog.logged_at as string | null) ?? null,
+              servings: 0.5,
+              meal_type: 'snack',
+              group_id: (bananaLog.group_id as string | null) ?? null,
+              sort_order: Number(bananaLog.sort_order ?? 0),
+            },
+            after: {
+              date: String(bananaLog.date),
+              logged_at: (bananaLog.logged_at as string | null) ?? null,
+              servings: Number(bananaLog.servings ?? 1),
+              meal_type: 'snack',
+            },
+          },
+          undone_at: null,
+        });
+      }
       Object.assign(previewTables, {
         nutrition_profiles: nutrition_profiles.map((row) => ({ ...row, adaptive_enabled: true })),
         body_weight_measurements,
+        agent_actions: agentActions,
         macro_target_changes: [{
           id: 'mtc1', user_id: PREVIEW_USER_ID, changed_at: changedAt.toISOString(),
           old_calories: previewMacroTarget.calories - 100, old_protein: previewMacroTarget.protein,

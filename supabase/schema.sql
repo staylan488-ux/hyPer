@@ -661,6 +661,37 @@ CREATE POLICY "Users can insert own rest preferences" ON exercise_rest_preferenc
 CREATE POLICY "Users can update own rest preferences" ON exercise_rest_preferences FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own rest preferences" ON exercise_rest_preferences FOR DELETE USING (auth.uid() = user_id);
 
+-- Agent actions audit log (20261123180000): before/after snapshots for 1-tap Undo
+CREATE TABLE IF NOT EXISTS public.agent_actions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL DEFAULT auth.uid() REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  client_id TEXT CHECK (client_id IS NULL OR char_length(client_id) <= 200),
+  agent_name TEXT CHECK (agent_name IS NULL OR char_length(agent_name) <= 120),
+  tool_name TEXT NOT NULL CHECK (tool_name IN ('log_food', 'update_food_log', 'delete_food_log', 'log_body_weight')),
+  summary TEXT NOT NULL CHECK (char_length(summary) BETWEEN 1 AND 300),
+  undo_payload JSONB NOT NULL CHECK (octet_length(undo_payload::TEXT) <= 65536),
+  undone_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS agent_actions_user_created_idx
+  ON public.agent_actions(user_id, created_at DESC);
+
+ALTER TABLE public.agent_actions ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.agent_actions FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON public.agent_actions TO authenticated;
+GRANT UPDATE (undone_at) ON public.agent_actions TO authenticated;
+GRANT ALL ON public.agent_actions TO service_role;
+
+CREATE POLICY "Users can view own agent actions" ON public.agent_actions
+  FOR SELECT TO authenticated USING (user_id = (SELECT auth.uid()));
+CREATE POLICY "Users can insert own agent actions" ON public.agent_actions
+  FOR INSERT TO authenticated WITH CHECK (user_id = (SELECT auth.uid()));
+CREATE POLICY "Users can update own agent actions" ON public.agent_actions
+  FOR UPDATE TO authenticated
+  USING (user_id = (SELECT auth.uid()))
+  WITH CHECK (user_id = (SELECT auth.uid()));
+
 -- ─── Private beta (20261109120000) ───────────────────────────────────────
 -- Server-side switches (20261111120000): one row the SQL editor changes at once.
 
@@ -851,7 +882,7 @@ DECLARE
   t TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'activity_segments', 'activity_sessions', 'body_weight_measurements',
+    'activity_segments', 'activity_sessions', 'agent_actions', 'body_weight_measurements',
     'exercise_rest_preferences', 'exercises', 'flex_day_templates', 'foods',
     'macro_target_changes', 'macro_targets', 'nutrition_groups', 'nutrition_import_batches',
     'nutrition_logs', 'nutrition_profiles', 'plan_schedules', 'profiles',

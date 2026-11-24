@@ -165,6 +165,7 @@ export function createMcpHandler(services: McpServices) {
   async function dispatchRpcMessage(
     raw: unknown,
     userId: string,
+    clientId: string | null,
     token: string,
   ): Promise<{ response: JsonRpcResponse | null; protocolVersion?: string }> {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -247,9 +248,11 @@ export function createMcpHandler(services: McpServices) {
       const repo = services.repositoryFor(userId, token);
       const result = await executeTool(params.name, params.arguments ?? {}, {
         userId,
+        clientId,
         repo,
         now,
         generateId,
+        log,
       }, log);
       return { response: isNotification ? null : rpcResult(id, result) };
     }
@@ -297,8 +300,15 @@ export function createMcpHandler(services: McpServices) {
     }
 
     let userId: string | null = null;
+    let clientId: string | null = null;
     try {
-      userId = await services.authenticate(token);
+      const caller = await services.authenticate(token);
+      if (typeof caller === 'string') {
+        userId = caller;
+      } else if (caller && typeof caller === 'object') {
+        userId = caller.userId;
+        clientId = typeof caller.clientId === 'string' && caller.clientId.trim() ? caller.clientId.trim() : null;
+      }
     } catch (error) {
       log('mcp: authentication check failed', error);
       return jsonResponse({ error: 'Could not verify authentication. Try again.' }, 503);
@@ -369,7 +379,7 @@ export function createMcpHandler(services: McpServices) {
         const responses: JsonRpcResponse[] = [];
         let negotiatedVersion: string | undefined;
         for (const entry of parsed) {
-          const outcome = await dispatchRpcMessage(entry, userId, token);
+          const outcome = await dispatchRpcMessage(entry, userId, clientId, token);
           if (outcome.protocolVersion) negotiatedVersion = outcome.protocolVersion;
           if (outcome.response) responses.push(outcome.response);
         }
@@ -386,7 +396,7 @@ export function createMcpHandler(services: McpServices) {
         return jsonResponse(responses, 200, responseProtocolHeader(negotiatedVersion));
       }
 
-      const outcome = await dispatchRpcMessage(parsed, userId, token);
+      const outcome = await dispatchRpcMessage(parsed, userId, clientId, token);
       if (!outcome.response) {
         return new Response(null, {
           status: 202,

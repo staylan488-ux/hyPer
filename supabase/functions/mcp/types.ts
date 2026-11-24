@@ -130,6 +130,79 @@ export interface NewBodyWeightInsert {
   source_name: string;
 }
 
+export type AgentActionToolName =
+  | 'log_food'
+  | 'update_food_log'
+  | 'delete_food_log'
+  | 'log_body_weight';
+
+export type AgentUndoPayload =
+  | {
+      kind: 'log_food';
+      date: string;
+      meal: MealName;
+      log_ids: string[];
+      total_calories: number;
+      item_count: number;
+      first_food_name: string;
+    }
+  | {
+      kind: 'update_food_log';
+      food_name: string;
+      before: {
+        id: string;
+        date: string;
+        logged_at: string | null;
+        servings: number;
+        meal_type: MealName | null;
+        group_id: string | null;
+        sort_order: number;
+      };
+      after: {
+        date: string;
+        logged_at: string | null;
+        servings: number;
+        meal_type: MealName | null;
+      };
+    }
+  | {
+      kind: 'delete_food_log';
+      food_name: string;
+      calories: number;
+      deleted_row: {
+        id: string;
+        date: string;
+        logged_at: string | null;
+        food_id: string;
+        servings: number;
+        meal_type: MealName | null;
+        group_id: string | null;
+        sort_order: number;
+        source: string;
+      };
+    }
+  | {
+      kind: 'log_body_weight';
+      weight_id: string;
+      kilograms: number;
+      measured_at: string;
+    };
+
+export interface NewAgentActionInsert {
+  user_id: string;
+  client_id?: string | null;
+  agent_name?: string | null;
+  tool_name: AgentActionToolName;
+  summary: string;
+  undo_payload: AgentUndoPayload;
+}
+
+export interface AgentActionRow extends NewAgentActionInsert {
+  id: string;
+  created_at: string;
+  undone_at: string | null;
+}
+
 /** User-scoped data access backed by Postgres RLS in production. */
 export interface McpRepository {
   getMacroTargets(userId: string): Promise<MacroTargetRow | null>;
@@ -148,6 +221,8 @@ export interface McpRepository {
   deleteNutritionLog(userId: string, logId: string): Promise<boolean>;
   getRecentBodyWeights(userId: string, limit: number): Promise<BodyWeightRow[]>;
   insertBodyWeight(row: NewBodyWeightInsert): Promise<BodyWeightRow>;
+  /** Records an undoable audit entry in public.agent_actions. Optional for partial test fakes. */
+  insertAgentAction?(action: NewAgentActionInsert): Promise<AgentActionRow | null>;
 }
 
 export interface ApprovalRefusal {
@@ -155,13 +230,20 @@ export interface ApprovalRefusal {
   body: Record<string, string>;
 }
 
+export type AuthenticatedCaller =
+  | string
+  | {
+      userId: string;
+      clientId?: string | null;
+    };
+
 export interface McpServices {
   /** Canonical URL of this protected MCP resource (RFC 9728 `resource`). */
   resourceUrl: string;
   /** Authorization server issuer URL (RFC 9728 `authorization_servers[0]`). */
   authIssuer: string;
-  /** Returns the user id for a valid Bearer token, or null if invalid/expired. Throw on transient auth outage. */
-  authenticate(token: string): Promise<string | null>;
+  /** Returns the caller identity for a valid Bearer token, or null if invalid/expired. Throw on transient auth outage. */
+  authenticate(token: string): Promise<AuthenticatedCaller | null>;
   /** Returns null when approved, or a 403/503 refusal (fail closed). */
   checkApproval(userId: string): Promise<ApprovalRefusal | null>;
   /** Returns a user-scoped repository whose queries run under Postgres RLS for that token. */
