@@ -148,8 +148,9 @@ struct RunLockScreenView: View {
     }
     .padding(.horizontal, 18)
     .padding(.vertical, 16)
-    .activityBackgroundTint(blanc.ground)
-    .activitySystemActionForegroundColor(blanc.ink)
+    // Leave the platter on iOS's default material: a custom activityBackgroundTint
+    // can desync from colorScheme (FB15148099), pairing light chalk (#F2F1ED, warm
+    // 48° hue) with dark ink and letting Liquid Glass tint the card muddy gold.
     .widgetURL(appURL("run"))
   }
 }

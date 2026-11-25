@@ -4,10 +4,11 @@ import SwiftUI
 import WidgetKit
 
 // The workout card on the lock screen and in the Dynamic Island, in Blanc
-// (Blanc.swift): chalk and black ink, following the system appearance, with
-// the red italic P. iOS ticks the countdown, the bar and the session clock
-// itself from the dates the app sends (WorkoutActivityAttributes). During a
-// rest, +30 s and End rest work without unlocking (RestControlIntent).
+// (Blanc.swift): system lock-screen material with Blanc ink following the
+// system appearance, and the red italic P. iOS ticks the countdown, the bar
+// and the session clock itself from the dates the app sends
+// (WorkoutActivityAttributes). During a rest, +30 s and End rest work without
+// unlocking (RestControlIntent).
 
 private enum RestPhase {
   case running(ClosedRange<Date>)
@@ -137,8 +138,9 @@ struct WorkoutLockScreenView: View {
     }
     .padding(.horizontal, 18)
     .padding(.vertical, controls ? 14 : 16)
-    .activityBackgroundTint(blanc.ground)
-    .activitySystemActionForegroundColor(blanc.ink)
+    // Leave the platter on iOS's default material: a custom activityBackgroundTint
+    // can desync from colorScheme (FB15148099), pairing light chalk (#F2F1ED, warm
+    // 48° hue) with dark ink and letting Liquid Glass tint the card muddy gold.
     .widgetURL(appURL("train"))
   }
 
