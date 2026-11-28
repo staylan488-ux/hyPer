@@ -46,7 +46,7 @@ export function useTodayKey(): string {
 }
 const monthOf = (key: string) => key.slice(0, 7);
 
-export { mealForTime } from './meals';
+export { isLateNightTime, LATE_NIGHT_END_HOUR, mealForTime, usesLiveClockForDay } from './meals';
 
 const emptyTotals: MacroTotals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
@@ -464,10 +464,10 @@ export async function loadDayGroups(key: string): Promise<NutritionGroup[]> {
   return made ? (await readDayGroups(userId, key)) ?? groups : groups;
 }
 
-/** The day's named meal that fits the time (breakfast, lunch or dinner), if the day has it. */
+/** The day's named meal that fits the time (breakfast, lunch or dinner), or null in small hours / if missing. */
 export function suggestedGroup(groups: NutritionGroup[], at = new Date()): NutritionGroup | null {
   const meal = mealForTime(at);
-  return groups.find((group) => group.label === meal) ?? null;
+  return meal ? groups.find((group) => group.label === meal) ?? null : null;
 }
 
 export const isFuelMonthFromCopy = () => monthFromCopy;

@@ -6,12 +6,14 @@ import { sortNutritionGroups } from '@/lib/nutritionGroups';
 import { sumMacros } from '@/lib/nutritionMacros';
 import * as repeatEntries from '@/lib/repeatEntries';
 import type { NutritionGroup } from '@/types';
+import * as meals from '../native/src/lib/meals';
 import { loadNativeModule } from './helpers/loadNativeModule';
 
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 type FuelModule = {
   loadDayGroups: (key: string) => Promise<NutritionGroup[]>;
+  suggestedGroup: (groups: NutritionGroup[], at?: Date) => NutritionGroup | null;
   useFuelStore: { getState: () => { copyToToday: (entries: unknown[], group: NutritionGroup | null) => Promise<boolean> }; setState: (state: object) => void };
   today: () => string;
 };
@@ -65,7 +67,7 @@ function loadFuel(): FuelModule {
     '@/lib/repeatEntries': { ...repeatEntries, saveRepeatedEntries },
     '@/lib/sessionUser': { getSessionUserId: async () => 'user-a' },
     '@/lib/supabase': { supabase },
-    './meals': { mealForTime: () => 'breakfast' },
+    './meals': meals,
   });
 }
 
@@ -113,5 +115,21 @@ describe("a day outside Fuel's loaded month", () => {
     const [, rows] = saveRepeatedEntries.mock.calls[0];
     expect(rows[0].group_id).toBe(`${key}-breakfast`);
     expect(table.filter((group) => group.date === key)).toHaveLength(3);
+  });
+
+  it('suggests no meal during 00:00–03:59 even when an unlabeled custom meal or snack exists', () => {
+    const fuel = loadFuel();
+    const groups: NutritionGroup[] = [
+      meal('b', '2026-11-28', 'breakfast', 0),
+      meal('l', '2026-11-28', 'lunch', 1),
+      meal('d', '2026-11-28', 'dinner', 2),
+      { id: 's', user_id: 'user-a', date: '2026-11-28', kind: 'snack', label: null, sort_order: 3 },
+    ];
+    expect(fuel.suggestedGroup(groups, new Date(2026, 10, 28, 1, 30))).toBeNull();
+    expect(fuel.suggestedGroup(groups, new Date(2026, 10, 28, 3, 59))).toBeNull();
+    expect(fuel.suggestedGroup(groups, new Date(2026, 10, 28, 4, 0))?.id).toBe('b');
+    expect(fuel.suggestedGroup(groups, new Date(2026, 10, 28, 11, 0))?.id).toBe('l');
+    expect(fuel.suggestedGroup(groups, new Date(2026, 10, 28, 16, 0))?.id).toBe('d');
+    expect(fuel.suggestedGroup(groups, new Date(2026, 10, 28, 23, 59))?.id).toBe('d');
   });
 });

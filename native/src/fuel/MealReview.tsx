@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActionSheetIOS, Pressable, TextInput, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -22,7 +22,7 @@ import { closeOpenSwipeRow, SwipeRow } from '~/components/SwipeRow';
 import { speak, spokenUnit, useAnnounce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
 import { timeAsDate } from '~/lib/foodLogger';
-import { groupsForDay } from '~/lib/fuel';
+import { groupsForDay, suggestedGroup } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
 import { space, type as typeScale, useBlanc } from '~/theme/blanc';
@@ -41,13 +41,15 @@ const AMOUNT_INVALID = 'Enter an amount greater than zero.';
  * logged meal being edited) has an Amount, as a food does: "0.5" logs half of
  * it, and every ingredient follows.
  */
-export function MealReview({ draft, update, userId, savedTarget, saveOnly = false, editingEntryId, onAddIngredients, onPause, onSaved, storageFailed }: {
+export function MealReview({ draft, update, userId, savedTarget, saveOnly = false, editingEntryId, groupLocked = false, onAddIngredients, onPause, onSaved, storageFailed }: {
   draft: MealDraft;
   update: (patch: Partial<MealDraft>) => void;
   userId: string;
   savedTarget?: Food;
   saveOnly?: boolean;
   editingEntryId?: string;
+  /** True when the sheet's meal was manually chosen or fixed by the route (e.g. a meal's +). */
+  groupLocked?: boolean;
   onAddIngredients: () => void;
   /** After a failed save of a new meal: back to logging, with the meal kept to resume. */
   onPause: () => void;
@@ -58,8 +60,11 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
   const [error, setError] = useState('');
   const [invalidRows, setInvalidRows] = useState<string[]>([]);
   const totals = getMealTotals(draft.ingredients);
-  const groups = groupsForDay(draft.date);
+  // Saved meals are one per name: a taken name puts this meal in that one's place.
+  const { savedMeals, beginSave, selectedKey, groups: sheetGroups } = useLogger();
+  const groups = draft.date === selectedKey && sheetGroups.length > 0 ? sheetGroups : groupsForDay(draft.date);
   const group = groups.find((candidate) => candidate.id === draft.groupId) ?? null;
+  const manualGroup = useRef(Boolean(editingEntryId || groupLocked));
   const frozen = busy || draft.locked;
   // How much of the meal: only where there is a whole meal to take part of.
   const sized = !saveOnly && !savedTarget && (draft.method === 'saved' || Boolean(editingEntryId));
@@ -86,9 +91,15 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
     setRescales((count) => count + 1);
   };
   const valid = Boolean(draft.name.trim()) && draft.ingredients.length > 0 && Boolean(draft.time) && invalidRows.length === 0 && !amountInvalid;
-  // Saved meals are one per name: a taken name puts this meal in that one's place.
-  const { savedMeals, beginSave } = useLogger();
   const replaces = saveOnly ? savedMealNamed(savedMeals, draft.name, draft.entryId) : undefined;
+
+  // If the day's groups finish loading after the review opened, slot into the meal that fits the time.
+  useEffect(() => {
+    if (savedTarget || saveOnly || draft.locked || manualGroup.current || draft.groupId !== null) return;
+    if (draft.date !== selectedKey || groups.length === 0) return;
+    const nextGroupId = suggestedGroup(groups, timeAsDate(new Date(`${draft.date}T12:00:00`), draft.time))?.id ?? null;
+    if (nextGroupId) update({ groupId: nextGroupId });
+  }, [savedTarget, saveOnly, draft.locked, draft.groupId, draft.date, draft.time, selectedKey, groups, update]);
 
   const save = async () => {
     if (!valid || busy) return;
@@ -134,6 +145,7 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
     ActionSheetIOS.showActionSheetWithOptions({ title: 'Add to', options, cancelButtonIndex: options.length - 1 }, (index) => {
       if (index === options.length - 1) return;
       haptics.select();
+      manualGroup.current = true;
       update({ groupId: index === 0 ? null : groups[index - 1].id });
     });
   };
@@ -234,7 +246,14 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
                 value={new Date(`${draft.date}T12:00:00`)}
                 max={new Date()}
                 disabled={frozen}
-                onChange={(date) => update({ date: format(date, 'yyyy-MM-dd'), groupId: null })}
+                onChange={(date) => {
+                  const nextDate = format(date, 'yyyy-MM-dd');
+                  const nextGroups = nextDate === selectedKey && sheetGroups.length > 0 ? sheetGroups : groupsForDay(nextDate);
+                  const groupId = manualGroup.current
+                    ? null
+                    : suggestedGroup(nextGroups, timeAsDate(new Date(`${nextDate}T12:00:00`), draft.time))?.id ?? null;
+                  update({ date: nextDate, groupId });
+                }}
               />
               <Hairline />
               <PickerRow
@@ -242,7 +261,15 @@ export function MealReview({ draft, update, userId, savedTarget, saveOnly = fals
                 mode="time"
                 value={timeAsDate(new Date(`${draft.date}T12:00:00`), draft.time)}
                 disabled={frozen}
-                onChange={(date) => update({ time: format(date, 'HH:mm') })}
+                onChange={(date) => {
+                  const time = format(date, 'HH:mm');
+                  if (manualGroup.current) {
+                    update({ time });
+                    return;
+                  }
+                  const groupId = suggestedGroup(groups, date)?.id ?? null;
+                  update({ time, groupId });
+                }}
               />
               <Hairline />
               <Row form title="Add to" value={group ? nutritionGroupTitle(group, groups) : NO_MEAL} chevron={!frozen} onPress={frozen ? undefined : chooseGroup} />

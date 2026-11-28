@@ -12,7 +12,7 @@ import * as foodTrial from '@/lib/foodTrial';
 import * as foodTrialReview from '@/lib/foodTrialReview';
 import * as foodUnits from '@/lib/foodUnits';
 import * as loggerUtils from '@/lib/foodLoggerUtils';
-import { mealForTime } from '../native/src/lib/meals';
+import * as meals from '../native/src/lib/meals';
 import * as composition from '@/lib/mealComposition';
 import * as pendingEntry from '@/lib/pendingEntryId';
 import * as recentFoods from '@/lib/recentFoods';
@@ -85,7 +85,8 @@ type SwipeAction = { label: string; destructive?: boolean; onPress: () => void }
 type SectionProps = PropsWithChildren<{ title: string; action?: { title: string; onPress: () => void } }>;
 type AlertButton = { text: string; onPress?: () => void };
 type Input = { accessibilityLabel?: string; value?: string; editable?: boolean; onChangeText?: (text: string) => void; onFocus?: () => void; onSubmitEditing?: () => void };
-type Context = { beginBusy: () => () => void; beginRead: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food, editSaved?: boolean, servings?: number) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { time: string; groupId: string | null }; setWhen: (next: { date: Date; time: string; groupId: string | null }) => void };
+type PickerRowProps = { label: string; value: Date; disabled?: boolean; onChange: (date: Date) => void };
+type Context = { beginBusy: () => () => void; beginRead: () => () => void; beginSave: () => () => void; addIngredients: (parts: composition.MealIngredient[]) => void; composeMeal: (food: Food, editSaved?: boolean, servings?: number) => void; chooseFood: (food: Food) => void; editing: unknown; savedMeals: Food[] | null; selectedKey: string; when: { date: Date; time: string; groupId: string | null }; setWhen: (next: { date: Date; time: string; groupId: string | null }, options?: { keepAutoGroup?: boolean }) => void };
 type ReviewProps = {
   draft: composition.MealDraft;
   savedTarget?: Food;
@@ -129,7 +130,7 @@ afterEach(async () => {
 /** What Fuel's close-the-gap card hands Log food to review (context.ts offerReview). */
 let reviewHandoff: { food: Food; servings: number } | null = null;
 
-function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, fuelActions, readRecent, dayGroups = [], fuelDay = '2026-11-03', sameDay = true, large = false, rowActions = false }: {
+function loggerHarness({ editing = false, entry = loggedMilk, worker = false, savedMeal = false, params = {}, device = true, clockGroup = null, realReview = false, realAi = false, realLists = false, realClock = false, realWhen = false, fuelActions, readRecent, readDayGroups, dayGroups = [], fuelDay = '2026-11-03', sameDay = true, large = false, rowActions = false }: {
   editing?: boolean;
   entry?: typeof loggedMilk;
   worker?: boolean;
@@ -147,7 +148,11 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   realLists?: boolean;
   /** Runs the real Recent cache against this data-read boundary. */
   readRecent?: typeof recentFoods.loadRecentLogs;
+  /** Runs a custom loadDayGroups promise (e.g. deferred) for the sheet's day. */
+  readDayGroups?: (key: string) => Promise<NutritionGroup[]>;
   realClock?: boolean;
+  /** The real WhenBlock instead of an empty stand-in. */
+  realWhen?: boolean;
   fuelActions?: { refresh: () => Promise<void>; refreshAfterWrite: () => Promise<void>; invalidateTotals: () => void; deleteEntry?: (id: string) => Promise<boolean> };
   /** The day's meals as Fuel's store holds them. */
   dayGroups?: NutritionGroup[];
@@ -164,6 +169,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     buttons: Record<string, Button>;
     fields: Record<string, Field>;
     inputs: Record<string, Input>;
+    pickers: Record<string, PickerRowProps>;
     pressables: Record<string, Press>;
     sections: Record<string, SectionProps>;
     /** Switches drawn, by label. */
@@ -191,7 +197,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     search?: { query: string };
     /** The sheet's scroll view as last drawn: its children and which of them stay pinned. */
     scroll?: PropsWithChildren<{ stickyHeaderIndices?: number[]; bottomOffset?: number }>;
-  } = { buttons: {}, fields: {}, inputs: {}, pressables: {}, sections: {}, toggles: {} };
+  } = { buttons: {}, fields: {}, inputs: {}, pickers: {}, pressables: {}, sections: {}, toggles: {} };
   Object.defineProperty(captured, 'picker', {
     get: () => {
       const { segments, methods } = captured;
@@ -382,7 +388,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/components/Row': { Row: (props: Button) => { captured.buttons[props.title] = props; return null; }, Hairline: Empty },
     '~/components/SwipeRow': { dismissOpenSwipeRow: noop, closeOpenSwipeRow: () => false, SwipeRow: Wrap, useSwipeActions: () => [] },
     '~/components/HoldMenu': { HoldMenu: Wrap, hasHoldMenu: true, menuAccessibility: () => ({ actions: [], run: () => false }) },
-    '~/components/Form': { FieldArea: Wrap, FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: (props: { label: string; value: boolean }) => { captured.toggles[props.label] = props; return null; }, NumberFieldRow: Empty, PickerRow: Empty, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
+    '~/components/Form': { FieldArea: Wrap, FieldRow: (props: Field) => { captured.fields[props.label] = props; return null; }, FormNote: Wrap, ToggleRow: (props: { label: string; value: boolean }) => { captured.toggles[props.label] = props; return null; }, NumberFieldRow: Empty, PickerRow: (props: PickerRowProps) => { captured.pickers[props.label] = props; return null; }, useDecimalText: (n: number) => ({ text: String(n), onChangeText: noop }) },
     '~/components/Section': { Section: (props: SectionProps) => { captured.sections[props.title] = props; return Wrap(props); } },
     '~/components/Stepper': { Stepper: Empty },
     '~/lib/format': { formatWhole: String },
@@ -390,7 +396,8 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/lib/accessibility': { announce, useAnnounce: noop, useLargeText: () => large, useScreenReader: () => false, useIncreaseContrast: () => false, speak: (text: string) => text, spokenUnit: (unit: string) => unit },
     '~/lib/foodLogger': { initialWhen: when, usesDayGroups: () => sameDay, timeAsDate: () => new Date(), workerAccessToken: token, saveFoodEntry: saveFood, SAVE_FAILED: 'Not logged. Try again.' },
     './fuel': { useFuelStore },
-    '~/lib/fuel': { groupsForDay: (key: string) => fuel.groups.filter((group) => group.date === key), loadDayGroups: async (key: string) => fuel.groups.filter((group) => group.date === key), suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
+    './meals': meals,
+    '~/lib/fuel': { groupsForDay: (key: string) => fuel.groups.filter((group) => group.date === key), loadDayGroups: readDayGroups ?? (async (key: string) => fuel.groups.filter((group) => group.date === key)), suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', usesLiveClockForDay: meals.usesLiveClockForDay, useFuelStore },
     '~/lib/haptics': { haptics: { tap, select: noop, success, error } },
     '~/lib/launchActions': launchActions,
     '~/lib/launchLink': { holdLogFoodLinks: () => noop },
@@ -579,18 +586,75 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     });
   }
   if (realClock) {
+    imports['@/lib/foodLoggerUtils'] = loggerUtils;
     const realLogger = loadNativeModule<NativeModule>('lib/foodLogger.ts', {
       ...imports, '@/lib/foodLoggerUtils': loggerUtils, '@/lib/saveNutritionEntry': saveNutrition, '@/lib/supabase': {},
     });
-    imports['~/lib/foodLogger'] = { ...imports['~/lib/foodLogger'] as NativeModule, initialWhen: realLogger.initialWhen };
-    const groups = (key: string) => ['breakfast', 'lunch', 'dinner', 'snack'].map((label) => ({ id: `${key}:${label}`, date: key, label }));
+    imports['~/lib/foodLogger'] = {
+      ...imports['~/lib/foodLogger'] as NativeModule,
+      initialWhen: realLogger.initialWhen,
+      timeAsDate: realLogger.timeAsDate,
+      usesDayGroups: realLogger.usesDayGroups,
+    };
+    const groups = (key: string): NutritionGroup[] => (['breakfast', 'lunch', 'dinner'] as const).map((label, sort_order) => ({
+      id: `${key}:${label}`, user_id: 'user-a', date: key, kind: 'meal', label, sort_order,
+    }));
     imports['~/lib/fuel'] = {
       ...imports['~/lib/fuel'] as NativeModule,
       today: () => dates.format(new Date(), 'yyyy-MM-dd'),
       useTodayKey: () => dates.format(new Date(), 'yyyy-MM-dd'),
-      loadDayGroups: async (key: string) => groups(key),
-      suggestedGroup: (list: Array<{ label: string }>, at?: Date) => list.find((group) => group.label === mealForTime(at ?? new Date())),
+      loadDayGroups: readDayGroups ?? (async (key: string) => groups(key)),
+      suggestedGroup: (list: Array<{ label: string | null }>, at?: Date) => {
+        const meal = meals.mealForTime(at ?? new Date());
+        return meal ? list.find((group) => group.label === meal) ?? null : null;
+      },
     };
+  }
+  if (realWhen) {
+    const whenModule = loadNativeModule<NativeModule>('fuel/WhenBlock.tsx', {
+      ...imports,
+      '~/lib/accountData': { useCurrentDayKey: () => dates.format(new Date(), 'yyyy-MM-dd') },
+    });
+    imports['./WhenBlock'] = whenModule;
+    // Reload ManualTab, MealReview and FoodReview with the real WhenBlock and realClock foodLogger/fuel mocks.
+    const manualReloaded = loadNativeModule<NativeModule>('fuel/ManualTab.tsx', imports);
+    imports['~/fuel/ManualTab'] = { ...manualReloaded, ManualTab: (props: ManualProps) => {
+      captured.manual = props;
+      captured.context = useLogger();
+      return createElement(manualReloaded.ManualTab as ComponentType<ManualProps>, props);
+    } };
+    const reviewReloaded = loadNativeModule<NativeModule>('fuel/MealReview.tsx', imports);
+    imports['~/fuel/MealReview'] = { MealReview: (props: ReviewProps) => {
+      captured.review = props;
+      return createElement(reviewReloaded.MealReview as ComponentType<ReviewProps>, props);
+    } };
+    if (realReview) {
+      const servingHelper = loadNativeModule<NativeModule>('fuel/ServingHelper.tsx', {
+        ...imports,
+        '@/lib/foodTrial': foodTrial,
+        '@/lib/foodUnits': foodUnits,
+        '~/lib/aiConsent': { askAiConsent: async () => true },
+      });
+      const foodReview = loadNativeModule<NativeModule>('fuel/FoodReview.tsx', {
+        ...imports,
+        '@/lib/foodUnits': foodUnits,
+        '@/lib/recentFoods': { usualAmountInput },
+        '@/lib/saveNutritionEntry': { chosenFoodLogSource: () => 'search' },
+        '@/lib/barcodeLookup': { barcodeProviderLabel: String },
+        '~/components/FigureInput': {
+          FigureInput: (props: { value: string; onChangeText: (text: string) => void; onBlur?: () => void; accessibilityLabel?: string }) => {
+            const label = props.accessibilityLabel ?? 'Figure';
+            captured.fields[label] = { ...props, label };
+            return createElement('input', { 'aria-label': label, value: props.value, readOnly: true });
+          },
+        },
+        './ServingHelper': servingHelper,
+      });
+      imports['~/fuel/FoodReview'] = { FoodReview: (props: { food: Food }) => {
+        captured.foodReview = props;
+        return createElement(foodReview.FoodReview as ComponentType<{ food: Food }>, props);
+      } };
+    }
   }
   const Sheet = loadNativeModule<{ default: ComponentType }>('app/log-food.tsx', imports).default;
   let root: Root | undefined;
@@ -1702,8 +1766,8 @@ describe('Log food: where the food goes', () => {
 // asks an open sheet, which answers through sheetSnap.
 describe('native food logger: Snap a meal', () => {
   it.each([
-    ['2026-11-03T10:29:50', '2026-11-03T10:30:10', 'breakfast'],
-    ['2026-11-03T23:59:50', '2026-11-04T00:00:10', 'snack'],
+    ['2026-11-03T10:59:50', '2026-11-03T11:00:10', 'breakfast'],
+    ['2026-11-03T23:59:50', '2026-11-04T00:00:10', 'dinner'],
   ])('keeps the press date, minute and meal after opening late from %s', async (pressed, opened, meal) => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
@@ -1730,7 +1794,7 @@ describe('native food logger: Snap a meal', () => {
       vi.setSystemTime(new Date('2026-11-04T00:00:10'));
       await h.ask(atMs);
       expect(h.captured.context!.selectedKey).toBe('2026-11-03');
-      expect(h.captured.context!.when).toMatchObject({ time: '23:59', groupId: '2026-11-03:snack' });
+      expect(h.captured.context!.when).toMatchObject({ time: '23:59', groupId: '2026-11-03:dinner' });
       if (path === 'join') expect(h.captured.ai!.draft.hint).toBe('Late snack');
       expect(h.refusePress).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
@@ -2946,5 +3010,128 @@ describe('food writes invalidate old reminder totals', () => {
     }
     expect(real.useFuelStore.getState().totalsNeedRefresh).toBe(true);
     expect(real.useFuelStore.getState().todayTotals.calories).toBeGreaterThan(0);
+  });
+});
+
+describe('auto-slotting by time of day, quick-add group readiness, and late-night yesterday', () => {
+  it('re-slots the meal as WhenBlock time changes, then stops once a meal is chosen manually', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-28T09:15:00'));
+    const h = loggerHarness({ realClock: true, realWhen: true });
+    await h.render();
+    await h.tab('manual');
+    expect(h.captured.context!.when).toMatchObject({ time: '09:15', groupId: '2026-11-28:breakfast' });
+    expect(h.text()).toContain('Adds to Breakfast');
+
+    // Time moves into Lunch, Dinner, and small hours (No meal).
+    await act(async () => { h.captured.pickers.Time.onChange(new Date('2026-11-28T13:20:00')); });
+    expect(h.captured.context!.when).toMatchObject({ time: '13:20', groupId: '2026-11-28:lunch' });
+    expect(h.text()).toContain('Adds to Lunch');
+
+    await act(async () => { h.captured.pickers.Time.onChange(new Date('2026-11-28T22:30:00')); });
+    expect(h.captured.context!.when).toMatchObject({ time: '22:30', groupId: '2026-11-28:dinner' });
+    expect(h.text()).toContain('Adds to Dinner');
+
+    await act(async () => { h.captured.pickers.Time.onChange(new Date('2026-11-28T01:45:00')); });
+    expect(h.captured.context!.when).toMatchObject({ time: '01:45', groupId: null });
+    expect(h.text()).toContain('Adds to today');
+
+    // Manually picking Breakfast locks the destination across later time changes.
+    await h.press('Adds to today. Change');
+    await act(async () => { await h.captured.choices!.callback(1); });
+    expect(h.captured.context!.when.groupId).toBe('2026-11-28:breakfast');
+    await act(async () => { h.captured.pickers.Time.onChange(new Date('2026-11-28T19:00:00')); });
+    expect(h.captured.context!.when).toMatchObject({ time: '19:00', groupId: '2026-11-28:breakfast' });
+  });
+
+  it('keeps the meal fixed when opened from a specific meal button or editing an entry', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-28T09:15:00'));
+    const fromMeal = loggerHarness({ realClock: true, realWhen: true, params: { group: '2026-11-28:breakfast' } });
+    await fromMeal.render();
+    await fromMeal.tab('manual');
+    await act(async () => { fromMeal.captured.pickers.Time.onChange(new Date('2026-11-28T18:30:00')); });
+    expect(fromMeal.captured.context!.when).toMatchObject({ time: '18:30', groupId: '2026-11-28:breakfast' });
+
+    const edit = loggerHarness({
+      editing: true,
+      entry: { ...loggedMilk, date: '2026-11-28', logged_at: '2026-11-28T09:00:00', group_id: '2026-11-28:breakfast' },
+      realClock: true,
+      realWhen: true,
+      realReview: true,
+    });
+    await edit.render();
+    await act(async () => { edit.captured.pickers.Time.onChange(new Date('2026-11-28T18:30:00')); });
+    expect(edit.captured.context!.when).toMatchObject({ time: '18:30', groupId: '2026-11-28:breakfast' });
+  });
+
+  it('re-slots a past day once a time is chosen in WhenBlock, and autofills the live clock on yesterday during 00:00–03:59', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // 1:35 AM on Nov 28: yesterday (Nov 27) autofills 01:35 in No meal; scrolling to 21:30 slots into Dinner.
+    vi.setSystemTime(new Date('2026-11-28T01:35:00'));
+    const yesterday = loggerHarness({ realClock: true, realWhen: true, params: { day: '2026-11-27' } });
+    await yesterday.render();
+    await yesterday.tab('manual');
+    expect(yesterday.captured.context!.when).toMatchObject({ time: '01:35', groupId: null });
+    await act(async () => { yesterday.captured.pickers.Time.onChange(new Date('2026-11-27T21:30:00')); });
+    expect(yesterday.captured.context!.when).toMatchObject({ time: '21:30', groupId: '2026-11-27:dinner' });
+
+    // Opening a saved composed meal on yesterday at 1:35 AM also autofills 01:35 and re-slots as Time changes.
+    await yesterday.tab('recent');
+    await act(async () => { yesterday.captured.context!.composeMeal(recipe); });
+    expect(yesterday.captured.review!.draft).toMatchObject({ date: '2026-11-27', time: '01:35', groupId: null });
+    await act(async () => { yesterday.captured.pickers.Time.onChange(new Date('2026-11-27T12:15:00')); });
+    expect(yesterday.captured.review!.draft).toMatchObject({ time: '12:15', groupId: '2026-11-27:lunch' });
+    // Manually choosing No meal in MealReview stops further auto-slotting.
+    await yesterday.click('Add to');
+    await act(async () => { await yesterday.captured.choices!.callback(0); });
+    expect(yesterday.captured.review!.draft.groupId).toBeNull();
+    await act(async () => { yesterday.captured.pickers.Time.onChange(new Date('2026-11-27T19:00:00')); });
+    expect(yesterday.captured.review!.draft).toMatchObject({ time: '19:00', groupId: null });
+
+    // Two days ago at 1:35 AM still defaults to midnight (00:00).
+    const older = loggerHarness({ realClock: true, realWhen: true, params: { day: '2026-11-26' } });
+    await older.render();
+    await older.tab('manual');
+    expect(older.captured.context!.when).toMatchObject({ time: '00:00', groupId: null });
+
+    // Yesterday at 4:00 AM (after small hours) also defaults to midnight (00:00).
+    vi.setSystemTime(new Date('2026-11-28T04:00:00'));
+    const morningYesterday = loggerHarness({ realClock: true, realWhen: true, params: { day: '2026-11-27' } });
+    await morningYesterday.render();
+    await morningYesterday.tab('manual');
+    expect(morningYesterday.captured.context!.when).toMatchObject({ time: '00:00', groupId: null });
+  });
+
+  it('waits for day groups to finish loading before quick-adding via +, landing in the auto-slotted meal', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-28T12:30:00'));
+    const loadGroups = deferred<NutritionGroup[]>();
+    const h = loggerHarness({
+      realClock: true,
+      realLists: true,
+      readDayGroups: () => loadGroups.promise,
+    });
+    await h.render();
+    // Tap + twice before loadDayGroups resolves: nothing writes yet and the duplicate tap is ignored.
+    await act(async () => {
+      void h.captured.pressables['Add Milk'].onPress!();
+      void h.captured.pressables['Add Milk'].onPress!();
+    });
+    expect(h.persistEntry).not.toHaveBeenCalled();
+
+    const groups: NutritionGroup[] = [
+      { id: '2026-11-28:breakfast', user_id: 'user-a', date: '2026-11-28', kind: 'meal', label: 'breakfast', sort_order: 0 },
+      { id: '2026-11-28:lunch', user_id: 'user-a', date: '2026-11-28', kind: 'meal', label: 'lunch', sort_order: 1 },
+      { id: '2026-11-28:dinner', user_id: 'user-a', date: '2026-11-28', kind: 'meal', label: 'dinner', sort_order: 2 },
+    ];
+    await act(async () => { loadGroups.resolve(groups); });
+    await h.flush();
+
+    expect(h.persistEntry).toHaveBeenCalledTimes(1);
+    expect(h.persistEntry.mock.calls[0][0]).toMatchObject({ date: '2026-11-28', group_id: '2026-11-28:lunch', meal_type: 'lunch' });
+    // Tick stays on Lunch once the sheet updates to Lunch, and tapping it takes the entry back out.
+    expect(h.text()).toContain('Adds to Lunch');
+    expect(h.captured.pressables['Milk added. Take it out']).toBeDefined();
   });
 });

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { planExerciseSubstitution } from '@/lib/exerciseSubstitution';
 import type { Exercise, FlexiblePlanItem, Split, SplitExercise, Workout, WorkoutDayPlan, WorkoutSet } from '@/types';
 
-import { mealForTime } from '../native/src/lib/meals';
+import { isLateNightTime, mealForTime, usesLiveClockForDay } from '../native/src/lib/meals';
 import { afterLoggedSet, buildSessionModel, isLiveWorkout, movementLine, sessionModelCache, skippedLine, type Movement } from '../native/src/lib/sessionModel';
 
 // The native app's live-workout model decides which set "Log set" saves to.
@@ -586,16 +586,34 @@ describe('buildSessionModel with a movement added to a planned session', () => {
 });
 
 describe('mealForTime', () => {
-  const at = (hours: number, minutes: number) => new Date(2026, 9, 26, hours, minutes);
+  const at = (hours: number, minutes: number, day = 26) => new Date(2026, 9, day, hours, minutes);
 
-  it('splits the day into breakfast, lunch, dinner and snacks', () => {
-    expect(mealForTime(at(6, 0))).toBe('breakfast');
-    expect(mealForTime(at(10, 29))).toBe('breakfast');
-    expect(mealForTime(at(10, 30))).toBe('lunch');
-    expect(mealForTime(at(14, 59))).toBe('lunch');
-    expect(mealForTime(at(15, 0))).toBe('dinner');
-    expect(mealForTime(at(20, 59))).toBe('dinner');
-    expect(mealForTime(at(21, 0))).toBe('snack');
+  it('splits the day into no meal (small hours), breakfast, lunch and dinner', () => {
+    expect(mealForTime(at(0, 0))).toBeNull();
+    expect(mealForTime(at(3, 59))).toBeNull();
+    expect(mealForTime(at(4, 0))).toBe('breakfast');
+    expect(mealForTime(at(10, 59))).toBe('breakfast');
+    expect(mealForTime(at(11, 0))).toBe('lunch');
+    expect(mealForTime(at(15, 59))).toBe('lunch');
+    expect(mealForTime(at(16, 0))).toBe('dinner');
+    expect(mealForTime(at(23, 59))).toBe('dinner');
+  });
+
+  it('uses the live clock on today and on yesterday during small hours only', () => {
+    expect(isLateNightTime(at(0, 0, 28))).toBe(true);
+    expect(isLateNightTime(at(3, 59, 28))).toBe(true);
+    expect(isLateNightTime(at(4, 0, 28))).toBe(false);
+
+    // At 1:35 AM on the 28th: today and yesterday (27th) take the live clock; 26th does not.
+    const lateNight = at(1, 35, 28);
+    expect(usesLiveClockForDay(at(12, 0, 28), lateNight)).toBe(true);
+    expect(usesLiveClockForDay(at(12, 0, 27), lateNight)).toBe(true);
+    expect(usesLiveClockForDay(at(12, 0, 26), lateNight)).toBe(false);
+
+    // At 4:00 AM on the 28th: only today takes the live clock.
+    const morning = at(4, 0, 28);
+    expect(usesLiveClockForDay(at(12, 0, 28), morning)).toBe(true);
+    expect(usesLiveClockForDay(at(12, 0, 27), morning)).toBe(false);
   });
 });
 
