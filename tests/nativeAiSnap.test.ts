@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as analysisProgress from '@/lib/analysisProgress';
+import * as foodAnalysisActivitySync from '@/lib/foodAnalysisActivitySync';
 import * as foodTrialReview from '@/lib/foodTrialReview';
 import * as pendingEntry from '@/lib/pendingEntryId';
 import { loadNativeModule } from './helpers/loadNativeModule';
@@ -53,6 +54,13 @@ const logger = { purpose: 'log', editing: null, beginBusy: () => noop, beginSave
 // The answer to "Send this to Google Gemini?": allowed unless a test says otherwise.
 let allowed = true;
 const askAiConsent = vi.fn(async () => allowed);
+let visible = true;
+const visibleListeners = new Set<() => void>();
+const syncActivity = vi.fn();
+const endActivity = vi.fn();
+const endBgTask = vi.fn();
+const startBgTask = vi.fn(() => ({ isExpired: () => false, wasBackgrounded: () => !visible, end: endBgTask }));
+const waitForForeground = vi.fn(async () => {});
 // A refusal the service gave a reason for ("daily", "everyone", "paused").
 class Refusal extends Error {
   readonly limit: string;
@@ -76,6 +84,14 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
   },
   'react-native-reanimated': { default: { View: Wrap }, LayoutAnimationConfig: Wrap },
   '@/lib/analysisProgress': analysisProgress,
+  '@/lib/appVisibility': {
+    isAppVisible: () => visible,
+    onAppVisible: (listener: () => void) => {
+      visibleListeners.add(listener);
+      return () => visibleListeners.delete(listener);
+    },
+  },
+  '@/lib/foodAnalysisActivitySync': foodAnalysisActivitySync,
   '@/lib/foodTrialReview': foodTrialReview,
   '@/lib/foodPersistence': {},
   '@/lib/foodTrial': {
@@ -114,6 +130,12 @@ const { AiTab, emptyAi } = loadNativeModule<{ AiTab: ComponentType<TabProps>; em
   // Sending was allowed before, and food analysis is on.
   '~/lib/aiConsent': { askAiConsent },
   '~/lib/appConfig': { useAiPaused: () => false },
+  '~/lib/foodAnalysisActivity': {
+    syncFoodAnalysisActivity: syncActivity,
+    endFoodAnalysisActivity: endActivity,
+    startFoodAnalysisBackgroundTask: startBgTask,
+    waitForAppForeground: waitForForeground,
+  },
   '~/lib/format': { formatWhole: String },
   '~/lib/foodLogger': { saveFoodEntry: vi.fn(), workerAccessToken: async () => 'token' },
   '~/lib/haptics': { haptics: { tap: noop, select: noop, success: noop, error: noop } },
@@ -159,6 +181,13 @@ const hasCapsule = (title: string) => host.querySelector(`button[data-title="${t
 beforeEach(() => {
   up = false;
   allowed = true;
+  visible = true;
+  visibleListeners.clear();
+  syncActivity.mockReset();
+  endActivity.mockReset();
+  endBgTask.mockReset();
+  startBgTask.mockClear();
+  analyze.mockClear();
   shownTrail = null;
   sheet = undefined;
   sheetOptions = undefined;
@@ -384,5 +413,106 @@ describe('AI tab: permission and limits', () => {
     await act(async () => { analysis.reject(new Refusal('paused')); });
     await settle();
     expect(host.textContent).toContain('AI estimates are paused');
+  });
+});
+
+describe('AI tab: background continuation and Dynamic Island', () => {
+  const readyResult = {
+    provider: 'gemini',
+    model: 'gemini-3.8-flash',
+    modelVersion: null,
+    responseId: null,
+    researchProvider: 'tavily',
+    summary: 'Estimated from product label.',
+    items: [{
+      name: 'Chicken tikka samosas',
+      quantity: 6,
+      unit: 'piece',
+      basisQuantity: 3,
+      calories: 180,
+      protein: 6,
+      carbs: 24,
+      fat: 7,
+      evidence: 'label' as const,
+      notes: '',
+      sourceIndexes: [],
+      amountConfirmed: true,
+    }],
+    sources: [],
+    searchSuggestionsHtml: null,
+    originalText: '',
+    usage: { elapsedMs: 8000 },
+  };
+
+  it('starts the background task and Live Activity, streams real steps, alerts on background completion and clears on return', async () => {
+    await render(0, { ...emptyAi('Six Trader Joe’s chicken tikka samosas') });
+    await act(async () => { capsules['Analyze meal'].onPress(); });
+    await settle();
+
+    expect(startBgTask).toHaveBeenCalledOnce();
+    expect(syncActivity).toHaveBeenLastCalledWith(expect.objectContaining({
+      phase: 'running',
+      title: 'Reading your description',
+      detail: 'Six Trader Joe’s chicken tikka samosas',
+    }));
+
+    const { onProgress } = analyze.mock.calls[0][0] as AnalyzeRequest & { onProgress: (step: unknown) => void };
+    // User switches to YouTube while Gemini searches.
+    visible = false;
+    await act(async () => { onProgress({ step: 'search', products: ['Trader Joe’s Samosas'] }); });
+    expect(syncActivity).toHaveBeenLastCalledWith(expect.objectContaining({
+      phase: 'running',
+      title: 'Searching the web',
+      detail: 'Trader Joe’s Samosas',
+    }));
+
+    await act(async () => { analysis.resolve(readyResult); });
+    await settle();
+
+    expect(endBgTask).toHaveBeenCalledOnce();
+    expect(endActivity).not.toHaveBeenCalled();
+    expect(syncActivity).toHaveBeenLastCalledWith(expect.objectContaining({
+      phase: 'ready',
+      title: 'Estimate ready',
+      calories: 360,
+      itemCount: 1,
+      alertTitle: 'Estimate ready',
+    }));
+    expect(current.items).toHaveLength(1);
+
+    // User taps back from YouTube: finished Live Activity dismisses immediately.
+    visible = true;
+    await act(async () => {
+      for (const listener of visibleListeners) listener();
+    });
+    expect(endActivity).toHaveBeenCalledOnce();
+  });
+
+  it('ends the Live Activity immediately without alerting when the estimate finishes in the foreground', async () => {
+    await render(0, { ...emptyAi('Two eggs on toast') });
+    await act(async () => { capsules['Analyze meal'].onPress(); });
+    await settle();
+
+    await act(async () => { analysis.resolve(readyResult); });
+    await settle();
+
+    expect(endBgTask).toHaveBeenCalledOnce();
+    expect(endActivity).toHaveBeenCalledOnce();
+    expect(syncActivity.mock.calls.every(([payload]) => payload.phase === 'running')).toBe(true);
+  });
+
+  it('updates the Dynamic Island when a follow-up question or failure lands while away', async () => {
+    await render(0, { ...emptyAi('Mystery bowl') });
+    await act(async () => { capsules['Analyze meal'].onPress(); });
+    await settle();
+    visible = false;
+    await act(async () => { analysis.resolve({ ...readyResult, items: [], clarification: 'Was it chicken or tofu?' }); });
+    await settle();
+    expect(syncActivity).toHaveBeenLastCalledWith(expect.objectContaining({
+      phase: 'clarify',
+      title: 'One quick detail',
+      detail: 'Was it chicken or tofu?',
+      alertTitle: 'One quick detail',
+    }));
   });
 });

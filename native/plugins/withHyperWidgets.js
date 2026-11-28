@@ -27,6 +27,7 @@ const SOURCE_DIR = 'targets/widgets';
 const SHARED_FILES = [
   // One definition of each card's data for the app and the extension.
   'modules/hyper-activity/ios/WorkoutActivityAttributes.swift',
+  'modules/hyper-activity/ios/FoodAnalysisActivityAttributes.swift',
   'modules/hyper-run/ios/RunActivityAttributes.swift',
   // The run card's Split, Rest and Finish buttons.
   'modules/hyper-run/shared/RunControlIntent.swift',

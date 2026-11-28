@@ -13,7 +13,7 @@ import { NATIVE_AUTH_REDIRECT_URL } from '@/lib/nativeBridge';
 import { parseNativeOAuthCallback } from '@/lib/nativeOAuthCallback';
 import { supabase } from '@/lib/supabase';
 import { AUTH_LINK_FAILED, useAuthLinkError } from '~/lib/authLink';
-import { blocksRunLink, rememberLaunchLink } from '~/lib/launchLink';
+import { blocksRunLink, consumeLogFoodLink, rememberLaunchLink } from '~/lib/launchLink';
 
 /** The full callback URL, whether iOS hands over the URL or only its path. */
 function callbackUrl(path: string): string | null {
@@ -34,7 +34,7 @@ export function redirectSystemPath({ path, initial }: { path: string; initial: b
   try {
     const url = callbackUrl(path);
     if (!url) {
-      if (!initial && blocksRunLink(path)) return '';
+      if (!initial && (blocksRunLink(path) || consumeLogFoodLink(path))) return '';
       if (initial) rememberLaunchLink(path);
       return path;
     }

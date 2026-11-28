@@ -56,7 +56,7 @@ describe('launch link store', () => {
       .flatMap((file) => readFileSync(join(widgets, file), 'utf8').split('\n'))
       .filter((line) => line.includes('.widgetURL(appURL('))
       .flatMap((line) => [...line.matchAll(/"([^"]+)"/g)].map((match) => match[1]));
-    expect(new Set(links)).toEqual(new Set(['fuel', 'you/targets', 'train', 'run']));
+    expect(new Set(links)).toEqual(new Set(['fuel', 'you/targets', 'train', 'run', 'log-food']));
     for (const link of links) {
       const path = launchLink.launchPath(`app.hyper.mobile://${link}`);
       expect(path, link).toBe(`/${link}`);
@@ -146,6 +146,20 @@ describe('links that launch the app', () => {
       release();
     }
     expect(redirectSystemPath({ path: '/fuel', initial: false })).toBe('/fuel');
+  });
+
+  it('keeps a tap on the meal-analysis card on the open Log food sheet and focuses the AI tab', () => {
+    const focusAi = vi.fn();
+    const release = launchLink.holdLogFoodLinks(focusAi);
+    try {
+      expect(redirectSystemPath({ path: 'app.hyper.mobile://log-food', initial: false })).toBe('');
+      expect(focusAi).toHaveBeenCalledOnce();
+      // Other links still route normally when only Log food is open.
+      expect(redirectSystemPath({ path: 'app.hyper.mobile://fuel', initial: false })).toBe('app.hyper.mobile://fuel');
+    } finally {
+      release();
+    }
+    expect(redirectSystemPath({ path: 'app.hyper.mobile://log-food', initial: false })).toBe('app.hyper.mobile://log-food');
   });
 
   it('still exchanges the email confirmation and keeps no launch link for it', () => {
@@ -267,5 +281,14 @@ describe('the way in after a launch link', () => {
     expect(push).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith('/run');
     expect(replace.mock.invocationCallOrder[0]).toBeLessThan(push.mock.invocationCallOrder[0]);
+  });
+
+  it('opens log-food over Today on cold launch from a meal-analysis card', async () => {
+    launchLink.rememberLaunchLink('app.hyper.mobile://log-food');
+    await mount();
+    await show('app');
+    expect(redirects).toEqual([]);
+    expect(replace).toHaveBeenCalledWith('/today');
+    expect(push).toHaveBeenCalledWith('/log-food');
   });
 });

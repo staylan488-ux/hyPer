@@ -10,17 +10,17 @@ export default function Index() {
   // A widget or card that launched the app opens its screen instead of Today,
   // once; a sign-in first drops it (lib/launchLink.ts).
   const [launch] = useState(pendingLaunchLink);
-  const openRun = screen === 'app' && launch === '/run';
+  const openModal = screen === 'app' && (launch === '/run' || launch === '/log-food');
   useEffect(() => {
     if (screen === 'app' || screen === 'sign-in') dropLaunchLink();
-    // The run is a modal: it opens over Today, so closing it lands there.
-    if (openRun) {
+    // Modals (run, log-food) open over Today, so closing them lands there.
+    if (openModal && launch) {
       router.replace('/today');
-      router.push('/run');
+      router.push(launch);
     }
-  }, [screen, openRun]);
+  }, [screen, openModal, launch]);
   // The splash screen stays up until the saved session has been read.
-  if (screen === 'boot' || openRun) return null;
+  if (screen === 'boot' || openModal) return null;
   const href =
     screen === 'app'
       ? (launch ?? '/today')
