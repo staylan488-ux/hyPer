@@ -21,6 +21,8 @@ export type PendingQuickAdd = { pending: PendingEntryId; when: When; groups: Nut
 /** A confirmed quick add: the entry it wrote, for its tick to take back out, and whether that removal is running. */
 export type AddedQuickAdd = { id: string; name: string; removing: boolean };
 
+export type QuickAddDestination = { when: When; groups: NutritionGroup[] };
+
 export type LoggerContextValue = {
   /** Logging entries, or adding ingredients to a meal being built. */
   purpose: 'log' | 'ingredients';
@@ -29,7 +31,12 @@ export type LoggerContextValue = {
   /** The page day's meal groups. */
   groups: NutritionGroup[];
   when: When;
-  setWhen: (when: When) => void;
+  setWhen: (when: When, options?: { keepAutoGroup?: boolean }) => void;
+  /**
+   * Resolves the current quick-add destination, waiting for the day's meal
+   * groups if they are still loading and the meal was not manually chosen.
+   */
+  resolveQuickAddDestination?: () => QuickAddDestination | Promise<QuickAddDestination>;
   savedMeals: Food[] | null;
   reloadSavedMeals: () => Promise<void>;
   /** Opens the review for a food from a list, a search or a scan (at `servings`, else one serving). */

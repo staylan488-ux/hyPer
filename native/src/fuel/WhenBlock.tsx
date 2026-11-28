@@ -32,7 +32,10 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
             day.setHours(12, 0, 0, 0);
             const moved = format(day, 'yyyy-MM-dd') !== format(when.date, 'yyyy-MM-dd');
             // groups belong to the page's day; another day logs to no meal
-            setWhen({ ...when, date: day, groupId: moved && format(day, 'yyyy-MM-dd') !== selectedKey ? null : when.groupId });
+            setWhen(
+              { ...when, date: day, groupId: moved && format(day, 'yyyy-MM-dd') !== selectedKey ? null : when.groupId },
+              { keepAutoGroup: true },
+            );
           }}
         />
         <Hairline />
@@ -41,7 +44,7 @@ export function WhenBlock({ disabled }: { disabled?: boolean }) {
           mode="time"
           value={timeAsDate(when.date, when.time)}
           disabled={disabled}
-          onChange={(date) => setWhen({ ...when, time: format(date, 'HH:mm') })}
+          onChange={(date) => setWhen({ ...when, time: format(date, 'HH:mm') }, { keepAutoGroup: true })}
         />
       </Label>
       {/* The meal is chosen on the line under the sheet's title, which names it; another day's food goes in no meal. */}

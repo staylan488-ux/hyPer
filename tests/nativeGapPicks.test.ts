@@ -159,7 +159,10 @@ const { GapRow, GapSheet, forgetGapSessions } = loadNativeModule<{
   '~/lib/format': format,
   '~/lib/fuel': {
     loadDayGroups: async () => [dinner],
-    suggestedGroup: (groups: NutritionGroup[], at: Date) => groups.find((group) => group.label === mealForTime(at)) ?? null,
+    suggestedGroup: (groups: NutritionGroup[], at: Date) => {
+      const meal = mealForTime(at);
+      return meal ? groups.find((group) => group.label === meal) ?? null : null;
+    },
     useFuelStore: { getState: () => ({ refreshAfterWrite, deleteEntry }) },
     useFuelDay: () => {
       const { selected, loaded, logs } = fuelDay();

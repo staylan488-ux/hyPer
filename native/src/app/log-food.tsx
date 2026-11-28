@@ -1,6 +1,6 @@
 import { Host, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import { disabled, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
-import { format, isToday } from 'date-fns';
+import { format, isSameDay, startOfDay } from 'date-fns';
 import { router, useFocusEffect, useLocalSearchParams, useNavigation, type NativeStackNavigationProp } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -38,15 +38,15 @@ import { Row } from '~/components/Row';
 import { dismissOpenSwipeRow } from '~/components/SwipeRow';
 import { announce, useLargeText } from '~/lib/accessibility';
 import { formatWhole } from '~/lib/format';
-import { initialWhen, usesDayGroups, type When } from '~/lib/foodLogger';
-import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, type FoodLog } from '~/lib/fuel';
+import { initialWhen, timeAsDate, usesDayGroups, type When } from '~/lib/foodLogger';
+import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTodayKey, usesLiveClockForDay, type FoodLog } from '~/lib/fuel';
 import { haptics } from '~/lib/haptics';
 import { refusePress } from '~/lib/launch';
 import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
 import { holdLogFoodLinks } from '~/lib/launchLink';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
-import { LoggerContext, takeReview, type AddedQuickAdd, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
+import { LoggerContext, takeReview, type AddedQuickAdd, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddDestination, type QuickAddState } from '~/fuel/context';
 import { Empty, SavedTab, SearchField, SearchTab } from '~/fuel/FoodLists';
 import { FoodReview } from '~/fuel/FoodReview';
 import { EntryMethods, type EntryMethod } from '~/fuel/EntryMethods';
@@ -87,6 +87,16 @@ const mealPartsKey = (draft: MealDraft) => draft.ingredients.map((part) => `${pa
  */
 const suggestFor = (selectedKey: string, list: NutritionGroup[], pressedAt: Date | null = null) =>
   (selectedKey === (pressedAt ? format(pressedAt, 'yyyy-MM-dd') : today()) ? suggestedGroup(list, pressedAt ?? undefined)?.id ?? null : null);
+
+/**
+ * The meal suggested for `value`: once the time picker was changed, follow the
+ * chosen time on the sheet's day; otherwise follow the sheet's initial clock rule.
+ */
+const suggestForWhen = (selectedKey: string, value: When, list: NutritionGroup[], pressedAt: Date | null, timeEdited: boolean) => {
+  if (!usesDayGroups(value, selectedKey)) return null;
+  if (timeEdited) return suggestedGroup(list, timeAsDate(value.date, value.time))?.id ?? null;
+  return suggestFor(selectedKey, list, pressedAt);
+};
 
 /** The same groups as far as the sheet reads them (destination, labels, order). */
 const sameGroups = (a: NutritionGroup[], b: NutritionGroup[]) =>
@@ -228,24 +238,59 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const [when, setWhenState] = useState<When>(() =>
     initialWhen(editing, selectedKey, groups, groupParam ?? suggestFor(selectedKey, groups, snapAt), snapAt),
   );
+  const [groupLocked, setGroupLocked] = useState(Boolean(editing || groupParam));
   const groupTouched = useRef(Boolean(editing || groupParam));
-  const setWhen = useCallback((next: When) => {
-    groupTouched.current = true;
-    setWhenState(next);
-  }, []);
+  const timeTouched = useRef(false);
+  const groupsNow = useRef(groups);
+  const whenNow = useRef(when);
+  useLayoutEffect(() => {
+    groupsNow.current = groups;
+    whenNow.current = when;
+  });
+  const dayGroupsSettled = useRef(false);
+  const dayGroupsPromise = useRef<Promise<QuickAddDestination> | null>(null);
+  const setWhen = useCallback((next: When, options?: { keepAutoGroup?: boolean }) => {
+    let resolved = next;
+    if (options?.keepAutoGroup) {
+      if (next.time !== whenNow.current.time) timeTouched.current = true;
+      if (!groupTouched.current) {
+        const groupId = usesDayGroups(next, selectedKey)
+          ? (suggestedGroup(groupsNow.current, timeAsDate(next.date, next.time))?.id ?? null)
+          : null;
+        resolved = { ...next, groupId };
+      }
+    } else {
+      groupTouched.current = true;
+      setGroupLocked(true);
+    }
+    whenNow.current = resolved;
+    setWhenState(resolved);
+  }, [selectedKey]);
 
   // The day's groups (Breakfast, Lunch and Dinner are created if missing);
   // a new entry then goes to the meal that fits the time. Groups and a meal
   // that did not change keep their values, so the lists don't redraw.
   useEffect(() => {
     let current = true;
-    void loadDayGroups(selectedKey).then((loaded) => {
-      if (!current) return;
-      setGroups((existing) => (sameGroups(existing, loaded) ? existing : loaded));
-      if (groupTouched.current) return;
-      const groupId = suggestFor(selectedKey, loaded, snapAt);
-      setWhenState((value) => (value.groupId === groupId ? value : { ...value, groupId }));
-    });
+    dayGroupsSettled.current = false;
+    const load = loadDayGroups(selectedKey)
+      .catch(() => groupsNow.current)
+      .then((loaded): QuickAddDestination => {
+        if (!current) return { when: whenNow.current, groups: groupsNow.current };
+        dayGroupsSettled.current = true;
+        groupsNow.current = loaded;
+        setGroups((existing) => (sameGroups(existing, loaded) ? existing : loaded));
+        if (groupTouched.current) return { when: whenNow.current, groups: loaded };
+        const nextGroupId = suggestForWhen(selectedKey, whenNow.current, loaded, snapAt, timeTouched.current);
+        const nextWhen = whenNow.current.groupId === nextGroupId ? whenNow.current : { ...whenNow.current, groupId: nextGroupId };
+        whenNow.current = nextWhen;
+        setWhenState((value) => {
+          const groupId = suggestForWhen(selectedKey, value, loaded, snapAt, timeTouched.current);
+          return value.groupId === groupId ? value : { ...value, groupId };
+        });
+        return { when: nextWhen, groups: loaded };
+      });
+    dayGroupsPromise.current = load;
     return () => {
       current = false;
     };
@@ -257,11 +302,26 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   useEffect(() => {
     const fromStore = groupsForDay(selectedKey);
     if (fromStore.length === 0) return;
+    groupsNow.current = fromStore;
     setGroups((current) => (current.map((group) => group.id).join() === fromStore.map((group) => group.id).join() ? current : fromStore));
     if (groupTouched.current) return;
-    const groupId = suggestFor(selectedKey, fromStore, snapAt);
-    setWhenState((value) => (value.groupId || value.groupId === groupId ? value : { ...value, groupId }));
+    setWhenState((value) => {
+      const groupId = suggestForWhen(selectedKey, value, fromStore, snapAt, timeTouched.current);
+      if (value.groupId || value.groupId === groupId) return value;
+      const next = { ...value, groupId };
+      whenNow.current = next;
+      return next;
+    });
   }, [storeGroups, selectedKey, snapAt]);
+
+  const resolveQuickAddDestination = useCallback((): QuickAddDestination | Promise<QuickAddDestination> => {
+    const currentWhen = whenNow.current;
+    const currentGroups = groupsNow.current;
+    if (groupTouched.current || !usesDayGroups(currentWhen, selectedKey) || dayGroupsSettled.current || !dayGroupsPromise.current) {
+      return { when: currentWhen, groups: currentGroups };
+    }
+    return dayGroupsPromise.current;
+  }, [selectedKey]);
 
   const [tab, setTab] = useState<Tab>(editing ? 'manual' : startCamera ? 'photo' : 'recent');
   const [chosen, setChosen] = useState<{ food: Food; meta: ChosenMeta; servings?: number } | null>(() =>
@@ -355,22 +415,39 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       // how much of the meal, as a log keeps it (two decimals)
       const amount = mealAmount(Number(servings)) ?? 1;
       const day = editing?.date ?? selectedKey;
-      const dayDate = new Date(`${day}T00:00:00`);
+      const dayDate = new Date(`${day}T12:00:00`);
+      const now = new Date();
+      const clockSource = editing
+        ? (isSameDay(dayDate, now) ? now : startOfDay(dayDate))
+        : usesLiveClockForDay(dayDate, now)
+          ? now
+          : startOfDay(dayDate);
+      const time = toLocalTimeInput(editing?.logged_at ?? null, clockSource);
+      const sameAsSheet = !editing && usesDayGroups(when, day);
+      const groupId = editing
+        ? (editing.group_id ?? null)
+        : sameAsSheet
+          ? (groupLocked
+              ? when.groupId
+              : groups.length > 0
+                ? (suggestedGroup(groups, timeAsDate(dayDate, time))?.id ?? null)
+                : when.groupId)
+          : null;
       return {
         name: food?.name || '',
         ingredients: food ? scaleMealIngredients(decodeMealComposition(food.description)!.ingredients, amount) : [],
         // part of the meal ("0.5"), as its Amount row shows it
         ...(food && amount !== 1 ? { amount } : null),
         date: day,
-        time: toLocalTimeInput(editing?.logged_at ?? null, isToday(dayDate) ? new Date() : dayDate),
-        groupId: editing?.group_id ?? (isToday(dayDate) ? when.groupId : null),
+        time,
+        groupId,
         method: 'barcode',
         entryId: crypto.randomUUID(),
         saveAsReusableMeal: false,
         locked: false,
       };
     },
-    [editing, selectedKey, when.groupId],
+    [editing, selectedKey, groups, when, groupLocked],
   );
   const [meal, setMeal] = useState<MealDraft | null>(() => {
     if (saveFrom) return { ...makeDraft(), ...mealFromLoggedFoods(saveFrom), saveAsReusableMeal: true };
@@ -524,6 +601,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       groups,
       when,
       setWhen,
+      resolveQuickAddDestination,
       savedMeals,
       reloadSavedMeals,
       chooseFood: (food, meta = null, servings) => {
@@ -543,7 +621,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       pendingQuickAdds,
       addedQuickAdds,
     }),
-    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave, saving, quickAddStates, pendingQuickAdds, addedQuickAdds],
+    [purpose, editing, savedTarget, selectedKey, groups, when, setWhen, resolveQuickAddDestination, savedMeals, reloadSavedMeals, addIngredients, startMeal, complete, beginBusy, beginRead, beginSave, saving, quickAddStates, pendingQuickAdds, addedQuickAdds],
   );
 
   // Closing (✕, swipe down) with work that is not logged yet asks first: an
@@ -595,11 +673,6 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
   const fuelDay = useFuelStore((state) => state.selected);
   const canAddGroup = sameDay && selectedKey === fuelDay;
   const addingGroup = useRef(false);
-  // Read when a new meal lands, so a destination chosen while it was made stands.
-  const whenNow = useRef(when);
-  useLayoutEffect(() => {
-    whenNow.current = when;
-  });
   // A new meal or snack, made as Fuel makes one, becomes the destination,
   // unless another meal or day was chosen while it was made.
   const addDestination = async (kind: 'meal' | 'snack') => {
@@ -607,6 +680,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     addingGroup.current = true;
     // Chosen by the person: the day's meals arriving meanwhile pick nothing.
     groupTouched.current = true;
+    setGroupLocked(true);
     const before = whenNow.current;
     const created = await useFuelStore.getState().addGroup(kind).catch(() => null);
     addingGroup.current = false;
@@ -617,9 +691,11 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     }
     haptics.success();
     const list = groupsForDay(selectedKey);
+    groupsNow.current = list;
     setGroups(list);
     const now = whenNow.current;
     if (created.date !== selectedKey || now.groupId !== before.groupId || format(now.date, 'yyyy-MM-dd') !== format(before.date, 'yyyy-MM-dd')) return;
+    whenNow.current = { ...now, groupId: created.id };
     setWhenState((value) => ({ ...value, groupId: created.id }));
     // The line changes under VoiceOver's focus without a word: say where food now goes.
     announce(`${editing ? 'In' : 'Adds to'} ${nutritionGroupTitle(created, list)}`);
@@ -764,7 +840,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
       // a quick add left unconfirmed is work too: logging the meal would close the sheet past its retry
       analysisDraftOnly:
         (gemini ? aiTakesPhoto(ai) : photoTakesPhoto(photo)) && !manualHasChanges(manual, manualBase, savedMeals) && !(meal && storageFailed) && !quickAddFailed,
-      forNow: selectedKey === pressDay && !groupTouched.current,
+      forNow: selectedKey === pressDay && !groupTouched.current && !timeTouched.current,
     });
     if (answer === 'ignore') return;
     if (answer === 'refuse') {
@@ -777,7 +853,10 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     }
     // Use the press, including its meal, even if opening crossed midnight.
     setSnapAt(at);
-    setWhenState(initialWhen(null, selectedKey, groups, suggestFor(selectedKey, groups, at), at));
+    timeTouched.current = false;
+    const next = initialWhen(null, selectedKey, groups, suggestFor(selectedKey, groups, at), at);
+    whenNow.current = next;
+    setWhenState(next);
     showTab('photo');
     setDoor('photo');
     if (appeared) setCameraRequest((count) => count + 1);
@@ -1091,6 +1170,7 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
             savedTarget={savedTarget}
             saveOnly={Boolean(saveFrom) && !savedTarget}
             editingEntryId={editingMealEntryId}
+            groupLocked={groupLocked}
             storageFailed={storageFailed}
             onAddIngredients={() => setMealReview(false)}
             onPause={() => setPaused(true)}

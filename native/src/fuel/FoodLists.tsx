@@ -412,11 +412,14 @@ export function quickAddMenu({ purpose, state, logTitle, onAdd, onTakeOut }: {
 export function useQuickAdd() {
   const logger = useLogger();
   const { quickAddStates: states, setQuickAddStates: setStates, pendingQuickAdds: pendingAdds, addedQuickAdds: addedEntries } = logger;
+  const [resolving, setResolving] = useState<Record<string, true>>({});
+  const resolvingRef = useRef(new Set<string>());
   // The rows see only this destination's states, by food.
   const here = quickAddKey(logger.when, '');
   const added: Record<string, AddState> = {};
   if (logger.purpose === 'log') {
     for (const [key, state] of Object.entries(states)) if (key.startsWith(here)) added[key.slice(here.length)] = state;
+    for (const foodKey of Object.keys(resolving)) if (!added[foodKey]) added[foodKey] = 'saving';
   }
   // `add` and `takeOut` read the sheet as last drawn from here, so each stays
   // one function and a list redraws only the row whose state changed.
@@ -438,20 +441,53 @@ export function useQuickAdd() {
       }
       return;
     }
-    const key = quickAddKey(sheet.when, foodKey);
+    let targetWhen = sheet.when;
+    let targetGroups = sheet.groups;
+    let releaseResolve: (() => void) | null = null;
+    if (sheet.resolveQuickAddDestination) {
+      const destination = sheet.resolveQuickAddDestination();
+      if ('then' in destination) {
+        if (resolvingRef.current.has(foodKey)) return;
+        resolvingRef.current.add(foodKey);
+        releaseResolve = sheet.beginSave();
+        setResolving((current) => ({ ...current, [foodKey]: true }));
+        const resolved = await destination.catch(() => null);
+        resolvingRef.current.delete(foodKey);
+        setResolving((current) => {
+          if (!(foodKey in current)) return current;
+          const next = { ...current };
+          delete next[foodKey];
+          return next;
+        });
+        if (!resolved) {
+          releaseResolve();
+          releaseResolve = null;
+          return;
+        }
+        targetWhen = resolved.when;
+        targetGroups = resolved.groups;
+      } else {
+        targetWhen = destination.when;
+        targetGroups = destination.groups;
+      }
+    }
+    const key = quickAddKey(targetWhen, foodKey);
     const kept = pendingAdds.get(key);
     // One write at a time for a food and meal, read now rather than as drawn,
     // so a second tap before the redraw can't start another; a confirmed one
     // (its removal running or not) is not logged again.
-    if (kept?.inFlight || addedEntries.has(key)) return;
+    if (kept?.inFlight || addedEntries.has(key)) {
+      releaseResolve?.();
+      return;
+    }
     // A retry after an unconfirmed save writes that same entry: its id (the
     // write upserts on it, so it can't log twice), its time and its meal.
-    const attempt = kept ?? { pending: createPendingEntryId(), when: sheet.when, groups: sheet.groups, inFlight: false };
+    const attempt = kept ?? { pending: createPendingEntryId(), when: targetWhen, groups: targetGroups, inFlight: false };
     attempt.inFlight = true;
     pendingAdds.set(key, attempt);
     // The id this save writes under (the same one a retry reuses), kept for taking it back.
     const entryId = attempt.pending.take();
-    const release = sheet.beginSave();
+    const release = releaseResolve ?? sheet.beginSave();
     setStates((state) => ({ ...state, [key]: 'saving' }));
     const saved = await saveQuickAdd(food, {
       servings,

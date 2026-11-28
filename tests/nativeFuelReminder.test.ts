@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
 
+import * as meals from '../native/src/lib/meals';
 import * as plan from '../native/src/lib/fuelReminderPlan';
 import * as closeGap from '../native/src/lib/closeGap';
 import { recentFoodKey, type RecentLog } from '@/lib/recentFoods';
@@ -665,6 +666,7 @@ describe('confirmed food writes with a failed refresh', () => {
       '@/lib/saveNutritionEntry': { ...entry, persistNutritionEntry: persist },
       '@/lib/supabase': {},
       './fuel': real,
+      './meals': meals,
     });
     const input = {
       foodId: 'food', servings: 1, source: 'manual', editingId,
