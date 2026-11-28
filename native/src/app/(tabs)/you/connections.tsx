@@ -1,36 +1,321 @@
-import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActionSheetIOS } from 'react-native';
+import { Stack, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActionSheetIOS, Alert, RefreshControl, Share, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
+import {
+  formatAgentActionDetail,
+  formatAgentActionTitle,
+  type AgentAction,
+} from '@/lib/agentActions';
+import { agentDetail, MCP_SERVER_URL, type AgentGrant } from '@/lib/agentGrants';
+import { onAppVisible } from '@/lib/appVisibility';
 import { whoopSyncMessage, whoopSyncedLabel } from '@/lib/whoopStatus';
 import { useAppStore } from '@/stores/appStore';
+import { BlancText } from '~/components/BlancText';
+import { Capsule } from '~/components/Capsule';
 import { FormNote, ToggleRow } from '~/components/Form';
 import { Label } from '~/components/Label';
 import { Hairline, Row } from '~/components/Row';
 import { Section } from '~/components/Section';
+import { SwipeRow } from '~/components/SwipeRow';
 import { TabScroll } from '~/components/TabScroll';
-import { useAnnounce } from '~/lib/accessibility';
-import { haptics } from '~/lib/haptics';
+import { announce, speak, useAnnounce, useLargeText } from '~/lib/accessibility';
+import { useCurrentDayKey } from '~/lib/accountData';
 import { useEarlyAccess } from '~/lib/earlyAccess';
-import { connectOrSyncHealth, connectWhoop, stopHealthSync, useHealthStore } from '~/lib/you';
+import { haptics } from '~/lib/haptics';
+import { rowEnter, rowExit, rowLayout } from '~/lib/motion';
+import {
+  connectOrSyncHealth,
+  connectWhoop,
+  disconnectAgent,
+  loadAgentActions,
+  loadAgentGrants,
+  stopHealthSync,
+  undoRecentAgentAction,
+  useAgentActionsStore,
+  useAgentGrantsStore,
+  useHealthStore,
+  usePullRefresh,
+  useWeightStore,
+} from '~/lib/you';
+
+import { copyText } from '../../../../modules/hyper-view';
 
 /**
+ * AI agents (remote MCP via OAuth 2.1), recent agent activity with 1-tap Undo,
  * WHOOP (workouts and recovery stats) and Apple Health (body weight). WHOOP
- * is an early feature: WHOOP lets an unreviewed app connect only a few
- * people, so only the accounts from before public sign-up see it, and anyone
- * already connected keeps it to sync or disconnect.
+ * is an early feature: WHOOP lets an unreviewed app connect only a few people,
+ * so only the accounts from before public sign-up see it, and anyone already
+ * connected keeps it to sync or disconnect.
  */
 export default function ConnectionsScreen() {
   const early = useEarlyAccess();
   const connected = useAppStore((state) => Boolean(state.whoopConnection));
+  const { refreshing, refresh } = usePullRefresh(async () => {
+    await Promise.allSettled([
+      loadAgentGrants(),
+      loadAgentActions(),
+      early || connected ? useAppStore.getState().fetchWhoopConnection() : Promise.resolve(),
+    ]);
+  });
   return (
     <>
       <Stack.Screen options={{ title: 'Connections' }} />
-      <TabScroll>
+      <TabScroll refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}>
+        <Agents />
+        <RecentAgentActivity />
         {early || connected ? <Whoop /> : null}
-        <Health first={!early && !connected} />
+        <Health />
       </TabScroll>
     </>
+  );
+}
+
+function Agents() {
+  const grants = useAgentGrantsStore((state) => state.grants);
+  const loading = useAgentGrantsStore((state) => state.loading);
+  const failed = useAgentGrantsStore((state) => state.failed);
+  const todayKey = useCurrentDayKey();
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadAgentGrants();
+    }, []),
+  );
+
+  useEffect(() => onAppVisible(() => {
+    void loadAgentGrants();
+  }), []);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
+
+  const shareAddress = async () => {
+    await Share.share({ message: MCP_SERVER_URL }).catch(() => {});
+  };
+
+  const copyAddress = async () => {
+    const ok = await copyText(MCP_SERVER_URL);
+    if (!ok) {
+      await shareAddress();
+      return;
+    }
+    haptics.success();
+    setCopied(true);
+    announce('Server address copied');
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
+  };
+
+  const disconnect = async (grant: AgentGrant) => {
+    const ok = await disconnectAgent(grant);
+    if (ok) {
+      haptics.success();
+      announce(`${grant.name} disconnected`);
+    } else {
+      haptics.error();
+      Alert.alert('Not disconnected', 'Check your connection and try again.');
+    }
+  };
+
+  const confirmDisconnect = (grant: AgentGrant) => {
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: `Disconnect ${grant.name}?`,
+        message: 'It will no longer be able to read or log to hyPer. Anything already logged stays.',
+        options: ['Disconnect', 'Cancel'],
+        destructiveButtonIndex: 0,
+        cancelButtonIndex: 1,
+      },
+      (index) => {
+        if (index === 0) void disconnect(grant);
+      },
+    );
+  };
+
+  const shown = grants ?? [];
+  const note = failed
+    ? shown.length > 0
+      ? { text: 'Couldn’t refresh connected agents. Pull down to try again.', alert: true }
+      : { text: 'Couldn’t load connected agents. Check your connection and try again.', alert: true }
+    : grants === null && loading
+      ? { text: 'Checking connected agents…' }
+      : shown.length > 0
+        ? { text: 'Add this address in Claude or another MCP app to log food and weigh-ins. Swipe or tap an agent to disconnect it.' }
+        : { text: 'Paste this address into Claude or another MCP app, then sign in to read your day and log food or weigh-ins.' };
+
+  return (
+    <Section title="AI agents" style={{ marginTop: 8 }}>
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
+        <Row
+          title="Server address"
+          detail={MCP_SERVER_URL}
+          value={copied ? 'Copied' : 'Copy'}
+          accessibilityLabel={`Server address, ${MCP_SERVER_URL}, ${copied ? 'copied' : 'copy'}`}
+          onPress={() => void copyAddress()}
+          menu={[
+            { title: 'Copy address', symbol: 'doc.on.doc', run: () => void copyAddress() },
+            { title: 'Share address', symbol: 'square.and.arrow.up', run: () => void shareAddress() },
+          ]}
+        />
+        {failed && shown.length === 0 ? (
+          <Animated.View entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+            <Hairline />
+            <Row title="Try again" onPress={() => void loadAgentGrants()} />
+          </Animated.View>
+        ) : null}
+        {shown.map((grant) => (
+          <Animated.View key={grant.clientId} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+            <Hairline />
+            <SwipeRow
+              name={grant.name}
+              actions={[{ label: 'Disconnect', destructive: true, onPress: () => void disconnect(grant) }]}>
+              <View>
+                <Row
+                  title={grant.name}
+                  detail={agentDetail(grant, todayKey)}
+                  onPress={() => confirmDisconnect(grant)}
+                  menu={[
+                    {
+                      title: 'Disconnect',
+                      subtitle: 'Logged entries stay',
+                      symbol: 'xmark.circle',
+                      destructive: true,
+                      removes: true,
+                      run: () => void disconnect(grant),
+                    },
+                  ]}
+                />
+              </View>
+            </SwipeRow>
+          </Animated.View>
+        ))}
+      </Label>
+      <FormNote alert={note.alert}>{note.text}</FormNote>
+    </Section>
+  );
+}
+
+const INITIAL_ACTIVITY_LIMIT = 5;
+
+function RecentAgentActivity() {
+  const actions = useAgentActionsStore((state) => state.actions);
+  const failed = useAgentActionsStore((state) => state.failed);
+  const tableMissing = useAgentActionsStore((state) => state.tableMissing);
+  const undoingIds = useAgentActionsStore((state) => state.undoingIds);
+  const grants = useAgentGrantsStore((state) => state.grants);
+  const unit = useWeightStore((state) => state.unit);
+  const todayKey = useCurrentDayKey();
+  const large = useLargeText();
+  const [expanded, setExpanded] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadAgentActions();
+    }, []),
+  );
+
+  useEffect(() => onAppVisible(() => {
+    void loadAgentActions();
+  }), []);
+
+  const agentNamesByClientId = useMemo(
+    () => new Map((grants ?? []).map((grant) => [grant.clientId, grant.name])),
+    [grants],
+  );
+
+  if (tableMissing) return null;
+  const list = actions ?? [];
+  if (!failed && list.length === 0) return null;
+
+  const visible = expanded ? list : list.slice(0, INITIAL_ACTIVITY_LIMIT);
+  const hasMore = !expanded && list.length > INITIAL_ACTIVITY_LIMIT;
+
+  const undo = async (action: AgentAction, title: string) => {
+    const result = await undoRecentAgentAction(action);
+    if (result.ok) {
+      haptics.success();
+      announce(`${title} undone`);
+    } else if (result.error) {
+      haptics.error();
+      Alert.alert('Not undone', result.error);
+    }
+  };
+
+  return (
+    <Section title="Recent activity">
+      <Label style={{ overflow: 'hidden' }} layout={rowLayout}>
+        {failed && list.length === 0 ? (
+          <Row title="Try again" onPress={() => void loadAgentActions()} />
+        ) : (
+          <>
+            {visible.map((action, index) => {
+              const title = formatAgentActionTitle(action, unit);
+              const detail = formatAgentActionDetail(action, { todayKey, agentNamesByClientId });
+              const undone = Boolean(action.undone_at);
+              const undoing = undoingIds.includes(action.id);
+              return (
+                <Animated.View key={action.id} entering={rowEnter} exiting={rowExit} layout={rowLayout}>
+                  {index > 0 ? <Hairline /> : null}
+                  <View
+                    style={{
+                      flexDirection: large ? 'column' : 'row',
+                      alignItems: large ? 'flex-start' : 'center',
+                      gap: 12,
+                      minHeight: 60,
+                      paddingVertical: 10,
+                      paddingLeft: 18,
+                      paddingRight: 16,
+                    }}>
+                    <View
+                      accessible
+                      accessibilityLabel={speak(`${title}. ${detail}`)}
+                      style={{ flex: large ? undefined : 1, minWidth: 0, gap: 1 }}>
+                      <BlancText
+                        variant={undone ? 'body' : 'bodyStrong'}
+                        tone={undone ? 'graphite' : 'ink'}
+                        numberOfLines={large ? undefined : 2}>
+                        {title}
+                      </BlancText>
+                      <BlancText variant="secondary" tone="graphite" numberOfLines={large ? undefined : 2}>
+                        {detail}
+                      </BlancText>
+                    </View>
+                    {undone ? null : (
+                      <Capsule
+                        title="Undo"
+                        variant="quiet"
+                        size="small"
+                        busy={undoing}
+                        accessibilityLabel={`Undo ${title}`}
+                        onPress={() => void undo(action, title)}
+                      />
+                    )}
+                  </View>
+                </Animated.View>
+              );
+            })}
+            {hasMore ? (
+              <Animated.View layout={rowLayout}>
+                <Hairline />
+                <Row title="Show all" value={`${list.length}`} onPress={() => setExpanded(true)} />
+              </Animated.View>
+            ) : null}
+          </>
+        )}
+      </Label>
+      {failed ? (
+        <FormNote alert>
+          {list.length > 0
+            ? 'Couldn’t refresh recent activity. Pull down to try again.'
+            : 'Couldn’t load recent activity. Check your connection and try again.'}
+        </FormNote>
+      ) : null}
+    </Section>
   );
 }
 
@@ -70,9 +355,8 @@ function Whoop() {
     } catch {
       haptics.error();
       setMessage({ text: 'Sync failed. Try again later.', alert: true });
-    } finally {
-      setAction(null);
     }
+    setAction(null);
   };
 
   // Asks first in an action sheet, as Sign out does.
@@ -99,16 +383,15 @@ function Whoop() {
     } catch {
       haptics.error();
       setMessage({ text: 'Could not disconnect WHOOP.', alert: true });
-    } finally {
-      setAction(null);
     }
+    setAction(null);
   };
 
   const synced = connection ? whoopSyncedLabel(connection) : '';
   const status = connection ? synced.charAt(0).toUpperCase() + synced.slice(1) : undefined;
 
   return (
-    <Section title="WHOOP" style={{ marginTop: 8 }}>
+    <Section title="WHOOP">
       <Label style={{ overflow: 'hidden' }}>
         {connection ? (
           // The status alone: Sync now and Disconnect are the rows under it.
@@ -135,7 +418,7 @@ function Whoop() {
   );
 }
 
-function Health({ first = false }: { first?: boolean }) {
+function Health() {
   const enabled = useHealthStore((state) => state.enabled);
   const busy = useHealthStore((state) => state.busy);
   const message = useHealthStore((state) => state.message);
@@ -152,7 +435,7 @@ function Health({ first = false }: { first?: boolean }) {
   };
 
   return (
-    <Section title="Apple Health" style={first ? { marginTop: 8 } : undefined}>
+    <Section title="Apple Health">
       <Label>
         <ToggleRow list label="Weight from Apple Health" value={enabled} disabled={busy} onChange={toggle} />
         {enabled ? (

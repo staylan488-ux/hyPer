@@ -7,6 +7,8 @@ import { create } from 'zustand';
 import * as dateFns from 'date-fns';
 
 import { captureAccountScope } from '@/lib/accountScope';
+import * as agentActions from '@/lib/agentActions';
+import * as agentGrants from '@/lib/agentGrants';
 import { createSaveGate } from '@/lib/requestGate';
 import * as bodyWeightSummary from '@/lib/bodyWeightSummary';
 import * as nutritionCalculator from '@/lib/nutritionCalculator';
@@ -71,6 +73,18 @@ function youHarness() {
   const getNutritionProfile = vi.fn<(userId: string) => Promise<NutritionProfile | null>>(async () => null);
   const getBodyWeightHistorySince = vi.fn<(userId: string, days: number) => Promise<unknown[]>>(async () => []);
   const getAllBodyWeights = vi.fn<(userId: string) => Promise<unknown[]>>(async () => []);
+  const listAgentGrants = vi.fn<() => Promise<agentGrants.AgentGrant[]>>(async () => []);
+  const revokeAgentGrant = vi.fn<(clientId: string) => Promise<void>>(async () => {});
+  const listAgentActions = vi.fn<(userId: string) => Promise<{ actions: agentActions.AgentAction[]; tableMissing: boolean }>>(
+    async () => ({ actions: [], tableMissing: false }),
+  );
+  const undoAgentAction = vi.fn<(userId: string, action: agentActions.AgentAction) => Promise<{ undoneAt: string; affected: 'nutrition' | 'weight' }>>(
+    async (_userId, action) => ({
+      undoneAt: '2026-11-23T18:00:00.000Z',
+      affected: action.undo_payload.kind === 'log_body_weight' ? 'weight' : 'nutrition',
+    }),
+  );
+  const refreshAfterWrite = vi.fn(async () => {});
   const useAppStore = create(() => ({
     macroTarget: null as typeof saved | null,
     nutritionProfile: null,
@@ -94,6 +108,8 @@ function youHarness() {
     'react-native': { Appearance: { setColorScheme: vi.fn() } },
     zustand: { create },
     '@/lib/accountScope': { captureAccountScope },
+    '@/lib/agentActions': { ...agentActions, listAgentActions, undoAgentAction },
+    '@/lib/agentGrants': { ...agentGrants, listAgentGrants, revokeAgentGrant },
     '@/lib/foodTrial': { getFoodAnalysisMode: () => 'gemini', saveFoodAnalysisMode: vi.fn() },
     '@/lib/bodyWeightSummary': { WEIGHT_TREND_WINDOW_DAYS: 60 },
     '@/lib/healthWeights': {
@@ -119,10 +135,11 @@ function youHarness() {
     },
     '@/stores/appStore': { useAppStore, macroTargetSaves: saves.target, nutritionProfileSaves: saves.profile },
     '@/stores/authStore': { useAuthStore },
+    '~/lib/fuel': { useFuelStore: { getState: () => ({ refreshAfterWrite }) } },
     '~/platform/previewFlag': { isPreviewActive: () => preview.active },
   };
   const you = loadNativeModule<YouModule>('lib/you.ts', imports);
-  return { you, reads, saves, health, preview, useAppStore, useAuthStore, openAuthSessionAsync, imports, getNutritionProfile, getBodyWeightHistorySince, getAllBodyWeights, deleteManualBodyWeight };
+  return { you, reads, saves, health, preview, useAppStore, useAuthStore, openAuthSessionAsync, imports, getNutritionProfile, getBodyWeightHistorySince, getAllBodyWeights, deleteManualBodyWeight, listAgentGrants, revokeAgentGrant, listAgentActions, undoAgentAction, refreshAfterWrite };
 }
 
 let root: Root | null = null;
@@ -230,7 +247,8 @@ describe('Edit targets opened before the targets are read', () => {
       'react-native': { Keyboard: { dismiss: vi.fn() }, View: Wrap },
       'react-native-keyboard-controller': { KeyboardAwareScrollView: Wrap },
       '@/lib/settingsUx': settingsUx,
-      '@/stores/appStore': { useAppStore: harness.useAppStore },
+      '@/lib/agentGrants': agentGrants,
+    '@/stores/appStore': { useAppStore: harness.useAppStore },
       '~/components/BlancText': { BlancText: text },
       '~/components/Capsule': { Capsule: (props: ButtonProps) => { buttons[props.title] = props; return null; } },
       '~/components/Form': {
@@ -399,7 +417,8 @@ describe('Calculate targets opened before the profile is read', () => {
       '@/lib/healthWeights': { recordManualBodyWeight },
       '@/lib/nutritionCalculator': nutritionCalculator,
       '@/lib/nutritionWizard': nutritionWizard,
-      '@/stores/appStore': { useAppStore: harness.useAppStore },
+      '@/lib/agentGrants': agentGrants,
+    '@/stores/appStore': { useAppStore: harness.useAppStore },
       '@/stores/authStore': { useAuthStore: harness.useAuthStore },
       '~/components/BlancText': { BlancText: text },
       '~/components/Capsule': { Capsule: (props: ButtonProps) => { buttons[props.title] = props; return null; } },
@@ -853,6 +872,7 @@ function loadYouScreen(you: YouModule, seen: Seen, harness: ReturnType<typeof yo
       useWindowDimensions: () => ({ fontScale: 1 }),
       View: Wrap,
     },
+    '@/lib/agentGrants': agentGrants,
     '@/stores/appStore': { useAppStore: harness.useAppStore },
     '@/stores/authStore': { useAuthStore: harness.useAuthStore },
     '~/components/FuelReminderSetting': { FuelReminderSetting: () => null },
@@ -1386,6 +1406,318 @@ describe("Body weight's recent weigh-ins, as the app compiles it", () => {
     clock.key = dateFns.format(dateFns.addDays(weighedAt, 1), 'yyyy-MM-dd');
     await act(async () => { root!.render(createElement(Screen)); });
     expect(weighIn()).toBe(`${dateFns.format(weighedAt, 'MMM d')}, 7:00 AM`);
+  });
+});
+
+describe('AI agents in Connections', () => {
+  afterEach(() => { clock.key = ''; });
+
+  type AgentsYou = YouModule & {
+    loadAgentGrants: () => Promise<void>;
+    disconnectAgent: (grant: agentGrants.AgentGrant) => Promise<boolean>;
+    loadAgentActions: () => Promise<void>;
+    undoRecentAgentAction: (action: agentActions.AgentAction) => Promise<{ ok: boolean; error?: string }>;
+    resetYou: () => void;
+    useAgentGrantsStore: { getState: () => { grants: agentGrants.AgentGrant[] | null; loading: boolean; failed: boolean } };
+    useAgentActionsStore: { getState: () => { actions: agentActions.AgentAction[] | null; loading: boolean; failed: boolean; tableMissing: boolean; undoingIds: string[] } };
+  };
+
+  function connectionsHarness() {
+    const harness = youHarness();
+    const you = harness.you as unknown as AgentsYou;
+    const rows: Array<{ title: string; detail?: string | readonly string[]; value?: string; onPress?: () => void }> = [];
+    const capsules: Array<{ title: string; accessibilityLabel?: string; busy?: boolean; onPress?: () => void }> = [];
+    const sections: Array<{ title: string }> = [];
+    const swipes: Array<{ name: string; actions: Array<{ label: string; destructive?: boolean; onPress: () => void }> }> = [];
+    const notes: Array<{ text: string; alert?: boolean }> = [];
+    const announcements: string[] = [];
+    const alerts: Array<{ title: string; message?: string }> = [];
+    const sheets: Array<{ title?: string; message?: string; choose: (index: number) => void }> = [];
+    const copyText = vi.fn<(text: string) => Promise<boolean>>(async () => true);
+    const share = vi.fn<(content: { message: string }) => Promise<unknown>>(async () => ({ action: 'sharedAction' }));
+    const foregrounds: Array<() => void> = [];
+    const text = ({ children }: PropsWithChildren) => createElement('span', null, children);
+    const Screen = loadNativeModule<{ default: ComponentType }>('app/(tabs)/you/connections.tsx', {
+      'expo-router': {
+        Stack: { Screen: () => null },
+        useFocusEffect: (effect: () => void) => {
+          useEffect(() => effect(), [effect]);
+        },
+      },
+      'react-native': {
+        ActionSheetIOS: {
+          showActionSheetWithOptions: (options: { title?: string; message?: string }, callback: (index: number) => void) => {
+            sheets.push({ title: options.title, message: options.message, choose: callback });
+          },
+        },
+        Alert: { alert: (title: string, message?: string) => { alerts.push({ title, message }); } },
+        RefreshControl: () => null,
+        Share: { share },
+        View: Wrap,
+      },
+      'react-native-reanimated': { default: { View: Wrap } },
+      '@/lib/agentActions': agentActions,
+      '@/lib/agentGrants': agentGrants,
+      '@/lib/appVisibility': {
+        onAppVisible: (listener: () => void) => {
+          foregrounds.push(listener);
+          return () => {
+            const idx = foregrounds.indexOf(listener);
+            if (idx >= 0) foregrounds.splice(idx, 1);
+          };
+        },
+      },
+      '@/lib/whoopStatus': { whoopSyncMessage: () => 'Up to date', whoopSyncedLabel: () => 'synced just now' },
+      '@/stores/appStore': { useAppStore: harness.useAppStore },
+      '~/components/BlancText': { BlancText: text },
+      '~/components/Capsule': {
+        Capsule: (props: { title: string; accessibilityLabel?: string; busy?: boolean; onPress?: () => void }) => {
+          capsules.push(props);
+          return null;
+        },
+      },
+      '~/components/Form': {
+        FormNote: ({ children, alert }: PropsWithChildren<{ alert?: boolean }>) => {
+          notes.push({ text: String(children), alert });
+          return createElement('span', null, children);
+        },
+        ToggleRow: () => null,
+      },
+      '~/components/Label': { Label: Wrap },
+      '~/components/Row': {
+        Hairline: () => null,
+        Row: (props: { title: string; detail?: string | readonly string[]; value?: string; onPress?: () => void }) => {
+          rows.push(props);
+          return null;
+        },
+      },
+      '~/components/Section': {
+        Section: (props: PropsWithChildren<{ title: string }>) => {
+          sections.push({ title: props.title });
+          return createElement(Fragment, null, props.children);
+        },
+      },
+      '~/components/SwipeRow': {
+        SwipeRow: (props: PropsWithChildren<{ name: string; actions: Array<{ label: string; destructive?: boolean; onPress: () => void }> }>) => {
+          swipes.push({ name: props.name, actions: props.actions });
+          return createElement(Fragment, null, props.children);
+        },
+      },
+      '~/components/TabScroll': { TabScroll: Wrap },
+      '~/lib/accessibility': { ...silentAccessibility, announce: (message: string) => { announcements.push(message); } },
+      '~/lib/accountData': { useCurrentDayKey: clockKey },
+      '~/lib/earlyAccess': { useEarlyAccess: () => false },
+      '~/lib/haptics': { haptics: { tap: vi.fn(), select: vi.fn(), success: vi.fn(), error: vi.fn() } },
+      '~/lib/motion': { rowEnter: null, rowExit: null, rowLayout: null },
+      '~/lib/you': you,
+      '../../../../modules/hyper-view': { copyText },
+    }, { compile: true }).default;
+    return {
+      harness,
+      you,
+      Screen,
+      rows,
+      capsules,
+      sections,
+      swipes,
+      notes,
+      announcements,
+      alerts,
+      sheets,
+      copyText,
+      share,
+      triggerForeground: () => { foregrounds.forEach((listener) => listener()); },
+    };
+  }
+
+  it('copies the server address on tap and falls back to Share when copyText is unavailable', async () => {
+    clock.key = '2026-11-23';
+    const { Screen, rows, announcements, copyText, share } = connectionsHarness();
+    await mount(createElement(Screen));
+    const address = () => rows.filter((row) => row.title === 'Server address').at(-1)!;
+    expect(address()).toMatchObject({ detail: 'https://mcp.thehyper.app', value: 'Copy' });
+
+    await act(async () => { address().onPress?.(); });
+    expect(copyText).toHaveBeenCalledWith('https://mcp.thehyper.app');
+    expect(address().value).toBe('Copied');
+    expect(announcements).toContain('Server address copied');
+
+    copyText.mockResolvedValueOnce(false);
+    await act(async () => { address().onPress?.(); });
+    expect(share).toHaveBeenCalledWith({ message: 'https://mcp.thehyper.app' });
+  });
+
+  it('lists connected agents, disconnects via swipe or tap confirmation, and restores on failure', async () => {
+    clock.key = '2026-11-23';
+    const claude: agentGrants.AgentGrant = {
+      clientId: 'client-claude',
+      name: 'Claude',
+      host: 'claude.ai',
+      grantedAt: new Date(2026, 10, 23, 9, 0).toISOString(),
+    };
+    const { harness, you, Screen, rows, swipes, announcements, alerts, sheets, triggerForeground } = connectionsHarness();
+    harness.listAgentGrants.mockResolvedValue([claude]);
+    await mount(createElement(Screen));
+
+    const claudeRow = () => rows.filter((row) => row.title === 'Claude').at(-1);
+    expect(claudeRow()?.detail).toEqual(['claude.ai', 'Connected today']);
+
+    // Tapping asks first; Cancel leaves it connected.
+    await act(async () => { claudeRow()?.onPress?.(); });
+    expect(sheets.at(-1)?.title).toBe('Disconnect Claude?');
+    await act(async () => { sheets.at(-1)!.choose(1); });
+    expect(harness.revokeAgentGrant).not.toHaveBeenCalled();
+
+    // Failed revoke puts the agent back and alerts.
+    harness.revokeAgentGrant.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => { swipes.at(-1)!.actions[0].onPress(); });
+    expect(alerts.map((a) => a.title)).toContain('Not disconnected');
+    expect(you.useAgentGrantsStore.getState().grants).toEqual([claude]);
+
+    // Confirmed tap disconnects optimistically and announces.
+    await act(async () => { claudeRow()?.onPress?.(); });
+    await act(async () => { sheets.at(-1)!.choose(0); });
+    expect(harness.revokeAgentGrant).toHaveBeenCalledWith('client-claude');
+    expect(you.useAgentGrantsStore.getState().grants).toEqual([]);
+    expect(announcements).toContain('Claude disconnected');
+
+    // Returning from another app refreshes connected agents.
+    harness.listAgentGrants.mockClear();
+    await act(async () => { triggerForeground(); });
+    expect(harness.listAgentGrants).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a disconnected agent gone when an older read finishes late, and clears on sign-out', async () => {
+    const harness = youHarness();
+    const you = harness.you as unknown as AgentsYou;
+    const claude: agentGrants.AgentGrant = {
+      clientId: 'client-claude',
+      name: 'Claude',
+      host: 'claude.ai',
+      grantedAt: '2026-11-23T12:00:00Z',
+    };
+    const slowRead = deferred<agentGrants.AgentGrant[]>();
+    harness.listAgentGrants.mockResolvedValueOnce([claude]);
+    await you.loadAgentGrants();
+
+    harness.listAgentGrants.mockReturnValueOnce(slowRead.promise);
+    const pendingRead = you.loadAgentGrants();
+    expect(await you.disconnectAgent(claude)).toBe(true);
+    slowRead.resolve([claude]);
+    await pendingRead;
+    expect(you.useAgentGrantsStore.getState().grants).toEqual([]);
+
+    harness.listAgentGrants.mockResolvedValueOnce([claude]);
+    await you.loadAgentGrants();
+    expect(you.useAgentGrantsStore.getState().grants).toEqual([claude]);
+
+    you.resetYou();
+    expect(you.useAgentGrantsStore.getState()).toEqual({ grants: null, loading: false, failed: false });
+  });
+
+  it('offers Try again when loading connected agents fails', async () => {
+    const { harness, Screen, rows, notes } = connectionsHarness();
+    harness.listAgentGrants.mockRejectedValueOnce(new Error('offline'));
+    await mount(createElement(Screen));
+
+    expect(notes.some((note) => note.alert && note.text.includes('Couldn’t load connected agents'))).toBe(true);
+    const retry = rows.filter((row) => row.title === 'Try again').at(-1);
+    expect(retry).toBeDefined();
+    harness.listAgentGrants.mockResolvedValueOnce([]);
+    await act(async () => { retry!.onPress?.(); });
+    expect(harness.listAgentGrants).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows connected agents on the You screen Connections row', async () => {
+    clock.key = '2026-11-23';
+    const { harness, you } = youWeights();
+    harness.listAgentGrants.mockResolvedValue([
+      { clientId: 'c1', name: 'Claude', host: 'claude.ai', grantedAt: '2026-11-23T12:00:00Z' },
+    ]);
+    const rows: RowSeen[] = [];
+    const pressed: string[] = [];
+    await mount(createElement(loadYouScreen(you, { rows }, harness, pressed, { compile: true })));
+    await act(async () => {});
+    const connectionsRow = rows.filter((row) => row.title === 'Connections').at(-1);
+    expect(connectionsRow?.value).toBe('Claude');
+  });
+
+  it('shows Recent activity with 1-tap Undo, refreshes Fuel or Weight, and hides when table is missing', async () => {
+    clock.key = '2026-11-23';
+    const loggedAt = new Date(2026, 10, 23, 15, 12).toISOString();
+    const foodAction: agentActions.AgentAction = {
+      id: 'act-1',
+      user_id: 'user-1',
+      created_at: loggedAt,
+      client_id: 'client-claude',
+      agent_name: null,
+      tool_name: 'log_food',
+      summary: 'Logged Whey Shake',
+      undo_payload: {
+        kind: 'log_food',
+        date: '2026-11-23',
+        meal: 'snack',
+        log_ids: ['nl-1'],
+        total_calories: 120,
+        item_count: 1,
+        first_food_name: 'Whey Shake',
+      },
+      undone_at: null,
+    };
+    const weightAction: agentActions.AgentAction = {
+      id: 'act-2',
+      user_id: 'user-1',
+      created_at: loggedAt,
+      client_id: 'client-claude',
+      agent_name: null,
+      tool_name: 'log_body_weight',
+      summary: 'Logged body weight',
+      undo_payload: { kind: 'log_body_weight', weight_id: 'w-1', kilograms: 80, measured_at: loggedAt },
+      undone_at: null,
+    };
+
+    const { harness, you, Screen, capsules, sections, announcements, alerts } = connectionsHarness();
+    harness.listAgentGrants.mockResolvedValue([
+      { clientId: 'client-claude', name: 'Claude', host: 'claude.ai', grantedAt: loggedAt },
+    ]);
+    harness.listAgentActions.mockResolvedValue({ actions: [foodAction, weightAction], tableMissing: false });
+
+    const page = await mount(createElement(Screen));
+    expect(sections.map((section) => section.title)).toContain('Recent activity');
+    expect(page.textContent).toContain('Logged Whey Shake');
+    expect(page.textContent).toContain('Claude · 120 kcal · Snack · Today, 3:12 PM');
+    expect(page.textContent).toContain('Logged 176.4 lb');
+
+    // Failed undo shows an alert and keeps the Undo button available.
+    harness.undoAgentAction.mockRejectedValueOnce(new Error('This entry was already deleted.'));
+    const undoFood = () => capsules.filter((button) => button.accessibilityLabel === 'Undo Logged Whey Shake').at(-1)!;
+    await act(async () => { undoFood().onPress?.(); });
+    expect(alerts.at(-1)).toEqual({ title: 'Not undone', message: 'This entry was already deleted.' });
+    expect(you.useAgentActionsStore.getState().actions?.[0].undone_at).toBeNull();
+
+    // Successful food undo marks undone, refreshes Fuel, and announces.
+    await act(async () => { undoFood().onPress?.(); });
+    expect(harness.undoAgentAction).toHaveBeenCalledWith('user-1', foodAction);
+    expect(harness.refreshAfterWrite).toHaveBeenCalledTimes(1);
+    expect(you.useAgentActionsStore.getState().actions?.[0].undone_at).toBeTruthy();
+    expect(announcements).toContain('Logged Whey Shake undone');
+    expect(page.textContent).toContain('Undone · Claude · 120 kcal · Snack');
+
+    // Successful weight undo triggers weight reload.
+    const undoWeight = capsules.filter((button) => button.accessibilityLabel === 'Undo Logged 176.4 lb').at(-1)!;
+    await act(async () => { undoWeight.onPress?.(); });
+    expect(harness.getBodyWeightHistorySince).toHaveBeenCalled();
+    expect(announcements).toContain('Logged 176.4 lb undone');
+
+    // Sign-out clears recent agent actions.
+    await act(async () => { you.resetYou(); });
+    expect(you.useAgentActionsStore.getState().actions).toBeNull();
+
+    // Pre-migration backend (tableMissing: true) hides Recent activity completely.
+    sections.length = 0;
+    harness.listAgentActions.mockResolvedValueOnce({ actions: [], tableMissing: true });
+    await act(async () => { await you.loadAgentActions(); });
+    expect(sections.some((section) => section.title === 'Recent activity')).toBe(false);
   });
 });
 

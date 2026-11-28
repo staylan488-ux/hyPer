@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Connect to hyPer</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F2F1ED" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="format-detection" content="telephone=no">
+
+  <!-- Public client settings. A value here wins over config.js, so a deploy
+       can write them into the page instead of the file. Never a secret key. -->
+  <meta name="hyper:supabase-url" content="">
+  <meta name="hyper:supabase-anon-key" content="">
+  <meta name="hyper:mcp-url" content="">
+
+  <link rel="icon" href="/assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/assets/images/google-g.svg" as="image" type="image/svg+xml" crossorigin>
+  <link rel="preconnect" href="https://esm.sh" crossorigin>
+  <link rel="stylesheet" href="/assets/blanc.css">
+  <link rel="stylesheet" href="/oauth/consent/consent.css">
+  <script src="/oauth/consent/config.js"></script>
+  <script type="module" src="/oauth/consent/consent.js"></script>
+</head>
+<body>
+  <main class="page" id="main">
+    <div class="column">
+      <!-- hyPer's mark: the P of Fraunces Mark Medium Italic, as an outline. -->
+      <svg class="mark" viewBox="0 0 1325 1400" role="img" aria-label="hyPer" focusable="false">
+        <path d="M1320 438Q1307 544 1257.5 629.5Q1208 715 1127.5 776Q1047 837 941.5 869.5Q836 902 710 902Q627 902 574.5 887.5Q522 873 469 844L475 832Q535 862 582 872Q629 882 682 882Q790 882 875 833.5Q960 785 1018 684.5Q1076 584 1102 427Q1126 279 1099 188.5Q1072 98 1008 56.5Q944 15 855 15Q804 15 773 33Q742 51 730 88Q724 105 704 177.5Q684 250 654.5 359Q625 468 590.5 594Q556 720 522.5 845.5Q489 971 460.5 1077Q432 1183 414.5 1251Q397 1319 394 1330Q390 1347 396 1358.5Q402 1370 420 1372L551 1384Q558 1385 561.5 1386.5Q565 1388 565 1392Q565 1396 561.5 1398Q558 1400 551 1400H11Q6 1400 3 1398.5Q0 1397 0 1393Q0 1390 2.5 1387.5Q5 1385 11 1384L104 1373Q127 1371 137.5 1359.5Q148 1348 156 1326Q159 1317 178 1248Q197 1179 226.5 1072Q256 965 291.5 838Q327 711 362 583Q397 455 426.5 345.5Q456 236 475.5 164Q495 92 498 77Q503 55 496 43Q489 31 467 28L374 16Q364 14 361.5 12Q359 10 359 7Q359 2 363 1Q367 0 374 0H895Q1000 0 1084 30.5Q1168 61 1225 118Q1282 175 1307.5 256Q1333 337 1320 438Z"/>
+      </svg>
+
+      <!-- What a sighted person sees change, a screen reader hears. -->
+      <p class="visually-hidden" id="announcer" role="status" aria-live="polite"></p>
+
+      <noscript>
+        <p class="t-secondary quiet noscript">This page needs JavaScript to connect your agent.</p>
+      </noscript>
+
+      <!-- Waiting: restoring a sign-in, reading the request, or on the way back. -->
+      <section class="view view--waiting" data-view="waiting">
+        <p class="waiting t-secondary">
+          <span class="spinner" id="waiting-spinner" aria-hidden="true"></span>
+          <span id="waiting-text">One moment…</span>
+        </p>
+      </section>
+
+      <!-- Sign in: nobody is signed in to hyPer on this page yet. -->
+      <section class="view" data-view="signin" aria-labelledby="signin-title" hidden>
+        <header class="intro">
+          <h1 class="t-title" id="signin-title" tabindex="-1">Sign in to hyPer</h1>
+          <p class="t-secondary quiet">Your AI agent is asking to connect.</p>
+        </header>
+
+        <button type="button" class="capsule signin-google" id="google">
+          <span class="capsule__label"><span class="google-g" aria-hidden="true"></span>Continue with Google</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+
+        <p class="or t-footnote quiet"><span>or</span></p>
+
+        <form class="form" id="signin-form" method="post" novalidate>
+          <div class="field">
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" placeholder="name@example.com" aria-describedby="signin-error" required>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" enterkeyhint="go" placeholder="Required" aria-describedby="signin-error" required>
+          </div>
+          <p class="error t-secondary" id="signin-error" hidden></p>
+          <button type="submit" class="capsule capsule--quiet signin-submit" id="signin" aria-disabled="true">
+            <span class="capsule__label">Sign in</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </form>
+      </section>
+
+      <!-- Consent: who is asking, what it could do, as whom, yes or no. -->
+      <section class="view" data-view="consent" aria-labelledby="consent-title" hidden>
+        <header class="intro intro--close">
+          <h1 class="t-title" id="consent-title" tabindex="-1">Connect an app</h1>
+          <p class="t-meta quiet" id="consent-origin" hidden></p>
+        </header>
+
+        <p class="t-secondary quiet lead" id="consent-lead">It will be able to</p>
+        <ul class="rows" role="list" aria-labelledby="consent-lead">
+          <li>Read your food diary, daily targets and recent weigh-ins</li>
+          <li>Search your saved foods and meals</li>
+          <li>Log food and weigh-ins, and edit or delete food entries</li>
+          <li id="consent-identity" hidden></li>
+        </ul>
+        <p class="t-meta quiet scopes" id="consent-scopes" hidden></p>
+
+        <div class="account">
+          <p class="t-secondary quiet" id="consent-account">Signed in</p>
+          <button type="button" class="link link--subtle" id="switch-account">Switch account</button>
+        </div>
+
+        <p class="error t-secondary" id="consent-error" hidden></p>
+
+        <div class="actions">
+          <button type="button" class="capsule" id="allow">
+            <span class="capsule__label">Allow access</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="capsule capsule--quiet" id="cancel">
+            <span class="capsule__label">Cancel</span>
+            <span class="spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <p class="t-footnote quiet center afterword">You can disconnect anytime from hyPer.</p>
+      </section>
+
+      <!-- No request: opened directly, or the request ran out. -->
+      <section class="view" data-view="direct" aria-labelledby="direct-title" hidden>
+        <header class="intro">
+          <h1 class="t-title" id="direct-title" tabindex="-1">Connect hyPer to your agent</h1>
+          <p class="t-secondary quiet" id="direct-body">Add this address in Claude, ChatGPT or another MCP client. This page opens on its own when it asks for access.</p>
+        </header>
+
+        <div class="address">
+          <code class="address__url" id="mcp-url">https://mcp.thehyper.app</code>
+          <button type="button" class="capsule capsule--quiet capsule--small" id="copy" aria-label="Copy the address">
+            <span class="capsule__label" id="copy-label">Copy</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- A problem the page cannot get past on its own. -->
+      <section class="view" data-view="problem" aria-labelledby="problem-title" hidden>
+        <header class="intro">
+          <h1 class="t-title" id="problem-title" tabindex="-1">Couldn’t load this request</h1>
+          <p class="t-secondary error" id="problem-body"></p>
+        </header>
+
+        <button type="button" class="capsule capsule--quiet problem-retry" id="retry">
+          <span class="capsule__label">Try again</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+      </section>
+    </div>
+
+    <p class="preview-tag t-meta" id="preview-tag" hidden>Preview · sample data, nothing is sent</p>
+  </main>
+</body>
+</html>

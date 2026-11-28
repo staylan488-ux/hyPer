@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>hyPer</title>
+  <meta name="description" content="hyPer is an iPhone app for your training and food, in one log.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F2F1ED" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="icon" href="/assets/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blanc.css">
+  <!-- A placeholder until the full site: the mark, the name, one line. -->
+  <style>
+    .name {
+      margin-top: 18px;
+    }
+
+    .line {
+      margin-top: 10px;
+    }
+
+    .soon {
+      display: grid;
+      gap: 6px;
+      margin-top: var(--group);
+      padding-top: 14px;
+      border-top: var(--hairline-width) solid var(--hairline);
+    }
+
+    .address {
+      color: var(--ink);
+      user-select: all;
+      -webkit-user-select: all;
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .links a {
+      color: var(--graphite);
+      text-decoration: none;
+    }
+
+    .links a:hover {
+      color: var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="column">
+      <!-- hyPer's mark: the P of Fraunces Mark Medium Italic, as an outline. -->
+      <svg class="mark" viewBox="0 0 1325 1400" aria-hidden="true" focusable="false">
+        <path d="M1320 438Q1307 544 1257.5 629.5Q1208 715 1127.5 776Q1047 837 941.5 869.5Q836 902 710 902Q627 902 574.5 887.5Q522 873 469 844L475 832Q535 862 582 872Q629 882 682 882Q790 882 875 833.5Q960 785 1018 684.5Q1076 584 1102 427Q1126 279 1099 188.5Q1072 98 1008 56.5Q944 15 855 15Q804 15 773 33Q742 51 730 88Q724 105 704 177.5Q684 250 654.5 359Q625 468 590.5 594Q556 720 522.5 845.5Q489 971 460.5 1077Q432 1183 414.5 1251Q397 1319 394 1330Q390 1347 396 1358.5Q402 1370 420 1372L551 1384Q558 1385 561.5 1386.5Q565 1388 565 1392Q565 1396 561.5 1398Q558 1400 551 1400H11Q6 1400 3 1398.5Q0 1397 0 1393Q0 1390 2.5 1387.5Q5 1385 11 1384L104 1373Q127 1371 137.5 1359.5Q148 1348 156 1326Q159 1317 178 1248Q197 1179 226.5 1072Q256 965 291.5 838Q327 711 362 583Q397 455 426.5 345.5Q456 236 475.5 164Q495 92 498 77Q503 55 496 43Q489 31 467 28L374 16Q364 14 361.5 12Q359 10 359 7Q359 2 363 1Q367 0 374 0H895Q1000 0 1084 30.5Q1168 61 1225 118Q1282 175 1307.5 256Q1333 337 1320 438Z"/>
+      </svg>
+      <h1 class="t-title name">hyPer</h1>
+      <p class="t-secondary quiet line">Your training and food, in one log.</p>
+
+      <div class="soon">
+        <p class="t-footnote quiet">The full site is on its way.</p>
+        <p class="t-meta quiet">Connect an AI agent at <span class="address">https://mcp.thehyper.app</span></p>
+      </div>
+
+      <nav class="links t-footnote" aria-label="Legal and support">
+        <a href="/privacy/">Privacy Policy</a>
+        <a href="/terms/">Terms of Use</a>
+        <a href="/support/">Support</a>
+      </nav>
+    </div>
+  </main>
+</body>
+</html>

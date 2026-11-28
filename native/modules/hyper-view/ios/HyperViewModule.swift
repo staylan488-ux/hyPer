@@ -19,5 +19,9 @@ public class HyperViewModule: Module {
         "height": Double(frame.height),
       ]
     }.runOnQueue(.main)
+
+    AsyncFunction("copyText") { (text: String) in
+      UIPasteboard.general.string = text
+    }.runOnQueue(.main)
   }
 }

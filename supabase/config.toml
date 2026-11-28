@@ -19,3 +19,9 @@ verify_jwt = false
 # in analyze-food-trial, so current Supabase signing keys work.
 [functions.delete-account]
 verify_jwt = false
+
+# Remote MCP server over Streamable HTTP. Must serve public RFC 9728 OAuth
+# protected-resource metadata and 401 WWW-Authenticate challenges; Bearer
+# tokens are validated in-code via getUser and RLS runs under the caller's JWT.
+[functions.mcp]
+verify_jwt = false

@@ -1,0 +1,273 @@
+/*
+ * Blanc on the web: hyPer's colours, type and spacing, as the iPhone app
+ * defines them in native/src/theme/blanc.ts. tests/oauthConsentPage.test.ts
+ * holds every colour below to that file, so the two cannot drift apart.
+ *
+ * Content sits straight on the chalk ground (true black in dark), ordered by
+ * type, space and hairlines on the 16 px gutter. No cards, no shadows, no
+ * gradients, no accent colour. Red is for errors and the P, and it is one red.
+ * The system font everywhere; Menlo for small label details.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --ground: #F2F1ED;
+  --label: #FFFFFF;
+  --label-edge: rgba(0, 0, 0, 0.06);
+  --ink: #0B0B0B;
+  --graphite: #66665F;
+  --upcoming: #707069;
+  --hairline: rgba(0, 0, 0, 0.09);
+  --track: #DCDBD6;
+  --mark: #878680;
+  --fill: #ECEBE6;
+  --chosen: #FFFFFF;
+  --pressed: #E7E6E1;
+  --capsule: #0B0B0B;
+  --on-capsule: #FFFFFF;
+  --switch-on: #0B0B0B;
+  --switch-thumb-on: #FFFFFF;
+  --live: #A8352A;
+  --brand: #A8352A;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: Menlo, ui-monospace, "SF Mono", SFMono-Regular, Consolas, "Liberation Mono", monospace;
+
+  /* Screen edge to text, between sections, between a page's groups. */
+  --gutter: 16px;
+  --section: 26px;
+  --group: 40px;
+
+  /* One device pixel, as the app's hairlines are. */
+  --hairline-width: 1px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #000000;
+    --label: #1C1C1B;
+    --label-edge: rgba(255, 255, 255, 0.07);
+    --ink: #F4F4F2;
+    --graphite: #A3A39C;
+    --upcoming: #8C8C86;
+    --hairline: rgba(255, 255, 255, 0.11);
+    --track: #363634;
+    --mark: #7A7A73;
+    --fill: #2C2C2A;
+    --chosen: #4A4A47;
+    --pressed: #30302E;
+    --capsule: #E6E6E2;
+    --on-capsule: #0B0B0B;
+    --switch-on: #E6E6E2;
+    --switch-thumb-on: #0B0B0B;
+    --live: #E0604F;
+    --brand: #E0604F;
+  }
+}
+
+/* Increase Contrast: darker (in dark, lighter) secondary text, stronger rules, full black or white ink. */
+@media (prefers-contrast: more) {
+  :root {
+    --ground: #F2F1ED;
+    --label: #FFFFFF;
+    --label-edge: rgba(0, 0, 0, 0.2);
+    --ink: #000000;
+    --graphite: #4A4A44;
+    --upcoming: #57574F;
+    --hairline: rgba(0, 0, 0, 0.22);
+    --track: #BDBCB6;
+    --mark: #7A7973;
+    --fill: #E3E2DC;
+    --chosen: #FFFFFF;
+    --pressed: #D8D7D1;
+    --capsule: #000000;
+    --on-capsule: #FFFFFF;
+    --switch-on: #000000;
+    --switch-thumb-on: #FFFFFF;
+    --live: #A8352A;
+    --brand: #A8352A;
+  }
+}
+
+@media (prefers-color-scheme: dark) and (prefers-contrast: more) {
+  :root {
+    --ground: #000000;
+    --label: #222221;
+    --label-edge: rgba(255, 255, 255, 0.24);
+    --ink: #FFFFFF;
+    --graphite: #C9C9C3;
+    --upcoming: #B2B2AC;
+    --hairline: rgba(255, 255, 255, 0.28);
+    --track: #4D4D4A;
+    --mark: #85857D;
+    --fill: #38383A;
+    --chosen: #5A5A57;
+    --pressed: #424240;
+    --capsule: #FFFFFF;
+    --on-capsule: #000000;
+    --switch-on: #FFFFFF;
+    --switch-thumb-on: #000000;
+    --live: #FF6F61;
+    --brand: #E0604F;
+  }
+}
+
+@media (min-resolution: 2dppx) {
+  :root {
+    --hairline-width: 0.5px;
+  }
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────── */
+
+/* Sizes are in rem over a 17 px root, the app's body size: calc(34rem / 17)
+   is the app's 34 pt. They grow with the reader's own text size. */
+html {
+  font-size: 106.25%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* On iPhone the root follows the Text Size setting, as the app does: 17 px at
+   the default size. (macOS names a 13 px body, so this is for touch only.) */
+@supports (font: -apple-system-body) and (-webkit-touch-callout: none) {
+  html {
+    font: -apple-system-body;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: calc(22 / 17);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  accent-color: var(--ink);
+  caret-color: var(--ink);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* One column from the top of the page: 44 px under the status bar on a phone,
+   as the app's sign-in. On a desk it sits lower as the window grows taller,
+   and never so low that the consent page has to scroll. */
+.page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: calc(44px + env(safe-area-inset-top, 0px)) max(var(--gutter), env(safe-area-inset-right, 0px))
+    calc(28px + env(safe-area-inset-bottom, 0px)) max(var(--gutter), env(safe-area-inset-left, 0px));
+}
+
+@media (min-width: 600px) {
+  .page {
+    padding-top: clamp(44px, calc(44px + (100vh - 720px) * 0.45), 168px);
+  }
+}
+
+.column {
+  width: 100%;
+  max-width: 24rem;
+}
+
+/* ── The mark ─────────────────────────────────────────────────────────── */
+
+/* The red italic P, drawn from Fraunces Mark Medium Italic's own outline at
+   the app's emblem size (48 pt). It is laid out by its ink, so the foot sits
+   on the gutter, and like the app's it does not grow with the text size. */
+.mark {
+  display: block;
+  width: 31.8px;
+  height: 33.6px;
+  fill: var(--brand);
+}
+
+/* ── Type roles (blanc.ts `type`) ─────────────────────────────────────── */
+
+.t-title {
+  margin: 0;
+  font-size: min(calc(34rem / 17), 60px);
+  line-height: calc(37 / 34);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.t-section {
+  margin: 0;
+  font-size: calc(20rem / 17);
+  line-height: calc(25 / 20);
+  font-weight: 600;
+}
+
+.t-body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: calc(22 / 17);
+}
+
+.t-secondary {
+  margin: 0;
+  font-size: calc(15rem / 17);
+  line-height: calc(20 / 15);
+}
+
+.t-footnote {
+  margin: 0;
+  font-size: calc(13rem / 17);
+  line-height: calc(18 / 13);
+}
+
+.t-meta {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: calc(12rem / 17);
+  line-height: calc(16 / 12);
+  overflow-wrap: anywhere;
+}
+
+.quiet {
+  color: var(--graphite);
+}
+
+.center {
+  text-align: center;
+}
+
+/* ── Shared details ───────────────────────────────────────────────────── */
+
+a {
+  color: inherit;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: from-font;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
