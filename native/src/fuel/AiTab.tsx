@@ -5,6 +5,14 @@ import { Alert, Keyboard, Linking, Pressable, TextInput, View } from 'react-nati
 import Animated, { LayoutAnimationConfig } from 'react-native-reanimated';
 
 import { advanceTrail, startTrail, type AnalysisTrail } from '@/lib/analysisProgress';
+import { isAppVisible, onAppVisible } from '@/lib/appVisibility';
+import {
+  foodAnalysisClarifyPayload,
+  foodAnalysisFailedPayload,
+  foodAnalysisMealLabel,
+  foodAnalysisReadyPayload,
+  foodAnalysisRunningPayload,
+} from '@/lib/foodAnalysisActivitySync';
 import { buildClarifiedMealHint, isValidTrialReview } from '@/lib/foodTrialReview';
 import { ensureFoodRow } from '@/lib/foodPersistence';
 import {
@@ -33,6 +41,12 @@ import { announce, speak, useLargeText } from '~/lib/accessibility';
 import { askAiConsent } from '~/lib/aiConsent';
 import { useAiPaused } from '~/lib/appConfig';
 import { formatWhole } from '~/lib/format';
+import {
+  endFoodAnalysisActivity,
+  startFoodAnalysisBackgroundTask,
+  syncFoodAnalysisActivity,
+  waitForAppForeground,
+} from '~/lib/foodAnalysisActivity';
 import { saveFoodEntry, workerAccessToken } from '~/lib/foodLogger';
 import { haptics } from '~/lib/haptics';
 import { figureLayout, rowEnter, rowExit, rowLayout } from '~/lib/motion';
@@ -129,10 +143,24 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
   // A capture that starts over (an ingredient added to a meal) remounts this
   // tab with an empty draft: an analysis still running then lands nowhere.
   const live = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+  // True when an analysis settled while the app was in the background and its
+  // finished Dynamic Island / Lock Screen card is waiting for the person to return.
+  const backgroundCardUp = useRef(false);
   useEffect(() => {
     live.current = true;
+    const stopVisible = onAppVisible(() => {
+      if (!backgroundCardUp.current) return;
+      backgroundCardUp.current = false;
+      endFoodAnalysisActivity();
+    });
     return () => {
       live.current = false;
+      stopVisible();
+      abortRef.current?.abort();
+      abortRef.current = null;
+      backgroundCardUp.current = false;
+      endFoodAnalysisActivity();
       // closed under a photo's menu: it never answers, so Snap a meal stops waiting for it
       dropPhotoChoices();
     };
@@ -162,53 +190,96 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
     if (busy || (!clarify && !draft.hint.trim() && photos.length === 0)) return;
     // Nothing leaves the phone before the person allows it, once.
     if (!(await askAiConsent()) || !live.current) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    backgroundCardUp.current = false;
     setBusyState('analysis');
     setError(null);
     setLimit(null);
     // The steps show where the button was; the keyboard would cover them.
     Keyboard.dismiss();
     const meal = { photos: photos.length, hint: draft.hint };
-    setTrail({ steps: startTrail(meal), startedAt: Date.now() });
+    const startedAt = Date.now();
+    let latestTrail = startTrail(meal);
+    const mealLabel = foodAnalysisMealLabel(draft.hint, photos.length);
+    const bgTask = startFoodAnalysisBackgroundTask();
+    setTrail({ steps: latestTrail, startedAt });
+    // Started while the app is in front so iOS moves it cleanly into the Dynamic
+    // Island the moment the person switches to another app.
+    syncFoodAnalysisActivity(foodAnalysisRunningPayload(latestTrail, startedAt, mealLabel));
     try {
       const hint = clarify ? buildClarifiedMealHint(draft.hint, result?.clarification || result?.summary || '', draft.answer) : draft.hint;
       if (clarify) setDraft((current) => ({ ...current, clarificationUsed: true }));
       const images = isPreviewActive()
         ? []
         : await Promise.all(photos.map(async (photo, index) => ({ ...(await prepareImage(photo)), angle: index === 0 ? ('top' as const) : ('side' as const) })));
+      if (!live.current || controller.signal.aborted) return;
       const response = await analyzeFoodTrial({
         images,
         hint: isPreviewActive() && hint.trim().length < 5 ? 'Preview meal' : hint,
         accessToken: await workerAccessToken(),
         ...(clarify ? { clarificationUsed: true } : {}),
+        signal: controller.signal,
         onProgress: (step) => {
-          if (live.current) setTrail((current) => current && { ...current, steps: advanceTrail(current.steps, step, meal) });
+          if (!live.current || controller.signal.aborted) return;
+          latestTrail = advanceTrail(latestTrail, step, meal);
+          setTrail({ steps: latestTrail, startedAt });
+          syncFoodAnalysisActivity(foodAnalysisRunningPayload(latestTrail, startedAt, mealLabel));
+        },
+        recover: {
+          getAccessToken: workerAccessToken,
+          isBackgroundSuspended: () => !isAppVisible() && bgTask.isExpired(),
+          waitForForeground: waitForAppForeground,
+          wasBackgrounded: () => bgTask.wasBackgrounded(),
         },
       });
-      if (!live.current) return;
-      haptics.success();
+      if (!live.current || controller.signal.aborted) return;
       setOpen(null);
       setDraft((current) => ({ ...current, answer: '', result: response, items: response.items.map((item) => ({ ...item, key: crypto.randomUUID() })) }));
-      // The answer replaces the button VoiceOver was on: say what came back,
-      // the follow-up question or the estimate (as the screen titles it).
+      const needsClarification = Boolean(response.clarification || response.items.length === 0);
+      const clarifyText = clarify ? 'We couldn’t estimate this meal yet.' : response.clarification || 'What is the main food in this meal?';
       const kcal = response.items.reduce((sum, item) => sum + trialFoodTotals(item).calories, 0);
-      announce(
-        response.clarification || response.items.length === 0
-          ? clarify
-            ? 'We couldn’t estimate this meal yet.'
-            : response.clarification || 'What is the main food in this meal?'
-          : `Estimate ready · ${response.items.length} food${response.items.length === 1 ? '' : 's'} · ${formatWhole(kcal)} kcal`,
-      );
-    } catch (cause) {
-      if (!live.current) return;
-      haptics.error();
-      const kind = aiLimitOf(cause);
-      if (kind) {
-        setLimit(kind);
-        announce(limitWords(kind).title);
+      if (!isAppVisible()) {
+        // Finished while the person is in another app: expand the Dynamic Island
+        // with the outcome and keep the compact ready pill until they return.
+        backgroundCardUp.current = true;
+        syncFoodAnalysisActivity(
+          needsClarification
+            ? foodAnalysisClarifyPayload(clarifyText, startedAt, true)
+            : foodAnalysisReadyPayload(response, startedAt, true),
+        );
       } else {
-        setError(cause instanceof Error ? cause.message : 'Could not analyze the meal.');
+        endFoodAnalysisActivity();
+        haptics.success();
+        // The answer replaces the button VoiceOver was on: say what came back,
+        // the follow-up question or the estimate (as the screen titles it).
+        announce(
+          needsClarification
+            ? clarifyText
+            : `Estimate ready · ${response.items.length} food${response.items.length === 1 ? '' : 's'} · ${formatWhole(kcal)} kcal`,
+        );
+      }
+    } catch (cause) {
+      if (!live.current || controller.signal.aborted) return;
+      const kind = aiLimitOf(cause);
+      if (kind) setLimit(kind);
+      else setError(cause instanceof Error ? cause.message : 'Could not analyze the meal.');
+      if (!isAppVisible()) {
+        backgroundCardUp.current = true;
+        syncFoodAnalysisActivity(
+          kind
+            ? foodAnalysisFailedPayload(limitWords(kind).title, limitWords(kind).line, startedAt, true)
+            : foodAnalysisFailedPayload('Analysis didn’t finish', 'Tap to return to hyPer.', startedAt, true),
+        );
+      } else {
+        endFoodAnalysisActivity();
+        haptics.error();
+        if (kind) announce(limitWords(kind).title);
       }
     } finally {
+      bgTask.end();
+      if (abortRef.current === controller) abortRef.current = null;
+      if (!backgroundCardUp.current && (!live.current || controller.signal.aborted)) endFoodAnalysisActivity();
       setBusyState(null);
       setTrail(null);
     }
@@ -263,6 +334,10 @@ export function AiTab({ draft, setDraft, cameraRequest = 0, addPhotoRequest = 0,
   }, [focusRequest]);
 
   const clearEstimate = () => {
+    if (backgroundCardUp.current) {
+      backgroundCardUp.current = false;
+      endFoodAnalysisActivity();
+    }
     setError(null);
     setLimit(null);
     setOpen(null);

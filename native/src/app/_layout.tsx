@@ -19,6 +19,7 @@ import { useAuthScreen } from '~/lib/auth';
 import { introPlayed } from '~/lib/brand';
 import { startCrashReporting } from '~/lib/crashReporting';
 import { followReminderTaps } from '~/lib/fuelReminder';
+import { endFoodAnalysisActivity } from '~/lib/foodAnalysisActivity';
 import { installLaunchCache } from '~/lib/launchCache';
 import { backendOf } from '~/lib/launchSnapshot';
 import { launchWaiting, takeNativeLaunch, useLaunchActions } from '~/lib/launch';
@@ -50,6 +51,8 @@ installLaunchCache({
 });
 // A press of Snap a meal, Log food or Train that launched the app (lib/launch.ts).
 takeNativeLaunch();
+// Clear any transient meal-analysis Live Activity left behind by a killed prior process.
+endFoodAnalysisActivity();
 // A tap on the Fuel reminder, or its Snap a meal button, becomes the same press
 // the moment it lands, at launch or later (lib/fuelReminder.ts).
 followReminderTaps();

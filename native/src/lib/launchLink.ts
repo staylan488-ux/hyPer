@@ -7,12 +7,13 @@
 // the app is allowed. Only those links are kept, never any other path.
 
 /** Where the widgets and cards link (targets/widgets, appURL). */
-const LAUNCH_PATHS = ['/fuel', '/train', '/you/targets', '/run'] as const;
+const LAUNCH_PATHS = ['/fuel', '/train', '/you/targets', '/run', '/log-food'] as const;
 
 export type LaunchPath = (typeof LAUNCH_PATHS)[number];
 
 let pending: LaunchPath | null = null;
 let openRuns = 0;
+const logFoodHolders: Array<() => void> = [];
 
 export function holdRunLinks(): () => void {
   openRuns += 1;
@@ -20,6 +21,26 @@ export function holdRunLinks(): () => void {
 }
 
 export const blocksRunLink = (link: string): boolean => openRuns > 0 && launchPath(link) !== null;
+
+/**
+ * While Log food is already open, tapping the meal-analysis Live Activity brings
+ * the app back to that open sheet (focusing its AI tab if needed) instead of
+ * pushing a duplicate modal over the in-flight or finished estimate.
+ */
+export function holdLogFoodLinks(onFocus: () => void = () => {}): () => void {
+  logFoodHolders.push(onFocus);
+  return () => {
+    const index = logFoodHolders.lastIndexOf(onFocus);
+    if (index >= 0) logFoodHolders.splice(index, 1);
+  };
+}
+
+/** Handles a tap on the meal-analysis card while Log food is already open. */
+export function consumeLogFoodLink(link: string): boolean {
+  if (logFoodHolders.length === 0 || launchPath(link) !== '/log-food') return false;
+  logFoodHolders[logFoodHolders.length - 1]();
+  return true;
+}
 
 /** The app route a widget or card link opens, or null for any other link. */
 export function launchPath(link: string): LaunchPath | null {

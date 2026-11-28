@@ -25,15 +25,20 @@ const endpoint = () => {
   return `${url.replace(/\/+$/, '')}/functions/v1/analyze-food-trial`;
 };
 
+/** Must stay in lockstep with ANALYSIS_VERSION in supabase/functions/analyze-food-trial/gateway.ts. */
+export const FOOD_ANALYSIS_VERSION = 'gemini-tavily-v3';
+
 /** A refusal from the service, with its code ("daily_quota_exhausted", ...) when it sent one. */
 export class FoodAnalysisRefusal extends Error {
   readonly code: string | null;
   readonly status: number;
-  constructor(message: string, code: string | null, status: number) {
+  readonly requestId: string | null;
+  constructor(message: string, code: string | null, status: number, requestId: string | null = null) {
     super(message);
     this.name = 'FoodAnalysisRefusal';
     this.code = code;
     this.status = status;
+    this.requestId = requestId;
   }
 }
 
@@ -53,14 +58,89 @@ export function aiLimitOf(error: unknown): 'daily' | 'everyone' | 'paused' | nul
 /** The stream of steps closed before the outcome arrived: the analysis may still be running. */
 class FollowInterrupted extends Error {}
 
+const INTERRUPTED_MESSAGE = 'Connection interrupted. Your analysis may still be running. Retry the same input on the same UTC date to check it without starting another paid analysis.';
+
+function isTransientNetworkError(error: unknown): boolean {
+  return error instanceof TypeError
+    || error instanceof FollowInterrupted
+    || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name));
+}
+
+function abortError(): DOMException {
+  return new DOMException('Request aborted', 'AbortError');
+}
+
+function raceAbort(timeoutMs: number, caller?: AbortSignal): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const onCallerAbort = () => controller.abort(caller?.reason ?? abortError());
+  if (caller?.aborted) {
+    onCallerAbort();
+    return { signal: controller.signal, cleanup: () => {} };
+  }
+  caller?.addEventListener('abort', onCallerAbort, { once: true });
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException(`Request timed out after ${timeoutMs / 1000} s`, 'TimeoutError'));
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      caller?.removeEventListener('abort', onCallerAbort);
+    },
+  };
+}
+
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason ?? abortError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? abortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function utcDateKey(atMs = Date.now()): string {
+  return new Date(atMs).toISOString().slice(0, 10);
+}
+
+/**
+ * Computes the same deterministic SHA-256 request ID that analyze-food-trial's
+ * gateway computes for a meal, so a client whose stream was interrupted (for
+ * example after switching apps) can poll the read-only status endpoint without
+ * ever starting a second paid analysis.
+ */
+export async function mealRequestId(input: {
+  images: PhotoAnalysisImage[];
+  hint: string;
+  clarificationUsed?: boolean;
+}): Promise<string | null> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle || typeof subtle.digest !== 'function') return null;
+  const hint = input.hint.trim().normalize('NFC');
+  const images = input.images
+    .map(({ angle, imageBase64, mimeType }) => ({ angle, imageBase64: imageBase64.replace(/\s+/g, ''), mimeType }))
+    .sort((a, b) => a.angle.localeCompare(b.angle) || a.imageBase64.localeCompare(b.imageBase64));
+  const clarificationUsed = input.clarificationUsed === true || /(?:^|\n)Answer:/i.test(hint);
+  const canonical = JSON.stringify({ version: FOOD_ANALYSIS_VERSION, input: { images, hint, clarificationUsed } });
+  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
 function outcome(status: number, payload: unknown): Record<string, unknown> {
   const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload as Record<string, unknown> : null;
   // The service's own words when it gives some; otherwise plain ones (no
   // internal names or bare status codes on the person's screen).
   if (status < 200 || status > 299) {
     const code = typeof body?.code === 'string' ? body.code : null;
-    if (typeof body?.error === 'string' && body.error) throw new FoodAnalysisRefusal(body.error, code, status);
-    throw new FoodAnalysisRefusal(status >= 500 ? 'Food analysis isn’t available right now. Try again in a moment.' : `Couldn’t analyze this meal (error ${status}). Try again.`, code, status);
+    const requestId = typeof body?.requestId === 'string' ? body.requestId : null;
+    if (typeof body?.error === 'string' && body.error) throw new FoodAnalysisRefusal(body.error, code, status, requestId);
+    throw new FoodAnalysisRefusal(status >= 500 ? 'Food analysis isn’t available right now. Try again in a moment.' : `Couldn’t analyze this meal (error ${status}). Try again.`, code, status, requestId);
   }
   if (!body) throw new Error('Food analysis sent back an answer it couldn’t read. Try again.');
   return body;
@@ -74,42 +154,57 @@ function outcome(status: number, payload: unknown): Record<string, unknown> {
  * runtime without one asks for the one reply instead, so the analysis still
  * runs, without its steps.
  */
-async function post(body: object, accessToken: string, follow?: (step: AnalysisProgress) => void): Promise<Record<string, unknown>> {
+async function post(
+  body: object,
+  accessToken: string,
+  follow?: (step: AnalysisProgress) => void,
+  options?: { signal?: AbortSignal; timeoutMs?: number; onStreamStart?: () => void },
+): Promise<Record<string, unknown>> {
   if (!accessToken) throw new Error('Sign in to use the food trial.');
   const onProgress = typeof TextDecoder === 'function' ? follow : undefined;
-  const response = await fetch(endpoint(), {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify(onProgress ? { ...body, progress: true } : body), signal: AbortSignal.timeout(110000),
-  });
-  if (!onProgress || !response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
-    return outcome(response.status, await response.json().catch(() => null));
-  }
-  let result: { status: number; body: unknown } | null = null;
-  const events = createSseReader(data => {
-    let event: Record<string, unknown>;
-    try { event = JSON.parse(data); } catch { return; }
-    if (event?.type === 'result' && Number.isInteger(event.status)) result = { status: event.status as number, body: event.body };
-    else if (event?.type === 'progress' && !result) {
-      const step = parseProgress(event);
-      // The screen only watches: a failure drawing a step never stops the analysis.
-      if (step) {
-        try { onProgress(step); } catch { /* display only */ }
-      }
+  const timeoutMs = options?.timeoutMs ?? 110_000;
+  const { signal, cleanup } = options?.signal
+    ? raceAbort(timeoutMs, options.signal)
+    : { signal: AbortSignal.timeout(timeoutMs), cleanup: () => {} };
+  try {
+    const response = await fetch(endpoint(), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(onProgress ? { ...body, progress: true } : body),
+      signal,
+    });
+    if (!onProgress || !response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
+      return outcome(response.status, await response.json().catch(() => null));
     }
-  });
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    events.push(decoder.decode(value, { stream: true }));
+    options?.onStreamStart?.();
+    let result: { status: number; body: unknown } | null = null;
+    const events = createSseReader(data => {
+      let event: Record<string, unknown>;
+      try { event = JSON.parse(data); } catch { return; }
+      if (event?.type === 'result' && Number.isInteger(event.status)) result = { status: event.status as number, body: event.body };
+      else if (event?.type === 'progress' && !result) {
+        const step = parseProgress(event);
+        // The screen only watches: a failure drawing a step never stops the analysis.
+        if (step) {
+          try { onProgress(step); } catch { /* display only */ }
+        }
+      }
+    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      events.push(decoder.decode(value, { stream: true }));
+    }
+    events.push(decoder.decode());
+    events.end();
+    const settled = result as { status: number; body: unknown } | null;
+    if (!settled) throw new FollowInterrupted('The analysis stream ended early.');
+    return outcome(settled.status, settled.body);
+  } finally {
+    cleanup();
   }
-  events.push(decoder.decode());
-  events.end();
-  const settled = result as { status: number; body: unknown } | null;
-  if (!settled) throw new FollowInterrupted('The analysis stream ended early.');
-  return outcome(settled.status, settled.body);
 }
 
 export async function getFoodTrialStatus(accessToken: string): Promise<Record<string, unknown>> {
@@ -139,55 +234,233 @@ const PREVIEW_STEPS: [AnalysisProgress, number][] = [
   [{ step: 'look' }, 2500], [{ step: 'search', products: ['Example samosas'] }, 1200], [{ step: 'compare', pages: 6 }, 1800],
   [{ step: 'read', sites: ['example.com'] }, 1500], [{ step: 'estimate' }, 2500],
 ];
-async function previewSteps(onProgress: (step: AnalysisProgress) => void) {
+async function previewSteps(onProgress: (step: AnalysisProgress) => void, signal?: AbortSignal) {
   for (const [step, wait] of PREVIEW_STEPS) {
+    if (signal?.aborted) throw signal.reason ?? abortError();
     onProgress(step);
-    await new Promise(resolve => setTimeout(resolve, wait));
+    await sleepAbortable(wait, signal);
   }
 }
 
-export async function analyzeFoodTrial(input: { images: PhotoAnalysisImage[]; hint: string; accessToken: string; clarificationUsed?: boolean; onProgress?: (step: AnalysisProgress) => void }): Promise<FoodTrialResult> {
+function parseFoodTrialPayload(payload: Record<string, unknown>, clarificationUsed?: boolean): FoodTrialResult {
+  if (payload.provider !== 'gemini' || payload.model !== FOOD_TRIAL_MODEL) throw new Error('The trial returned an unexpected model. Nothing was saved.');
+  if (payload.researchProvider !== 'tavily') throw new Error('The meal research service needs an update. Nothing was saved.');
+  const items = validateTrialItems(payload.items);
+  if (payload.clarification != null && (typeof payload.clarification !== 'string' || !payload.clarification.trim() || payload.clarification.length > 180 || items.length)) throw new Error('The trial returned invalid clarification details.');
+  if (clarificationUsed && payload.clarification) throw new Error('We couldn’t make an estimate from these details. Change the meal description and try again.');
+  if (!items.length && !payload.clarification) throw new Error('No food could be identified. Change the meal description and try again.');
+  if (typeof payload.summary !== 'string' || typeof payload.originalText !== 'string' || !Array.isArray(payload.sources) || !payload.usage) throw new Error('The trial returned incomplete food details.');
+  const sourceMap = new Map<number, number>();
+  const sources: FoodTrialResult['sources'] = [];
+  payload.sources.forEach((source, index) => {
+    if (!source || typeof source.title !== 'string' || typeof source.url !== 'string') return;
+    try {
+      const url = new URL(source.url);
+      if (url.protocol === 'https:' && !url.username && !url.password) {
+        sourceMap.set(index, sources.length);
+        sources.push({ title: source.title, url: url.toString() });
+      }
+    } catch { /* Invalid provenance is omitted. */ }
+  });
+  items.forEach((item, index) => {
+    const raw = (payload.items as { sourceIndexes?: unknown }[])[index];
+    item.sourceIndexes = Array.isArray(raw.sourceIndexes) ? raw.sourceIndexes.flatMap(i => Number.isInteger(i) && sourceMap.has(i) ? [sourceMap.get(i)!] : []) : [];
+  });
+  return { ...payload, items, sources, searchSuggestionsHtml: null } as unknown as FoodTrialResult;
+}
+
+export type FoodTrialStatusCheck =
+  | { status: 'done'; result: FoodTrialResult }
+  | { status: 'pending'; requestId: string }
+  | { status: 'not_found' };
+
+/**
+ * Read-only lookup for an analysis that was already sent. Never claims a quota
+ * slot or starts a paid call: returns the saved result if finished, `pending`
+ * if the server is still working, or `not_found` if no claim exists yet.
+ */
+export async function checkFoodTrialResult(
+  requestId: string,
+  accessToken: string,
+  options?: { clarificationUsed?: boolean; signal?: AbortSignal },
+): Promise<FoodTrialStatusCheck> {
+  try {
+    const payload = await post({ action: 'status', requestId }, accessToken, undefined, { signal: options?.signal, timeoutMs: 15_000 });
+    return { status: 'done', result: parseFoodTrialPayload(payload, options?.clarificationUsed) };
+  } catch (error) {
+    if (error instanceof FoodAnalysisRefusal) {
+      if (error.status === 409 && error.code === 'analysis_pending') {
+        return { status: 'pending', requestId: error.requestId ?? requestId };
+      }
+      if (error.status === 404 && error.code === 'analysis_not_found') {
+        return { status: 'not_found' };
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Recovery hooks used by the iOS app so switching away mid-analysis never drops
+ * a running server job: if the stream breaks after the app goes to the
+ * background or iOS suspends it, the client waits until it can talk again and
+ * collects the saved answer from the read-only status endpoint.
+ */
+export interface FoodTrialRecovery {
+  getAccessToken: () => Promise<string>;
+  /** True once the app is backgrounded and iOS's background grace period has ended. */
+  isBackgroundSuspended: () => boolean;
+  /** Resolves once the app returns to the foreground (or immediately if visible). */
+  waitForForeground: (signal?: AbortSignal) => Promise<void>;
+  /** True if the app left the foreground at any point during this analysis. */
+  wasBackgrounded?: () => boolean;
+  pollIntervalMs?: number;
+  notFoundDelayMs?: number;
+  retryDelayMs?: number;
+  /** Maximum elapsed time to keep polling while the server stays `pending`. */
+  maxPendingMs?: number;
+}
+
+export async function analyzeFoodTrial(input: {
+  images: PhotoAnalysisImage[];
+  hint: string;
+  accessToken: string;
+  clarificationUsed?: boolean;
+  onProgress?: (step: AnalysisProgress) => void;
+  signal?: AbortSignal;
+  recover?: FoodTrialRecovery;
+}): Promise<FoodTrialResult> {
   const hint = input.hint.trim();
   if (input.images.length > 2 || hint.length > 1500 || (!input.images.length && hint.length < 5)) {
     throw new Error('Add a meal description (5–1,500 characters), or one or two photos.');
   }
   if (isPreviewActive()) {
-    if (input.onProgress) await previewSteps(input.onProgress);
+    if (input.onProgress) await previewSteps(input.onProgress, input.signal);
+    if (input.signal?.aborted) throw input.signal.reason ?? abortError();
     return structuredClone(previewFoodTrialResult);
   }
+  const requestBody = { images: input.images, hint, ...(input.clarificationUsed ? { clarificationUsed: true } : {}) };
+  const startedAt = Date.now();
+  const startedUtcDate = utcDateKey(startedAt);
+  const recover = input.recover;
+  let activeRequestId = recover ? await mealRequestId({ images: input.images, hint, clarificationUsed: input.clarificationUsed }) : null;
+  let sawStream = false;
+
   try {
-    // No patientPost retries. Server computes a durable content hash, so a user retry
+    // No patientPost retries by default. Server computes a durable content hash, so a user retry
     // of identical input can retrieve an outcome but cannot start a second paid call.
-    const payload = await post({ images: input.images, hint, ...(input.clarificationUsed ? { clarificationUsed: true } : {}) }, input.accessToken, input.onProgress);
-    if (payload.provider !== 'gemini' || payload.model !== FOOD_TRIAL_MODEL) throw new Error('The trial returned an unexpected model. Nothing was saved.');
-    if (payload.researchProvider !== 'tavily') throw new Error('The meal research service needs an update. Nothing was saved.');
-    const items = validateTrialItems(payload.items);
-    if (payload.clarification != null && (typeof payload.clarification !== 'string' || !payload.clarification.trim() || payload.clarification.length > 180 || items.length)) throw new Error('The trial returned invalid clarification details.');
-    if (input.clarificationUsed && payload.clarification) throw new Error('We couldn’t make an estimate from these details. Change the meal description and try again.');
-    if (!items.length && !payload.clarification) throw new Error('No food could be identified. Change the meal description and try again.');
-    if (typeof payload.summary !== 'string' || typeof payload.originalText !== 'string' || !Array.isArray(payload.sources) || !payload.usage) throw new Error('The trial returned incomplete food details.');
-    const sourceMap = new Map<number, number>();
-    const sources: FoodTrialResult['sources'] = [];
-    payload.sources.forEach((source, index) => {
-      if (!source || typeof source.title !== 'string' || typeof source.url !== 'string') return;
-      try {
-        const url = new URL(source.url);
-        if (url.protocol === 'https:' && !url.username && !url.password) {
-          sourceMap.set(index, sources.length);
-          sources.push({ title: source.title, url: url.toString() });
-        }
-      } catch { /* Invalid provenance is omitted. */ }
+    const payload = await post(requestBody, input.accessToken, input.onProgress, {
+      signal: input.signal,
+      onStreamStart: () => { sawStream = true; },
     });
-    items.forEach((item, index) => {
-      const raw = (payload.items as { sourceIndexes?: unknown }[])[index];
-      item.sourceIndexes = Array.isArray(raw.sourceIndexes) ? raw.sourceIndexes.flatMap(i => Number.isInteger(i) && sourceMap.has(i) ? [sourceMap.get(i)!] : []) : [];
-    });
-    return { ...payload, items, sources, searchSuggestionsHtml: null } as unknown as FoodTrialResult;
+    return parseFoodTrialPayload(payload, input.clarificationUsed);
   } catch (error) {
-    if (error instanceof TypeError || error instanceof FollowInterrupted || (error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name))) {
-      throw new Error('Connection interrupted. Your analysis may still be running. Retry the same input on the same UTC date to check it without starting another paid analysis.');
+    if (input.signal?.aborted) throw error;
+    const pendingOnStart = error instanceof FoodAnalysisRefusal && error.status === 409 && error.code === 'analysis_pending';
+    const recoverable = recover && (pendingOnStart || isTransientNetworkError(error));
+    if (!recoverable) {
+      if (isTransientNetworkError(error)) throw new Error(INTERRUPTED_MESSAGE);
+      throw error;
     }
-    throw error;
+    if (pendingOnStart && error.requestId) activeRequestId = error.requestId;
+    if (!activeRequestId) throw new Error(INTERRUPTED_MESSAGE);
+
+    const pollIntervalMs = recover.pollIntervalMs ?? 2_000;
+    const notFoundDelayMs = recover.notFoundDelayMs ?? 1_500;
+    const retryDelayMs = recover.retryDelayMs ?? 1_500;
+    const maxPendingMs = recover.maxPendingMs ?? 125_000;
+    const immediateForegroundDrop = !pendingOnStart && !sawStream && !recover.wasBackgrounded?.()
+      && !recover.isBackgroundSuspended() && error instanceof TypeError && Date.now() - startedAt < 1_500;
+    const maxNetworkRetries = immediateForegroundDrop ? 1 : 4;
+
+    let consecutiveNetworkErrors = 0;
+    let notFoundCount = 0;
+    let repostedOnce = false;
+    let foregroundPendingMs = 0;
+
+    for (;;) {
+      if (input.signal?.aborted) throw input.signal.reason ?? abortError();
+      if (recover.isBackgroundSuspended()) {
+        consecutiveNetworkErrors = 0;
+        await recover.waitForForeground(input.signal);
+        if (input.signal?.aborted) throw input.signal.reason ?? abortError();
+      }
+      let token: string;
+      try {
+        token = await recover.getAccessToken();
+      } catch (tokenError) {
+        if (input.signal?.aborted) throw tokenError;
+        if (recover.isBackgroundSuspended()) continue;
+        if (isTransientNetworkError(tokenError)) {
+          consecutiveNetworkErrors += 1;
+          if (consecutiveNetworkErrors >= maxNetworkRetries) throw new Error(INTERRUPTED_MESSAGE);
+          await sleepAbortable(retryDelayMs * consecutiveNetworkErrors, input.signal);
+          continue;
+        }
+        throw tokenError;
+      }
+
+      try {
+        const check = await checkFoodTrialResult(activeRequestId, token, {
+          clarificationUsed: input.clarificationUsed,
+          signal: input.signal,
+        });
+        consecutiveNetworkErrors = 0;
+        if (check.status === 'done') return check.result;
+        if (check.status === 'pending') {
+          notFoundCount = 0;
+          activeRequestId = check.requestId;
+          // Always allow at least one fresh check after returning from background;
+          // only give up once past the server's deadline AND actively waiting in front.
+          if (Date.now() - startedAt > maxPendingMs && foregroundPendingMs >= 15_000) {
+            throw new Error(INTERRUPTED_MESSAGE);
+          }
+          await sleepAbortable(pollIntervalMs, input.signal);
+          if (!recover.isBackgroundSuspended()) foregroundPendingMs += pollIntervalMs;
+          continue;
+        }
+        // status === 'not_found': give the server a moment to record its claim first.
+        notFoundCount += 1;
+        if (notFoundCount === 1) {
+          await sleepAbortable(notFoundDelayMs, input.signal);
+          continue;
+        }
+        // Still no claim under our hash on the same UTC date: the initial upload was
+        // dropped before reaching the server (or the server upgraded its hash version).
+        // Re-posting once on the same UTC date is idempotent on the server's ledger.
+        if (!repostedOnce && utcDateKey() === startedUtcDate && (sawStream || recover.wasBackgrounded?.())) {
+          repostedOnce = true;
+          try {
+            const payload = await post(requestBody, token, input.onProgress, {
+              signal: input.signal,
+              onStreamStart: () => { sawStream = true; },
+            });
+            return parseFoodTrialPayload(payload, input.clarificationUsed);
+          } catch (repostError) {
+            if (input.signal?.aborted) throw repostError;
+            if (repostError instanceof FoodAnalysisRefusal && repostError.status === 409 && repostError.code === 'analysis_pending') {
+              if (repostError.requestId) activeRequestId = repostError.requestId;
+              notFoundCount = 0;
+              await sleepAbortable(pollIntervalMs, input.signal);
+              continue;
+            }
+            if (isTransientNetworkError(repostError)) {
+              notFoundCount = 0;
+              continue;
+            }
+            throw repostError;
+          }
+        }
+        throw new Error(INTERRUPTED_MESSAGE);
+      } catch (checkError) {
+        if (input.signal?.aborted) throw checkError;
+        if (!isTransientNetworkError(checkError)) throw checkError;
+        if (recover.isBackgroundSuspended()) continue;
+        consecutiveNetworkErrors += 1;
+        if (consecutiveNetworkErrors >= maxNetworkRetries) throw new Error(INTERRUPTED_MESSAGE);
+        await sleepAbortable(retryDelayMs * consecutiveNetworkErrors, input.signal);
+      }
+    }
   }
 }
 

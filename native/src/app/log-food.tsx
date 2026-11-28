@@ -43,6 +43,7 @@ import { groupsForDay, loadDayGroups, suggestedGroup, today, useFuelStore, useTo
 import { haptics } from '~/lib/haptics';
 import { refusePress } from '~/lib/launch';
 import { sheetSnap, snapMealDate, useLaunchStore } from '~/lib/launchActions';
+import { holdLogFoodLinks } from '~/lib/launchLink';
 import { useLeaveGuard } from '~/lib/leaveGuard';
 import { loadYouMeals, useYouMealsStore } from '~/lib/you';
 import { LoggerContext, takeReview, type AddedQuickAdd, type ChosenMeta, type LoggerContextValue, type PendingQuickAdd, type QuickAddState } from '~/fuel/context';
@@ -690,6 +691,14 @@ function LoggerSession({ userId, editing, savedMeal, saveFrom, selectedKey, grou
     // a barcode binding only survives the guided miss → manual path
     if (next !== 'manual') setManual((current) => (current.barcodeBinding ? { ...current, barcodeBinding: null } : current));
   };
+  // Tapping the meal-analysis Live Activity brings back this open sheet and
+  // focuses its AI tab if the person had switched away, never opening a second sheet.
+  const focusAiFromCard = useEffectEvent(() => {
+    if (!saving && gemini && !chosen && !(meal && mealReview && !paused) && tab !== 'photo') {
+      showTab('photo');
+    }
+  });
+  useEffect(() => holdLogFoodLinks(() => focusAiFromCard()), []);
   const openTab = (next: Tab) => {
     if (saving) return;
     haptics.select();

@@ -13,8 +13,8 @@ describe('Lock Screen Live Activity platter', () => {
     .filter((file) => file.endsWith('LiveActivity.swift'))
     .sort();
 
-  it('covers both the workout and run Live Activities', () => {
-    expect(activityFiles).toEqual(['RunLiveActivity.swift', 'WorkoutLiveActivity.swift']);
+  it('covers the workout, run and food analysis Live Activities', () => {
+    expect(activityFiles).toEqual(['FoodAnalysisLiveActivity.swift', 'RunLiveActivity.swift', 'WorkoutLiveActivity.swift']);
   });
 
   // Leaving the platter on iOS's default material avoids ActivityKit's light/dark

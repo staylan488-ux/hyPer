@@ -393,6 +393,7 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
     '~/lib/fuel': { groupsForDay: (key: string) => fuel.groups.filter((group) => group.date === key), loadDayGroups: async (key: string) => fuel.groups.filter((group) => group.date === key), suggestedGroup: () => (clockGroup ? { id: clockGroup } : null), today: () => '2026-11-03', useTodayKey: () => '2026-11-03', useFuelStore },
     '~/lib/haptics': { haptics: { tap, select: noop, success, error } },
     '~/lib/launchActions': launchActions,
+    '~/lib/launchLink': { holdLogFoodLinks: () => noop },
     '~/lib/launch': { refusePress },
     '~/lib/leaveGuard': { useLeaveGuard: (on: boolean, message: { title: string }, options: { busy?: boolean } = {}) => { captured.guard = { on, message, busy: options.busy }; } },
     '~/lib/you': { loadYouMeals: loadYou, useYouMealsStore },
@@ -518,6 +519,20 @@ function loggerHarness({ editing = false, entry = loggedMilk, worker = false, sa
   if (realAi) {
     const aiModule = loadNativeModule<NativeModule>('fuel/AiTab.tsx', {
       ...imports,
+      '@/lib/appVisibility': { isAppVisible: () => true, onAppVisible: () => noop },
+      '@/lib/foodAnalysisActivitySync': {
+        foodAnalysisMealLabel: () => 'Your meal',
+        foodAnalysisRunningPayload: () => ({ phase: 'running', title: '', detail: '', startedAtEpochMs: 0 }),
+        foodAnalysisReadyPayload: () => ({ phase: 'ready', title: '', detail: '', startedAtEpochMs: 0 }),
+        foodAnalysisClarifyPayload: () => ({ phase: 'clarify', title: '', detail: '', startedAtEpochMs: 0 }),
+        foodAnalysisFailedPayload: () => ({ phase: 'failed', title: '', detail: '', startedAtEpochMs: 0 }),
+      },
+      '~/lib/foodAnalysisActivity': {
+        syncFoodAnalysisActivity: noop,
+        endFoodAnalysisActivity: noop,
+        startFoodAnalysisBackgroundTask: () => ({ isExpired: () => false, wasBackgrounded: () => false, end: noop }),
+        waitForAppForeground: async () => {},
+      },
       '@/lib/foodTrial': { ...foodTrial, getFoodAnalysisMode: () => 'gemini' },
       '@/lib/foodTrialReview': foodTrialReview,
       '@/lib/foodTrialUsage': { usageResetLabel: () => 'at 5 PM' },
